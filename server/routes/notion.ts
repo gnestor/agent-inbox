@@ -1,0 +1,65 @@
+import { Hono } from "hono"
+import * as notion from "../lib/notion.js"
+import { cached, invalidate } from "../lib/cache.js"
+
+const LIST_TTL = 60_000    // 1 min for task lists
+const DETAIL_TTL = 120_000 // 2 min for task detail
+
+export const notionRoutes = new Hono()
+
+notionRoutes.get("/tasks", async (c) => {
+  const status = c.req.query("status")
+  const tags = c.req.query("tags")
+  const assignee = c.req.query("assignee")
+  const priority = c.req.query("priority")
+  const cursor = c.req.query("cursor")
+  const key = `notion:tasks:${status}:${tags}:${assignee}:${priority}:${cursor || ""}`
+  const result = await cached(key, LIST_TTL, () =>
+    notion.queryTasks({ status, tags, assignee, priority, cursor: cursor || undefined }),
+  )
+  return c.json(result)
+})
+
+notionRoutes.get("/tasks/:id", async (c) => {
+  const id = c.req.param("id")
+  const task = await cached(`notion:task:${id}`, DETAIL_TTL, () =>
+    notion.getTaskDetail(id),
+  )
+  return c.json(task)
+})
+
+notionRoutes.patch("/tasks/:id", async (c) => {
+  const properties = await c.req.json()
+  const id = c.req.param("id")
+  const result = await notion.updateTaskProperties(id, properties)
+  invalidate("notion:tasks")
+  invalidate(`notion:task:${id}`)
+  return c.json(result)
+})
+
+notionRoutes.get("/assignees", async (c) => {
+  const result = await cached("notion:assignees", 300_000, async () => {
+    const tasks = await notion.queryTasks({})
+    const assignees = [...new Set(tasks.tasks.map((t: any) => t.assignee).filter(Boolean))].sort()
+    return { assignees }
+  })
+  return c.json(result)
+})
+
+notionRoutes.get("/options/:property", async (c) => {
+  const property = c.req.param("property")
+  const options = notion.getPropertyOptions(property)
+  return c.json({ options })
+})
+
+notionRoutes.post("/options/sync", async (c) => {
+  await notion.syncPropertyOptions()
+  return c.json({ ok: true })
+})
+
+notionRoutes.post("/tasks", async (c) => {
+  const { title, body, properties } = await c.req.json()
+  const task = await notion.createTask(title, body, properties)
+  invalidate("notion:tasks")
+  return c.json(task)
+})

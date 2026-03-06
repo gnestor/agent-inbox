@@ -1,0 +1,238 @@
+import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import {
+  ScrollArea,
+  Skeleton,
+  Combobox,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+  ComboboxChips,
+  ComboboxChip,
+  ComboboxChipsInput,
+  useComboboxAnchor,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem,
+} from "@hammies/frontend/components/ui"
+import { SidebarTrigger } from "@hammies/frontend/components/ui"
+import { Mail, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
+import { useEmails } from "@/hooks/use-emails"
+import { getEmailLabels } from "@/api/client"
+import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
+import { ListItem } from "@/components/shared/ListItem"
+import type { ListItemBadge } from "@/components/shared/ListItem"
+import { usePreference } from "@/hooks/use-preferences"
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
+import type { GmailLabel } from "@/types"
+
+const FILTER_OPTIONS = [
+  { value: "important", label: "Important" },
+  { value: "starred", label: "Starred" },
+  { value: "snoozed", label: "Snoozed" },
+  { value: "unread", label: "Unread" },
+]
+
+const FILTER_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  FILTER_OPTIONS.map((o) => [o.value, o.label]),
+)
+
+interface EmailListProps {
+  selectedThreadId?: string
+}
+
+export function EmailList({ selectedThreadId }: EmailListProps) {
+  const [filters, setFilters] = usePreference<string[]>("emails.filters", ["important", "starred"])
+  const [selectedLabels, setSelectedLabels] = usePreference<string[]>("emails.labels", [])
+  const [search, setSearch] = useState("")
+  const [showFilters, setShowFilters] = usePreference("emails.showFilters", false)
+  const [showReadStatus, setShowReadStatus] = usePreference("emails.showReadStatus", true)
+  const [showLabels, setShowLabels] = usePreference("emails.showLabels", false)
+  const [showImportant, setShowImportant] = usePreference("emails.showImportant", true)
+  const [showStarred, setShowStarred] = usePreference("emails.showStarred", true)
+  const [labels, setLabels] = useState<GmailLabel[]>([])
+  const filterAnchor = useComboboxAnchor()
+  const labelAnchor = useComboboxAnchor()
+
+  useEffect(() => {
+    getEmailLabels()
+      .then((r) => setLabels(r.labels.filter((l) => l.type === "user").sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => {})
+  }, [])
+
+  const labelNames = useMemo(() => labels.map((l) => l.name), [labels])
+
+  const hasActiveFilters = filters.length > 0 || selectedLabels.length > 0
+
+  const query = useMemo(() => {
+    const parts: string[] = ["in:inbox"]
+    const conditions: string[] = []
+    for (const f of filters) {
+      conditions.push(`is:${f}`)
+    }
+    if (conditions.length === 1) parts.push(conditions[0])
+    else if (conditions.length > 1) parts.push(`(${conditions.join(" OR ")})`)
+    for (const l of selectedLabels) {
+      parts.push(`label:${l.replace(/\s+/g, "-")}`)
+    }
+    if (search) parts.push(search)
+    return parts.join(" ")
+  }, [filters, selectedLabels, search])
+
+  const { messages, loading, loadingMore, error, loadMore, hasMore } = useEmails(query)
+  const navigate = useNavigate()
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore, loading || loadingMore)
+
+  const threads = useMemo(() => {
+    const seen = new Set<string>()
+    return messages.filter((msg) => {
+      if (seen.has(msg.threadId)) return false
+      seen.add(msg.threadId)
+      return true
+    })
+  }, [messages])
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
+        <div className="flex items-center gap-2">
+          <SidebarTrigger className="-ml-1" />
+          <h2 className="font-semibold text-sm">Emails</h2>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+            <Ellipsis className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem checked={showReadStatus} onCheckedChange={setShowReadStatus}>
+                Read status
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>
+                Labels
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem checked={showImportant} onCheckedChange={setShowImportant}>
+                Important
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem checked={showStarred} onCheckedChange={setShowStarred}>
+                Starred
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="px-4 py-2 border-b space-y-1.5">
+        <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
+          <input
+            className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            placeholder="Search emails..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button type="button" onClick={() => setShowFilters(!showFilters)} className="shrink-0 p-1 rounded hover:bg-accent">
+            <SlidersHorizontal className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`} />
+          </button>
+        </div>
+        {showFilters && (
+          <>
+            <Combobox multiple value={filters} onValueChange={setFilters} items={FILTER_OPTIONS}>
+              <ComboboxChips ref={filterAnchor} className="min-h-8 text-xs">
+                {filters.map((v) => (
+                  <ComboboxChip key={v}>{FILTER_LABEL_MAP[v] || v}</ComboboxChip>
+                ))}
+                <ComboboxChipsInput placeholder={filters.length === 0 ? "Filter..." : ""} className="text-xs" />
+              </ComboboxChips>
+              <ComboboxContent anchor={filterAnchor}>
+                <ComboboxList>
+                  {(item) => (
+                    <ComboboxItem key={item.value} value={item.value}>
+                      {item.label}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <Combobox multiple value={selectedLabels} onValueChange={setSelectedLabels} items={labelNames}>
+              <ComboboxChips ref={labelAnchor} className="min-h-8 text-xs">
+                {selectedLabels.map((v) => (
+                  <ComboboxChip key={v}>{v}</ComboboxChip>
+                ))}
+                <ComboboxChipsInput placeholder={selectedLabels.length === 0 ? "Labels..." : ""} className="text-xs" />
+              </ComboboxChips>
+              <ComboboxContent anchor={labelAnchor}>
+                <ComboboxList>
+                  {(item) => (
+                    <ComboboxItem key={item} value={item}>
+                      {item}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+                <ComboboxEmpty>No labels found</ComboboxEmpty>
+              </ComboboxContent>
+            </Combobox>
+          </>
+        )}
+      </div>
+      <ScrollArea className="flex-1 overflow-hidden">
+        {loading && (
+          <div className="flex flex-col gap-px">
+            {Array.from({ length: 50 }).map((_, i) => (
+              <Skeleton key={i} className="h-[88px] w-full rounded-none shrink-0" />
+            ))}
+          </div>
+        )}
+        {error && (
+          <div className="p-3 text-sm text-destructive">{error}</div>
+        )}
+        {!loading &&
+          threads.map((msg) => {
+            const badges: ListItemBadge[] = []
+            if (showReadStatus && msg.isUnread) {
+              badges.push({ label: "Unread", variant: "secondary" })
+            }
+            if (showImportant && msg.labelIds.includes("IMPORTANT")) {
+              badges.push({ label: "Important", variant: "outline", className: "bg-chart-2/20 text-chart-2 border-chart-2/30" })
+            }
+            if (showStarred && msg.labelIds.includes("STARRED")) {
+              badges.push({ label: "Starred", variant: "outline", className: "bg-primary/20 text-primary border-primary/30" })
+            }
+            if (showLabels) {
+              const userLabels = msg.labelIds.filter((id) => !id.startsWith("CATEGORY_") && !["INBOX", "IMPORTANT", "STARRED", "UNREAD", "SENT", "DRAFT", "TRASH", "SPAM"].includes(id))
+              for (const label of userLabels.slice(0, 3)) {
+                const l = labels.find((lb) => lb.id === label)
+                badges.push({ label: l?.name || label, variant: "outline" })
+              }
+            }
+            return (
+              <ListItem
+                key={msg.id}
+                title={formatEmailAddress(msg.from)}
+                subtitle={msg.subject}
+                timestamp={formatRelativeDate(msg.date)}
+                badges={badges}
+                isSelected={selectedThreadId === msg.threadId}
+                onClick={() => navigate(`/inbox/${msg.threadId}`)}
+              />
+            )
+          })}
+        {!loading && hasMore && <div ref={sentinelRef} />}
+        {loadingMore && (
+          <div className="flex justify-center p-3">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {!loading && threads.length === 0 && !error && (
+          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+            <Mail className="h-8 w-8 mb-2" />
+            <p className="text-sm">No emails found</p>
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  )
+}
