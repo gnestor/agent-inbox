@@ -106,14 +106,12 @@ function AnimatedColumn({
   isNew,
   isExiting,
   isMobile,
-  zIndex,
   children,
   colRef,
 }: {
   isNew: boolean
   isExiting: boolean
   isMobile: boolean
-  zIndex: number
   children: React.ReactNode
   colRef: (el: HTMLDivElement | null) => void
 }) {
@@ -129,12 +127,10 @@ function AnimatedColumn({
   return (
     <div
       ref={colRef}
-      style={{ zIndex }}
       className={cn(
         "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden transition-[opacity,transform] duration-200 ease-out",
         isMobile ? "w-screen" : "w-[600px]",
-        !entered && "opacity-0 translate-x-full",
-        isExiting && "opacity-0 -translate-x-full",
+        (!entered || isExiting) && "opacity-0 translate-x-8",
       )}
     >
       {children}
@@ -232,13 +228,12 @@ export function PanelStack() {
         isMobile ? "overflow-x-hidden p-0" : "overflow-x-auto py-4 pr-4 pl-0.5",
       )}
     >
-      {columns.map((col, i) => (
+      {columns.map((col) => (
         <AnimatedColumn
           key={col.key}
           isNew={newKeys.has(col.key)}
           isExiting={exiting || exitingKeys.has(col.key)}
           isMobile={isMobile}
-          zIndex={columns.length - i}
           colRef={(el) => {
             if (el) colRefs.current.set(col.key, el)
             else colRefs.current.delete(col.key)
