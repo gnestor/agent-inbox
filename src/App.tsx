@@ -13,7 +13,7 @@ function AuthenticatedApp() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="max-h-svh overflow-hidden">
-        <div className="flex flex-1 h-full overflow-hidden">
+        <div className="flex flex-1 h-full">
           <Routes>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<PanelStack />} />

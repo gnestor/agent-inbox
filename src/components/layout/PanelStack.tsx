@@ -104,6 +104,7 @@ function ColumnContent({
 
 function AnimatedColumn({
   isNew,
+  isPreloading,
   isExiting,
   isMobile,
   zIndex,
@@ -111,30 +112,32 @@ function AnimatedColumn({
   colRef,
 }: {
   isNew: boolean
+  isPreloading: boolean
   isExiting: boolean
   isMobile: boolean
   zIndex: number
   children: React.ReactNode
   colRef: (el: HTMLDivElement | null) => void
 }) {
-  const [entered, setEntered] = useState(!isNew)
+  const [entered, setEntered] = useState(!isNew && !isPreloading)
 
   useEffect(() => {
-    if (!isNew) return
+    if (!isNew || isPreloading) return
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setEntered(true))
     })
-  }, [])
+  }, [isNew, isPreloading])
 
   return (
     <div
       ref={colRef}
       style={{ zIndex }}
       className={cn(
-        "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden transition-[opacity,transform] duration-200 ease-out",
+        "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
         isMobile ? "w-screen" : "w-[600px]",
-        !entered && "opacity-0 translate-x-full",
-        isExiting && "opacity-0 -translate-x-full",
+        isPreloading && "absolute invisible",
+        !isPreloading && !entered && "-translate-x-[calc(100%+1rem)]",
+        isExiting && "-translate-x-[100vw]",
       )}
     >
       {children}
@@ -151,6 +154,7 @@ export function PanelStack() {
   const [columns, setColumns] = useState<Column[]>(() => pathToColumns(location.pathname))
   const prevColsRef = useRef(columns)
   const [newKeys, setNewKeys] = useState<Set<string>>(new Set())
+  const [preloadingKeys, setPreloadingKeys] = useState<Set<string>>(new Set())
   const [exitingKeys, setExitingKeys] = useState<Set<string>>(new Set())
   const [exiting, setExiting] = useState(false)
 
@@ -167,13 +171,18 @@ export function PanelStack() {
       prevCols.length > 0 && next.length > 0 && prevCols[0].type !== next[0].type
 
     if (rootChanged) {
+      // Mount next columns immediately (off-screen) so they preload content
+      const nextKeySet = new Set(next.map((c) => c.key))
+      setColumns([...prevCols, ...next])
+      setPreloadingKeys(nextKeySet)
       setExiting(true)
       const timer = setTimeout(() => {
         setColumns(next)
-        setNewKeys(new Set(next.map((c) => c.key)))
+        setPreloadingKeys(new Set())
+        setNewKeys(nextKeySet)
         prevColsRef.current = next
         setExiting(false)
-      }, 180)
+      }, 500)
       return () => clearTimeout(timer)
     }
 
@@ -181,16 +190,34 @@ export function PanelStack() {
     const removedCols = prevCols.filter((c) => !nextKeys.has(c.key))
     if (removedCols.length > 0) {
       const removedKeys = new Set(removedCols.map((c) => c.key))
-      // Keep removed columns rendered (appended) so they can animate out
-      setColumns([...next, ...removedCols])
-      setExitingKeys(removedKeys)
-      prevColsRef.current = next
       const addedKeys = new Set(next.map((c) => c.key).filter((k) => !prevKeys.has(k)))
-      setNewKeys(addedKeys)
+      // Phase 1: merge exiting columns (at original positions) + new columns (off-screen, preloading)
+      const exitMerged: Column[] = []
+      for (const col of prevCols) {
+        if (nextKeys.has(col.key)) {
+          exitMerged.push(next.find((c) => c.key === col.key)!)
+        } else {
+          exitMerged.push(col) // exiting — stays in original position
+        }
+      }
+      // Append new columns so they mount and start loading content
+      for (const col of next) {
+        if (addedKeys.has(col.key)) {
+          exitMerged.push(col)
+        }
+      }
+      setColumns(exitMerged)
+      setExitingKeys(removedKeys)
+      setPreloadingKeys(addedKeys)
+      setNewKeys(new Set())
+      prevColsRef.current = next
+      // Phase 2: after exit completes, remove exiting columns and animate new ones in
       const timer = setTimeout(() => {
-        setColumns(next)
         setExitingKeys(new Set())
-      }, 210)
+        setPreloadingKeys(new Set())
+        setColumns(next)
+        setNewKeys(addedKeys)
+      }, 500)
       return () => clearTimeout(timer)
     }
 
@@ -228,15 +255,17 @@ export function PanelStack() {
   return (
     <div
       className={cn(
-        "flex flex-row h-full gap-4",
+        "flex flex-row h-full gap-4 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
         isMobile ? "overflow-x-hidden p-0" : "overflow-x-auto py-4 pr-4 pl-0.5",
+        exiting && "-translate-x-[calc(100%+1rem)]",
       )}
     >
       {columns.map((col, i) => (
         <AnimatedColumn
           key={col.key}
-          isNew={newKeys.has(col.key)}
-          isExiting={exiting || exitingKeys.has(col.key)}
+          isNew={newKeys.has(col.key) || preloadingKeys.has(col.key)}
+          isPreloading={preloadingKeys.has(col.key)}
+          isExiting={exitingKeys.has(col.key)}
           isMobile={isMobile}
           zIndex={columns.length - i}
           colRef={(el) => {
