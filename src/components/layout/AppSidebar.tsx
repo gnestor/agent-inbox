@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import {
   Avatar,
   AvatarFallback,
@@ -23,11 +23,12 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { Mail, CheckSquare, Bot, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
+import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
-const navItems = [
-  { title: "Emails", icon: Mail, path: "/inbox" },
-  { title: "Tasks", icon: CheckSquare, path: "/tasks" },
-  { title: "Sessions", icon: Bot, path: "/sessions" },
+const navItems: { title: string; icon: typeof Mail; tab: TabId }[] = [
+  { title: "Emails", icon: Mail, tab: "inbox" },
+  { title: "Tasks", icon: CheckSquare, tab: "tasks" },
+  { title: "Sessions", icon: Bot, tab: "sessions" },
 ]
 
 function getInitials(name: string) {
@@ -41,9 +42,9 @@ function getInitials(name: string) {
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()
-  const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useUser()
+  const { navigateToTab } = useSpatialNav()
 
   return (
     <Sidebar variant="floating" {...props}>
@@ -113,14 +114,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location.pathname.startsWith(item.path)
+                const isActive = location.pathname.startsWith(`/${item.tab}`)
                 return (
-                  <SidebarMenuItem key={item.path}>
+                  <SidebarMenuItem key={item.tab}>
                     <SidebarMenuButton
                       isActive={isActive}
                       tooltip={item.title}
                       className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
-                      onClick={() => { navigate(item.path); if (isMobile) setOpenMobile(false) }}
+                      onClick={() => { navigateToTab(item.tab); if (isMobile) setOpenMobile(false) }}
                     >
                       <item.icon />
                       <span>{item.title}</span>

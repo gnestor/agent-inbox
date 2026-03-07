@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react"
-import { User, Bot, Wrench, Brain, Loader2 } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
 import {
   Accordion,
   AccordionItem,
@@ -135,7 +135,8 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
 
   if (msg.type === "user" || msg.role === "user") {
     const text = extractText(msg)
-    if (!text) return null
+    const ideRefs = parseIdeContext(msg)
+    if (!text && ideRefs.length === 0) return null
     return (
       <Accordion defaultValue={[`user-${message.sequence}`]}>
         <AccordionItem value={`user-${message.sequence}`} className="border-0 min-w-0">
@@ -146,7 +147,22 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
             </div>
           </AccordionTrigger>
           <AccordionContent>
-            <div className="text-sm whitespace-pre-wrap break-words pl-5.5">{text}</div>
+            <div className="pl-5.5 space-y-1.5">
+              {text && <div className="text-sm whitespace-pre-wrap break-words">{text}</div>}
+              {ideRefs.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {ideRefs.map((ref, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/50 border border-border/50 rounded px-1.5 py-0.5"
+                    >
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span>{ref.filename}{ref.selectionLines ? `:${ref.selectionLines}` : ""}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>
@@ -292,6 +308,31 @@ function toolUseSummary(name: string, input: any): string {
   }
 }
 
+function isIdeContextBlock(block: any): boolean {
+  const text = block.text || ""
+  return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
+}
+
+function parseIdeContext(msg: any): Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> {
+  const refs: Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> = []
+  const blocks: any[] = Array.isArray(msg.content) ? msg.content : Array.isArray(msg.message?.content) ? msg.message.content : []
+  for (const block of blocks) {
+    const text = block.text || ""
+    const fileMatch = text.match(/<ide_opened_file>The user opened the file (.+?) in the IDE/)
+    if (fileMatch) {
+      const path = fileMatch[1]
+      refs.push({ type: "file", path, filename: path.split("/").pop() || path })
+      continue
+    }
+    const selMatch = text.match(/<ide_selection>The user selected the lines (\d+) to (\d+) from (.+?):/)
+    if (selMatch) {
+      const path = selMatch[3]
+      refs.push({ type: "selection", path, filename: path.split("/").pop() || path, selectionLines: `${selMatch[1]}-${selMatch[2]}` })
+    }
+  }
+  return refs
+}
+
 function extractText(msg: any): string {
   if (typeof msg.content === "string") return msg.content
   if (typeof msg.text === "string") return msg.text
@@ -299,14 +340,14 @@ function extractText(msg: any): string {
     if (typeof msg.message.content === "string") return msg.message.content
     if (Array.isArray(msg.message.content)) {
       return msg.message.content
-        .filter((b: any) => b.type === "text")
+        .filter((b: any) => b.type === "text" && !isIdeContextBlock(b))
         .map((b: any) => b.text)
         .join("\n")
     }
   }
   if (Array.isArray(msg.content)) {
     return msg.content
-      .filter((b: any) => b.type === "text")
+      .filter((b: any) => b.type === "text" && !isIdeContextBlock(b))
       .map((b: any) => b.text)
       .join("\n")
   }
