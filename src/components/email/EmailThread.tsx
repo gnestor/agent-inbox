@@ -11,9 +11,10 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@hammies/frontend/components/ui"
-import { Bot, ChevronLeft, ExternalLink, Ellipsis } from "lucide-react"
+import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import type { GmailMessage } from "@/types"
 
 interface EmailThreadProps {
@@ -66,43 +67,36 @@ export function EmailThread({ threadId }: EmailThreadProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            type="button"
-            className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
-            onClick={() => navigate("/inbox")}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <h2 className="font-semibold text-sm truncate">{thread.subject}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-40">
-              <DropdownMenuItem
-                render={
-                  <a
-                    href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                }
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in Gmail
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
-            <Bot className="h-4 w-4 md:mr-1" />
-            <span className="hidden md:inline">Start Session</span>
-          </Button>
-        </div>
-      </div>
+      <PanelHeader
+        left={<><BackButton onClick={() => navigate("/inbox")} /><h2 className="font-semibold text-sm truncate">{thread.subject}</h2></>}
+        right={
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+                <Ellipsis className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40">
+                <DropdownMenuItem
+                  render={
+                    <a
+                      href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Gmail
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
+              <Bot className="h-4 w-4 md:mr-1" />
+              <span className="hidden md:inline">Start Session</span>
+            </Button>
+          </>
+        }
+      />
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {thread.messages.map((message, i) => {
           const isLast = i === thread.messages.length - 1

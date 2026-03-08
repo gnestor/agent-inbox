@@ -14,7 +14,6 @@ type PersistedState = Record<TabId, TabState>
 
 interface SpatialNavContextValue {
   activeTab: TabId
-  tabIndex: number
   persistedState: PersistedState
   navigateToTab: (tab: TabId) => void
 }
@@ -50,7 +49,7 @@ export function tabStateFromPathname(pathname: string, tab: TabId): TabState {
   return state
 }
 
-function buildUrl(tab: TabId, state: TabState): string {
+export function buildUrl(tab: TabId, state: TabState): string {
   const base = `/${tab}`
   if (!state.selectedId) return base
 
@@ -66,17 +65,45 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
   const navigate = useNavigate()
 
   const activeTab = tabFromPathname(location.pathname)
-  const tabIndex = TAB_ORDER.indexOf(activeTab)
   const persistedRef = useRef<PersistedState>({
     inbox: {},
     tasks: {},
     sessions: {},
   })
+  // Per-item session state: key is "tab:itemId", value is session open/id
+  const itemSessionRef = useRef<Map<string, { sessionOpen: boolean; sessionId?: string }>>(new Map())
 
   // Sync URL changes into persisted state for the active tab
+  // Save/restore per-item session state on item switch
   useEffect(() => {
-    persistedRef.current[activeTab] = tabStateFromPathname(location.pathname, activeTab)
-  }, [location.pathname, activeTab])
+    const newState = tabStateFromPathname(location.pathname, activeTab)
+    const oldState = persistedRef.current[activeTab]
+
+    if (activeTab !== "sessions" && oldState.selectedId && oldState.selectedId !== newState.selectedId) {
+      // Save outgoing item's session state
+      itemSessionRef.current.set(`${activeTab}:${oldState.selectedId}`, {
+        sessionOpen: oldState.sessionOpen ?? false,
+        sessionId: oldState.sessionId,
+      })
+    }
+
+    // Restore incoming item's session state
+    if (
+      activeTab !== "sessions" &&
+      newState.selectedId &&
+      newState.selectedId !== oldState.selectedId &&
+      !newState.sessionOpen
+    ) {
+      const saved = itemSessionRef.current.get(`${activeTab}:${newState.selectedId}`)
+      if (saved?.sessionOpen) {
+        persistedRef.current[activeTab] = { ...newState, sessionOpen: true, sessionId: saved.sessionId }
+        navigate(buildUrl(activeTab, persistedRef.current[activeTab]), { replace: true })
+        return
+      }
+    }
+
+    persistedRef.current[activeTab] = newState
+  }, [location.pathname, activeTab, navigate])
 
   const navigateToTab = useCallback(
     (tab: TabId) => {
@@ -90,11 +117,10 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
   const value = useMemo(
     () => ({
       activeTab,
-      tabIndex,
       persistedState: persistedRef.current,
       navigateToTab,
     }),
-    [activeTab, tabIndex, navigateToTab],
+    [activeTab, navigateToTab],
   )
 
   return <SpatialNavContext.Provider value={value}>{children}</SpatialNavContext.Provider>

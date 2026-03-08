@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ScrollArea,
-  Skeleton,
   Combobox,
   ComboboxContent,
   ComboboxList,
@@ -23,9 +22,12 @@ import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { Bot, SlidersHorizontal, Ellipsis } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { getSessionProjects } from "@/api/client"
-import { formatRelativeDate, truncate } from "@/lib/formatters"
+import { formatRelativeDate, truncate, sessionStatusBadgeClass } from "@/lib/formatters"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { ListSkeleton } from "@/components/shared/ListSkeleton"
+import { PanelHeader } from "@/components/shared/PanelHeader"
 import { usePreference } from "@/hooks/use-preferences"
 
 const STATUS_ITEMS = [
@@ -38,16 +40,6 @@ const STATUS_ITEMS = [
 const STATUS_LABEL_MAP: Record<string, string> = Object.fromEntries(
   STATUS_ITEMS.map((s) => [s.value, s.label]),
 )
-
-function statusBadgeClass(status: string) {
-  switch (status) {
-    case "running": return "bg-chart-3/20 text-chart-3 border-chart-3/30"
-    case "complete": return "bg-chart-1/20 text-chart-1 border-chart-1/30"
-    case "needs_attention": return "bg-chart-2/20 text-chart-2 border-chart-2/30"
-    case "errored": return "bg-destructive/20 text-destructive border-destructive/30"
-    default: return ""
-  }
-}
 
 interface SessionListProps {
   selectedSessionId?: string
@@ -93,28 +85,27 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
-          <h2 className="font-semibold text-sm">Sessions</h2>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-            <Ellipsis className="h-4 w-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
-                Status
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showProject} onCheckedChange={setShowProject}>
-                Project
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <PanelHeader
+        left={<><SidebarTrigger className="-ml-1" /><h2 className="font-semibold text-sm">Sessions</h2></>}
+        right={
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
+                  Status
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showProject} onCheckedChange={setShowProject}>
+                  Project
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
       <div className="px-4 py-2 border-b space-y-1.5">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
@@ -168,13 +159,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         )}
       </div>
       <ScrollArea className="flex-1 overflow-hidden">
-        {loading && (
-          <div className="flex flex-col gap-px">
-            {Array.from({ length: 50 }).map((_, i) => (
-              <Skeleton key={i} className="h-[66px] w-full rounded-none shrink-0" />
-            ))}
-          </div>
-        )}
+        {loading && <ListSkeleton itemHeight={66} />}
         {error && (
           <div className="p-3 text-sm text-destructive">{error}</div>
         )}
@@ -185,7 +170,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
               badges.push({
                 label: STATUS_LABEL_MAP[session.status] || session.status,
                 variant: "outline",
-                className: statusBadgeClass(session.status),
+                className: sessionStatusBadgeClass(session.status),
               })
             }
             if (showProject && session.project) {
@@ -210,10 +195,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             )
           })}
         {!loading && filteredSessions.length === 0 && !error && (
-          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
-            <Bot className="h-8 w-8 mb-2" />
-            <p className="text-sm">No sessions yet</p>
-          </div>
+          <EmptyState icon={Bot} message="No sessions yet" />
         )}
       </ScrollArea>
     </div>

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { Button, Textarea } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, ChevronLeft } from "lucide-react"
+import { Send, Square, Loader2 } from "lucide-react"
 import { getSession, resumeSession, abortSession } from "@/api/client"
 import { useSessionStream } from "@/hooks/use-session-stream"
+import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
 import { SessionTranscript } from "./SessionTranscript"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import type { Session, SessionMessage } from "@/types"
 
 interface SessionViewProps {
@@ -13,17 +15,8 @@ interface SessionViewProps {
 
 export function SessionView({ sessionId }: SessionViewProps) {
   const navigate = useNavigate()
-  const location = useLocation()
-
-  function parentPath() {
-    const parts = location.pathname.split("/").filter(Boolean)
-    // /inbox/:threadId/session/:sessionId → /inbox/:threadId
-    if (parts[0] === "inbox" && parts[2] === "session") return `/inbox/${parts[1]}`
-    // /tasks/:taskId/session/:sessionId → /tasks/:taskId
-    if (parts[0] === "tasks" && parts[2] === "session") return `/tasks/${parts[1]}`
-    // /sessions/:sessionId → /sessions
-    return "/sessions"
-  }
+  const { activeTab, persistedState } = useSpatialNav()
+  const parentPath = buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
   const [session, setSession] = useState<Session | null>(null)
   const [initialMessages, setInitialMessages] = useState<SessionMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,7 +43,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
   // Update session status from stream
   useEffect(() => {
-    if (stream.sessionStatus && session) {
+    if (stream.sessionStatus) {
       setSession((prev) =>
         prev ? { ...prev, status: stream.sessionStatus as any } : prev,
       )
@@ -106,27 +99,15 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            type="button"
-            className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
-            onClick={() => navigate(parentPath())}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <h2 className="font-semibold text-sm truncate min-w-0">
-            {session.summary || "Session"}
-          </h2>
-        </div>
-        {isRunning && (
+      <PanelHeader
+        left={<><BackButton onClick={() => navigate(parentPath)} /><h2 className="font-semibold text-sm truncate min-w-0">{session.summary || "Session"}</h2></>}
+        right={isRunning ? (
           <Button variant="destructive" size="sm" onClick={handleAbort}>
             <Square className="h-3 w-3 mr-1" />
             Stop
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Transcript */}
       <div className="flex-1 overflow-hidden">

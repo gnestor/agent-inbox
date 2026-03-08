@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Button, Input } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
+import { PanelHeader } from "@/components/shared/PanelHeader"
 import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { usePreference } from "@/hooks/use-preferences"
@@ -107,17 +108,18 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex h-12 items-center justify-between px-4 border-b shrink-0">
-        <h2 className="font-semibold text-sm">New Session</h2>
-        <button
-          type="button"
-          className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-          onClick={() => navigate(parentPath())}
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      <PanelHeader
+        left={<h2 className="font-semibold text-sm">New Session</h2>}
+        right={
+          <button
+            type="button"
+            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            onClick={() => navigate(parentPath())}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        }
+      />
 
       {/* Body */}
       <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
