@@ -101,10 +101,6 @@ export interface EmailTaskLink {
   createdAt: string
 }
 
-// View types
-
-export type ViewType = "inbox" | "tasks" | "sessions"
-
 // Filter types
 
 export interface EmailFilters {

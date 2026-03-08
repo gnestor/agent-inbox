@@ -83,10 +83,11 @@ const HTML_TEXT_QUOTE_PATTERNS: RegExp[] = [
   new RegExp(
     `\\bOn\\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)${T}{5,400}wrote:`,
   ),
-  // Outlook Word HTML reply header: bold "From:" followed by bold "Sent:" within ~400 chars
-  // e.g. <b><span ...>From:</span></b> Grant ... <b>Sent:</b> Thursday, Mar 5 ...
+  // Bold reply header: bold "From:" followed by bold "Sent:" or "Date:" within ~400 chars
+  // Outlook: <b><span>From:</span></b> ... <b>Sent:</b>
+  // Apple Mail / iOS: <b><span>From: </span></b> ... <b>Date: </b>
   new RegExp(
-    `<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}From:(?:[^<]|<[^>]+>){0,20}<\\/(?:b|strong)>(?:[^<]|<[^>]+>){0,400}<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}Sent:`,
+    `<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}From:\\s*(?:[^<]|<[^>]+>){0,20}<\\/(?:b|strong)>(?:[^<]|<[^>]+>){0,400}<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}(?:Sent|Date):`,
   ),
   // Outlook original/forwarded message separator
   /-{5,}(?:Original|Forwarded) Message-{5,}/i,
@@ -141,13 +142,22 @@ export function cleanHtmlEmail(html: string): string {
   // ── Text-pattern fallback (handles Apple Mail / Outlook / Chinese clients) ──
   // Scan for attribution text still present in the HTML after structural cleanup.
 
+  // Find the earliest-matching pattern (lowest index) so a nested attribution
+  // deeper in the thread doesn't shadow a header closer to the reply boundary.
+  let earliestIndex = Infinity
+  let earliestMatchIndex: number | null = null
   for (const pattern of HTML_TEXT_QUOTE_PATTERNS) {
     const match = result.match(pattern)
-    if (match?.index && match.index > 0) {
-      const cutAt = findBlockStart(result, match.index)
-      result = result.slice(0, cutAt)
-      break // one truncation is enough; patterns ordered by specificity
+    if (process.env.DEBUG_CLEANER) console.log(`[cleaner] pattern ${pattern} → index=${match?.index}`)
+    if (match?.index && match.index > 0 && match.index < earliestIndex) {
+      earliestIndex = match.index
+      earliestMatchIndex = match.index
     }
+  }
+  if (earliestMatchIndex !== null) {
+    const cutAt = findBlockStart(result, earliestMatchIndex)
+    if (process.env.DEBUG_CLEANER) console.log(`[cleaner] cutting at ${cutAt}, result was ${result.length}`)
+    result = result.slice(0, cutAt)
   }
 
   // ── Signature line cleanup ─────────────────────────────────────────────────

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ScrollArea,
-  Skeleton,
   Combobox,
   ComboboxContent,
   ComboboxList,
@@ -26,6 +25,9 @@ import { getEmailLabels } from "@/api/client"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { ListSkeleton } from "@/components/shared/ListSkeleton"
+import { PanelHeader } from "@/components/shared/PanelHeader"
 import { usePreference } from "@/hooks/use-preferences"
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
 import type { GmailLabel } from "@/types"
@@ -43,9 +45,10 @@ const FILTER_LABEL_MAP: Record<string, string> = Object.fromEntries(
 
 interface EmailListProps {
   selectedThreadId?: string
+  onSelectedIndexChange?: (index: number) => void
 }
 
-export function EmailList({ selectedThreadId }: EmailListProps) {
+export function EmailList({ selectedThreadId, onSelectedIndexChange }: EmailListProps) {
   const [filters, setFilters] = usePreference<string[]>("emails.filters", ["important", "starred"])
   const [selectedLabels, setSelectedLabels] = usePreference<string[]>("emails.labels", [])
   const [search, setSearch] = useState("")
@@ -96,36 +99,41 @@ export function EmailList({ selectedThreadId }: EmailListProps) {
     })
   }, [messages])
 
+  // Report index synchronously during render (only updates refs, no state)
+  if (onSelectedIndexChange && selectedThreadId) {
+    const idx = threads.findIndex((t) => t.threadId === selectedThreadId)
+    if (idx !== -1) onSelectedIndexChange(idx)
+  }
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
-          <h2 className="font-semibold text-sm">Emails</h2>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-            <Ellipsis className="h-4 w-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem checked={showReadStatus} onCheckedChange={setShowReadStatus}>
-                Read status
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>
-                Labels
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showImportant} onCheckedChange={setShowImportant}>
-                Important
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showStarred} onCheckedChange={setShowStarred}>
-                Starred
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <PanelHeader
+        left={<><SidebarTrigger className="-ml-1" /><h2 className="font-semibold text-sm">Emails</h2></>}
+        right={
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem checked={showReadStatus} onCheckedChange={setShowReadStatus}>
+                  Read status
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>
+                  Labels
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showImportant} onCheckedChange={setShowImportant}>
+                  Important
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showStarred} onCheckedChange={setShowStarred}>
+                  Starred
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
       <div className="px-4 py-2 border-b space-y-1.5">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
@@ -179,13 +187,7 @@ export function EmailList({ selectedThreadId }: EmailListProps) {
         )}
       </div>
       <ScrollArea className="flex-1 overflow-hidden">
-        {loading && (
-          <div className="flex flex-col gap-px">
-            {Array.from({ length: 50 }).map((_, i) => (
-              <Skeleton key={i} className="h-[88px] w-full rounded-none shrink-0" />
-            ))}
-          </div>
-        )}
+        {loading && <ListSkeleton itemHeight={88} />}
         {error && (
           <div className="p-3 text-sm text-destructive">{error}</div>
         )}
@@ -227,10 +229,7 @@ export function EmailList({ selectedThreadId }: EmailListProps) {
           </div>
         )}
         {!loading && threads.length === 0 && !error && (
-          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
-            <Mail className="h-8 w-8 mb-2" />
-            <p className="text-sm">No emails found</p>
-          </div>
+          <EmptyState icon={Mail} message="No emails found" />
         )}
       </ScrollArea>
     </div>

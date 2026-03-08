@@ -36,7 +36,7 @@ export function useEmails(query = "in:inbox is:important OR is:starred") {
     if (!nextPageToken.current || loadingMore) return
     setLoadingMore(true)
     try {
-      const result = await searchEmails(query, 20, nextPageToken.current)
+      const result = await searchEmails(query, 50, nextPageToken.current)
       setMessages((prev) => [...prev, ...result.messages])
       nextPageToken.current = result.nextPageToken
     } catch (err: any) {

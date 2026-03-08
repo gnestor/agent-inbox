@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ScrollArea,
-  Skeleton,
   Combobox,
   ComboboxContent,
   ComboboxList,
@@ -23,28 +22,21 @@ import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useTasks } from "@/hooks/use-tasks"
 import { getNotionOptions, getTaskAssignees } from "@/api/client"
-import { formatRelativeDate } from "@/lib/formatters"
+import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { ListSkeleton } from "@/components/shared/ListSkeleton"
+import { PanelHeader } from "@/components/shared/PanelHeader"
 import { usePreference } from "@/hooks/use-preferences"
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
 
-function statusBadgeClass(status: string) {
-  switch (status) {
-    case "Not started": return "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30"
-    case "Next Up": return "bg-chart-2/20 text-chart-2 border-chart-2/30"
-    case "In Progress": return "bg-chart-3/20 text-chart-3 border-chart-3/30"
-    case "Completed": return "bg-chart-1/20 text-chart-1 border-chart-1/30"
-    case "Archive": return "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30"
-    default: return ""
-  }
-}
-
 interface TaskListProps {
   selectedTaskId?: string
+  onSelectedIndexChange?: (index: number) => void
 }
 
-export function TaskList({ selectedTaskId }: TaskListProps) {
+export function TaskList({ selectedTaskId, onSelectedIndexChange }: TaskListProps) {
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [priorityOptions, setPriorityOptions] = useState<string[]>([])
   const [tagOptions, setTagOptions] = useState<string[]>([])
@@ -98,36 +90,41 @@ export function TaskList({ selectedTaskId }: TaskListProps) {
     return tasks.filter((t) => t.title.toLowerCase().includes(q))
   }, [tasks, search])
 
+  // Report index synchronously during render (only updates refs, no state)
+  if (onSelectedIndexChange && selectedTaskId) {
+    const idx = filteredTasks.findIndex((t) => t.id === selectedTaskId)
+    if (idx !== -1) onSelectedIndexChange(idx)
+  }
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
-          <h2 className="font-semibold text-sm">Tasks</h2>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-            <Ellipsis className="h-4 w-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
-                Status
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showPriority} onCheckedChange={setShowPriority}>
-                Priority
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showTags} onCheckedChange={setShowTags}>
-                Tags
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={showAssignee} onCheckedChange={setShowAssignee}>
-                Assignee
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <PanelHeader
+        left={<><SidebarTrigger className="-ml-1" /><h2 className="font-semibold text-sm">Tasks</h2></>}
+        right={
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
+                  Status
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showPriority} onCheckedChange={setShowPriority}>
+                  Priority
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showTags} onCheckedChange={setShowTags}>
+                  Tags
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showAssignee} onCheckedChange={setShowAssignee}>
+                  Assignee
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
       <div className="px-4 py-2 border-b space-y-1.5">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
@@ -216,13 +213,7 @@ export function TaskList({ selectedTaskId }: TaskListProps) {
         )}
       </div>
       <ScrollArea className="flex-1 overflow-hidden">
-        {loading && (
-          <div className="flex flex-col gap-px">
-            {Array.from({ length: 50 }).map((_, i) => (
-              <Skeleton key={i} className="h-[66px] w-full rounded-none shrink-0" />
-            ))}
-          </div>
-        )}
+        {loading && <ListSkeleton itemHeight={66} />}
         {error && (
           <div className="p-3 text-sm text-destructive">{error}</div>
         )}
@@ -230,7 +221,7 @@ export function TaskList({ selectedTaskId }: TaskListProps) {
           filteredTasks.map((task) => {
             const badges: ListItemBadge[] = []
             if (showStatus) {
-              badges.push({ label: task.status, variant: "outline", className: statusBadgeClass(task.status) })
+              badges.push({ label: task.status, variant: "outline", className: taskStatusBadgeClass(task.status) })
             }
             if (showPriority && task.priority) {
               badges.push({ label: task.priority, variant: "outline" })
@@ -259,10 +250,7 @@ export function TaskList({ selectedTaskId }: TaskListProps) {
           </div>
         )}
         {!loading && filteredTasks.length === 0 && !error && (
-          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
-            <CheckSquare className="h-8 w-8 mb-2" />
-            <p className="text-sm">No tasks found</p>
-          </div>
+          <EmptyState icon={CheckSquare} message="No tasks found" />
         )}
       </ScrollArea>
     </div>

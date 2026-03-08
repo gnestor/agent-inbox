@@ -6,10 +6,12 @@ export function useSessionStream(sessionId: string | undefined) {
   const [connected, setConnected] = useState(false)
   const [sessionStatus, setSessionStatus] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const seenSequences = useRef(new Set<number>())
 
   useEffect(() => {
     if (!sessionId) return
 
+    seenSequences.current.clear()
     const es = new EventSource(`/api/sessions/${sessionId}/stream`)
     eventSourceRef.current = es
 
@@ -28,21 +30,19 @@ export function useSessionStream(sessionId: string | undefined) {
         }
 
         if (data.sequence !== undefined && data.message) {
-          setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.sequence === data.sequence)) return prev
-            return [
-              ...prev,
-              {
-                id: data.sequence,
-                sessionId: sessionId,
-                sequence: data.sequence,
-                type: data.message.type || "unknown",
-                message: data.message,
-                createdAt: new Date().toISOString(),
-              },
-            ]
-          })
+          if (seenSequences.current.has(data.sequence)) return
+          seenSequences.current.add(data.sequence)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: data.sequence,
+              sessionId: sessionId,
+              sequence: data.sequence,
+              type: data.message.type || "unknown",
+              message: data.message,
+              createdAt: new Date().toISOString(),
+            },
+          ])
         }
       } catch {
         // Ignore parse errors

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react"
+import { useRef, useCallback } from "react"
 import { useLocation } from "react-router-dom"
+import { motion, AnimatePresence } from "motion/react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { cn } from "@hammies/frontend/lib/utils"
+import { useSpatialNav, tabStateFromPathname, TAB_ORDER, type TabId } from "@/hooks/use-spatial-nav"
 import { EmailList } from "@/components/email/EmailList"
 import { EmailThread } from "@/components/email/EmailThread"
 import { TaskList } from "@/components/task/TaskList"
@@ -10,238 +12,222 @@ import { SessionList } from "@/components/session/SessionList"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
-// ── Column types ────────────────────────────────────────────────────────────
+const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
+const DURATION = 0.5
 
-type Column =
-  | { type: "email-list"; key: string }
-  | { type: "email-thread"; threadId: string; key: string }
-  | { type: "task-list"; key: string }
-  | { type: "task-detail"; taskId: string; key: string }
-  | { type: "session-list"; key: string }
-  | { type: "session"; sessionId: string; key: string }
-  // Compose + live session pane, stable key so it stays mounted across navigation
-  | { type: "new-session"; threadId?: string; taskId?: string; sessionId?: string; key: string }
+const itemVariants = {
+  enter: (d: number) => ({ y: `${d * 100}%` }),
+  center: { y: 0 },
+  exit: (d: number) => ({ y: `${-d * 100}%` }),
+}
 
-function pathToColumns(pathname: string): Column[] {
-  const parts = pathname.split("/").filter(Boolean)
-  const columns: Column[] = []
+// Parse current URL into panel state for the active tab
+function usePanelState(tab: TabId) {
+  const location = useLocation()
+  const { activeTab, persistedState, getItemState } = useSpatialNav()
 
-  if (parts[0] === "inbox") {
-    columns.push({ type: "email-list", key: "email-list" })
-    if (parts[1]) {
-      const threadId = decodeURIComponent(parts[1])
-      columns.push({ type: "email-thread", threadId, key: `email-thread:${threadId}` })
-      if (parts[2] === "session") {
-        const sessionId = parts[3] !== "new" ? parts[3] : undefined
-        // Stable key: keyed by thread so the panel stays mounted when session is created
-        columns.push({
-          type: "new-session",
-          threadId,
-          sessionId,
-          key: `new-session:thread:${threadId}`,
-        })
+  // For the active tab, derive from URL (fresh); for inactive tabs, use persisted state
+  const state = tab === activeTab
+    ? tabStateFromPathname(location.pathname, tab)
+    : persistedState[tab]
+
+  // Merge persisted per-item session state (avoids waiting for navigate(replace:true) round-trip)
+  if (tab !== "sessions" && state.selectedId && !state.sessionOpen) {
+    const saved = getItemState(tab, state.selectedId)
+    if (saved?.sessionOpen) {
+      return {
+        selectedId: state.selectedId,
+        sessionOpen: true,
+        sessionId: saved.sessionId,
       }
-    }
-  } else if (parts[0] === "tasks") {
-    columns.push({ type: "task-list", key: "task-list" })
-    if (parts[1]) {
-      const taskId = decodeURIComponent(parts[1])
-      columns.push({ type: "task-detail", taskId, key: `task-detail:${taskId}` })
-      if (parts[2] === "session") {
-        const sessionId = parts[3] !== "new" ? parts[3] : undefined
-        columns.push({
-          type: "new-session",
-          taskId,
-          sessionId,
-          key: `new-session:task:${taskId}`,
-        })
-      }
-    }
-  } else if (parts[0] === "sessions") {
-    columns.push({ type: "session-list", key: "session-list" })
-    if (parts[1]) {
-      columns.push({ type: "session", sessionId: parts[1], key: `session:${parts[1]}` })
     }
   }
 
-  return columns
-}
-
-// ── Column content ──────────────────────────────────────────────────────────
-
-function ColumnContent({
-  col,
-  selectedKeys,
-}: {
-  col: Column
-  selectedKeys: Record<string, string | undefined>
-}) {
-  switch (col.type) {
-    case "email-list":
-      return <EmailList selectedThreadId={selectedKeys.threadId} />
-    case "email-thread":
-      return <EmailThread threadId={col.threadId} />
-    case "task-list":
-      return <TaskList selectedTaskId={selectedKeys.taskId} />
-    case "task-detail":
-      return <TaskDetail taskId={col.taskId} />
-    case "session-list":
-      return <SessionList selectedSessionId={selectedKeys.sessionId} />
-    case "session":
-      return <SessionView sessionId={col.sessionId} />
-    case "new-session":
-      return (
-        <NewSessionPanel
-          threadId={col.threadId}
-          taskId={col.taskId}
-          sessionId={col.sessionId}
-        />
-      )
+  return {
+    selectedId: state.selectedId,
+    sessionOpen: state.sessionOpen ?? false,
+    sessionId: state.sessionId,
   }
 }
 
-// ── Animated column wrapper ─────────────────────────────────────────────────
-
-function AnimatedColumn({
-  isNew,
-  isExiting,
-  isMobile,
+// Mobile overlay that snaps into place on mount
+function MobileOverlayPanel({
   children,
-  colRef,
+  zIndex,
+  visible,
 }: {
-  isNew: boolean
-  isExiting: boolean
-  isMobile: boolean
   children: React.ReactNode
-  colRef: (el: HTMLDivElement | null) => void
+  zIndex: number
+  visible: boolean
 }) {
-  const [entered, setEntered] = useState(!isNew)
-
-  useEffect(() => {
-    if (!isNew) return
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => setEntered(true))
-    })
-  }, [])
+  if (!visible) return null
 
   return (
     <div
-      ref={colRef}
-      className={cn(
-        "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden transition-[opacity,transform] duration-200 ease-out",
-        isMobile ? "w-screen" : "w-[600px]",
-        (!entered || isExiting) && "opacity-0 translate-x-8",
-      )}
+      style={{ zIndex }}
+      className="absolute inset-0 bg-card overflow-hidden"
     >
       {children}
     </div>
   )
 }
 
-// ── PanelStack ──────────────────────────────────────────────────────────────
+function DetailContent({ tab, selectedId }: { tab: TabId; selectedId: string }) {
+  if (tab === "inbox") return <EmailThread threadId={selectedId} />
+  if (tab === "tasks") return <TaskDetail taskId={selectedId} />
+  return <SessionView sessionId={selectedId} />
+}
 
-export function PanelStack() {
-  const location = useLocation()
-  const isMobile = useIsMobile()
+function ItemSlider({
+  tab,
+  selectedId,
+  sessionOpen,
+  sessionId,
+  directionRef,
+}: {
+  tab: TabId
+  selectedId?: string
+  sessionOpen: boolean
+  sessionId?: string
+  directionRef: React.RefObject<number>
+}) {
 
-  const [columns, setColumns] = useState<Column[]>(() => pathToColumns(location.pathname))
-  const prevColsRef = useRef(columns)
-  const [newKeys, setNewKeys] = useState<Set<string>>(new Set())
-  const [exitingKeys, setExitingKeys] = useState<Set<string>>(new Set())
-  const [exiting, setExiting] = useState(false)
+  if (!selectedId) return null
 
-  const colRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  // Read direction during ItemSlider's render (after EmailList has updated the ref)
+  const direction = directionRef.current
 
-  useEffect(() => {
-    const next = pathToColumns(location.pathname)
-    const prevCols = prevColsRef.current
-    const prevKeys = new Set(prevCols.map((c) => c.key))
-    const nextKeys = new Set(next.map((c) => c.key))
-
-    // Detect root tab switch (first column type changes)
-    const rootChanged =
-      prevCols.length > 0 && next.length > 0 && prevCols[0].type !== next[0].type
-
-    if (rootChanged) {
-      setExiting(true)
-      const timer = setTimeout(() => {
-        setColumns(next)
-        setNewKeys(new Set(next.map((c) => c.key)))
-        prevColsRef.current = next
-        setExiting(false)
-      }, 180)
-      return () => clearTimeout(timer)
-    }
-
-    // Detect removed columns (navigating back / closing a panel)
-    const removedCols = prevCols.filter((c) => !nextKeys.has(c.key))
-    if (removedCols.length > 0) {
-      const removedKeys = new Set(removedCols.map((c) => c.key))
-      // Keep removed columns rendered (appended) so they can animate out
-      setColumns([...next, ...removedCols])
-      setExitingKeys(removedKeys)
-      prevColsRef.current = next
-      const addedKeys = new Set(next.map((c) => c.key).filter((k) => !prevKeys.has(k)))
-      setNewKeys(addedKeys)
-      const timer = setTimeout(() => {
-        setColumns(next)
-        setExitingKeys(new Set())
-      }, 210)
-      return () => clearTimeout(timer)
-    }
-
-    const addedKeys = new Set(next.map((c) => c.key).filter((k) => !prevKeys.has(k)))
-    setColumns(next)
-    setNewKeys(addedKeys)
-    prevColsRef.current = next
-  }, [location.pathname])
-
-  // Auto-scroll to rightmost non-exiting column
-  useEffect(() => {
-    if (columns.length === 0 || exiting) return
-    const visibleCols = columns.filter((c) => !exitingKeys.has(c.key))
-    if (visibleCols.length === 0) return
-    const lastKey = visibleCols[visibleCols.length - 1].key
-    const el = colRefs.current.get(lastKey)
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "end" })
-  }, [columns, exiting, exitingKeys])
-
-  // Selected IDs for list highlighting
-  const parts = location.pathname.split("/").filter(Boolean)
-  const selectedKeys: Record<string, string | undefined> = {
-    threadId: parts[0] === "inbox" && parts[1] ? decodeURIComponent(parts[1]) : undefined,
-    taskId: parts[0] === "tasks" && parts[1] ? decodeURIComponent(parts[1]) : undefined,
-    sessionId:
-      parts[0] === "sessions" && parts[1]
-        ? parts[1]
-        : parts[2] === "session" && parts[3] && parts[3] !== "new"
-          ? parts[3]
-          : undefined,
-  }
-
-  if (columns.length === 0) return null
+  const renderContent = (id: string, sOpen: boolean, sId?: string) => (
+    <div className="shrink-0 h-full flex flex-row gap-4">
+      <div
+        style={{ zIndex: 2 }}
+        className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden"
+      >
+        <DetailContent tab={tab} selectedId={id} />
+      </div>
+      {tab !== "sessions" && sOpen && (
+        <div
+          style={{ zIndex: 1 }}
+          className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-border overflow-hidden"
+        >
+          <NewSessionPanel
+            threadId={tab === "inbox" ? id : undefined}
+            taskId={tab === "tasks" ? id : undefined}
+            sessionId={sId}
+          />
+        </div>
+      )}
+    </div>
+  )
 
   return (
+    <div className="overflow-clip h-full">
+      <AnimatePresence initial={false} mode="popLayout" custom={direction}>
+        <motion.div
+          key={selectedId}
+          custom={direction}
+          variants={itemVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: DURATION, ease: EASE }}
+          className="h-full"
+        >
+          {renderContent(selectedId, sessionOpen, sessionId)}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function TabPane({ tab, isMobile }: { tab: TabId; isMobile: boolean }) {
+  const { selectedId, sessionOpen, sessionId } = usePanelState(tab)
+  const directionRef = useRef(1)
+  const prevIndexRef = useRef(-1)
+
+  // Direction is computed synchronously during render (list renders before ItemSlider)
+  const handleIndexChange = useCallback((index: number) => {
+    if (prevIndexRef.current >= 0 && index !== prevIndexRef.current) {
+      directionRef.current = index > prevIndexRef.current ? 1 : -1
+    }
+    prevIndexRef.current = index
+  }, [])
+
+  const listPanel = (
     <div
+      style={{ zIndex: isMobile ? undefined : 3 }}
       className={cn(
-        "flex flex-row h-full gap-4",
-        isMobile ? "overflow-x-hidden p-0" : "overflow-x-auto py-4 pr-4 pl-0.5",
+        "shrink-0 h-full bg-card overflow-hidden",
+        isMobile ? "w-full" : "w-[600px] rounded-lg shadow-sm ring-1 ring-border",
       )}
     >
-      {columns.map((col) => (
-        <AnimatedColumn
-          key={col.key}
-          isNew={newKeys.has(col.key)}
-          isExiting={exiting || exitingKeys.has(col.key)}
-          isMobile={isMobile}
-          colRef={(el) => {
-            if (el) colRefs.current.set(col.key, el)
-            else colRefs.current.delete(col.key)
-          }}
-        >
-          <ColumnContent col={col} selectedKeys={selectedKeys} />
-        </AnimatedColumn>
-      ))}
+      {tab === "inbox" && <EmailList selectedThreadId={selectedId} onSelectedIndexChange={handleIndexChange} />}
+      {tab === "tasks" && <TaskList selectedTaskId={selectedId} onSelectedIndexChange={handleIndexChange} />}
+      {tab === "sessions" && <SessionList selectedSessionId={selectedId} onSelectedIndexChange={handleIndexChange} />}
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <div className="h-full shrink-0 overflow-clip p-0 relative">
+        {listPanel}
+        <MobileOverlayPanel zIndex={10} visible={!!selectedId}>
+          {selectedId && <DetailContent tab={tab} selectedId={selectedId} />}
+        </MobileOverlayPanel>
+        <MobileOverlayPanel zIndex={20} visible={!!selectedId && sessionOpen}>
+          {tab !== "sessions" && selectedId && (
+            <NewSessionPanel
+              threadId={tab === "inbox" ? selectedId : undefined}
+              taskId={tab === "tasks" ? selectedId : undefined}
+              sessionId={sessionId}
+            />
+          )}
+        </MobileOverlayPanel>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5">
+      {listPanel}
+      <ItemSlider
+        tab={tab}
+        selectedId={selectedId}
+        sessionOpen={sessionOpen}
+        sessionId={sessionId}
+        directionRef={directionRef}
+      />
+    </div>
+  )
+}
+
+export function PanelStack() {
+  const { activeTab } = useSpatialNav()
+  const tabIndex = TAB_ORDER.indexOf(activeTab)
+  const isMobile = useIsMobile()
+  const hasAnimated = useRef(false)
+
+  const yTarget = `${-tabIndex * (100 / TAB_ORDER.length)}%`
+
+  return (
+    <div className="h-full w-full overflow-clip relative">
+      <motion.div
+        className="flex flex-col absolute inset-x-0 top-0"
+        style={{ height: `${100 * TAB_ORDER.length}%` }}
+        initial={false}
+        animate={{ y: yTarget }}
+        transition={hasAnimated.current
+          ? { duration: DURATION, ease: EASE }
+          : { duration: 0 }
+        }
+        onAnimationComplete={() => { hasAnimated.current = true }}
+      >
+        {TAB_ORDER.map((tab) => (
+          <div key={tab} className="shrink-0 overflow-clip" style={{ height: `${100 / TAB_ORDER.length}%` }}>
+            <TabPane tab={tab} isMobile={isMobile} />
+          </div>
+        ))}
+      </motion.div>
     </div>
   )
 }

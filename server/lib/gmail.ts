@@ -98,7 +98,7 @@ function parseMessage(message: any) {
   }
 }
 
-export async function searchMessages(query: string, maxResults = 20, pageToken?: string) {
+export async function searchMessages(query: string, maxResults = 50, pageToken?: string) {
   const params = new URLSearchParams({
     q: query,
     maxResults: String(maxResults),

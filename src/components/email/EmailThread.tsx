@@ -11,9 +11,11 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@hammies/frontend/components/ui"
-import { Bot, ChevronLeft, ExternalLink, Ellipsis } from "lucide-react"
+import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
+import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import type { GmailMessage } from "@/types"
 
 interface EmailThreadProps {
@@ -56,7 +58,7 @@ export function EmailThread({ threadId }: EmailThreadProps) {
     }
   }, [thread?.id])
 
-  if (loading) return null
+  if (loading) return <PanelSkeleton />
 
   if (error) {
     return <div className="p-6 text-destructive">Error loading thread: {error}</div>
@@ -66,43 +68,36 @@ export function EmailThread({ threadId }: EmailThreadProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex h-12 shrink-0 items-center justify-between px-4 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            type="button"
-            className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
-            onClick={() => navigate("/inbox")}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <h2 className="font-semibold text-sm truncate">{thread.subject}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-40">
-              <DropdownMenuItem
-                render={
-                  <a
-                    href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                }
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in Gmail
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
-            <Bot className="h-4 w-4 md:mr-1" />
-            <span className="hidden md:inline">Start Session</span>
-          </Button>
-        </div>
-      </div>
+      <PanelHeader
+        left={<><BackButton onClick={() => navigate("/inbox")} /><h2 className="font-semibold text-sm truncate">{thread.subject}</h2></>}
+        right={
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+                <Ellipsis className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40">
+                <DropdownMenuItem
+                  render={
+                    <a
+                      href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Gmail
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
+              <Bot className="h-4 w-4 md:mr-1" />
+              <span className="hidden md:inline">Start Session</span>
+            </Button>
+          </>
+        }
+      />
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {thread.messages.map((message, i) => {
           const isLast = i === thread.messages.length - 1
@@ -138,6 +133,10 @@ function HtmlBody({ html }: { html: string }) {
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     * { box-sizing: border-box; color: ${fg} !important; font-family: ${font} !important; font-size: 13px !important; line-height: 1.5 !important; background: none !important; }
     html, body { margin: 0; padding: 0; overflow: hidden; background: ${bg} !important; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.12); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.2); }
     blockquote, .gmail_quote, .gmail_extra, [class*="quote"] { display: none !important; }
     img { max-width: 100%; height: auto; }
     a { color: ${fg} !important; opacity: 0.7; word-break: break-all; }

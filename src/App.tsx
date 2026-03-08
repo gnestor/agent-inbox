@@ -6,30 +6,24 @@ import {
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { PanelStack } from "@/components/layout/PanelStack"
+import { SpatialNavProvider } from "@/hooks/use-spatial-nav"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 
 function AuthenticatedApp() {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="max-h-svh overflow-hidden">
-        <div className="flex flex-1 h-full overflow-hidden">
-          <Routes>
-            <Route path="/" element={<Navigate to="/inbox" replace />} />
-            <Route path="/inbox" element={<PanelStack />} />
-            <Route path="/inbox/:threadId" element={<PanelStack />} />
-            <Route path="/inbox/:threadId/session/new" element={<PanelStack />} />
-            <Route path="/inbox/:threadId/session/:sessionId" element={<PanelStack />} />
-            <Route path="/tasks" element={<PanelStack />} />
-            <Route path="/tasks/:taskId" element={<PanelStack />} />
-            <Route path="/tasks/:taskId/session/new" element={<PanelStack />} />
-            <Route path="/tasks/:taskId/session/:sessionId" element={<PanelStack />} />
-            <Route path="/sessions" element={<PanelStack />} />
-            <Route path="/sessions/:sessionId" element={<PanelStack />} />
-          </Routes>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <SpatialNavProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset className="max-h-svh overflow-hidden">
+          <div className="flex flex-1 h-full">
+            <Routes>
+              <Route path="/" element={<Navigate to="/inbox" replace />} />
+              <Route path="/*" element={<PanelStack />} />
+            </Routes>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </SpatialNavProvider>
   )
 }
 
