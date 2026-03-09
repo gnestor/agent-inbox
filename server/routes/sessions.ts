@@ -1,12 +1,14 @@
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 import * as sessions from "../lib/session-manager.js"
+import { staleWhileRevalidate } from "../lib/cache.js"
+
+const SESSION_LIST_TTL = 60_000 // 1 min cache for session list
 
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
-  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId } =
-    await c.req.json()
+  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId } = await c.req.json()
 
   if (!prompt) {
     return c.json({ error: "prompt is required" }, 400)
@@ -38,14 +40,19 @@ sessionRoutes.get("/", async (c) => {
   })
 
   // Also get sessions from Agent SDK (discovers CC sessions not started by us)
-  const agentSessions = project
-    ? await sessions.listAllAgentSessions()
-    : await sessions.listAgentSessions()
+  const agentSessions = await staleWhileRevalidate("sessions:agent-list", SESSION_LIST_TTL, () =>
+    sessions.listAllAgentSessions(),
+  ).catch((err: unknown) => {
+    console.error("listAllAgentSessions failed:", err)
+    return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
+  })
 
   const currentProject = sessions.projectLabel(sessions.getWorkspacePath())
 
   // Merge: DB sessions take priority, add any agent sessions not in DB
+  // Default to current workspace project; explicit project filter overrides
   const dbIds = new Set(dbSessions.map((s) => s.id))
+  const projectsFilter = project ? project.split(",") : [currentProject]
   let merged = [
     ...dbSessions.map((s) => ({
       id: s.id as string,
@@ -63,8 +70,9 @@ sessionRoutes.get("/", async (c) => {
       project: currentProject,
     })),
     ...agentSessions
+      .filter((s) => projectsFilter.includes(s.project))
       .filter((s) => !dbIds.has(s.sessionId))
-      .filter((s) => !status || status.split(",").includes("complete"))
+      .filter(() => !status || status.split(",").includes("complete"))
       .map((s) => ({
         id: s.sessionId,
         status: "complete" as const,
@@ -78,15 +86,17 @@ sessionRoutes.get("/", async (c) => {
         linkedEmailThreadId: null,
         linkedTaskId: null,
         triggerSource: "manual" as const,
-        project: "project" in s ? (s as any).project : currentProject,
+        project: s.project,
       })),
   ]
 
-  // Apply project filter
-  if (project) {
-    const projects = project.split(",")
-    merged = merged.filter((s) => projects.includes(s.project))
-  }
+  // Deduplicate by id (DB sessions take priority since they appear first)
+  const seenIds = new Set<string>()
+  merged = merged.filter((s) => {
+    if (seenIds.has(s.id)) return false
+    seenIds.add(s.id)
+    return true
+  })
 
   // Sort by most recently updated
   merged.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -95,8 +105,7 @@ sessionRoutes.get("/", async (c) => {
 })
 
 sessionRoutes.get("/projects", async (c) => {
-  const { cached } = await import("../lib/cache.js")
-  const projects = await cached("session:projects", 300_000, () =>
+  const projects = await staleWhileRevalidate("session:projects", 300_000, () =>
     sessions.listProjectOptions(),
   )
   return c.json({ projects })
@@ -135,15 +144,16 @@ sessionRoutes.get("/:id", async (c) => {
   }
 
   // Fallback: look up session from Agent SDK (CC sessions not in local DB)
-  const agentSessions = await sessions.listAgentSessions()
-  const agentSession = agentSessions.find((s) => s.sessionId === sessionId)
+  const agentSession = await sessions.findAgentSession(sessionId)
 
   if (!agentSession) {
     return c.json({ error: "Session not found" }, 404)
   }
 
-  // Read the transcript from the Agent SDK session
-  const transcript = await sessions.getAgentSessionTranscript(sessionId)
+  // Read the transcript from the Agent SDK session (pass cwd so we find the right project)
+  const transcript = await staleWhileRevalidate(`sessions:transcript:${sessionId}`, 300_000, () =>
+    sessions.getAgentSessionTranscript(sessionId, agentSession.cwd),
+  )
 
   return c.json({
     session: {

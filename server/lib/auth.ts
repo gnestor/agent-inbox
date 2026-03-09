@@ -43,11 +43,15 @@ export async function verifyIdToken(credential: string): Promise<{
   return { sessionToken, user }
 }
 
-export function getSession(token: string): { user: { name: string; email: string; picture?: string } } | undefined {
+export function getSession(
+  token: string,
+): { user: { name: string; email: string; picture?: string } } | undefined {
   const db = getDb()
-  const row = db.prepare(
-    `SELECT user_name, user_email, user_picture FROM auth_sessions WHERE token = ?`,
-  ).get(token) as { user_name: string; user_email: string; user_picture: string | null } | undefined
+  const row = db
+    .prepare(`SELECT user_name, user_email, user_picture FROM auth_sessions WHERE token = ?`)
+    .get(token) as
+    | { user_name: string; user_email: string; user_picture: string | null }
+    | undefined
 
   if (!row) return undefined
   return {

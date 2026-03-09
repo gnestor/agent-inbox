@@ -14,69 +14,70 @@ interface SlashCommandMenuProps {
   clientRect: (() => DOMRect | null) | null
 }
 
-export const SlashCommandMenu = forwardRef<{ onKeyDown: (e: KeyboardEvent) => boolean }, SlashCommandMenuProps>(
-  ({ items, command, clientRect }, ref) => {
-    const [selectedIndex, setSelectedIndex] = useState(0)
+export const SlashCommandMenu = forwardRef<
+  { onKeyDown: (e: KeyboardEvent) => boolean },
+  SlashCommandMenuProps
+>(({ items, command, clientRect }, ref) => {
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
-    useEffect(() => setSelectedIndex(0), [items])
+  useEffect(() => setSelectedIndex(0), [items])
 
-    useImperativeHandle(ref, () => ({
-      onKeyDown: (e: KeyboardEvent) => {
-        if (e.key === "ArrowUp") {
-          setSelectedIndex((i) => (i <= 0 ? items.length - 1 : i - 1))
-          return true
-        }
-        if (e.key === "ArrowDown") {
-          setSelectedIndex((i) => (i >= items.length - 1 ? 0 : i + 1))
-          return true
-        }
-        if (e.key === "Enter") {
-          if (items[selectedIndex]) command(items[selectedIndex])
-          return true
-        }
-        return false
-      },
-    }))
+  useImperativeHandle(ref, () => ({
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp") {
+        setSelectedIndex((i) => (i <= 0 ? items.length - 1 : i - 1))
+        return true
+      }
+      if (e.key === "ArrowDown") {
+        setSelectedIndex((i) => (i >= items.length - 1 ? 0 : i + 1))
+        return true
+      }
+      if (e.key === "Enter") {
+        if (items[selectedIndex]) command(items[selectedIndex])
+        return true
+      }
+      return false
+    },
+  }))
 
-    if (!items.length || !clientRect) return null
+  if (!items.length || !clientRect) return null
 
-    const rect = clientRect()
-    if (!rect) return null
+  const rect = clientRect()
+  if (!rect) return null
 
-    const style: React.CSSProperties = {
-      position: "fixed",
-      top: rect.bottom + 4,
-      left: rect.left,
-      zIndex: 9999,
-    }
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: rect.bottom + 4,
+    left: rect.left,
+    zIndex: 9999,
+  }
 
-    return createPortal(
-      <div
-        style={style}
-        className="min-w-[220px] rounded-lg border border-border bg-popover shadow-lg overflow-hidden py-1"
-      >
-        {items.map((item, i) => (
-          <button
-            key={item.title}
-            type="button"
-            className={`flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left transition-colors ${
-              i === selectedIndex ? "bg-accent text-foreground" : "text-foreground hover:bg-accent/50"
-            }`}
-            onMouseEnter={() => setSelectedIndex(i)}
-            onClick={() => command(item)}
-          >
-            <span className="text-base shrink-0">{item.icon}</span>
-            <div>
-              <div className="font-medium leading-tight">{item.title}</div>
-              <div className="text-xs text-muted-foreground leading-tight">{item.description}</div>
-            </div>
-          </button>
-        ))}
-      </div>,
-      document.body,
-    )
-  },
-)
+  return createPortal(
+    <div
+      style={style}
+      className="min-w-[220px] rounded-lg border border-border bg-popover shadow-lg overflow-hidden py-1"
+    >
+      {items.map((item, i) => (
+        <button
+          key={item.title}
+          type="button"
+          className={`flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left transition-colors ${
+            i === selectedIndex ? "bg-accent text-foreground" : "text-foreground hover:bg-accent/50"
+          }`}
+          onMouseEnter={() => setSelectedIndex(i)}
+          onClick={() => command(item)}
+        >
+          <span className="text-base shrink-0">{item.icon}</span>
+          <div>
+            <div className="font-medium leading-tight">{item.title}</div>
+            <div className="text-xs text-muted-foreground leading-tight">{item.description}</div>
+          </div>
+        </button>
+      ))}
+    </div>,
+    document.body,
+  )
+})
 
 SlashCommandMenu.displayName = "SlashCommandMenu"
 
@@ -127,15 +128,13 @@ export const SLASH_COMMANDS: SlashCommandItem[] = [
     title: "Code Block",
     description: "Syntax-highlighted code",
     icon: "</>",
-    command: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).setCodeBlock().run(),
+    command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setCodeBlock().run(),
   },
   {
     title: "Quote",
     description: "Blockquote / callout",
     icon: "❝",
-    command: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).setBlockquote().run(),
+    command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setBlockquote().run(),
   },
   {
     title: "Divider",

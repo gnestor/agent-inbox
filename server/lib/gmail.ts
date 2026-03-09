@@ -38,9 +38,8 @@ function decodeHtmlEntities(text: string): string {
 
 function getHeader(message: any, name: string): string {
   return (
-    message.payload?.headers?.find(
-      (h: any) => h.name.toLowerCase() === name.toLowerCase(),
-    )?.value || ""
+    message.payload?.headers?.find((h: any) => h.name.toLowerCase() === name.toLowerCase())
+      ?.value || ""
   )
 }
 
@@ -51,7 +50,10 @@ function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
   if (payload.body?.data) {
     const text = decodeBase64Url(payload.body.data)
     const isHtml = payload.mimeType === "text/html"
-    return { body: isHtml ? text.replace(/<script[^>]*>.*?<\/script>/gs, "") : text, bodyIsHtml: isHtml }
+    return {
+      body: isHtml ? text.replace(/<script[^>]*>.*?<\/script>/gs, "") : text,
+      bodyIsHtml: isHtml,
+    }
   }
 
   if (payload.parts) {
@@ -62,17 +64,22 @@ function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
     }
 
     const textPart = payload.parts.find((p: any) => p.mimeType === "text/plain")
-    if (textPart?.body?.data) return { body: decodeBase64Url(textPart.body.data), bodyIsHtml: false }
+    if (textPart?.body?.data)
+      return { body: decodeBase64Url(textPart.body.data), bodyIsHtml: false }
 
     for (const part of payload.parts) {
       if (part.parts) {
         const htmlSub = part.parts.find((p: any) => p.mimeType === "text/html")
         if (htmlSub?.body?.data) {
-          const html = decodeBase64Url(htmlSub.body.data).replace(/<script[^>]*>.*?<\/script>/gs, "")
+          const html = decodeBase64Url(htmlSub.body.data).replace(
+            /<script[^>]*>.*?<\/script>/gs,
+            "",
+          )
           return { body: html, bodyIsHtml: true }
         }
         const textSub = part.parts.find((p: any) => p.mimeType === "text/plain")
-        if (textSub?.body?.data) return { body: decodeBase64Url(textSub.body.data), bodyIsHtml: false }
+        if (textSub?.body?.data)
+          return { body: decodeBase64Url(textSub.body.data), bodyIsHtml: false }
       }
     }
   }
@@ -98,6 +105,80 @@ function parseMessage(message: any) {
   }
 }
 
+export async function fetchBatched<T>(
+  items: any[],
+  fn: (item: any) => Promise<T>,
+  batchSize = 5,
+): Promise<T[]> {
+  const results: T[] = []
+  for (let i = 0; i < items.length; i += batchSize) {
+    const chunk = items.slice(i, i + batchSize)
+    results.push(...(await Promise.all(chunk.map(fn))))
+  }
+  return results
+}
+
+function parseThreadSummary(thread: any) {
+  const messages = thread.messages || []
+  const firstMsg = messages[0]
+  const lastMsg = messages[messages.length - 1]
+  const allLabelIds = [...new Set(messages.flatMap((m: any) => m.labelIds || []))] as string[]
+  return {
+    id: thread.id,
+    threadId: thread.id,
+    historyId: thread.historyId,
+    messageCount: messages.length,
+    subject: getHeader(firstMsg, "subject"),
+    from: getHeader(lastMsg, "from"),
+    to: getHeader(firstMsg, "to"),
+    date: getHeader(lastMsg, "date"),
+    snippet: decodeHtmlEntities(firstMsg?.snippet || ""),
+    isUnread: allLabelIds.includes("UNREAD"),
+    labelIds: allLabelIds,
+    body: "",
+    bodyIsHtml: false,
+  }
+}
+
+export async function getThreadSummary(threadId: string) {
+  const params = new URLSearchParams([
+    ["format", "metadata"],
+    ["metadataHeaders", "From"],
+    ["metadataHeaders", "To"],
+    ["metadataHeaders", "Subject"],
+    ["metadataHeaders", "Date"],
+  ])
+  const thread = await gmailRequest(`/threads/${threadId}?${params}`)
+  return parseThreadSummary(thread)
+}
+
+export async function searchThreads(query: string, maxResults = 20, pageToken?: string) {
+  const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
+  if (pageToken) params.set("pageToken", pageToken)
+  const listResult = await gmailRequest(`/threads?${params}`)
+
+  if (!listResult.threads?.length) {
+    return { threads: [], nextPageToken: null, historyId: listResult.historyId || null }
+  }
+
+  const threads = await fetchBatched(listResult.threads, (t: any) => getThreadSummary(t.id))
+
+  return {
+    threads,
+    nextPageToken: listResult.nextPageToken || null,
+    historyId: listResult.historyId || null,
+  }
+}
+
+export async function getHistory(startHistoryId: string) {
+  const params = new URLSearchParams({
+    startHistoryId,
+    historyTypes: "messageAdded,messageDeleted,labelAdded,labelRemoved",
+    maxResults: "100",
+  })
+  return gmailRequest(`/history?${params}`)
+}
+
 export async function searchMessages(query: string, maxResults = 50, pageToken?: string) {
   const params = new URLSearchParams({
     q: query,
@@ -110,12 +191,10 @@ export async function searchMessages(query: string, maxResults = 50, pageToken?:
     return { messages: [], nextPageToken: null }
   }
 
-  const messages = await Promise.all(
-    listResult.messages.map(async (m: any) => {
-      const full = await gmailRequest(`/messages/${m.id}?format=full`)
-      return parseMessage(full)
-    }),
-  )
+  const messages = await fetchBatched(listResult.messages, async (m: any) => {
+    const full = await gmailRequest(`/messages/${m.id}?format=full`)
+    return parseMessage(full)
+  })
 
   return { messages, nextPageToken: listResult.nextPageToken || null }
 }

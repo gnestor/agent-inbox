@@ -14,12 +14,9 @@ import {
   DropdownMenuItem,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import {
-  Bot,
-  ExternalLink,
-  Ellipsis,
-} from "lucide-react"
+import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { getTask } from "@/api/client"
+import { getListCache, setListCache } from "@/lib/list-cache"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -28,69 +25,93 @@ import type { NotionTaskDetail } from "@/types"
 
 interface TaskDetailProps {
   taskId: string
+  title?: string
 }
 
-
-export function TaskDetail({ taskId }: TaskDetailProps) {
-  const [task, setTask] = useState<NotionTaskDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+export function TaskDetail({ taskId, title }: TaskDetailProps) {
+  const cached = getListCache<NotionTaskDetail>(`task:${taskId}`)
+  const [task, setTask] = useState<NotionTaskDetail | null>(cached ?? null)
+  const [loading, setLoading] = useState(!cached)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
-    setLoading(true)
+    if (!getListCache(`task:${taskId}`)) setLoading(true)
     setError(null)
     getTask(taskId)
-      .then(setTask)
+      .then((data) => {
+        setTask(data)
+        setListCache(`task:${taskId}`, data)
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [taskId])
 
-  if (loading) return <PanelSkeleton />
+  const header = (
+    <PanelHeader
+      left={
+        <>
+          <BackButton onClick={() => navigate("/tasks")} />
+          <h2 className="font-semibold text-sm truncate">{title}</h2>
+        </>
+      }
+      right={
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                />
+              }
+            >
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+              {task?.url && (
+                <DropdownMenuItem
+                  render={<a href={task.url} target="_blank" rel="noopener noreferrer" />}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Notion
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => navigate(`/tasks/${taskId}/session/new`)} size="sm">
+            <Bot className="h-4 w-4 md:mr-1" />
+            <span className="hidden md:inline">Start Session</span>
+          </Button>
+        </>
+      }
+    />
+  )
 
-  if (error) {
+  if (loading || !task) {
     return (
-      <div className="p-6 text-destructive">Error loading task: {error}</div>
+      <div className="flex flex-col h-full">
+        {header}
+        <PanelSkeleton />
+      </div>
     )
   }
 
-  if (!task) return null
+  if (error) {
+    return (
+      <div className="flex flex-col h-full">
+        {header}
+        <div className="p-6 text-destructive">Error loading task: {error}</div>
+      </div>
+    )
+  }
 
   const dueDate = task.properties?.["Due Date"]?.date?.start
   const createdBy = task.properties?.["Created By"]?.created_by?.name
 
   return (
     <div className="flex flex-col h-full">
-      <PanelHeader
-        left={<><BackButton onClick={() => navigate("/tasks")} /><h2 className="font-semibold text-sm truncate">{task.title}</h2></>}
-        right={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-                <Ellipsis className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-40">
-                <DropdownMenuItem
-                  render={
-                    <a
-                      href={task.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open in Notion
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button onClick={() => navigate(`/tasks/${taskId}/session/new`)} size="sm">
-              <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">Start Session</span>
-            </Button>
-          </>
-        }
-      />
+      {header}
       <ScrollArea className="flex-1 overflow-hidden">
         <div className="p-4 space-y-4">
           <Table>
@@ -100,7 +121,11 @@ export function TaskDetail({ taskId }: TaskDetailProps) {
                 <TableCell>
                   <Badge
                     variant="outline"
-                    className={cn("text-xs", taskStatusBadgeClass(task.status) || "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30")}
+                    className={cn(
+                      "text-xs",
+                      taskStatusBadgeClass(task.status) ||
+                        "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
+                    )}
                   >
                     {task.status || "—"}
                   </Badge>

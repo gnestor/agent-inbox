@@ -55,9 +55,7 @@ app.use("*", logger())
 // Auth routes (unprotected)
 app.route("/api/auth", authRoutes)
 
-app.get("/api/health", (c) =>
-  c.json({ status: "ok", workspace: workspacePath }),
-)
+app.get("/api/health", (c) => c.json({ status: "ok", workspace: workspacePath }))
 
 // Auth middleware — protect all other /api routes
 app.use("/api/*", async (c, next) => {
@@ -88,7 +86,5 @@ serve({ fetch: app.fetch, port }, () => {
   // Prune expired cache entries on startup
   pruneExpired()
   // Sync Notion property options on startup (non-blocking)
-  syncPropertyOptions().catch((err) =>
-    console.warn("Failed to sync Notion options:", err.message),
-  )
+  syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
 })

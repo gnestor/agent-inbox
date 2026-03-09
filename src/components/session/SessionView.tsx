@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Button, Textarea } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2 } from "lucide-react"
 import { getSession, resumeSession, abortSession } from "@/api/client"
+import { getListCache, setListCache } from "@/lib/list-cache"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
 import { SessionTranscript } from "./SessionTranscript"
@@ -12,15 +13,19 @@ import type { Session, SessionMessage } from "@/types"
 
 interface SessionViewProps {
   sessionId: string
+  title?: string
 }
 
-export function SessionView({ sessionId }: SessionViewProps) {
+type SessionDetailCache = { session: Session; messages: SessionMessage[] }
+
+export function SessionView({ sessionId, title }: SessionViewProps) {
   const navigate = useNavigate()
   const { activeTab, persistedState } = useSpatialNav()
   const parentPath = buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
-  const [session, setSession] = useState<Session | null>(null)
-  const [initialMessages, setInitialMessages] = useState<SessionMessage[]>([])
-  const [loading, setLoading] = useState(true)
+  const cached = getListCache<SessionDetailCache>(`session:${sessionId}`)
+  const [session, setSession] = useState<Session | null>(cached?.session ?? null)
+  const [initialMessages, setInitialMessages] = useState<SessionMessage[]>(cached?.messages ?? [])
+  const [loading, setLoading] = useState(!cached)
   const [error, setError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [sending, setSending] = useState(false)
@@ -29,14 +34,15 @@ export function SessionView({ sessionId }: SessionViewProps) {
   // Stream for live updates
   const stream = useSessionStream(sessionId)
 
-  // Load session data
+  // Load session data (background refresh if cached)
   useEffect(() => {
-    setLoading(true)
+    if (!getListCache(`session:${sessionId}`)) setLoading(true)
     setError(null)
     getSession(sessionId)
       .then((data) => {
         setSession(data.session)
         setInitialMessages(data.messages)
+        setListCache(`session:${sessionId}`, { session: data.session, messages: data.messages })
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
@@ -45,15 +51,12 @@ export function SessionView({ sessionId }: SessionViewProps) {
   // Update session status from stream
   useEffect(() => {
     if (stream.sessionStatus) {
-      setSession((prev) =>
-        prev ? { ...prev, status: stream.sessionStatus as any } : prev,
-      )
+      setSession((prev) => (prev ? { ...prev, status: stream.sessionStatus as any } : prev))
     }
   }, [stream.sessionStatus])
 
   // Merge initial messages with streamed ones
-  const allMessages =
-    stream.messages.length > 0 ? stream.messages : initialMessages
+  const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
 
   const isRunning = session?.status === "running"
 
@@ -88,27 +91,46 @@ export function SessionView({ sessionId }: SessionViewProps) {
     }
   }
 
-  if (loading) return <PanelSkeleton />
-
-  if (error) {
-    return (
-      <div className="p-6 text-destructive">Error loading session: {error}</div>
-    )
-  }
-
-  if (!session) return null
-
-  return (
-    <div className="flex flex-col h-full">
-      <PanelHeader
-        left={<><BackButton onClick={() => navigate(parentPath)} /><h2 className="font-semibold text-sm truncate min-w-0">{session.summary || "Session"}</h2></>}
-        right={isRunning ? (
+  const header = (
+    <PanelHeader
+      left={
+        <>
+          <BackButton onClick={() => navigate(parentPath)} />
+          <h2 className="font-semibold text-sm truncate min-w-0">{title || "Session"}</h2>
+        </>
+      }
+      right={
+        isRunning ? (
           <Button variant="destructive" size="sm" onClick={handleAbort}>
             <Square className="h-3 w-3 mr-1" />
             Stop
           </Button>
-        ) : undefined}
-      />
+        ) : undefined
+      }
+    />
+  )
+
+  if (loading || !session) {
+    return (
+      <div className="flex flex-col h-full">
+        {header}
+        <PanelSkeleton />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-full">
+        {header}
+        <div className="p-6 text-destructive">Error loading session: {error}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {header}
 
       {/* Transcript */}
       <div className="flex-1 overflow-hidden">
@@ -130,9 +152,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isRunning
-                ? "Session is running..."
-                : "Send a message to resume this session..."
+              isRunning ? "Session is running..." : "Send a message to resume this session..."
             }
             disabled={isRunning || sending}
             className="min-h-[40px] max-h-[120px] resize-none"
@@ -143,11 +163,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
             disabled={!prompt.trim() || isRunning || sending}
             size="icon"
           >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
       </div>

@@ -24,8 +24,7 @@ async function notionRequest(path: string, options?: RequestInit) {
 }
 
 function extractTitle(properties: any): string {
-  const titleProp =
-    properties.Name || properties.title || properties.Title
+  const titleProp = properties.Name || properties.title || properties.Title
   if (!titleProp?.title?.length) return "Untitled"
   return titleProp.title.map((t: any) => t.plain_text).join("")
 }
@@ -182,10 +181,7 @@ export async function getTaskDetail(taskId: string) {
   }
 }
 
-export async function updateTaskProperties(
-  taskId: string,
-  properties: Record<string, unknown>,
-) {
+export async function updateTaskProperties(taskId: string, properties: Record<string, unknown>) {
   await notionRequest(`/pages/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify({ properties }),

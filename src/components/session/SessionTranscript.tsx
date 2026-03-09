@@ -1,4 +1,5 @@
-import { useRef, useEffect, useMemo, type ElementType, type ReactNode } from "react"
+import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
 import {
   Accordion,
@@ -39,6 +40,14 @@ export function SessionTranscript({
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
 
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 40,
+    overscan: 10,
+  })
+
+  // Auto-scroll to bottom when new messages arrive (streaming)
   useEffect(() => {
     if (shouldAutoScroll.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -83,22 +92,36 @@ export function SessionTranscript({
             </TableBody>
           </Table>
         )}
-        <div className="space-y-1">
-        {messages.map((msg) => (
-          <TranscriptEntry key={msg.sequence} message={msg} />
-        ))}
+        {messages.length > 0 ? (
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <TranscriptEntry message={messages[virtualRow.index]} />
+              </div>
+            ))}
+          </div>
+        ) : !isStreaming ? (
+          <div className="flex items-center justify-center p-8 text-muted-foreground">
+            <p className="text-sm">No messages yet</p>
+          </div>
+        ) : null}
         {isStreaming && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Agent is working...</span>
           </div>
         )}
-        {messages.length === 0 && !isStreaming && (
-          <div className="flex items-center justify-center p-8 text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
-          </div>
-        )}
-        </div>
       </div>
     </div>
   )
@@ -137,14 +160,20 @@ function TranscriptAccordionEntry({
   )
 }
 
-function TranscriptEntry({ message }: { message: SessionMessage }) {
+const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: SessionMessage }) {
   const msg = message.message as any
 
   if (msg.type === "system") {
     if (msg.subtype === "init") return null
     if (msg.subtype === "result" || "result" in msg) {
       return (
-        <TranscriptAccordionEntry value={`result-${message.sequence}`} icon={Bot} label="Result" color="text-chart-1" defaultOpen>
+        <TranscriptAccordionEntry
+          value={`result-${message.sequence}`}
+          icon={Bot}
+          label="Result"
+          color="text-chart-1"
+          defaultOpen
+        >
           <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {msg.result || "Session completed"}
@@ -161,7 +190,13 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
     return (
-      <TranscriptAccordionEntry value={`user-${message.sequence}`} icon={User} label="You" color="text-chart-2" defaultOpen>
+      <TranscriptAccordionEntry
+        value={`user-${message.sequence}`}
+        icon={User}
+        label="You"
+        color="text-chart-2"
+        defaultOpen
+      >
         <div className="pl-5.5 space-y-1.5">
           {text && <div className="text-sm whitespace-pre-wrap break-words">{text}</div>}
           {ideRefs.length > 0 && (
@@ -172,7 +207,10 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
                   className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/50 border border-border/50 rounded px-1.5 py-0.5"
                 >
                   <FileText className="h-3 w-3 shrink-0" />
-                  <span>{ref.filename}{ref.selectionLines ? `:${ref.selectionLines}` : ""}</span>
+                  <span>
+                    {ref.filename}
+                    {ref.selectionLines ? `:${ref.selectionLines}` : ""}
+                  </span>
                 </span>
               ))}
             </div>
@@ -188,9 +226,17 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
       const text = extractText(msg)
       if (!text) return null
       return (
-        <TranscriptAccordionEntry value={`assistant-${message.sequence}`} icon={Bot} label="Claude" color="text-chart-4" defaultOpen>
+        <TranscriptAccordionEntry
+          value={`assistant-${message.sequence}`}
+          icon={Bot}
+          label="Claude"
+          color="text-chart-4"
+          defaultOpen
+        >
           <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {text}
+            </ReactMarkdown>
           </div>
         </TranscriptAccordionEntry>
       )
@@ -210,7 +256,7 @@ function TranscriptEntry({ message }: { message: SessionMessage }) {
   }
 
   return null
-}
+})
 
 function ContentBlock({ block, sequence, index }: { block: any; sequence: number; index: number }) {
   const id = `${sequence}-${index}`
@@ -218,9 +264,17 @@ function ContentBlock({ block, sequence, index }: { block: any; sequence: number
   if (block.type === "text") {
     if (!block.text) return null
     return (
-      <TranscriptAccordionEntry value={`text-${id}`} icon={Bot} label="Claude" color="text-chart-4" defaultOpen>
+      <TranscriptAccordionEntry
+        value={`text-${id}`}
+        icon={Bot}
+        label="Claude"
+        color="text-chart-4"
+        defaultOpen
+      >
         <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{block.text}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {block.text}
+          </ReactMarkdown>
         </div>
       </TranscriptAccordionEntry>
     )
@@ -234,7 +288,11 @@ function ContentBlock({ block, sequence, index }: { block: any; sequence: number
         icon={Wrench}
         label={block.name}
         color="text-muted-foreground"
-        extra={summary ? <span className="text-xs text-muted-foreground truncate">{summary}</span> : undefined}
+        extra={
+          summary ? (
+            <span className="text-xs text-muted-foreground truncate">{summary}</span>
+          ) : undefined
+        }
       >
         {block.input && <HighlightedJson data={block.input} className="pl-5.5" />}
       </TranscriptAccordionEntry>
@@ -244,7 +302,12 @@ function ContentBlock({ block, sequence, index }: { block: any; sequence: number
   if (block.type === "thinking") {
     if (!block.thinking) return null
     return (
-      <TranscriptAccordionEntry value={`thinking-${id}`} icon={Brain} label="Thinking" color="text-primary">
+      <TranscriptAccordionEntry
+        value={`thinking-${id}`}
+        icon={Brain}
+        label="Thinking"
+        color="text-primary"
+      >
         <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words pl-5.5">
           {block.thinking}
         </div>
@@ -262,7 +325,9 @@ function HighlightedJson({ data, className }: { data: any; className?: string })
     [data],
   )
   return (
-    <pre className={`text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto ${className || ""}`}>
+    <pre
+      className={`text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto ${className || ""}`}
+    >
       <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
     </pre>
   )
@@ -271,15 +336,26 @@ function HighlightedJson({ data, className }: { data: any; className?: string })
 function toolUseSummary(name: string, input: any): string {
   if (!input) return ""
   switch (name) {
-    case "Read": return input.file_path || ""
-    case "Write": return input.file_path || ""
-    case "Edit": return input.file_path || ""
-    case "Bash": return input.description || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
-    case "Glob": return input.pattern || ""
-    case "Grep": return input.pattern || ""
-    case "WebFetch": return input.url || ""
-    case "WebSearch": return input.query || ""
-    default: return ""
+    case "Read":
+      return input.file_path || ""
+    case "Write":
+      return input.file_path || ""
+    case "Edit":
+      return input.file_path || ""
+    case "Bash":
+      return (
+        input.description || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
+      )
+    case "Glob":
+      return input.pattern || ""
+    case "Grep":
+      return input.pattern || ""
+    case "WebFetch":
+      return input.url || ""
+    case "WebSearch":
+      return input.query || ""
+    default:
+      return ""
   }
 }
 
@@ -288,9 +364,20 @@ function isIdeContextBlock(block: any): boolean {
   return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
 }
 
-function parseIdeContext(msg: any): Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> {
-  const refs: Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> = []
-  const blocks: any[] = Array.isArray(msg.content) ? msg.content : Array.isArray(msg.message?.content) ? msg.message.content : []
+function parseIdeContext(
+  msg: any,
+): Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> {
+  const refs: Array<{
+    type: "file" | "selection"
+    path: string
+    filename: string
+    selectionLines?: string
+  }> = []
+  const blocks: any[] = Array.isArray(msg.content)
+    ? msg.content
+    : Array.isArray(msg.message?.content)
+      ? msg.message.content
+      : []
   for (const block of blocks) {
     if (!isIdeContextBlock(block)) continue
     const text = block.text || ""
@@ -300,10 +387,17 @@ function parseIdeContext(msg: any): Array<{ type: "file" | "selection"; path: st
       refs.push({ type: "file", path, filename: path.split("/").pop() || path })
       continue
     }
-    const selMatch = text.match(/<ide_selection>The user selected the lines (\d+) to (\d+) from (.+?):/)
+    const selMatch = text.match(
+      /<ide_selection>The user selected the lines (\d+) to (\d+) from (.+?):/,
+    )
     if (selMatch) {
       const path = selMatch[3]
-      refs.push({ type: "selection", path, filename: path.split("/").pop() || path, selectionLines: `${selMatch[1]}-${selMatch[2]}` })
+      refs.push({
+        type: "selection",
+        path,
+        filename: path.split("/").pop() || path,
+        selectionLines: `${selMatch[1]}-${selMatch[2]}`,
+      })
     }
   }
   return refs

@@ -121,7 +121,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       isActive={isActive}
                       tooltip={item.title}
                       className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
-                      onClick={() => { navigateToTab(item.tab); if (isMobile) setOpenMobile(false) }}
+                      onClick={() => {
+                        navigateToTab(item.tab)
+                        if (isMobile) setOpenMobile(false)
+                      }}
                     >
                       <item.icon />
                       <span>{item.title}</span>

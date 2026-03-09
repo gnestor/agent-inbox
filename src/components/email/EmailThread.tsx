@@ -20,9 +20,10 @@ import type { GmailMessage } from "@/types"
 
 interface EmailThreadProps {
   threadId: string
+  title?: string
 }
 
-export function EmailThread({ threadId }: EmailThreadProps) {
+export function EmailThread({ threadId, title }: EmailThreadProps) {
   const { thread, loading, error } = useEmailThread(threadId)
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -58,46 +59,72 @@ export function EmailThread({ threadId }: EmailThreadProps) {
     }
   }, [thread?.id])
 
-  if (loading) return <PanelSkeleton />
+  const header = (
+    <PanelHeader
+      left={
+        <>
+          <BackButton onClick={() => navigate("/inbox")} />
+          <h2 className="font-semibold text-sm truncate">{title}</h2>
+        </>
+      }
+      right={
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                />
+              }
+            >
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+              <DropdownMenuItem
+                render={
+                  <a
+                    href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                }
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open in Gmail
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
+            <Bot className="h-4 w-4 md:mr-1" />
+            <span className="hidden md:inline">Start Session</span>
+          </Button>
+        </>
+      }
+    />
+  )
 
-  if (error) {
-    return <div className="p-6 text-destructive">Error loading thread: {error}</div>
+  if (loading || !thread) {
+    return (
+      <div className="flex flex-col h-full">
+        {header}
+        <PanelSkeleton />
+      </div>
+    )
   }
 
-  if (!thread) return null
+  if (error) {
+    return (
+      <div className="flex flex-col h-full">
+        {header}
+        <div className="p-6 text-destructive">Error loading thread: {error}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
-      <PanelHeader
-        left={<><BackButton onClick={() => navigate("/inbox")} /><h2 className="font-semibold text-sm truncate">{thread.subject}</h2></>}
-        right={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
-                <Ellipsis className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-40">
-                <DropdownMenuItem
-                  render={
-                    <a
-                      href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open in Gmail
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
-              <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">Start Session</span>
-            </Button>
-          </>
-        }
-      />
+      {header}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {thread.messages.map((message, i) => {
           const isLast = i === thread.messages.length - 1
@@ -107,8 +134,12 @@ export function EmailThread({ threadId }: EmailThreadProps) {
                 <AccordionItem value={`msg-${message.id}`} className="border-0">
                   <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50">
                     <div className="flex items-center justify-between w-full gap-2 min-w-0">
-                      <span className="text-sm font-medium truncate">{formatEmailAddress(message.from)}</span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{formatRelativeDate(message.date)}</span>
+                      <span className="text-sm font-medium truncate">
+                        {formatEmailAddress(message.from)}
+                      </span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                        {formatRelativeDate(message.date)}
+                      </span>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-0">
@@ -128,7 +159,9 @@ function HtmlBody({ html }: { html: string }) {
   const style = getComputedStyle(document.documentElement)
   const fg = style.getPropertyValue("--foreground").trim() || "inherit"
   const bg = "transparent"
-  const font = style.getPropertyValue("--font-sans").trim() || "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+  const font =
+    style.getPropertyValue("--font-sans").trim() ||
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     * { box-sizing: border-box; color: ${fg} !important; font-family: ${font} !important; font-size: 13px !important; line-height: 1.5 !important; background: none !important; }
@@ -169,14 +202,12 @@ function HtmlBody({ html }: { html: string }) {
 
 function EmailMessage({ message }: { message: GmailMessage }) {
   return (
-    <div className="px-4 pb-4 space-y-3">
+    <div className="px-4 pb-4 space-y-3 selectable-content">
       <div className="text-xs text-muted-foreground">to {formatEmailAddress(message.to)}</div>
       {message.bodyIsHtml ? (
         <HtmlBody html={message.body} />
       ) : (
-        <div className="text-sm whitespace-pre-wrap leading-relaxed">
-          {message.body}
-        </div>
+        <div className="text-sm whitespace-pre-wrap leading-relaxed">{message.body}</div>
       )}
     </div>
   )

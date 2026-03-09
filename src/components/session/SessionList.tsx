@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
-  ScrollArea,
   Combobox,
   ComboboxContent,
   ComboboxList,
@@ -44,9 +44,16 @@ const STATUS_LABEL_MAP: Record<string, string> = Object.fromEntries(
 interface SessionListProps {
   selectedSessionId?: string
   onSelectedIndexChange?: (index: number) => void
+  onSelectedTitleChange?: (title: string) => void
+  enabled?: boolean
 }
 
-export function SessionList({ selectedSessionId, onSelectedIndexChange }: SessionListProps) {
+export function SessionList({
+  selectedSessionId,
+  onSelectedIndexChange,
+  onSelectedTitleChange,
+  enabled = true,
+}: SessionListProps) {
   const [statusFilter, setStatusFilter] = usePreference<string[]>("sessions.statusFilter", [])
   const [projectFilter, setProjectFilter] = usePreference<string[]>("sessions.projectFilter", [])
   const [projectOptions, setProjectOptions] = useState<string[]>([])
@@ -71,6 +78,7 @@ export function SessionList({ selectedSessionId, onSelectedIndexChange }: Sessio
 
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
+    enabled,
   )
   const navigate = useNavigate()
 
@@ -79,24 +87,52 @@ export function SessionList({ selectedSessionId, onSelectedIndexChange }: Sessio
     const q = search.toLowerCase()
     return sessions.filter(
       (s) =>
-        (s.summary && s.summary.toLowerCase().includes(q)) ||
-        s.prompt.toLowerCase().includes(q),
+        (s.summary && s.summary.toLowerCase().includes(q)) || s.prompt.toLowerCase().includes(q),
     )
   }, [sessions, search])
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: filteredSessions.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 66,
+    overscan: 5,
+  })
+
   // Report index synchronously during render (only updates refs, no state)
-  if (onSelectedIndexChange && selectedSessionId) {
-    const idx = filteredSessions.findIndex((s) => s.id === selectedSessionId)
-    if (idx !== -1) onSelectedIndexChange(idx)
-  }
+  const selectedIdx = selectedSessionId
+    ? filteredSessions.findIndex((s) => s.id === selectedSessionId)
+    : -1
+  if (selectedIdx !== -1) onSelectedIndexChange?.(selectedIdx)
+
+  // Title uses a state setter in the parent — must be in an effect
+  const selectedTitle =
+    selectedIdx !== -1
+      ? filteredSessions[selectedIdx].summary || filteredSessions[selectedIdx].prompt
+      : undefined
+  useEffect(() => {
+    if (selectedTitle !== undefined) onSelectedTitleChange?.(selectedTitle)
+  }, [selectedTitle])
 
   return (
     <div className="flex flex-col h-full">
       <PanelHeader
-        left={<><SidebarTrigger className="-ml-1" /><h2 className="font-semibold text-sm">Sessions</h2></>}
+        left={
+          <>
+            <SidebarTrigger className="-ml-1" />
+            <h2 className="font-semibold text-sm">Sessions</h2>
+          </>
+        }
         right={
           <DropdownMenu>
-            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" />}>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                />
+              }
+            >
               <Ellipsis className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -121,18 +157,32 @@ export function SessionList({ selectedSessionId, onSelectedIndexChange }: Sessio
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button type="button" onClick={() => setShowFilters(!showFilters)} className="shrink-0 p-1 rounded hover:bg-accent">
-            <SlidersHorizontal className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`} />
+          <button
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            className="shrink-0 p-1 rounded hover:bg-accent"
+          >
+            <SlidersHorizontal
+              className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+            />
           </button>
         </div>
         {showFilters && (
           <>
-            <Combobox multiple value={statusFilter} onValueChange={setStatusFilter} items={STATUS_ITEMS}>
+            <Combobox
+              multiple
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              items={STATUS_ITEMS}
+            >
               <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
                 {statusFilter.map((v) => (
                   <ComboboxChip key={v}>{STATUS_LABEL_MAP[v] || v}</ComboboxChip>
                 ))}
-                <ComboboxChipsInput placeholder={statusFilter.length === 0 ? "Status..." : ""} className="text-xs" />
+                <ComboboxChipsInput
+                  placeholder={statusFilter.length === 0 ? "Status..." : ""}
+                  className="text-xs"
+                />
               </ComboboxChips>
               <ComboboxContent anchor={statusAnchor}>
                 <ComboboxList>
@@ -144,12 +194,20 @@ export function SessionList({ selectedSessionId, onSelectedIndexChange }: Sessio
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
-            <Combobox multiple value={projectFilter} onValueChange={setProjectFilter} items={projectOptions}>
+            <Combobox
+              multiple
+              value={projectFilter}
+              onValueChange={setProjectFilter}
+              items={projectOptions}
+            >
               <ComboboxChips ref={projectAnchor} className="min-h-8 text-xs">
                 {projectFilter.map((v) => (
                   <ComboboxChip key={v}>{v}</ComboboxChip>
                 ))}
-                <ComboboxChipsInput placeholder={projectFilter.length === 0 ? "Project..." : ""} className="text-xs" />
+                <ComboboxChipsInput
+                  placeholder={projectFilter.length === 0 ? "Project..." : ""}
+                  className="text-xs"
+                />
               </ComboboxChips>
               <ComboboxContent anchor={projectAnchor}>
                 <ComboboxList>
@@ -165,46 +223,62 @@ export function SessionList({ selectedSessionId, onSelectedIndexChange }: Sessio
           </>
         )}
       </div>
-      <ScrollArea className="flex-1 overflow-hidden">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {loading && <ListSkeleton itemHeight={66} />}
-        {error && (
-          <div className="p-3 text-sm text-destructive">{error}</div>
+        {error && <div className="p-3 text-sm text-destructive">{error}</div>}
+        {!loading && filteredSessions.length > 0 && (
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const session = filteredSessions[virtualRow.index]
+              const badges: ListItemBadge[] = []
+              if (showStatus) {
+                badges.push({
+                  label: STATUS_LABEL_MAP[session.status] || session.status,
+                  variant: "outline",
+                  className: sessionStatusBadgeClass(session.status),
+                })
+              }
+              if (showProject && session.project) {
+                badges.push({ label: session.project, variant: "outline" })
+              }
+              if (session.linkedEmailId) {
+                badges.push({ label: "Email", variant: "secondary" })
+              }
+              if (session.linkedTaskId) {
+                badges.push({ label: "Task", variant: "secondary" })
+              }
+              return (
+                <div
+                  key={session.id}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <ListItem
+                    title={session.summary || truncate(session.prompt, 60)}
+                    subtitle={
+                      session.messageCount > 0 ? `${session.messageCount} messages` : undefined
+                    }
+                    timestamp={formatRelativeDate(session.updatedAt)}
+                    badges={badges}
+                    isSelected={selectedSessionId === session.id}
+                    onClick={() => navigate(`/sessions/${session.id}`)}
+                  />
+                </div>
+              )
+            })}
+          </div>
         )}
-        {!loading &&
-          filteredSessions.map((session) => {
-            const badges: ListItemBadge[] = []
-            if (showStatus) {
-              badges.push({
-                label: STATUS_LABEL_MAP[session.status] || session.status,
-                variant: "outline",
-                className: sessionStatusBadgeClass(session.status),
-              })
-            }
-            if (showProject && session.project) {
-              badges.push({ label: session.project, variant: "outline" })
-            }
-            if (session.linkedEmailId) {
-              badges.push({ label: "Email", variant: "secondary" })
-            }
-            if (session.linkedTaskId) {
-              badges.push({ label: "Task", variant: "secondary" })
-            }
-            return (
-              <ListItem
-                key={session.id}
-                title={session.summary || truncate(session.prompt, 60)}
-                subtitle={session.messageCount > 0 ? `${session.messageCount} messages` : undefined}
-                timestamp={formatRelativeDate(session.updatedAt)}
-                badges={badges}
-                isSelected={selectedSessionId === session.id}
-                onClick={() => navigate(`/sessions/${session.id}`)}
-              />
-            )
-          })}
         {!loading && filteredSessions.length === 0 && !error && (
           <EmptyState icon={Bot} message="No sessions yet" />
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }

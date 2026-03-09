@@ -23,16 +23,26 @@
 - [x] Infinite scroll pagination (emails, tasks)
 - [x] Notion block renderer (headings, lists, code, callout, toggle, table, divider)
 - [x] HTML email rendering (sandboxed iframe with theme-matched styles)
+- [x] Server-side email body cleaning (strip quoted replies, Outlook/Apple Mail headers, Chinese headers, app signatures before caching)
 - [x] User preferences (persisted filter/badge settings via SQLite)
 - [x] Auth flow (Google Sign-In, session cookies, login page)
 - [x] Header menu system (per-view dropdown for toggling badge visibility)
 - [ ] Email triage (parse config.yaml, show matched rule, triage action button)
 - [ ] Batch triage (process multiple emails at once)
 - [x] Draft creation (create Gmail draft reply from thread view)
-- [x] Mobile responsive layout (MobilePanel drawer for detail views)
+- [x] Mobile responsive layout (spatial grid: overlay panels, drag-to-dismiss/forward, vertical tab swipe)
 - [ ] Save filtered view to nav bar (nested under Emails, Tasks, or Sessions)
 - [x] Rich prompt editor (WYSIWYG markdown editor, Tiptap v3: slash commands, bubble menu, markdown shortcuts)
+- [x] Prompt templates (save/load named templates in new-session panel, persisted to preferences)
 - [ ] Suggested prompts
+- [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
+- [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
+- [ ] Prompt template categories (group templates by type: email, task, general)
+- [x] Virtual scrolling (TanStack Virtual for all list views and session transcript)
+- [x] Stale-while-revalidate caching (localStorage for instant list/detail rendering, server-side SQLite for API call reduction)
+- [x] Persistent app state (navigation state, open panels, per-tab selection saved to localStorage)
+- [x] Refresh on focus (all list hooks refetch when window regains focus)
+- [x] IDE context display in session transcript (file opens + line selections shown as file chips on user messages)
 
 ## Phase 3: Webhooks + Automation + Polish
 
@@ -53,10 +63,39 @@
 - [x] Card-based email message layout with avatar initials
 - [x] Tool use blocks with human-readable summaries
 - [x] Tailwind Typography for markdown prose styles
-- [x] highlight.js syntax highlighting for JSON in tool blocks
+- [x] Light mode visual hierarchy: white body, off-white panels/sidebar (bg-card = oklch(0.985))
+- [x] Syntax highlighting: github.css base (light) + .dark .hljs-* overrides (dark) — keys vs strings use different colors per GitHub theme
 - [x] Scroll-to-last-message in email thread
 - [x] Dark mode support (OKLCH color system)
 - [x] Loading skeleton shimmer matching actual item heights
+- [x] Transition animations between views (tab switch vertical slide, item switch vertical slide, overlay horizontal spring)
+- [x] Disable zoom on mobile (touch-action: pan-x pan-y)
+- [x] Text selection disabled outside content areas on mobile (user-select: none with .prose/.notion-content/.selectable-content exceptions)
+- [x] Skip detail slide-in animation on tab switch (skipEntrance prop)
+- [x] Floating panel card styling (rounded-lg shadow ring-1 ring-sidebar-border — matches shadcn floating sidebar variant)
 - [ ] Empty state illustrations
 - [ ] Error boundary with retry
-- [ ] Transition animations between views
+
+## Performance (Ongoing)
+
+- [x] Gmail metadataHeaders fix (repeated query params instead of comma-separated)
+- [x] Session list optimization (head/tail file reading instead of full parse — 6s → 5ms)
+- [x] Session list caching (staleWhileRevalidate with 1 min TTL)
+- [x] Session transcript caching (5 min TTL)
+- [x] findAgentSession workspace-first lookup (skip scanning all dirs)
+- [x] Virtualizer-based infinite scroll (replaces IntersectionObserver sentinel, triggers 12 rows before end)
+- [x] Gmail rate limit fix: switch email list from messages API to threads API with format=metadata (no body fetching for list view) + batch concurrent requests (max 5 at a time, was Promise.all on all N)
+- [x] Gmail incremental sync: store historyId after each full fetch, use History API on refresh to only re-fetch changed threads (avoids full re-scan on cache expiry)
+- [x] Search debounce (400ms) — was firing one API request per keystroke
+- [x] Session message deduplication on SSE reconnect (seenSequences ref prevents replaying already-seen sequence numbers)
+- [x] User prompt persistence in session transcript (resumeSessionQuery saves the user's message to DB + broadcasts before starting agent query)
+- [x] CLAUDECODE env exclusion (prevents nested Claude Code sessions from detecting they're inside another CC session)
+- [ ] Email cleaner: handle more Outlook Word quirks (e.g. `<o:p>` noise in visible content)
+- [ ] Email cleaner: test coverage (vitest unit tests for each pattern with HTML fixtures)
+- [ ] Virtualize EmailThread (low priority — typically <20 messages per thread)
+- [x] Key-scoped preference subscriptions (Map<key, Set> — toggling one pref re-renders only that key's subscribers)
+- [x] Stabilize loadMore callback (ref-based guard, removes loadingMore from useCallback deps)
+- [x] ListItem React.memo with structural badge comparator (skips onClick; re-renders only when title/subtitle/timestamp/isSelected/badges change)
+- [x] Deferred tab fetching (AnimatePresence mounts only active tab; hasBeenActive ref keeps data alive after switching away)
+- [ ] Sessions infinite scroll (useSessions has no cursor/pagination — currently loads all sessions)
+- [ ] Remove use-swipe.ts (replaced by Framer Motion drag controls; only reference is its own test file)

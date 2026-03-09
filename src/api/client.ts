@@ -99,10 +99,7 @@ export async function getTask(taskId: string) {
   return request<import("@/types").NotionTaskDetail>(`/notion/tasks/${taskId}`)
 }
 
-export async function updateTask(
-  taskId: string,
-  properties: Record<string, unknown>,
-) {
+export async function updateTask(taskId: string, properties: Record<string, unknown>) {
   return request<{ ok: boolean }>(`/notion/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify(properties),
@@ -121,9 +118,7 @@ export async function getSessions(filters?: {
   if (filters?.triggerSource) params.set("trigger_source", filters.triggerSource)
   if (filters?.project) params.set("project", filters.project)
   const qs = params.toString()
-  return request<{ sessions: import("@/types").Session[] }>(
-    `/sessions${qs ? `?${qs}` : ""}`,
-  )
+  return request<{ sessions: import("@/types").Session[] }>(`/sessions${qs ? `?${qs}` : ""}`)
 }
 
 export async function getSessionProjects() {

@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { cn } from "@hammies/frontend/lib/utils"
 import { Badge } from "@hammies/frontend/components/ui"
 
@@ -17,7 +18,21 @@ interface ListItemProps {
   onClick: () => void
 }
 
-export function ListItem({
+function badgesEqual(a?: ListItemBadge[], b?: ListItemBadge[]): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].label !== b[i].label ||
+      a[i].variant !== b[i].variant ||
+      a[i].className !== b[i].className
+    )
+      return false
+  }
+  return true
+}
+
+function ListItemInner({
   title,
   subtitle,
   timestamp,
@@ -43,11 +58,7 @@ export function ListItem({
               {timestamp}
             </span>
           </div>
-          {subtitle && (
-            <div className="text-xs text-muted-foreground truncate">
-              {subtitle}
-            </div>
-          )}
+          {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
           {badges && badges.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">
               {badges.map((badge, i) => (
@@ -66,3 +77,15 @@ export function ListItem({
     </button>
   )
 }
+
+// onClick skipped: inline closures navigate to the same route as long as item identity
+// (title/isSelected) hasn't changed. icon skipped: currently unused by all callers.
+export const ListItem = memo(
+  ListItemInner,
+  (prev, next) =>
+    prev.title === next.title &&
+    prev.subtitle === next.subtitle &&
+    prev.timestamp === next.timestamp &&
+    prev.isSelected === next.isSelected &&
+    badgesEqual(prev.badges, next.badges),
+)

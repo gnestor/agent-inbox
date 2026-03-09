@@ -1,8 +1,8 @@
 import { Hono } from "hono"
 import * as notion from "../lib/notion.js"
-import { cached, invalidate } from "../lib/cache.js"
+import { cached, staleWhileRevalidate, invalidate } from "../lib/cache.js"
 
-const LIST_TTL = 60_000    // 1 min for task lists
+const LIST_TTL = 60_000 // 1 min for task lists
 const DETAIL_TTL = 120_000 // 2 min for task detail
 
 export const notionRoutes = new Hono()
@@ -14,7 +14,7 @@ notionRoutes.get("/tasks", async (c) => {
   const priority = c.req.query("priority")
   const cursor = c.req.query("cursor")
   const key = `notion:tasks:${status}:${tags}:${assignee}:${priority}:${cursor || ""}`
-  const result = await cached(key, LIST_TTL, () =>
+  const result = await staleWhileRevalidate(key, LIST_TTL, () =>
     notion.queryTasks({ status, tags, assignee, priority, cursor: cursor || undefined }),
   )
   return c.json(result)
@@ -22,9 +22,7 @@ notionRoutes.get("/tasks", async (c) => {
 
 notionRoutes.get("/tasks/:id", async (c) => {
   const id = c.req.param("id")
-  const task = await cached(`notion:task:${id}`, DETAIL_TTL, () =>
-    notion.getTaskDetail(id),
-  )
+  const task = await cached(`notion:task:${id}`, DETAIL_TTL, () => notion.getTaskDetail(id))
   return c.json(task)
 })
 

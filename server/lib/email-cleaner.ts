@@ -26,7 +26,10 @@ export function cleanPlainText(text: string): string {
 
     // Stop at "On ... wrote:" attribution (up to 3 lines for line-wrapped variants)
     // Handles both "On Mon Apr 21..." (Shortwave) and "On Thu, Feb 19, 2026 at 4:25 PM" (Gmail)
-    const ahead3 = lines.slice(i, i + 3).map((l) => l.trim()).join(" ")
+    const ahead3 = lines
+      .slice(i, i + 3)
+      .map((l) => l.trim())
+      .join(" ")
     if (/^On\s.+\bwrote:/.test(ahead3)) break
 
     // Stop at Chinese "wrote:" attribution (e.g. "2025年9月5日 01:14，Kevin Mahany 写道：")
@@ -34,7 +37,10 @@ export function cleanPlainText(text: string): string {
 
     // Stop at Outlook reply/forward header block ("From: ... Sent: ..." within 5 lines)
     if (/^From:\s/.test(t)) {
-      const ahead5 = lines.slice(i, i + 5).map((l) => l.trim()).join("\n")
+      const ahead5 = lines
+        .slice(i, i + 5)
+        .map((l) => l.trim())
+        .join("\n")
       if (/^(Sent|Date):/m.test(ahead5)) break
     }
 
@@ -56,7 +62,10 @@ export function cleanPlainText(text: string): string {
     result.push(lines[i])
   }
 
-  return result.join("\n").replace(/<[^>]+>/g, "").trimEnd()
+  return result
+    .join("\n")
+    .replace(/<[^>]+>/g, "")
+    .trimEnd()
 }
 
 // ─── HTML ─────────────────────────────────────────────────────────────────────
@@ -126,10 +135,13 @@ export function cleanHtmlEmail(html: string): string {
 
   // ── Blockquote removal (loop removes innermost first, handles nesting) ─────
 
+  // Match only the innermost blockquotes (no nested <blockquote> inside).
+  // The negative lookahead prevents matching an outer opening tag paired
+  // with an inner closing tag, which leaves a dangling </blockquote>.
   let prev: string
   do {
     prev = result
-    result = result.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
+    result = result.replace(/<blockquote[^>]*>(?:(?!<\/?blockquote)[\s\S])*?<\/blockquote>/gi, "")
   } while (result !== prev)
 
   // Handle unclosed blockquotes (Apple Mail omits closing tags) — truncate there
@@ -148,7 +160,8 @@ export function cleanHtmlEmail(html: string): string {
   let earliestMatchIndex: number | null = null
   for (const pattern of HTML_TEXT_QUOTE_PATTERNS) {
     const match = result.match(pattern)
-    if (process.env.DEBUG_CLEANER) console.log(`[cleaner] pattern ${pattern} → index=${match?.index}`)
+    if (process.env.DEBUG_CLEANER)
+      console.log(`[cleaner] pattern ${pattern} → index=${match?.index}`)
     if (match?.index && match.index > 0 && match.index < earliestIndex) {
       earliestIndex = match.index
       earliestMatchIndex = match.index
@@ -156,7 +169,8 @@ export function cleanHtmlEmail(html: string): string {
   }
   if (earliestMatchIndex !== null) {
     const cutAt = findBlockStart(result, earliestMatchIndex)
-    if (process.env.DEBUG_CLEANER) console.log(`[cleaner] cutting at ${cutAt}, result was ${result.length}`)
+    if (process.env.DEBUG_CLEANER)
+      console.log(`[cleaner] cutting at ${cutAt}, result was ${result.length}`)
     result = result.slice(0, cutAt)
   }
 

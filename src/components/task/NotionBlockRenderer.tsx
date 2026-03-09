@@ -34,7 +34,7 @@ interface RichTextItem {
   href?: string | null
 }
 
-interface NotionBlock {
+export interface NotionBlock {
   id: string
   type: string
   has_children?: boolean
@@ -96,9 +96,7 @@ function RichText({ items }: { items: RichTextItem[] }) {
             )
           } else if (m?.type === "user") {
             content = (
-              <span className="bg-primary/10 text-primary px-1 rounded">
-                @{item.plain_text}
-              </span>
+              <span className="bg-primary/10 text-primary px-1 rounded">@{item.plain_text}</span>
             )
           } else if (m?.type === "date") {
             content = (
@@ -203,9 +201,7 @@ function nodeToHtml(node: HastNode): string {
   if (node.type === "element" && node.tagName === "span") {
     const cls = node.properties?.className?.join(" ") || ""
     const inner = (node.children || []).map(nodeToHtml).join("")
-    return cls
-      ? `<span class="${escapeHtml(cls)}">${inner}</span>`
-      : `<span>${inner}</span>`
+    return cls ? `<span class="${escapeHtml(cls)}">${inner}</span>` : `<span>${inner}</span>`
   }
   if (node.children) return node.children.map(nodeToHtml).join("")
   return escapeHtml(node.value || "")
@@ -215,13 +211,7 @@ function hastToHtml(tree: { children: HastNode[] }): string {
   return tree.children.map(nodeToHtml).join("")
 }
 
-function HighlightedCode({
-  code,
-  language,
-}: {
-  code: string
-  language?: string
-}) {
+function HighlightedCode({ code, language }: { code: string; language?: string }) {
   const highlighted = useMemo(() => {
     try {
       if (language && lowlight.registered(language)) {
@@ -264,13 +254,7 @@ function ParagraphBlock({ block }: { block: NotionBlock }) {
   )
 }
 
-function HeadingBlock({
-  block,
-  level,
-}: {
-  block: NotionBlock
-  level: 1 | 2 | 3
-}) {
+function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }) {
   const key = `heading_${level}` as string
   const data = block[key] as {
     rich_text: RichTextItem[]
@@ -324,19 +308,11 @@ function BulletedListItemBlock({ block }: { block: NotionBlock }) {
   )
 }
 
-function NumberedListItemBlock({
-  block,
-  index,
-}: {
-  block: NotionBlock
-  index: number
-}) {
+function NumberedListItemBlock({ block, index }: { block: NotionBlock; index: number }) {
   const data = block.numbered_list_item as { rich_text: RichTextItem[] }
   return (
     <div className="flex items-start gap-[0.4em] pl-[2px] my-px">
-      <span className="text-muted-foreground tabular-nums shrink-0 min-w-[1.5em]">
-        {index}.
-      </span>
+      <span className="text-muted-foreground tabular-nums shrink-0 min-w-[1.5em]">{index}.</span>
       <div className="min-w-0 flex-1">
         <RichText items={data?.rich_text || []} />
         <BlockChildren children={block.children} />
@@ -359,11 +335,7 @@ function ToDoBlock({ block }: { block: NotionBlock }) {
           readOnly
           className="mt-[0.3em] h-[1.1em] w-[1.1em] shrink-0 accent-primary cursor-default"
         />
-        <span
-          className={cn(
-            data?.checked && "line-through text-muted-foreground",
-          )}
-        >
+        <span className={cn(data?.checked && "line-through text-muted-foreground")}>
           <RichText items={data?.rich_text || []} />
         </span>
       </div>
@@ -390,9 +362,7 @@ function CalloutBlock({ block }: { block: NotionBlock }) {
   return (
     <div className="flex gap-[0.6em] rounded-[3px] bg-[hsl(var(--muted)/0.5)] p-[0.75em_0.75em] border border-border/40 my-2">
       {data?.icon?.emoji && (
-        <span className="text-[1.2em] leading-[1.4] shrink-0">
-          {data.icon.emoji}
-        </span>
+        <span className="text-[1.2em] leading-[1.4] shrink-0">{data.icon.emoji}</span>
       )}
       <div className="min-w-0 flex-1">
         <RichText items={data?.rich_text || []} />
@@ -501,8 +471,7 @@ function TableBlock({ block }: { block: NotionBlock }) {
       <table className="w-full text-[0.9em] border-collapse">
         <tbody>
           {rows.map((row, rowIdx) => {
-            const cells =
-              (row.table_row as { cells: RichTextItem[][] })?.cells || []
+            const cells = (row.table_row as { cells: RichTextItem[][] })?.cells || []
             const isHeader = data?.has_column_header && rowIdx === 0
             return (
               <tr
@@ -520,8 +489,7 @@ function TableBlock({ block }: { block: NotionBlock }) {
                       key={cellIdx}
                       className={cn(
                         "px-[0.75em] py-[0.45em] text-left align-top",
-                        cellIdx !== cells.length - 1 &&
-                          "border-r border-border",
+                        cellIdx !== cells.length - 1 && "border-r border-border",
                         (isHeader || isRowHeader) && "font-medium",
                       )}
                     >
@@ -569,13 +537,7 @@ export function NotionBlockRenderer({ blocks }: { blocks: NotionBlock[] }) {
           case "bulleted_list_item":
             return <BulletedListItemBlock key={block.id} block={block} />
           case "numbered_list_item":
-            return (
-              <NumberedListItemBlock
-                key={block.id}
-                block={block}
-                index={numberedCounter}
-              />
-            )
+            return <NumberedListItemBlock key={block.id} block={block} index={numberedCounter} />
           case "to_do":
             return <ToDoBlock key={block.id} block={block} />
           case "quote":

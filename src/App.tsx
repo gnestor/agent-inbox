@@ -1,12 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom"
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@hammies/frontend/components/ui"
+import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { PanelStack } from "@/components/layout/PanelStack"
-import { SpatialNavProvider } from "@/hooks/use-spatial-nav"
+import { SpatialNavProvider, getSavedPathname } from "@/hooks/use-spatial-nav"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 
 function AuthenticatedApp() {
@@ -17,7 +14,7 @@ function AuthenticatedApp() {
         <SidebarInset className="max-h-svh overflow-hidden">
           <div className="flex flex-1 h-full">
             <Routes>
-              <Route path="/" element={<Navigate to="/inbox" replace />} />
+              <Route path="/" element={<Navigate to={getSavedPathname()} replace />} />
               <Route path="/*" element={<PanelStack />} />
             </Routes>
           </div>

@@ -12,11 +12,46 @@ interface TabState {
 
 type PersistedState = Record<TabId, TabState>
 
+// --- localStorage persistence ---
+const STORAGE_KEY = "spatial-nav-state"
+
+interface SavedNavState {
+  pathname: string
+  tabs: PersistedState
+  itemSessions: Array<[string, { sessionOpen: boolean; sessionId?: string }]>
+}
+
+function loadNavState(): SavedNavState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveNavState(state: SavedNavState): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Read the saved pathname for initial redirect (called outside React) */
+export function getSavedPathname(): string {
+  const saved = loadNavState()
+  return saved?.pathname ?? "/inbox"
+}
+
 interface SpatialNavContextValue {
   activeTab: TabId
   persistedState: PersistedState
   navigateToTab: (tab: TabId) => void
-  getItemState: (tab: TabId, itemId: string) => { sessionOpen: boolean; sessionId?: string } | undefined
+  getItemState: (
+    tab: TabId,
+    itemId: string,
+  ) => { sessionOpen: boolean; sessionId?: string } | undefined
 }
 
 const SpatialNavContext = createContext<SpatialNavContextValue | null>(null)
@@ -66,13 +101,16 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
   const navigate = useNavigate()
 
   const activeTab = tabFromPathname(location.pathname)
-  const persistedRef = useRef<PersistedState>({
-    inbox: {},
-    tasks: {},
-    sessions: {},
-  })
+
+  // Load saved state on first render
+  const saved = useRef(loadNavState())
+  const persistedRef = useRef<PersistedState>(
+    saved.current?.tabs ?? { inbox: {}, tasks: {}, sessions: {} },
+  )
   // Per-item session state: key is "tab:itemId", value is session open/id
-  const itemSessionRef = useRef<Map<string, { sessionOpen: boolean; sessionId?: string }>>(new Map())
+  const itemSessionRef = useRef<Map<string, { sessionOpen: boolean; sessionId?: string }>>(
+    new Map(saved.current?.itemSessions ?? []),
+  )
 
   // Sync URL changes into persisted state for the active tab
   // Save/restore per-item session state
@@ -80,7 +118,11 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
     const newState = tabStateFromPathname(location.pathname, activeTab)
     const oldState = persistedRef.current[activeTab]
 
-    if (activeTab !== "sessions" && oldState.selectedId && oldState.selectedId !== newState.selectedId) {
+    if (
+      activeTab !== "sessions" &&
+      oldState.selectedId &&
+      oldState.selectedId !== newState.selectedId
+    ) {
       // Save outgoing item's session state
       itemSessionRef.current.set(`${activeTab}:${oldState.selectedId}`, {
         sessionOpen: oldState.sessionOpen ?? false,
@@ -89,7 +131,11 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
     }
 
     // Same item, explicit session state change (open/close) — update the Map
-    if (activeTab !== "sessions" && newState.selectedId && newState.selectedId === oldState.selectedId) {
+    if (
+      activeTab !== "sessions" &&
+      newState.selectedId &&
+      newState.selectedId === oldState.selectedId
+    ) {
       itemSessionRef.current.set(`${activeTab}:${newState.selectedId}`, {
         sessionOpen: newState.sessionOpen ?? false,
         sessionId: newState.sessionId,
@@ -105,13 +151,24 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
     ) {
       const saved = itemSessionRef.current.get(`${activeTab}:${newState.selectedId}`)
       if (saved?.sessionOpen) {
-        persistedRef.current[activeTab] = { ...newState, sessionOpen: true, sessionId: saved.sessionId }
+        persistedRef.current[activeTab] = {
+          ...newState,
+          sessionOpen: true,
+          sessionId: saved.sessionId,
+        }
         navigate(buildUrl(activeTab, persistedRef.current[activeTab]), { replace: true })
         return
       }
     }
 
     persistedRef.current[activeTab] = newState
+
+    // Persist to localStorage
+    saveNavState({
+      pathname: location.pathname,
+      tabs: { ...persistedRef.current },
+      itemSessions: [...itemSessionRef.current.entries()],
+    })
   }, [location.pathname, activeTab, navigate])
 
   const navigateToTab = useCallback(

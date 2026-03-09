@@ -76,7 +76,9 @@ export function LoginPage() {
     }
 
     init()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [refresh])
 
   return (
@@ -93,9 +95,7 @@ export function LoginPage() {
         </div>
         <div className="flex flex-col items-center gap-4">
           <div ref={buttonRef} />
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <p className="px-6 text-center text-xs text-muted-foreground">
           Your Gmail and Notion data stays on this device.

@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { Button, Input } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
-import { PanelHeader } from "@/components/shared/PanelHeader"
+import { useIsMobile } from "@hammies/frontend/hooks"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { usePreference } from "@/hooks/use-preferences"
@@ -34,15 +35,13 @@ export function NewSessionPanel({ threadId, taskId, sessionId }: NewSessionPanel
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [prompt, setPrompt] = useState("")
   const [ready, setReady] = useState(false)
   const [sending, setSending] = useState(false)
   const [savingName, setSavingName] = useState("")
   const [showSaveInput, setShowSaveInput] = useState(false)
-  const [templates, setTemplates] = usePreference<PromptTemplate[]>(
-    "session_prompt_templates",
-    [],
-  )
+  const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
 
   // Fetch linked data and build initial prompt
   const { thread } = useEmailThread(threadId)
@@ -109,15 +108,22 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   return (
     <div className="flex flex-col h-full">
       <PanelHeader
-        left={<h2 className="font-semibold text-sm">New Session</h2>}
+        left={
+          <>
+            {isMobile && <BackButton onClick={() => navigate(parentPath())} />}
+            <h2 className="font-semibold text-sm">New Session</h2>
+          </>
+        }
         right={
-          <button
-            type="button"
-            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-            onClick={() => navigate(parentPath())}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          !isMobile ? (
+            <button
+              type="button"
+              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              onClick={() => navigate(parentPath())}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : undefined
         }
       />
 
@@ -126,7 +132,9 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
         {/* Saved templates */}
         {templates.length > 0 && (
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Templates</p>
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+              Templates
+            </p>
             <div className="flex flex-col gap-0.5">
               {templates.map((t, i) => (
                 <div key={i} className="flex items-center gap-1">
@@ -171,10 +179,22 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
               className="flex-1"
               autoFocus
             />
-            <Button variant="outline" size="sm" onClick={handleSaveTemplate} disabled={!savingName.trim()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveTemplate}
+              disabled={!savingName.trim()}
+            >
               Save
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setShowSaveInput(false); setSavingName("") }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShowSaveInput(false)
+                setSavingName("")
+              }}
+            >
               Cancel
             </Button>
           </div>
@@ -192,7 +212,11 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
-        <Button onClick={handleStart} disabled={!prompt.trim() || !ready || sending} className="w-full">
+        <Button
+          onClick={handleStart}
+          disabled={!prompt.trim() || !ready || sending}
+          className="w-full"
+        >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start Session"}
         </Button>
       </div>

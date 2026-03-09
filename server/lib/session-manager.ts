@@ -72,16 +72,14 @@ export function appendSessionMessage(
      VALUES (?, ?, ?, ?, ?)`,
   ).run(sessionId, sequence, type, JSON.stringify(message), now)
 
-  db.prepare(
-    `UPDATE sessions SET message_count = ?, updated_at = ? WHERE id = ?`,
-  ).run(sequence + 1, now, sessionId)
+  db.prepare(`UPDATE sessions SET message_count = ?, updated_at = ? WHERE id = ?`).run(
+    sequence + 1,
+    now,
+    sessionId,
+  )
 }
 
-export function updateSessionStatus(
-  sessionId: string,
-  status: string,
-  summary?: string,
-) {
+export function updateSessionStatus(sessionId: string, status: string, summary?: string) {
   const db = getDb()
   const now = new Date().toISOString()
 
@@ -106,16 +104,11 @@ export function getSessionRecord(sessionId: string) {
 export function getSessionMessages(sessionId: string) {
   const db = getDb()
   return db
-    .prepare(
-      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY sequence",
-    )
+    .prepare("SELECT * FROM session_messages WHERE session_id = ? ORDER BY sequence")
     .all(sessionId) as Array<Record<string, unknown>>
 }
 
-export function listSessionRecords(filters?: {
-  status?: string
-  triggerSource?: string
-}) {
+export function listSessionRecords(filters?: { status?: string; triggerSource?: string }) {
   const db = getDb()
   let sql = "SELECT * FROM sessions"
   const conditions: string[] = []
@@ -145,20 +138,14 @@ export function listSessionRecords(filters?: {
 }
 
 // SSE client management
-export function addSseClient(
-  sessionId: string,
-  send: (data: string) => void,
-) {
+export function addSseClient(sessionId: string, send: (data: string) => void) {
   if (!sseClients.has(sessionId)) {
     sseClients.set(sessionId, new Set())
   }
   sseClients.get(sessionId)!.add(send)
 }
 
-export function removeSseClient(
-  sessionId: string,
-  send: (data: string) => void,
-) {
+export function removeSseClient(sessionId: string, send: (data: string) => void) {
   sseClients.get(sessionId)?.delete(send)
   if (sseClients.get(sessionId)?.size === 0) {
     sseClients.delete(sessionId)
@@ -212,10 +199,7 @@ export async function startSession(
     try {
       for await (const message of q) {
         // Capture session ID from init message
-        if (
-          (message as any).type === "system" &&
-          (message as any).subtype === "init"
-        ) {
+        if ((message as any).type === "system" && (message as any).subtype === "init") {
           sessionId = (message as any).session_id
 
           await createSessionRecord(sessionId!, prompt, options)
@@ -223,12 +207,7 @@ export async function startSession(
         }
 
         if (sessionId) {
-          appendSessionMessage(
-            sessionId,
-            sequence,
-            (message as any).type || "unknown",
-            message,
-          )
+          appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
           broadcastToSession(sessionId, { sequence, message })
           sequence++
         }
@@ -236,11 +215,7 @@ export async function startSession(
         // Check for result message (session complete)
         if ("result" in (message as any)) {
           if (sessionId) {
-            updateSessionStatus(
-              sessionId,
-              "complete",
-              (message as any).result?.slice(0, 200),
-            )
+            updateSessionStatus(sessionId, "complete", (message as any).result?.slice(0, 200))
             broadcastToSession(sessionId, {
               type: "session_complete",
               status: "complete",
@@ -280,10 +255,7 @@ export async function startSession(
   return sessionId
 }
 
-export async function resumeSessionQuery(
-  sessionId: string,
-  prompt: string,
-): Promise<void> {
+export async function resumeSessionQuery(sessionId: string, prompt: string): Promise<void> {
   const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
@@ -319,21 +291,12 @@ export async function resumeSessionQuery(
   ;(async () => {
     try {
       for await (const message of q) {
-        appendSessionMessage(
-          sessionId,
-          sequence,
-          (message as any).type || "unknown",
-          message,
-        )
+        appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 
         if ("result" in (message as any)) {
-          updateSessionStatus(
-            sessionId,
-            "complete",
-            (message as any).result?.slice(0, 200),
-          )
+          updateSessionStatus(sessionId, "complete", (message as any).result?.slice(0, 200))
           broadcastToSession(sessionId, {
             type: "session_complete",
             status: "complete",
@@ -375,16 +338,148 @@ export async function listAgentSessions() {
   }
 }
 
-export async function listAllAgentSessions() {
-  const { readdirSync, existsSync } = await import("fs")
+/** Find a single agent session by ID — checks workspace dir first, then scans others */
+export async function findAgentSession(sessionId: string) {
+  const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
-  const { listSessions } = await import("@anthropic-ai/claude-agent-sdk")
 
   const projectsDir = join(homedir(), ".claude", "projects")
-  if (!existsSync(projectsDir)) return []
+  if (!fs.existsSync(projectsDir)) return null
 
-  const dirs = readdirSync(projectsDir, { withFileTypes: true })
+  function tryDir(dirPath: string) {
+    const filePath = join(dirPath, `${sessionId}.jsonl`)
+    if (!fs.existsSync(filePath)) return null
+
+    try {
+      const stat = fs.statSync(filePath)
+      const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
+      const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+      if (!cwd) return null
+
+      return {
+        sessionId,
+        summary,
+        lastModified: stat.mtimeMs,
+        firstPrompt,
+        cwd,
+        project: projectLabel(cwd),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  // Try the current workspace directory first (most common case)
+  const primaryDir = join(projectsDir, workspacePath.replace(/\//g, "-"))
+  const primary = tryDir(primaryDir)
+  if (primary) return primary
+
+  // Fall back to scanning all directories
+  const dirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
+
+  for (const dir of dirs) {
+    const dirPath = join(projectsDir, dir.name)
+    if (dirPath === primaryDir) continue // already checked
+    const result = tryDir(dirPath)
+    if (result) return result
+  }
+
+  return null
+}
+
+/** Read the first N and last N lines of a file without loading it entirely into memory */
+function readHeadTailLines(
+  filePath: string,
+  headCount: number,
+  tailCount: number,
+  fs: typeof import("fs"),
+): { headLines: string[]; tailLines: string[] } {
+  const CHUNK = 8192
+  const fd = fs.openSync(filePath, "r")
+  try {
+    const stat = fs.fstatSync(fd)
+    const size = stat.size
+    if (size === 0) return { headLines: [], tailLines: [] }
+
+    // Read head
+    const headBuf = Buffer.alloc(Math.min(CHUNK * 4, size))
+    const headBytesRead = fs.readSync(fd, headBuf, 0, headBuf.length, 0)
+    const headLines = headBuf.toString("utf-8", 0, headBytesRead).split("\n").slice(0, headCount)
+
+    // Read tail
+    const tailLines: string[] = []
+    if (size > headBuf.length) {
+      const tailSize = Math.min(CHUNK * 4, size)
+      const tailBuf = Buffer.alloc(tailSize)
+      const tailBytesRead = fs.readSync(fd, tailBuf, 0, tailSize, size - tailSize)
+      const allTail = tailBuf.toString("utf-8", 0, tailBytesRead).split("\n")
+      tailLines.push(...allTail.slice(-tailCount))
+    }
+
+    return { headLines, tailLines }
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+function extractSessionMeta(headLines: string[], tailLines: string[]) {
+  let cwd: string | null = null
+  let firstPrompt: string | null = null
+  let summary: string | null = null
+
+  // Head lines: find cwd and firstPrompt
+  for (const line of headLines) {
+    if (!line.trim()) continue
+    try {
+      const msg = JSON.parse(line)
+      if (!cwd && msg.cwd) cwd = msg.cwd
+      if (!firstPrompt && (msg.type === "user" || msg.role === "user")) {
+        const content = msg.message?.content ?? msg.content
+        if (typeof content === "string" && !content.startsWith("<")) {
+          firstPrompt = content.slice(0, 200)
+        } else if (Array.isArray(content)) {
+          const text = content
+            .filter((b: any) => b.type === "text" && !b.text?.startsWith("<"))
+            .map((b: any) => b.text)
+            .join(" ")
+          if (text) firstPrompt = text.slice(0, 200)
+        }
+      }
+    } catch {
+      /* skip */
+    }
+    if (cwd && firstPrompt) break
+  }
+
+  // Tail lines: find summary (result message is typically near the end)
+  for (let i = tailLines.length - 1; i >= 0; i--) {
+    const line = tailLines[i]
+    if (!line.trim()) continue
+    try {
+      const msg = JSON.parse(line)
+      if ("result" in msg && typeof msg.result === "string") {
+        summary = msg.result.slice(0, 200)
+        break
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  return { cwd, firstPrompt, summary }
+}
+
+export async function listAllAgentSessions() {
+  const fs = await import("fs")
+  const { join } = await import("path")
+  const { homedir } = await import("os")
+
+  const projectsDir = join(homedir(), ".claude", "projects")
+  if (!fs.existsSync(projectsDir)) return []
+
+  const dirs = fs
+    .readdirSync(projectsDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
 
@@ -397,52 +492,45 @@ export async function listAllAgentSessions() {
     project: string
   }> = []
 
-  await Promise.all(
-    dirs.map(async (dirName) => {
-      try {
-        // listSessions needs the actual cwd, but we can pass any dir and it
-        // resolves to the matching ~/.claude/projects/ folder. We need to
-        // reconstruct a path that maps to this dirName. Since dirName IS the
-        // encoded path, we can scan .jsonl files directly if listSessions
-        // doesn't support it. But first, let's check if the sessions have cwd.
-        // We read the first line of a .jsonl to get the cwd, then use that.
-        const { readFileSync } = await import("fs")
-        const dirPath = join(projectsDir, dirName)
-        const files = readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
-        if (files.length === 0) return
+  for (const dirName of dirs) {
+    const dirPath = join(projectsDir, dirName)
+    try {
+      const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
+      for (const fileName of files) {
+        const filePath = join(dirPath, fileName)
+        try {
+          const stat = fs.statSync(filePath)
+          const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
+          const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
 
-        // Read first jsonl to get the cwd
-        let cwd: string | null = null
-        for (const f of files) {
-          try {
-            const firstLine = readFileSync(join(dirPath, f), "utf-8").split("\n")[0]
-            const parsed = JSON.parse(firstLine)
-            if (parsed.cwd) {
-              cwd = parsed.cwd
-              break
-            }
-          } catch { /* skip */ }
-        }
+          if (!cwd) continue
 
-        if (!cwd) return
-
-        const sessions = await listSessions({ dir: cwd })
-        const project = projectLabel(cwd)
-        for (const s of sessions) {
           results.push({
-            sessionId: s.sessionId,
-            summary: s.summary || null,
-            lastModified: s.lastModified,
-            firstPrompt: s.firstPrompt || null,
-            cwd: s.cwd || cwd,
-            project,
+            sessionId: fileName.replace(".jsonl", ""),
+            summary,
+            lastModified: stat.mtimeMs,
+            firstPrompt,
+            cwd,
+            project: projectLabel(cwd),
           })
+        } catch {
+          /* skip unreadable files */
         }
-      } catch { /* skip dirs that fail */ }
-    }),
-  )
+      }
+    } catch {
+      /* skip unreadable dirs */
+    }
+  }
 
-  return results
+  // Deduplicate by sessionId, keeping the most recently modified entry
+  const byId = new Map<string, (typeof results)[0]>()
+  for (const r of results) {
+    const existing = byId.get(r.sessionId)
+    if (!existing || r.lastModified > existing.lastModified) {
+      byId.set(r.sessionId, r)
+    }
+  }
+  return [...byId.values()]
 }
 
 export function projectLabel(cwd: string): string {
@@ -451,14 +539,14 @@ export function projectLabel(cwd: string): string {
 }
 
 export async function listProjectOptions(): Promise<string[]> {
-  const { readdirSync, existsSync, readFileSync } = await import("fs")
+  const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
 
   const projectsDir = join(homedir(), ".claude", "projects")
-  if (!existsSync(projectsDir)) return []
+  if (!fs.existsSync(projectsDir)) return []
 
-  const dirs = readdirSync(projectsDir, { withFileTypes: true })
+  const dirs = fs.readdirSync(projectsDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
 
@@ -467,17 +555,15 @@ export async function listProjectOptions(): Promise<string[]> {
   for (const dirName of dirs) {
     const dirPath = join(projectsDir, dirName)
     try {
-      const files = readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
-      if (files.length === 0) continue
+      const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
 
+      let found = false
       for (const f of files) {
+        if (found) break
         try {
-          const firstLine = readFileSync(join(dirPath, f), "utf-8").split("\n")[0]
-          const parsed = JSON.parse(firstLine)
-          if (parsed.cwd) {
-            projects.add(projectLabel(parsed.cwd))
-            break
-          }
+          const { headLines } = readHeadTailLines(join(dirPath, f), 10, 0, fs)
+          const { cwd } = extractSessionMeta(headLines, [])
+          if (cwd) { projects.add(projectLabel(cwd)); found = true }
         } catch { /* skip */ }
       }
     } catch { /* skip */ }
@@ -486,20 +572,14 @@ export async function listProjectOptions(): Promise<string[]> {
   return [...projects].sort()
 }
 
-export async function getAgentSessionTranscript(sessionId: string) {
+export async function getAgentSessionTranscript(sessionId: string, cwd?: string) {
   const { readFileSync } = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
 
   // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
-  const encodedDir = workspacePath.replace(/\//g, "-")
-  const sessionFile = join(
-    homedir(),
-    ".claude",
-    "projects",
-    encodedDir,
-    `${sessionId}.jsonl`,
-  )
+  const encodedDir = (cwd || workspacePath).replace(/\//g, "-")
+  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
 
   try {
     const content = readFileSync(sessionFile, "utf-8")

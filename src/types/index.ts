@@ -56,10 +56,16 @@ export interface NotionTask {
   url: string
 }
 
+export interface NotionProperty {
+  date?: { start?: string }
+  created_by?: { name?: string }
+  [key: string]: unknown
+}
+
 export interface NotionTaskDetail extends NotionTask {
   body: string
-  properties: Record<string, unknown>
-  children: unknown[]
+  properties: Record<string, NotionProperty>
+  children: import("../components/task/NotionBlockRenderer").NotionBlock[]
 }
 
 // Session types

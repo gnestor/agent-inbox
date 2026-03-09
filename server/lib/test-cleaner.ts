@@ -63,8 +63,18 @@ const T = "(?:[^<]|<[^>]+>)"
 const PATTERNS: Array<[string, RegExp]> = [
   ["发件人", new RegExp(`发件人(?:<[^>]*>)*[:：]`)],
   ["写道", new RegExp(`\\d{4}年\\d+月\\d+日${T}{0,80}写道(?:<[^>]*>)*[:：]`)],
-  ["On...wrote", new RegExp(`\\bOn\\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)${T}{5,400}wrote:`)],
-  ["boldFrom/Date", new RegExp(`<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}From:\\s*(?:[^<]|<[^>]+>){0,20}<\\/(?:b|strong)>(?:[^<]|<[^>]+>){0,400}<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}(?:Sent|Date):`)],
+  [
+    "On...wrote",
+    new RegExp(
+      `\\bOn\\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)${T}{5,400}wrote:`,
+    ),
+  ],
+  [
+    "boldFrom/Date",
+    new RegExp(
+      `<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}From:\\s*(?:[^<]|<[^>]+>){0,20}<\\/(?:b|strong)>(?:[^<]|<[^>]+>){0,400}<(?:b|strong)>(?:[^<]|<[^>]+>){0,20}(?:Sent|Date):`,
+    ),
+  ],
   ["---separator---", /-{5,}(?:Original|Forwarded) Message-{5,}/i],
 ]
 
@@ -77,42 +87,75 @@ function findBlockStart(html: string, pos: number): number {
 function verboseClean(html: string) {
   const step = (label: string, before: string, after: string) => {
     if (before.length !== after.length)
-      console.log(`  ${label}: ${before.length} → ${after.length} (-${before.length - after.length})`)
+      console.log(
+        `  ${label}: ${before.length} → ${after.length} (-${before.length - after.length})`,
+      )
   }
 
   let r = html
   console.log(`\nInput: ${r.length} chars`)
 
   const sw = r.slice(0, r.search(/<div[^>]*class="[^"]*shortwave-signature[^"]*"/i) || r.length)
-  step("shortwave-signature", r, sw); if (sw.length < r.length) r = sw
+  step("shortwave-signature", r, sw)
+  if (sw.length < r.length) r = sw
 
-  const gm = r.slice(0, r.search(/<div[^>]*class="[^"]*gmail_(?:quote|extra)[^"]*"/i) > 0 ? r.search(/<div[^>]*class="[^"]*gmail_(?:quote|extra)[^"]*"/i) : r.length)
-  step("gmail_quote/extra", r, gm); if (gm.length < r.length) r = gm
+  const gm = r.slice(
+    0,
+    r.search(/<div[^>]*class="[^"]*gmail_(?:quote|extra)[^"]*"/i) > 0
+      ? r.search(/<div[^>]*class="[^"]*gmail_(?:quote|extra)[^"]*"/i)
+      : r.length,
+  )
+  step("gmail_quote/extra", r, gm)
+  if (gm.length < r.length) r = gm
 
   const ol = r.search(/<div[^>]*id="divRplyFwdMsg"/i)
-  if (ol > 0) { step("Outlook divRplyFwdMsg", r, r.slice(0, ol)); r = r.slice(0, ol) }
+  if (ol > 0) {
+    step("Outlook divRplyFwdMsg", r, r.slice(0, ol))
+    r = r.slice(0, ol)
+  }
 
   const hr = r.search(/<hr[^>]*tabindex="-1"[^>]*>/i)
-  if (hr > 0) { const cut = findBlockStart(r, hr); step("Outlook <hr tabindex=-1>", r, r.slice(0, cut)); r = r.slice(0, cut) }
+  if (hr > 0) {
+    const cut = findBlockStart(r, hr)
+    step("Outlook <hr tabindex=-1>", r, r.slice(0, cut))
+    r = r.slice(0, cut)
+  }
 
   let prev = r
-  do { prev = r; r = r.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "") } while (r !== prev)
-  step("blockquote removal", html.slice(0, prev.length > html.length ? html.length : prev.length), r)
+  do {
+    prev = r
+    r = r.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
+  } while (r !== prev)
+  step(
+    "blockquote removal",
+    html.slice(0, prev.length > html.length ? html.length : prev.length),
+    r,
+  )
 
   const ubq = r.search(/<blockquote[^>]*>/i)
-  if (ubq > 0) { const cut = findBlockStart(r, ubq); step("unclosed blockquote", r, r.slice(0, cut)); r = r.slice(0, cut) }
+  if (ubq > 0) {
+    const cut = findBlockStart(r, ubq)
+    step("unclosed blockquote", r, r.slice(0, cut))
+    r = r.slice(0, cut)
+  }
 
   const attrBefore = r
   r = r.replace(/<div[^>]*class="[^"]*gmail_attr[^"]*"[^>]*>[\s\S]*?<\/div>/gi, "")
   step("gmail_attr", attrBefore, r)
 
   console.log(`\nPre-text-pattern: ${r.length} chars`)
-  let earliest = Infinity, bestName = "", bestIdx = -1
+  let earliest = Infinity,
+    bestName = "",
+    bestIdx = -1
   for (const [name, pattern] of PATTERNS) {
     const m = r.match(pattern)
     if (m?.index && m.index > 0) {
       console.log(`  [MATCH] ${name} at index ${m.index}`)
-      if (m.index < earliest) { earliest = m.index; bestName = name; bestIdx = m.index }
+      if (m.index < earliest) {
+        earliest = m.index
+        bestName = name
+        bestIdx = m.index
+      }
     } else {
       console.log(`  [    ] ${name}`)
     }
@@ -127,7 +170,9 @@ function verboseClean(html: string) {
   const finalActual = cleanHtmlEmail(html)
   console.log(`Actual cleanHtmlEmail output: ${finalActual.length} chars`)
   if (r.length !== finalActual.length) {
-    console.log(`  (difference of ${Math.abs(r.length - finalActual.length)} from signature/blank cleanup)`)
+    console.log(
+      `  (difference of ${Math.abs(r.length - finalActual.length)} from signature/blank cleanup)`,
+    )
   }
 }
 

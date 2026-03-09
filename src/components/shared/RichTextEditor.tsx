@@ -115,7 +115,9 @@ export function RichTextEditor({
   autofocus = false,
 }: RichTextEditorProps) {
   const onCmdEnterRef = useRef<(() => void) | undefined>(onCmdEnter)
-  useEffect(() => { onCmdEnterRef.current = onCmdEnter }, [onCmdEnter])
+  useEffect(() => {
+    onCmdEnterRef.current = onCmdEnter
+  }, [onCmdEnter])
 
   // Track last emitted markdown to avoid cursor reset on external updates
   const lastEmittedRef = useRef<string>(value)
@@ -129,7 +131,12 @@ export function RichTextEditor({
       TaskItem.configure({ nested: true }),
       CodeBlockLowlight.configure({ lowlight }),
       Link.configure({ openOnClick: false }),
-      Markdown.configure({ html: false, tightLists: true, transformPastedText: true, transformCopiedText: true }),
+      Markdown.configure({
+        html: false,
+        tightLists: true,
+        transformPastedText: true,
+        transformCopiedText: true,
+      }),
       createSlashCommandExtension(onCmdEnterRef as React.RefObject<(() => void) | undefined>),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,10 +174,7 @@ export function RichTextEditor({
       className={`relative rounded-md border border-input bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${disabled ? "opacity-50 pointer-events-none" : ""} ${className}`}
     >
       {editor && (
-        <BubbleMenu
-          editor={editor}
-          className="rich-text-bubble-menu"
-        >
+        <BubbleMenu editor={editor} className="rich-text-bubble-menu">
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleBold().run()}

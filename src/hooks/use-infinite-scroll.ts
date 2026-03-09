@@ -1,25 +1,23 @@
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
+import type { Virtualizer } from "@tanstack/react-virtual"
 
-export function useInfiniteScroll(
+/**
+ * Triggers `loadMore` when the virtualizer's visible range approaches the end of the list.
+ * `overscan` is how many items from the end to trigger (default 5).
+ */
+export function useVirtualInfiniteScroll(
+  virtualizer: Virtualizer<HTMLDivElement, Element>,
   loadMore: () => void,
   hasMore: boolean,
   loading: boolean,
+  overscan = 12,
 ) {
-  const sentinelRef = useRef<HTMLDivElement>(null)
+  const range = virtualizer.range
 
   useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !hasMore || loading) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadMore()
-      },
-      { rootMargin: "200px" },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [loadMore, hasMore, loading])
-
-  return sentinelRef
+    if (!hasMore || loading || !range) return
+    if (range.endIndex >= virtualizer.options.count - overscan) {
+      loadMore()
+    }
+  }, [range?.endIndex, virtualizer.options.count, hasMore, loading, loadMore, overscan])
 }
