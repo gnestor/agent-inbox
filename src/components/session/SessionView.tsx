@@ -152,7 +152,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isRunning ? "Session is running..." : "Send a message to resume this session..."
+              isRunning ? "Session is running..." : "Write a prompt..."
             }
             disabled={isRunning || sending}
             className="min-h-[40px] max-h-[120px] resize-none"

@@ -47,12 +47,31 @@ export function SessionTranscript({
     overscan: 10,
   })
 
-  // Auto-scroll to bottom when new messages arrive (streaming)
+  // Auto-scroll to bottom when new messages arrive (streaming or initial load).
+  const needsScrollRef = useRef(false)
   useEffect(() => {
-    if (shouldAutoScroll.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (shouldAutoScroll.current && messages.length > 0) {
+      needsScrollRef.current = true
     }
   }, [messages.length])
+
+  // Re-run on every totalSize change (items being measured via ResizeObserver).
+  // Each iteration scrolls toward the last item using best available measurements.
+  // The loop terminates once the last item enters the rendered range, confirming
+  // its position is accurate. This handles both:
+  //   - Small sessions: estimated total < viewport → scrollToIndex says "no scroll
+  //     needed" on first call; re-fires after measurement expands the total size.
+  //   - Large sessions: estimates far from reality → iteratively converges as items
+  //     near the scroll target are rendered and measured each iteration.
+  const totalSize = virtualizer.getTotalSize()
+  useEffect(() => {
+    if (!needsScrollRef.current) return
+    const idx = messages.length - 1
+    virtualizer.scrollToIndex(idx, { align: "end" })
+    if (virtualizer.getVirtualItems().some((vi) => vi.index === idx)) {
+      needsScrollRef.current = false
+    }
+  }, [totalSize])
 
   function handleScroll() {
     if (!scrollRef.current) return
