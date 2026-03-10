@@ -12,6 +12,9 @@ export function useSessionStream(sessionId: string | undefined) {
     if (!sessionId) return
 
     seenSequences.current.clear()
+    setMessages([])
+    setSessionStatus(null)
+    setConnected(false)
     const es = new EventSource(`/api/sessions/${sessionId}/stream`)
     eventSourceRef.current = es
 

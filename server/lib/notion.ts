@@ -141,17 +141,27 @@ export async function queryTasks(filters?: {
 
 async function fetchBlockChildren(blockId: string, depth = 0): Promise<any[]> {
   if (depth > 2) return [] // Limit recursion depth
-  const blocks = await notionRequest(`/blocks/${blockId}/children`)
-  const results = blocks.results || []
+
+  // Paginate through all blocks (Notion returns max 100 per page)
+  const allResults: any[] = []
+  let cursor: string | undefined
+  do {
+    const url = cursor
+      ? `/blocks/${blockId}/children?start_cursor=${cursor}`
+      : `/blocks/${blockId}/children`
+    const page = await notionRequest(url)
+    allResults.push(...(page.results || []))
+    cursor = page.has_more ? page.next_cursor : undefined
+  } while (cursor)
 
   // Recursively fetch children for blocks that have them
-  for (const block of results) {
+  for (const block of allResults) {
     if (block.has_children) {
       block.children = await fetchBlockChildren(block.id, depth + 1)
     }
   }
 
-  return results
+  return allResults
 }
 
 export async function getTaskDetail(taskId: string) {

@@ -92,6 +92,7 @@
 - [x] CLAUDECODE env exclusion (prevents nested Claude Code sessions from detecting they're inside another CC session)
 - [ ] Email cleaner: handle more Outlook Word quirks (e.g. `<o:p>` noise in visible content)
 - [x] Email cleaner: test coverage (vitest unit tests for each pattern with HTML fixtures)
+- [x] Bug fixes: iframe XSS (sandbox allow-scripts removed), session stream state reset on navigation, statusOverride reset on sessionId change, email-cleaner index-0 match, GET /sessions/:id missing project field, Notion block pagination
 - [ ] Virtualize EmailThread (low priority — typically <20 messages per thread)
 - [x] Key-scoped preference subscriptions (Map<key, Set> — toggling one pref re-renders only that key's subscribers)
 - [x] Stabilize loadMore callback (ref-based guard, removes loadingMore from useCallback deps)

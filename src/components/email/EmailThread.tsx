@@ -156,6 +156,7 @@ export function EmailThread({ threadId, title }: EmailThreadProps) {
 }
 
 function HtmlBody({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const style = getComputedStyle(document.documentElement)
   const fg = style.getPropertyValue("--foreground").trim() || "inherit"
   const bg = "transparent"
@@ -178,22 +179,43 @@ function HtmlBody({ html }: { html: string }) {
     td, th { padding: 2px 4px; }
     h1, h2, h3, h4, h5, h6 { font-size: 13px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
     p { margin: 0.25em 0 !important; }
-  </style></head><body>${html}<script>
-    // Hide broken images
-    document.querySelectorAll('img').forEach(function(img) {
-      img.addEventListener('error', function() { this.style.display = 'none'; });
-      if (img.complete && img.naturalWidth === 0) img.style.display = 'none';
-    });
-    // Auto-size iframe height
-    new ResizeObserver(function() {
-      if (window.frameElement) window.frameElement.style.height = document.body.scrollHeight + 'px';
-    }).observe(document.body);
-  </script></body></html>`
+  </style></head><body>${html}</body></html>`
+
+  // Size the iframe from the parent using allow-same-origin DOM access (no scripts needed)
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    function syncHeight() {
+      const body = iframe!.contentDocument?.body
+      if (body) iframe!.style.height = body.scrollHeight + "px"
+    }
+
+    iframe.addEventListener("load", syncHeight)
+
+    let ro: ResizeObserver | undefined
+    function onLoad() {
+      syncHeight()
+      const body = iframe!.contentDocument?.body
+      if (body) {
+        ro = new ResizeObserver(syncHeight)
+        ro.observe(body)
+      }
+    }
+    iframe.addEventListener("load", onLoad)
+
+    return () => {
+      iframe.removeEventListener("load", syncHeight)
+      iframe.removeEventListener("load", onLoad)
+      ro?.disconnect()
+    }
+  }, [srcDoc])
 
   return (
     <iframe
+      ref={iframeRef}
       srcDoc={srcDoc}
-      sandbox="allow-same-origin allow-popups allow-scripts"
+      sandbox="allow-same-origin allow-popups"
       className="w-full border-0 overflow-hidden"
       style={{ height: 0 }}
     />

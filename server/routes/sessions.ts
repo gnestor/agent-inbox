@@ -124,6 +124,7 @@ sessionRoutes.get("/:id", async (c) => {
         linkedEmailThreadId: session.linked_email_thread_id,
         linkedTaskId: session.linked_task_id,
         triggerSource: session.trigger_source,
+        project: sessions.projectLabel(sessions.getWorkspacePath()),
       },
       messages: messages.map((m) => ({
         id: m.id,

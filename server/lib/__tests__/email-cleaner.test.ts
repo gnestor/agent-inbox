@@ -398,4 +398,12 @@ describe("cleanHtmlEmail — real Gmail fixtures", () => {
     expect(result.length).toBeGreaterThan(raw.length * 0.8)
     expect(result).not.toMatch(/border:none;border-top:solid/)
   })
+
+  it("strips quote pattern that starts at index 0 (email is entirely a quoted reply)", () => {
+    // If the "On ... wrote:" pattern is at position 0, match.index === 0 which is
+    // falsy — the old code skipped it. Verify we now truncate to empty.
+    const raw = `<div>On Mon, 1 Jan 2024 at 10:00, Alice &lt;alice@example.com&gt; wrote:<blockquote>Original message</blockquote></div>`
+    const result = cleanHtmlEmail(raw)
+    expect(result.trim()).toBe("")
+  })
 })

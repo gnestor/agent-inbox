@@ -166,7 +166,7 @@ export function cleanHtmlEmail(html: string): string {
     const match = result.match(pattern)
     if (process.env.DEBUG_CLEANER)
       console.log(`[cleaner] pattern ${pattern} → index=${match?.index}`)
-    if (match?.index && match.index > 0 && match.index < earliestIndex) {
+    if (match?.index != null && match.index < earliestIndex) {
       earliestIndex = match.index
       earliestMatchIndex = match.index
     }

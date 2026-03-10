@@ -35,6 +35,11 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // Stream for live updates
   const stream = useSessionStream(sessionId)
 
+  // Reset local overrides when navigating to a different session
+  useEffect(() => {
+    setStatusOverride(undefined)
+  }, [sessionId])
+
   // Update status override from stream
   useEffect(() => {
     if (stream.sessionStatus) setStatusOverride(stream.sessionStatus as SessionStatus)
