@@ -8,6 +8,10 @@ import {
   TableBody,
   TableRow,
   TableCell,
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -119,63 +123,72 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     <div className="flex flex-col h-full">
       {header}
       <ScrollArea className="flex-1 overflow-hidden">
-        <div className="p-4 space-y-4">
-          <Table>
-            <TableBody>
-              <TableRow>
-                <TableCell className="text-muted-foreground font-medium">Status</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs",
-                      taskStatusBadgeClass(task.status) ||
-                        "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
-                    )}
-                  >
-                    {task.status || "—"}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-              {task.priority && (
-                <TableRow>
-                  <TableCell className="text-muted-foreground font-medium">Priority</TableCell>
-                  <TableCell>{task.priority}</TableCell>
-                </TableRow>
-              )}
-              {task.tags.length > 0 && (
-                <TableRow>
-                  <TableCell className="text-muted-foreground font-medium">Tags</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {task.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag}
+        <Accordion defaultValue={[]}>
+          <AccordionItem value="details" className="border-b">
+            <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
+              Details
+            </AccordionTrigger>
+            <AccordionContent className="pb-0">
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="text-muted-foreground font-medium">Status</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-xs",
+                            taskStatusBadgeClass(task.status) ||
+                              "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
+                          )}
+                        >
+                          {task.status || "—"}
                         </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {(task.assignee || createdBy) && (
-                <TableRow>
-                  <TableCell className="text-muted-foreground font-medium">Assignee</TableCell>
-                  <TableCell>{task.assignee || createdBy}</TableCell>
-                </TableRow>
-              )}
-              {dueDate && (
-                <TableRow>
-                  <TableCell className="text-muted-foreground font-medium">Due Date</TableCell>
-                  <TableCell>{new Date(dueDate).toLocaleDateString()}</TableCell>
-                </TableRow>
-              )}
-              <TableRow>
-                <TableCell className="text-muted-foreground font-medium">Updated</TableCell>
-                <TableCell>{formatRelativeDate(task.updatedAt)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                      </TableCell>
+                    </TableRow>
+                    {task.priority && (
+                      <TableRow>
+                        <TableCell className="text-muted-foreground font-medium">Priority</TableCell>
+                        <TableCell>{task.priority}</TableCell>
+                      </TableRow>
+                    )}
+                    {task.tags.length > 0 && (
+                      <TableRow>
+                        <TableCell className="text-muted-foreground font-medium">Tags</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {task.tags.map((tag) => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {(task.assignee || createdBy) && (
+                      <TableRow>
+                        <TableCell className="text-muted-foreground font-medium">Assignee</TableCell>
+                        <TableCell>{task.assignee || createdBy}</TableCell>
+                      </TableRow>
+                    )}
+                    {dueDate && (
+                      <TableRow>
+                        <TableCell className="text-muted-foreground font-medium">Due Date</TableCell>
+                        <TableCell>{new Date(dueDate).toLocaleDateString()}</TableCell>
+                      </TableRow>
+                    )}
+                    <TableRow>
+                      <TableCell className="text-muted-foreground font-medium">Updated</TableCell>
+                      <TableCell>{formatRelativeDate(task.updatedAt)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
+        <div className="p-4">
           <NotionBlockRenderer blocks={task.children} />
         </div>
       </ScrollArea>

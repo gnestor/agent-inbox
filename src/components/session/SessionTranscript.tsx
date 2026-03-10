@@ -99,32 +99,41 @@ export function SessionTranscript({
       className="h-full overflow-y-auto overflow-x-hidden"
       onScroll={handleScroll}
     >
-      <div className="p-4 space-y-4 min-w-0">
-        {status && (
-          <Table>
-            <TableBody>
-              <TableRow>
-                <TableCell className="text-muted-foreground font-medium">Status</TableCell>
-                <TableCell>
-                  <span className={`text-xs font-medium ${sessionStatusColor(status)}`}>
-                    {sessionStatusLabel(status)}
-                  </span>
-                  {isLive && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-2">
-                      Live
-                    </Badge>
-                  )}
-                </TableCell>
-              </TableRow>
-              {(messageCount ?? 0) > 0 && (
-                <TableRow>
-                  <TableCell className="text-muted-foreground font-medium">Messages</TableCell>
-                  <TableCell>{messageCount}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+      {status && (
+        <Accordion defaultValue={[]}>
+          <AccordionItem value="details" className="border-b">
+            <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
+              Details
+            </AccordionTrigger>
+            <AccordionContent className="pb-0">
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="text-muted-foreground font-medium">Status</TableCell>
+                      <TableCell>
+                        <span className={`text-xs font-medium ${sessionStatusColor(status)}`}>
+                          {sessionStatusLabel(status)}
+                        </span>
+                        {isLive && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-2">
+                            Live
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {(messageCount ?? 0) > 0 && (
+                      <TableRow>
+                        <TableCell className="text-muted-foreground font-medium">Messages</TableCell>
+                        <TableCell>{messageCount}</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
+      <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
