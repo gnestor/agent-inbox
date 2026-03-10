@@ -25,6 +25,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
+    refetchOnMount: true, // refetch when stale (e.g. session completed while panel was not open)
   })
   // Track status overrides from SSE stream and mutations independently of query data.
   // This avoids the useState(data?.session.status) bug where the initial value is
