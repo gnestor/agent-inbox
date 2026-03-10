@@ -22,10 +22,12 @@ import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
 const DURATION = 0.5
 
+const ITEM_GAP = 16 // px gap between panels during list item navigation
+
 const itemVariants = {
-  enter: (d: number) => ({ y: `${d * 100}%` }),
+  enter: (d: number) => ({ y: d >= 0 ? `calc(100% + ${ITEM_GAP}px)` : `calc(-100% - ${ITEM_GAP}px)` }),
   center: { y: 0 },
-  exit: (d: number) => ({ y: `${-d * 100}%` }),
+  exit: (d: number) => ({ y: d >= 0 ? `calc(-100% - ${ITEM_GAP}px)` : `calc(100% + ${ITEM_GAP}px)` }),
 }
 
 // Parse current URL into panel state for the active tab
