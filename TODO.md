@@ -36,6 +36,8 @@
 - [x] Prompt templates (save/load named templates in new-session panel, persisted to preferences)
 - [x] AskUserQuestion panels (agent pauses mid-session, frontend shows interactive form, answers injected as tool result via canUseTool + pending Promise)
 - [x] Auto-start sessions from detail view (skip ComposePanel; fires createSession immediately with <ide_opened_file> prompt including subject/title and URL)
+- [x] Open Session button (email/task detail shows "Open Session" instead of "Start Session" when a linked session already exists, using linked_email_thread_id/linked_task_id)
+- [x] Skill context blocks in transcript (user-role "Base directory for this skill:" messages rendered as collapsed accordion with Wrench icon)
 - [ ] Suggested prompts
 - [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
@@ -45,6 +47,10 @@
 - [x] Persistent app state (navigation state, open panels, per-tab selection saved to localStorage)
 - [x] Refresh on focus (all list hooks refetch when window regains focus)
 - [x] IDE context display in session transcript (file opens + line selections shown as file chips on user messages)
+- [ ] Filter session transcripts
+  - [ ] Details level (User/agent messages, thinking, tool calls, etc.)
+  - [ ] Date
+  - [ ] Query?
 
 ## Phase 3: Webhooks + Automation + Polish
 
@@ -95,6 +101,8 @@
 - [ ] Email cleaner: handle more Outlook Word quirks (e.g. `<o:p>` noise in visible content)
 - [x] Email cleaner: test coverage (vitest unit tests for each pattern with HTML fixtures)
 - [x] Bug fixes: iframe XSS (sandbox allow-scripts removed), session stream state reset on navigation, statusOverride reset on sessionId change, email-cleaner index-0 match, GET /sessions/:id missing project field, Notion block pagination
+- [x] Session panel UX: X close button on session view; hide Start Session when session panel is open; auto-scroll desktop panel stack to newly opened panel
+- [x] Sessions list staleness fix: refetchOnMount:true override in useSessions and session detail query (staleTime:Infinity + refetchOnMount:false globals don't refetch after invalidation)
 - [ ] Virtualize EmailThread (low priority — typically <20 messages per thread)
 - [x] Key-scoped preference subscriptions (Map<key, Set> — toggling one pref re-renders only that key's subscribers)
 - [x] Stabilize loadMore callback (ref-based guard, removes loadingMore from useCallback deps)

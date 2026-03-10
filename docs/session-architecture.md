@@ -60,20 +60,63 @@ Control events use `type` directly (no `sequence`):
 ```json
 { "type": "session_complete", "status": "complete" }
 { "type": "session_error", "error": "..." }
+{ "type": "ask_user_question", "questions": [...] }
 ```
 
 ### 3. Client: `useSessionStream`
 
 ```ts
 const stream = useSessionStream(sessionId)
-// stream.messages   — all received SessionMessage[]
-// stream.connected  — EventSource open
-// stream.sessionStatus — "complete" | "errored" | null
+// stream.messages        — all received SessionMessage[]
+// stream.connected       — EventSource open
+// stream.sessionStatus   — "complete" | "errored" | "awaiting_user_input" | null
+// stream.pendingQuestion — { questions: AskUserQuestion[] } | null
+// stream.clearPendingQuestion() — clears pendingQuestion after answer submitted
 ```
 
 Key detail: `seenSequences` ref guards against duplicate delivery. The SSE endpoint replays all existing messages on every connect (for catch-up), so if the client reconnects mid-session it would see messages twice without this guard. The ref is cleared on `sessionId` change.
 
-### 4. Resume (`POST /api/sessions/:id/resume`)
+### 4. AskUserQuestion (`POST /api/sessions/:id/answer`)
+
+The agent can pause mid-session to ask the user a question via the `AskUserQuestion` built-in tool. The mechanism:
+
+1. `makeCanUseTool(getSessionId)` builds a `canUseTool` callback passed to `query()` in both `startSession` and `resumeSessionQuery`
+2. When the SDK calls the callback with `toolName === "AskUserQuestion"`:
+   - Calls `updateSessionStatus(sessionId, "awaiting_user_input")`
+   - Broadcasts `{ type: "ask_user_question", questions: [...] }` to SSE clients
+   - `await`s a `new Promise` stored in `pendingQuestions: Map<sessionId, resolver>`
+3. Frontend's `useSessionStream` receives the SSE event, sets `pendingQuestion` and `sessionStatus = "awaiting_user_input"`
+4. `SessionView` renders `<AskUserPanel>` in place of the chat input when `pendingQuestion != null`
+5. On submit: `answerSessionQuestion()` calls `POST /api/sessions/:id/answer` with `{ answers }`
+6. `provideAskUserAnswer()` resolves the pending promise, unblocking `canUseTool`
+7. `canUseTool` returns `{ behavior: "allow", updatedInput: { ...input, answers } }` — the SDK injects the answers as the tool result and the agent continues
+
+**Abort safety:** `abortRunningSession()` also deletes from `pendingQuestions` so aborted sessions don't leak pending promises.
+
+```
+agent calls AskUserQuestion
+  → canUseTool pauses (await Promise)
+  → broadcasts ask_user_question SSE event
+  → frontend shows AskUserPanel
+user submits answers
+  → POST /api/sessions/:id/answer
+  → provideAskUserAnswer() resolves Promise
+  → canUseTool returns { behavior: "allow", updatedInput: { answers } }
+  → SDK continues with answers as tool result
+```
+
+### 5. Linked sessions (`GET /api/sessions/linked`)
+
+Sessions created from an email/task store the source ID in `linked_email_thread_id` / `linked_task_id` columns. `getLinkedSession(threadId?, taskId?)` queries for the most recent session linked to that item.
+
+The frontend uses this to show "Open Session" instead of "Start Session" in email/task detail views when a linked session already exists:
+```ts
+const { data } = useQuery({ queryKey: ["linked-session", "thread", threadId], queryFn: () => getLinkedSession(threadId) })
+const linkedSession = data?.session
+// Button: linkedSession ? navigate to session URL : navigate to new session URL
+```
+
+### 6. Resume (`POST /api/sessions/:id/resume`)
 
 `resumeSessionQuery(sessionId, prompt)` in `session-manager.ts`:
 
@@ -87,7 +130,7 @@ Key detail: `seenSequences` ref guards against duplicate delivery. The SSE endpo
 2. Calls `query({ prompt, options: { resume: sessionId, ... } })` — Agent SDK resumes the session from its saved state
 3. Continues appending/broadcasting SDK messages like `startSession`
 
-### 5. Transcript rendering (`SessionTranscript`)
+### 7. Transcript rendering (`SessionTranscript`)
 
 Messages are rendered by `TranscriptEntry` (memo-wrapped) inside a TanStack Virtual virtualizer. Each entry is an `Accordion` block:
 
@@ -95,11 +138,14 @@ Messages are rendered by `TranscriptEntry` (memo-wrapped) inside a TanStack Virt
 |---|---|
 | `system:init` | Hidden |
 | `system:result` / `result` in msg | Result accordion (open by default) |
-| `user` / `role:user` | "You" accordion, text + IDE file chips |
+| `user` / `role:user` (normal) | "You" accordion, text + IDE file chips |
+| `user` / `role:user` (skill context) | Collapsed accordion with `Wrench` icon + skill directory name |
 | `assistant` → `text` block | "Claude" text accordion (markdown) |
 | `assistant` → `tool_use` block | Tool name + summary + JSON input |
 | `assistant` → `thinking` block | "Thinking" accordion |
 | `tool_result` | Hidden |
+
+**Skill context blocks:** When the agent SDK runs a skill (e.g. Gmail fetch), it injects a user-role message starting with `"Base directory for this skill: ..."`. `extractSkillBlock()` detects this, extracts the skill name from the directory path's last segment, and renders it as a collapsed accordion with a `Wrench` icon — keeping the transcript clean.
 
 **IDE context chips:** User messages from Claude Code VSCode extension include `<ide_opened_file>` and `<ide_selection>` blocks. `parseIdeContext()` extracts these and renders them as compact file reference chips below the message text:
 
