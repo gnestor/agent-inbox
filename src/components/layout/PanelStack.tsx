@@ -195,13 +195,15 @@ function DetailContent({
   tab,
   selectedId,
   title,
+  sessionOpen,
 }: {
   tab: TabId
   selectedId: string
   title: string
+  sessionOpen?: boolean
 }) {
-  if (tab === "emails") return <EmailThread threadId={selectedId} title={title} />
-  if (tab === "tasks") return <TaskDetail taskId={selectedId} title={title} />
+  if (tab === "emails") return <EmailThread threadId={selectedId} title={title} sessionOpen={sessionOpen} />
+  if (tab === "tasks") return <TaskDetail taskId={selectedId} title={title} sessionOpen={sessionOpen} />
   return <SessionView sessionId={selectedId} title={title} />
 }
 
@@ -231,7 +233,7 @@ function ItemSlider({
         style={{ zIndex: 2 }}
         className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
       >
-        <DetailContent tab={tab} selectedId={id} title={title} />
+        <DetailContent tab={tab} selectedId={id} title={title} sessionOpen={sOpen} />
       </div>
       <AnimatePresence>
         {tab !== "sessions" && sOpen && (
@@ -249,7 +251,6 @@ function ItemSlider({
                 threadId={tab === "emails" ? id : undefined}
                 taskId={tab === "tasks" ? id : undefined}
                 sessionId={sId}
-                autoStart={!sId}
               />
             </div>
           </motion.div>
@@ -373,7 +374,8 @@ function TabPane({
     prevSessionOpen.current = sessionOpen
 
     if (panelAdded) {
-      el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
+      // Defer until after AnimatePresence has mounted the new panel into the DOM
+      requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: "smooth" }))
     } else if (panelRemoved) {
       // Scroll back to show the panel that remains after dismissal
       const targetLeft = !selectedId ? 0 : el.scrollLeft - 616 // 600px panel + 16px gap
@@ -411,7 +413,7 @@ function TabPane({
           hasNextTab={hasNextTab}
           skipEntrance={skipEntrance}
         >
-          {selectedId && <DetailContent tab={tab} selectedId={selectedId} title={selectedTitle} />}
+          {selectedId && <DetailContent tab={tab} selectedId={selectedId} title={selectedTitle} sessionOpen={sessionOpen} />}
         </MobileOverlayPanel>
         <MobileOverlayPanel
           zIndex={20}
@@ -427,7 +429,6 @@ function TabPane({
               threadId={tab === "emails" ? selectedId : undefined}
               taskId={tab === "tasks" ? selectedId : undefined}
               sessionId={sessionId}
-              autoStart={!sessionId}
             />
           )}
         </MobileOverlayPanel>

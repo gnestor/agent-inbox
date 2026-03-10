@@ -24,9 +24,10 @@ import { NotionBlockRenderer } from "./NotionBlockRenderer"
 interface TaskDetailProps {
   taskId: string
   title?: string
+  sessionOpen?: boolean
 }
 
-export function TaskDetail({ taskId, title }: TaskDetailProps) {
+export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
   const navigate = useNavigate()
   const { data: task, isLoading: loading, error: queryError } = useQuery({
     queryKey: ["task", taskId],
@@ -66,10 +67,12 @@ export function TaskDetail({ taskId, title }: TaskDetailProps) {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => navigate(`/tasks/${taskId}/session/new`)} size="sm">
-            <Bot className="h-4 w-4 md:mr-1" />
-            <span className="hidden md:inline">Start Session</span>
-          </Button>
+          {!sessionOpen && (
+            <Button onClick={() => navigate(`/tasks/${taskId}/session/new`)} size="sm">
+              <Bot className="h-4 w-4 md:mr-1" />
+              <span className="hidden md:inline">Start Session</span>
+            </Button>
+          )}
         </>
       }
     />

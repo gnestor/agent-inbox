@@ -21,9 +21,10 @@ import type { GmailMessage } from "@/types"
 interface EmailThreadProps {
   threadId: string
   title?: string
+  sessionOpen?: boolean
 }
 
-export function EmailThread({ threadId, title }: EmailThreadProps) {
+export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) {
   const { thread, loading, error } = useEmailThread(threadId)
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -95,10 +96,12 @@ export function EmailThread({ threadId, title }: EmailThreadProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => navigate(`/emails/${threadId}/session/new`)} size="sm">
-            <Bot className="h-4 w-4 md:mr-1" />
-            <span className="hidden md:inline">Start Session</span>
-          </Button>
+          {!sessionOpen && (
+            <Button onClick={() => navigate(`/emails/${threadId}/session/new`)} size="sm">
+              <Bot className="h-4 w-4 md:mr-1" />
+              <span className="hidden md:inline">Start Session</span>
+            </Button>
+          )}
         </>
       }
     />

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Textarea } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2 } from "lucide-react"
+import { Send, Square, Loader2, X } from "lucide-react"
 import { getSession, resumeSession, abortSession, answerSessionQuestion } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
@@ -106,17 +106,26 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
         </>
       }
       right={
-        isRunning ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => abortMutation.mutate()}
-            disabled={abortMutation.isPending}
+        <div className="flex items-center gap-1">
+          {isRunning && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => abortMutation.mutate()}
+              disabled={abortMutation.isPending}
+            >
+              <Square className="h-3 w-3 mr-1" />
+              Stop
+            </Button>
+          )}
+          <button
+            type="button"
+            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            onClick={() => navigate(parentPath)}
           >
-            <Square className="h-3 w-3 mr-1" />
-            Stop
-          </Button>
-        ) : undefined
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       }
     />
   )
