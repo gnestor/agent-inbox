@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Input } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
@@ -35,25 +36,21 @@ export function NewSessionPanel({ threadId, taskId, sessionId }: NewSessionPanel
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const isMobile = useIsMobile()
   const [prompt, setPrompt] = useState("")
   const [ready, setReady] = useState(false)
-  const [sending, setSending] = useState(false)
   const [savingName, setSavingName] = useState("")
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
 
-  // Fetch linked data and build initial prompt
+  // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
   const { thread } = useEmailThread(threadId)
-  const [task, setTask] = useState<NotionTaskDetail | null>(null)
-
-  useEffect(() => {
-    if (taskId) {
-      getTask(taskId)
-        .then(setTask)
-        .catch(() => {})
-    }
-  }, [taskId])
+  const { data: task } = useQuery<NotionTaskDetail>({
+    queryKey: ["task", taskId],
+    queryFn: () => getTask(taskId!),
+    enabled: !!taskId,
+  })
 
   useEffect(() => {
     if (threadId && thread) {
@@ -71,30 +68,26 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     }
   }, [task, taskId])
 
-  function parentPath() {
-    if (threadId) return `/inbox/${threadId}`
-    if (taskId) return `/tasks/${taskId}`
-    return "/"
-  }
-
-  async function handleStart() {
-    if (!prompt.trim() || sending) return
-    setSending(true)
-    try {
-      const { sessionId } = await createSession({
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createSession({
         prompt,
         linkedEmailThreadId: thread?.id,
         linkedEmailId: thread?.messages[0]?.id,
         linkedTaskId: task?.id,
-      })
-      // Navigate to the session URL — the same column instance stays mounted
+      }),
+    onSuccess: ({ sessionId }) => {
+      qc.invalidateQueries({ queryKey: ["sessions"] })
       if (threadId) navigate(`/inbox/${threadId}/session/${sessionId}`)
       else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
-    } catch (err: any) {
-      console.error("Failed to start session:", err)
-    } finally {
-      setSending(false)
-    }
+    },
+    onError: (err: any) => console.error("Failed to start session:", err),
+  })
+
+  function parentPath() {
+    if (threadId) return `/inbox/${threadId}`
+    if (taskId) return `/tasks/${taskId}`
+    return "/"
   }
 
   function handleSaveTemplate() {
@@ -104,6 +97,8 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     setSavingName("")
     setShowSaveInput(false)
   }
+
+  const sending = createMutation.isPending
 
   return (
     <div className="flex flex-col h-full">
@@ -162,7 +157,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
         <RichTextEditor
           value={ready ? prompt : ""}
           onChange={setPrompt}
-          onCmdEnter={handleStart}
+          onCmdEnter={() => createMutation.mutate()}
           placeholder={ready ? "Describe what you want the agent to do..." : "Loading..."}
           disabled={!ready}
           className="flex-1 min-h-[200px]"
@@ -213,7 +208,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
         <Button
-          onClick={handleStart}
+          onClick={() => createMutation.mutate()}
           disabled={!prompt.trim() || !ready || sending}
           className="w-full"
         >

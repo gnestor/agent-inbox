@@ -1,68 +1,66 @@
 # Caching Architecture
 
-The app uses a two-layer cache: server-side SQLite for API call reduction, and client-side localStorage for instant UI rendering.
+The app uses a two-layer cache: server-side SQLite for Gmail incremental sync state, and client-side TanStack Query backed by IndexedDB for all API data.
+
+## Client-Side (TanStack Query + IndexedDB)
+
+All API data is cached in-memory by TanStack Query and persisted to IndexedDB via `idb-keyval`. The cache key is `INBOX_QUERY_CACHE`.
+
+Set up in `src/main.tsx` via `PersistQueryClientProvider` + `createAsyncStoragePersister`.
+QueryClient config is in `src/lib/queryClient.ts`.
+
+### Query Keys
+
+| Query Key | Hook / Component | Notes |
+|---|---|---|
+| `["emails", query]` | `useEmails` | `useInfiniteQuery` with `nextPageToken` |
+| `["tasks", filters]` | `useTasks` | `useInfiniteQuery` with `nextCursor` |
+| `["sessions", filters]` | `useSessions` | `useQuery` |
+| `["session", id]` | `SessionView` | `useQuery` |
+| `["task", id]` | `TaskDetail` | `useQuery` |
+| `["thread", id]` | `useEmailThread` | `useQuery`; shared with `NewSessionPanel` |
+
+### Caching Strategy
+
+`staleTime: Infinity` globally — data never auto-refetches within a session. `gcTime: 24h` must exceed `staleTime` for the IndexedDB persister to store data between page loads.
+
+`refetchOnWindowFocus: false` and `refetchOnMount: false` are set globally to prevent spurious refetches on tab switches or component remounts.
+
+### Page-Load Refresh
+
+On page load, `PersistQueryClientProvider` restores cached data from IndexedDB instantly (no loading spinner for returning users). The `onSuccess` callback then calls `queryClient.invalidateQueries()`, which marks all restored queries stale and triggers background refetches for any active subscribers. This ensures fresh data is fetched once per page load without blocking the initial render.
+
+### Request Deduplication
+
+If multiple components mount and request the same `queryKey`, TanStack deduplicates to a single in-flight request.
 
 ## Server-Side (SQLite `api_cache`)
 
-Reduces external API calls to Gmail, Notion, and the filesystem.
+Only one server-side cache remains — the Gmail incremental sync state. All other server caches were removed when TanStack Query was adopted.
 
-| Cache Key Pattern | TTL | Purpose |
-|---|---|---|
-| `gmail:messages:*` | 5 min | Email list queries |
-| `gmail:sync:*` | 24h | Gmail History API sync state (historyId + thread list) |
-| `gmail:thread:*` | 5 min | Full thread detail |
-| `gmail:message:*` | 5 min | Individual message |
-| `gmail:labels` | 10 min | Label list |
-| `sessions:agent-list` | 1 min | Agent SDK session scan (reads ~/.claude/projects/) |
-| `sessions:transcript:*` | 5 min | Session JSONL transcript parse |
-| `session:projects` | 5 min | Project name list |
+### Gmail Incremental Sync (`gmail:sync:*`, 24h TTL)
 
-### Gmail Incremental Sync
+The first-page email list request uses a sync protocol to avoid full Gmail API rescans:
 
-The first-page email list uses a sync protocol:
-1. **Cache hit** → return immediately
-2. **Incremental sync** → use saved `historyId` to fetch only changes via Gmail History API, merge into cached thread list
-3. **Full sync** → fetch from scratch, save `historyId` for next sync
+1. **No sync state** → full fetch from Gmail API, save `historyId` + thread list
+2. **Sync state exists** → call Gmail History API with saved `historyId`, get only changed thread IDs, fetch updated summaries, merge into cached thread list
+3. **History gone (410)** → fall back to full fetch, reset sync state
+
+This state must stay server-side because:
+- Only the server has the OAuth credentials to call the Gmail API
+- The `historyId` is a server-held cursor into Gmail's change log
 
 ### Session List Optimization
 
-`listAllAgentSessions()` scans all `.jsonl` files in `~/.claude/projects/`. To avoid reading 1.3GB+ of session data:
-- Only the first 20 and last 10 lines of each file are read (using `fs.readSync` with byte offsets)
-- Head lines provide `cwd` and `firstPrompt`; tail lines provide `summary` (result message)
-- Result is cached for 1 minute via `staleWhileRevalidate`
+`listAllAgentSessions()` scans all `.jsonl` files in `~/.claude/projects/`. To avoid reading gigabytes of session data:
+- Only the first 20 and last 10 lines of each file are read (via `fs.readSync` with byte offsets)
+- Head lines provide `cwd` and `firstPrompt`; tail lines provide `summary`
 
-## Client-Side (localStorage)
+## Navigation State (localStorage)
 
-Provides instant rendering on page load / tab switch while fresh data loads in background.
+App navigation state is persisted to localStorage separately from API data — TanStack Query does not manage this.
 
-### List Cache (`src/lib/list-cache.ts`)
-
-Key prefix: `lc:`. Used by all data hooks.
-
-| Key Pattern | Data |
-|---|---|
-| `lc:emails:{query}` | `{ messages, nextPageToken }` |
-| `lc:tasks:{filterKey}` | `{ tasks, nextCursor }` |
-| `lc:sessions:{filterKey}` | `Session[]` |
-| `lc:session:{id}` | `{ session, messages }` |
-| `lc:task:{id}` | `NotionTaskDetail` |
-
-**Stale-while-revalidate pattern:**
-1. On hook mount, read from `localStorage` → set as initial state (no loading spinner)
-2. Fetch from API in parallel
-3. When API responds, update state and overwrite cache
-
-If localStorage is full, the oldest half of `lc:` entries are evicted.
-
-### Navigation State (`src/hooks/use-spatial-nav.tsx`)
-
-Key: `spatial-nav-state`. Persists:
+Key: `spatial-nav-state` (`src/hooks/use-spatial-nav.tsx`). Persists:
 - Current pathname (restored on app load via `getSavedPathname()`)
 - Per-tab panel state (which item is selected on each tab)
 - Per-item session state (which items had session panels open)
-
-This ensures returning to the app shows the same panels the user left open.
-
-### Refresh on Focus
-
-All list hooks (`useEmails`, `useTasks`, `useSessions`) listen for `window.focus` events and refetch data when the user returns to the browser tab.

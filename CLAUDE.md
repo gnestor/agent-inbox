@@ -50,24 +50,33 @@ data/             # SQLite database (gitignored)
 
 ## Feature Workflow
 
-After implementing a feature, follow this sequence in order:
+**IMPORTANT: These steps are mandatory after EVERY task — not optional.**
 
-1. **Update `TODO.md`** — mark the feature `- [x]` in the relevant section
-2. **Run tests** — `npm run test:ci` must pass (tsc + vitest)
-3. **Commit** — stage only the files for this feature (not unrelated uncommitted changes), then commit with a subject line and body:
+After implementing any feature, fix, or refactor, complete this sequence in order before considering the task done:
+
+1. **Write tests** — every change needs tests. Write them before or alongside the implementation:
+   - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts`
+   - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx`
+   - Do not skip this step even for refactors that preserve the same interface.
+
+2. **Run tests** — `npm run test:ci` must pass (tsc + vitest). Fix failures before proceeding.
+
+3. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
+
+4. **Update docs** — if the change affects architecture, caching, or key patterns, update the relevant file in `docs/`.
+
+5. **Commit** — stage only files for this task, then commit:
    ```
-   feat: short description of what was added
+   feat: short description
 
-   - Bullet summarizing key implementation detail
-   - Another bullet if needed
+   - Key implementation detail
+   - Another detail if needed
    ```
    Use `fix:` for bug fixes, `refactor:` for refactors, `test:` for test-only changes.
 
 ## Testing
 
 Run tests: `npm run test:run` (or `npm test` for watch mode).
-
-**Write tests for every change or new feature** — red first, then green:
 
 - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node environment)
 - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom` at top)

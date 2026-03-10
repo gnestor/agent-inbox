@@ -1,9 +1,6 @@
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 import * as sessions from "../lib/session-manager.js"
-import { staleWhileRevalidate } from "../lib/cache.js"
-
-const SESSION_LIST_TTL = 60_000 // 1 min cache for session list
 
 export const sessionRoutes = new Hono()
 
@@ -40,9 +37,7 @@ sessionRoutes.get("/", async (c) => {
   })
 
   // Also get sessions from Agent SDK (discovers CC sessions not started by us)
-  const agentSessions = await staleWhileRevalidate("sessions:agent-list", SESSION_LIST_TTL, () =>
-    sessions.listAllAgentSessions(),
-  ).catch((err: unknown) => {
+  const agentSessions = await sessions.listAllAgentSessions().catch((err: unknown) => {
     console.error("listAllAgentSessions failed:", err)
     return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
   })
@@ -105,9 +100,7 @@ sessionRoutes.get("/", async (c) => {
 })
 
 sessionRoutes.get("/projects", async (c) => {
-  const projects = await staleWhileRevalidate("session:projects", 300_000, () =>
-    sessions.listProjectOptions(),
-  )
+  const projects = await sessions.listProjectOptions()
   return c.json({ projects })
 })
 
@@ -151,9 +144,7 @@ sessionRoutes.get("/:id", async (c) => {
   }
 
   // Read the transcript from the Agent SDK session (pass cwd so we find the right project)
-  const transcript = await staleWhileRevalidate(`sessions:transcript:${sessionId}`, 300_000, () =>
-    sessions.getAgentSessionTranscript(sessionId, agentSession.cwd),
-  )
+  const transcript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
 
   return c.json({
     session: {

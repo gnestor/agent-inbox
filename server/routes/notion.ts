@@ -1,9 +1,5 @@
 import { Hono } from "hono"
 import * as notion from "../lib/notion.js"
-import { cached, staleWhileRevalidate, invalidate } from "../lib/cache.js"
-
-const LIST_TTL = 60_000 // 1 min for task lists
-const DETAIL_TTL = 120_000 // 2 min for task detail
 
 export const notionRoutes = new Hono()
 
@@ -13,16 +9,13 @@ notionRoutes.get("/tasks", async (c) => {
   const assignee = c.req.query("assignee")
   const priority = c.req.query("priority")
   const cursor = c.req.query("cursor")
-  const key = `notion:tasks:${status}:${tags}:${assignee}:${priority}:${cursor || ""}`
-  const result = await staleWhileRevalidate(key, LIST_TTL, () =>
-    notion.queryTasks({ status, tags, assignee, priority, cursor: cursor || undefined }),
-  )
+  const result = await notion.queryTasks({ status, tags, assignee, priority, cursor: cursor || undefined })
   return c.json(result)
 })
 
 notionRoutes.get("/tasks/:id", async (c) => {
   const id = c.req.param("id")
-  const task = await cached(`notion:task:${id}`, DETAIL_TTL, () => notion.getTaskDetail(id))
+  const task = await notion.getTaskDetail(id)
   return c.json(task)
 })
 
@@ -30,18 +23,13 @@ notionRoutes.patch("/tasks/:id", async (c) => {
   const properties = await c.req.json()
   const id = c.req.param("id")
   const result = await notion.updateTaskProperties(id, properties)
-  invalidate("notion:tasks")
-  invalidate(`notion:task:${id}`)
   return c.json(result)
 })
 
 notionRoutes.get("/assignees", async (c) => {
-  const result = await cached("notion:assignees", 300_000, async () => {
-    const tasks = await notion.queryTasks({})
-    const assignees = [...new Set(tasks.tasks.map((t: any) => t.assignee).filter(Boolean))].sort()
-    return { assignees }
-  })
-  return c.json(result)
+  const tasks = await notion.queryTasks({})
+  const assignees = [...new Set(tasks.tasks.map((t: any) => t.assignee).filter(Boolean))].sort()
+  return c.json({ assignees })
 })
 
 notionRoutes.get("/options/:property", async (c) => {
@@ -58,6 +46,5 @@ notionRoutes.post("/options/sync", async (c) => {
 notionRoutes.post("/tasks", async (c) => {
   const { title, body, properties } = await c.req.json()
   const task = await notion.createTask(title, body, properties)
-  invalidate("notion:tasks")
   return c.json(task)
 })

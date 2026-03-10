@@ -1,77 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useInfiniteQuery } from "@tanstack/react-query"
 import { getTasks } from "@/api/client"
-import { getListCache, setListCache } from "@/lib/list-cache"
-import type { NotionTask } from "@/types"
 
-type TaskCache = { tasks: NotionTask[]; nextCursor: string | null }
+interface TaskFilters {
+  status?: string
+  tags?: string
+  assignee?: string
+  priority?: string
+}
 
-export function useTasks(
-  filters?: {
-    status?: string
-    tags?: string
-    assignee?: string
-    priority?: string
-  },
-  enabled = true,
-) {
-  const filterKey = JSON.stringify(filters)
-  const cacheKey = `tasks:${filterKey}`
-  const cached = getListCache<TaskCache>(cacheKey)
-  const [tasks, setTasks] = useState<NotionTask[]>(cached?.tasks ?? [])
-  const [loading, setLoading] = useState(!cached && enabled)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const nextCursor = useRef<string | null>(cached?.nextCursor ?? null)
-  const loadingMoreRef = useRef(false)
-
-  const fetch = useCallback(async () => {
-    const key = `tasks:${filterKey}`
-    if (!getListCache(key)) setLoading(true)
-    setError(null)
-    nextCursor.current = null
-    try {
-      const result = await getTasks(filters)
-      setTasks(result.tasks)
-      nextCursor.current = result.nextCursor
-      setListCache(key, { tasks: result.tasks, nextCursor: result.nextCursor })
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [filterKey])
-
-  useEffect(() => {
-    if (enabled) fetch()
-  }, [fetch, enabled])
-
-  useEffect(() => {
-    if (!enabled) return
-    window.addEventListener("focus", fetch)
-    return () => window.removeEventListener("focus", fetch)
-  }, [fetch, enabled])
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor.current || loadingMoreRef.current) return
-    loadingMoreRef.current = true
-    setLoadingMore(true)
-    try {
-      const result = await getTasks({ ...filters, cursor: nextCursor.current })
-      setTasks((prev) => {
-        const next = [...prev, ...result.tasks]
-        setListCache(`tasks:${filterKey}`, { tasks: next, nextCursor: result.nextCursor })
-        return next
-      })
-      nextCursor.current = result.nextCursor
-    } catch (err: any) {
-      console.error("Failed to load more tasks:", err)
-    } finally {
-      loadingMoreRef.current = false
-      setLoadingMore(false)
-    }
-  }, [filterKey])
-
-  const hasMore = nextCursor.current !== null
-
-  return { tasks, loading, loadingMore, error, refresh: fetch, loadMore, hasMore }
+export function useTasks(filters?: TaskFilters, enabled = true) {
+  const result = useInfiniteQuery({
+    queryKey: ["tasks", filters],
+    queryFn: ({ pageParam }) => getTasks({ ...filters, cursor: pageParam as string | undefined }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled,
+  })
+  const tasks = result.data?.pages.flatMap((p) => p.tasks) ?? []
+  return {
+    tasks,
+    loading: result.isLoading,
+    loadingMore: result.isFetchingNextPage,
+    error: result.error?.message ?? null,
+    refresh: () => result.refetch(),
+    loadMore: () => result.fetchNextPage(),
+    hasMore: result.hasNextPage,
+  }
 }

@@ -1,87 +1,79 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Textarea } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2 } from "lucide-react"
 import { getSession, resumeSession, abortSession } from "@/api/client"
-import { getListCache, setListCache } from "@/lib/list-cache"
+import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
 import { SessionTranscript } from "./SessionTranscript"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import type { Session, SessionMessage } from "@/types"
 
 interface SessionViewProps {
   sessionId: string
   title?: string
 }
 
-type SessionDetailCache = { session: Session; messages: SessionMessage[] }
-
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { activeTab, persistedState } = useSpatialNav()
   const parentPath = buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
-  const cached = getListCache<SessionDetailCache>(`session:${sessionId}`)
-  const [session, setSession] = useState<Session | null>(cached?.session ?? null)
-  const [initialMessages, setInitialMessages] = useState<SessionMessage[]>(cached?.messages ?? [])
-  const [loading, setLoading] = useState(!cached)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading, error: queryError } = useQuery({
+    queryKey: ["session", sessionId],
+    queryFn: () => getSession(sessionId),
+  })
+  // Track status overrides from SSE stream and mutations independently of query data.
+  // This avoids the useState(data?.session.status) bug where the initial value is
+  // undefined because the query hasn't resolved yet on first render.
+  const [statusOverride, setStatusOverride] = useState<SessionStatus | undefined>()
   const [prompt, setPrompt] = useState("")
-  const [sending, setSending] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Stream for live updates
   const stream = useSessionStream(sessionId)
 
-  // Load session data (background refresh if cached)
+  // Update status override from stream
   useEffect(() => {
-    if (!getListCache(`session:${sessionId}`)) setLoading(true)
-    setError(null)
-    getSession(sessionId)
-      .then((data) => {
-        setSession(data.session)
-        setInitialMessages(data.messages)
-        setListCache(`session:${sessionId}`, { session: data.session, messages: data.messages })
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [sessionId])
-
-  // Update session status from stream
-  useEffect(() => {
-    if (stream.sessionStatus) {
-      setSession((prev) => (prev ? { ...prev, status: stream.sessionStatus as any } : prev))
-    }
+    if (stream.sessionStatus) setStatusOverride(stream.sessionStatus as SessionStatus)
   }, [stream.sessionStatus])
+
+  const resumeMutation = useMutation({
+    mutationFn: (p: string) => resumeSession(sessionId, p),
+    onSuccess: () => {
+      setPrompt("")
+      setStatusOverride("running")
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    },
+    onError: (err: any) => console.error("Failed to resume session:", err),
+  })
+
+  const abortMutation = useMutation({
+    mutationFn: () => abortSession(sessionId),
+    onSuccess: () => {
+      setStatusOverride("complete")
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    },
+    onError: (err: any) => console.error("Failed to abort session:", err),
+  })
+
+  const status = statusOverride ?? data?.session.status
+  const initialMessages = data?.messages ?? []
+  const loading = isLoading
+  const error = queryError?.message ?? null
 
   // Merge initial messages with streamed ones
   const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
 
-  const isRunning = session?.status === "running"
+  const isRunning = status === "running"
+  const sending = resumeMutation.isPending
 
-  async function handleSend() {
+  function handleSend() {
     if (!prompt.trim() || sending) return
-    setSending(true)
-
-    try {
-      await resumeSession(sessionId, prompt)
-      setPrompt("")
-      setSession((prev) => (prev ? { ...prev, status: "running" } : prev))
-    } catch (err: any) {
-      console.error("Failed to resume session:", err)
-    } finally {
-      setSending(false)
-    }
-  }
-
-  async function handleAbort() {
-    try {
-      await abortSession(sessionId)
-      setSession((prev) => (prev ? { ...prev, status: "complete" } : prev))
-    } catch (err: any) {
-      console.error("Failed to abort session:", err)
-    }
+    resumeMutation.mutate(prompt)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -101,7 +93,12 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       }
       right={
         isRunning ? (
-          <Button variant="destructive" size="sm" onClick={handleAbort}>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => abortMutation.mutate()}
+            disabled={abortMutation.isPending}
+          >
             <Square className="h-3 w-3 mr-1" />
             Stop
           </Button>
@@ -110,7 +107,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     />
   )
 
-  if (loading || !session) {
+  if (loading || !data) {
     return (
       <div className="flex flex-col h-full">
         {header}
@@ -137,8 +134,8 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
         <SessionTranscript
           messages={allMessages}
           isStreaming={isRunning}
-          status={session.status}
-          messageCount={session.messageCount}
+          status={status}
+          messageCount={data.session.messageCount}
           isLive={stream.connected}
         />
       </div>
@@ -151,9 +148,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              isRunning ? "Session is running..." : "Write a prompt..."
-            }
+            placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
             disabled={isRunning || sending}
             className="min-h-[40px] max-h-[120px] resize-none"
             rows={1}

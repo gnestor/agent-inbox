@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import {
   Button,
   ScrollArea,
@@ -16,12 +16,10 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { getTask } from "@/api/client"
-import { getListCache, setListCache } from "@/lib/list-cache"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
-import type { NotionTaskDetail } from "@/types"
 
 interface TaskDetailProps {
   taskId: string
@@ -29,23 +27,12 @@ interface TaskDetailProps {
 }
 
 export function TaskDetail({ taskId, title }: TaskDetailProps) {
-  const cached = getListCache<NotionTaskDetail>(`task:${taskId}`)
-  const [task, setTask] = useState<NotionTaskDetail | null>(cached ?? null)
-  const [loading, setLoading] = useState(!cached)
-  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
-
-  useEffect(() => {
-    if (!getListCache(`task:${taskId}`)) setLoading(true)
-    setError(null)
-    getTask(taskId)
-      .then((data) => {
-        setTask(data)
-        setListCache(`task:${taskId}`, data)
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [taskId])
+  const { data: task, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ["task", taskId],
+    queryFn: () => getTask(taskId),
+  })
+  const error = queryError?.message ?? null
 
   const header = (
     <PanelHeader
