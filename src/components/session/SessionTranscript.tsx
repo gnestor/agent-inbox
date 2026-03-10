@@ -205,6 +205,25 @@ const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: Se
   }
 
   if (msg.type === "user" || msg.role === "user") {
+    // Skill context injection — render collapsed with skill name
+    const skillBlock = extractSkillBlock(msg)
+    if (skillBlock) {
+      return (
+        <TranscriptAccordionEntry
+          value={`skill-${message.sequence}`}
+          icon={Wrench}
+          label={skillBlock.name}
+          color="text-muted-foreground"
+        >
+          <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {skillBlock.content}
+            </ReactMarkdown>
+          </div>
+        </TranscriptAccordionEntry>
+      )
+    }
+
     const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
@@ -380,11 +399,26 @@ function toolUseSummary(name: string, input: any): string {
 
 function isIdeContextBlock(block: any): boolean {
   const text = block.text || ""
-  return (
-    text.startsWith("<ide_opened_file>") ||
-    text.startsWith("<ide_selection>") ||
-    text.startsWith("Base directory for this skill:")
+  return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
+}
+
+function extractSkillBlock(msg: any): { name: string; content: string } | null {
+  const blocks: any[] = Array.isArray(msg.content)
+    ? msg.content
+    : Array.isArray(msg.message?.content)
+      ? msg.message.content
+      : []
+  const skillBlock = blocks.find(
+    (b: any) => b.type === "text" && (b.text || "").startsWith("Base directory for this skill:"),
   )
+  if (!skillBlock) return null
+  const text: string = skillBlock.text
+  // Extract skill name from the directory path on the first line
+  const dirMatch = text.match(/Base directory for this skill: .+\/(.+)/)
+  const name = dirMatch ? dirMatch[1] : "Skill"
+  // Strip the first line (the directory line) from the displayed content
+  const content = text.replace(/^Base directory for this skill:[^\n]*\n?/, "").trim()
+  return { name, content }
 }
 
 function parseIdeContext(
