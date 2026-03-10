@@ -516,7 +516,7 @@ export function NotionBlockRenderer({ blocks }: { blocks: NotionBlock[] }) {
   let numberedCounter = 0
 
   return (
-    <div className="notion-content text-[0.9375rem] leading-[1.5] flex flex-col gap-px">
+    <div className="notion-content text-[0.9375rem] leading-[1.5] flex flex-col gap-px p-2">
       {blocks.map((block) => {
         if (block.type !== "numbered_list_item") {
           numberedCounter = 0
