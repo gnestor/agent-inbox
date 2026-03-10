@@ -12,6 +12,10 @@ import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import type { NotionTaskDetail } from "@/types"
 
+function gmailThreadUrl(threadId: string) {
+  return `https://mail.google.com/mail/u/0/#all/${threadId}`
+}
+
 interface PromptTemplate {
   name: string
   content: string
@@ -69,12 +73,11 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
     if (fired.current) return
     if (threadId && thread) {
       fired.current = true
-      const url = `https://mail.google.com/mail/u/0/#all/${thread.id}`
-      const prompt = `<ide_opened_file>The user opened an email thread "${thread.subject}" ${url} in the IDE. Gather context related to it.</ide_opened_file>`
+      const prompt = `<ide_opened_file>The user opened an email thread ${gmailThreadUrl(thread.id)} in the IDE.</ide_opened_file>\nProcess this email`
       createMutation.mutate(prompt)
     } else if (taskId && task) {
       fired.current = true
-      const prompt = `<ide_opened_file>The user opened a Notion task "${task.title}" ${task.url} in the IDE. Gather context related to it.</ide_opened_file>`
+      const prompt = `<ide_opened_file>The user opened a Notion page ${task.url} in the IDE.</ide_opened_file>\nProcess this task`
       createMutation.mutate(prompt)
     }
   }, [thread, task])
@@ -109,24 +112,29 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
   useEffect(() => {
     if (threadId && thread) {
-      setPrompt(`Process this email: "${thread.subject}"`)
+      setPrompt("Process this email")
       setReady(true)
     }
   }, [thread, threadId])
 
   useEffect(() => {
     if (taskId && task) {
-      setPrompt(
-        `Work on this task:\n\nTitle: ${task.title}\nStatus: ${task.status}\nPriority: ${task.priority}\nTags: ${task.tags.join(", ")}\n\n${task.body}`,
-      )
+      setPrompt("Process this task")
       setReady(true)
     }
   }, [task, taskId])
 
+  const contextPrefix = thread
+    ? `<ide_opened_file>The user opened an email thread ${gmailThreadUrl(thread.id)} in the IDE.</ide_opened_file>`
+    : task
+      ? `<ide_opened_file>The user opened a Notion page ${task.url} in the IDE.</ide_opened_file>`
+      : ""
+  const fullPrompt = contextPrefix ? `${contextPrefix}\n${prompt}` : prompt
+
   const createMutation = useMutation({
     mutationFn: () =>
       createSession({
-        prompt,
+        prompt: fullPrompt,
         linkedEmailThreadId: thread?.id,
         linkedEmailId: thread?.messages[0]?.id,
         linkedTaskId: task?.id,
@@ -265,7 +273,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       <div className="shrink-0 border-t p-4">
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={!prompt.trim() || !ready || sending}
+          disabled={!fullPrompt.trim() || !ready || sending}
           className="w-full"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start Session"}
