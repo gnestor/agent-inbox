@@ -66,6 +66,14 @@ export function initializeDatabase() {
       PRIMARY KEY (property, value)
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      email TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      picture TEXT,
+      created_at TEXT NOT NULL,
+      last_login_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS auth_sessions (
       token TEXT PRIMARY KEY,
       user_name TEXT NOT NULL,

@@ -35,10 +35,18 @@ export async function verifyIdToken(credential: string): Promise<{
 
   const sessionToken = randomBytes(32).toString("hex")
   const db = getDb()
+  const now = new Date().toISOString()
+
+  db.prepare(
+    `INSERT INTO users (email, name, picture, created_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET name = excluded.name, picture = excluded.picture, last_login_at = excluded.last_login_at`,
+  ).run(user.email, user.name, user.picture || null, now, now)
+
   db.prepare(
     `INSERT INTO auth_sessions (token, user_name, user_email, user_picture, created_at)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(sessionToken, user.name, user.email, user.picture || null, new Date().toISOString())
+  ).run(sessionToken, user.name, user.email, user.picture || null, now)
 
   return { sessionToken, user }
 }
