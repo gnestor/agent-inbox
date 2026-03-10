@@ -22,12 +22,25 @@ import json from "highlight.js/lib/languages/json"
 
 hljs.registerLanguage("json", json)
 
+export interface TranscriptVisibility {
+  messages: boolean
+  toolCalls: boolean
+  thinking: boolean
+}
+
+export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
+  messages: true,
+  toolCalls: true,
+  thinking: true,
+}
+
 interface SessionTranscriptProps {
   messages: SessionMessage[]
   isStreaming: boolean
   status?: string
   messageCount?: number
   isLive?: boolean
+  visibility?: TranscriptVisibility
 }
 
 export function SessionTranscript({
@@ -36,6 +49,7 @@ export function SessionTranscript({
   status,
   messageCount,
   isLive,
+  visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
 }: SessionTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -126,7 +140,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} />
+                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} />
               </div>
             ))}
           </div>
@@ -179,12 +193,19 @@ function TranscriptAccordionEntry({
   )
 }
 
-const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: SessionMessage }) {
+const TranscriptEntry = memo(function TranscriptEntry({
+  message,
+  visibility,
+}: {
+  message: SessionMessage
+  visibility: TranscriptVisibility
+}) {
   const msg = message.message as any
 
   if (msg.type === "system") {
     if (msg.subtype === "init") return null
     if (msg.subtype === "result" || "result" in msg) {
+      if (!visibility.messages) return null
       return (
         <TranscriptAccordionEntry
           value={`result-${message.sequence}`}
@@ -224,6 +245,7 @@ const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: Se
       )
     }
 
+    if (!visibility.messages) return null
     const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
@@ -261,6 +283,7 @@ const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: Se
   if (msg.type === "assistant" || msg.role === "assistant") {
     const contentBlocks = msg.content || msg.message?.content || []
     if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+      if (!visibility.messages) return null
       const text = extractText(msg)
       if (!text) return null
       return (
@@ -283,7 +306,7 @@ const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: Se
     return (
       <div className="space-y-1">
         {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} />
+          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} />
         ))}
       </div>
     )
@@ -296,11 +319,21 @@ const TranscriptEntry = memo(function TranscriptEntry({ message }: { message: Se
   return null
 })
 
-function ContentBlock({ block, sequence, index }: { block: any; sequence: number; index: number }) {
+function ContentBlock({
+  block,
+  sequence,
+  index,
+  visibility,
+}: {
+  block: any
+  sequence: number
+  index: number
+  visibility: TranscriptVisibility
+}) {
   const id = `${sequence}-${index}`
 
   if (block.type === "text") {
-    if (!block.text) return null
+    if (!block.text || !visibility.messages) return null
     return (
       <TranscriptAccordionEntry
         value={`text-${id}`}
@@ -319,6 +352,7 @@ function ContentBlock({ block, sequence, index }: { block: any; sequence: number
   }
 
   if (block.type === "tool_use") {
+    if (!visibility.toolCalls) return null
     const summary = toolUseSummary(block.name, block.input)
     return (
       <TranscriptAccordionEntry
@@ -338,7 +372,7 @@ function ContentBlock({ block, sequence, index }: { block: any; sequence: number
   }
 
   if (block.type === "thinking") {
-    if (!block.thinking) return null
+    if (!block.thinking || !visibility.thinking) return null
     return (
       <TranscriptAccordionEntry
         value={`thinking-${id}`}

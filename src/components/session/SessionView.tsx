@@ -1,16 +1,27 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Button, Textarea } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, X } from "lucide-react"
+import {
+  Button,
+  Textarea,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem,
+} from "@hammies/frontend/components/ui"
+import { Send, Square, Loader2, X, Ellipsis } from "lucide-react"
 import { getSession, resumeSession, abortSession, answerSessionQuestion } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
-import { SessionTranscript } from "./SessionTranscript"
+import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
+import type { TranscriptVisibility } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { usePreference } from "@/hooks/use-preferences"
 
 interface SessionViewProps {
   sessionId: string
@@ -75,6 +86,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // Merge initial messages with streamed ones
   const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
 
+  const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
+    "sessions.transcript.visibility",
+    DEFAULT_TRANSCRIPT_VISIBILITY,
+  )
+
+  function toggleVisibility(key: keyof TranscriptVisibility) {
+    setVisibility({ ...visibility, [key]: !visibility[key] })
+  }
+
   const isRunning = status === "running"
   const isAwaitingInput = status === "awaiting_user_input" || !!stream.pendingQuestion
   const sending = resumeMutation.isPending
@@ -119,6 +139,41 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               Stop
             </Button>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                />
+              }
+            >
+              <Ellipsis className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Transcript</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={visibility.messages}
+                  onCheckedChange={() => toggleVisibility("messages")}
+                >
+                  Messages
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={visibility.toolCalls}
+                  onCheckedChange={() => toggleVisibility("toolCalls")}
+                >
+                  Tool calls
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={visibility.thinking}
+                  onCheckedChange={() => toggleVisibility("thinking")}
+                >
+                  Thinking
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             type="button"
             className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
@@ -161,6 +216,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           status={status}
           messageCount={data.session.messageCount}
           isLive={stream.connected}
+          visibility={visibility}
         />
       </div>
 
