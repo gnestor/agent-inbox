@@ -78,14 +78,14 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       }),
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      if (threadId) navigate(`/inbox/${threadId}/session/${sessionId}`)
+      if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
       else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })
 
   function parentPath() {
-    if (threadId) return `/inbox/${threadId}`
+    if (threadId) return `/emails/${threadId}`
     if (taskId) return `/tasks/${taskId}`
     return "/"
   }

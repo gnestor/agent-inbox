@@ -7,6 +7,43 @@ const sseClients = new Map<string, Set<(data: string) => void>>()
 // Store abort controllers for running sessions
 const runningQueries = new Map<string, AbortController>()
 
+// Pending AskUserQuestion answers: sessionId → resolver function
+const pendingQuestions = new Map<string, (answers: Record<string, string>) => void>()
+
+// Provide an answer to a pending AskUserQuestion. Returns true if a question was waiting.
+export function provideAskUserAnswer(sessionId: string, answers: Record<string, string>): boolean {
+  const resolver = pendingQuestions.get(sessionId)
+  if (!resolver) return false
+  pendingQuestions.delete(sessionId)
+  resolver(answers)
+  return true
+}
+
+// Build a canUseTool callback that intercepts AskUserQuestion and waits for user answers.
+// getSessionId is a thunk because in startSession the ID isn't known until the init message.
+function makeCanUseTool(getSessionId: () => string | null) {
+  return async (
+    toolName: string,
+    input: Record<string, unknown>,
+  ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> }> => {
+    if (toolName === "AskUserQuestion") {
+      const sessionId = getSessionId()
+      if (sessionId) {
+        updateSessionStatus(sessionId, "awaiting_user_input")
+        broadcastToSession(sessionId, { type: "ask_user_question", questions: input.questions })
+
+        const answers = await new Promise<Record<string, string>>((resolve) => {
+          pendingQuestions.set(sessionId, resolve)
+        })
+
+        updateSessionStatus(sessionId, "running")
+        return { behavior: "allow", updatedInput: { ...input, answers } }
+      }
+    }
+    return { behavior: "allow" }
+  }
+}
+
 // Build env for agent, excluding ANTHROPIC_API_KEY to use Claude subscription
 function buildAgentEnv(): Record<string, string> {
   const env: Record<string, string> = {}
@@ -175,6 +212,7 @@ export async function startSession(
   const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
+  let sessionId: string | null = null
 
   const q = query({
     prompt,
@@ -188,10 +226,9 @@ export async function startSession(
       includePartialMessages: true,
       abortController,
       env: buildAgentEnv(),
+      canUseTool: makeCanUseTool(() => sessionId),
     },
   })
-
-  let sessionId: string | null = null
   let sequence = 0
 
   // Process messages in background
@@ -241,7 +278,7 @@ export async function startSession(
     }
   })()
 
-  // Wait for session ID to be captured
+  // Wait for session ID from init message
   const maxWait = 15_000
   const start = Date.now()
   while (!sessionId && Date.now() - start < maxWait) {
@@ -285,6 +322,7 @@ export async function resumeSessionQuery(sessionId: string, prompt: string): Pro
       includePartialMessages: true,
       abortController,
       env: buildAgentEnv(),
+      canUseTool: makeCanUseTool(() => sessionId),
     },
   })
 
@@ -323,6 +361,7 @@ export function abortRunningSession(sessionId: string): boolean {
   if (controller) {
     controller.abort()
     runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
     updateSessionStatus(sessionId, "complete", "Aborted by user")
     return true
   }

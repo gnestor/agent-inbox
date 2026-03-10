@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import type { SessionMessage } from "@/types"
+import type { SessionMessage, PendingQuestion } from "@/types"
 
 export function useSessionStream(sessionId: string | undefined) {
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [connected, setConnected] = useState(false)
   const [sessionStatus, setSessionStatus] = useState<string | null>(null)
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const seenSequences = useRef(new Set<number>())
 
@@ -14,6 +15,7 @@ export function useSessionStream(sessionId: string | undefined) {
     seenSequences.current.clear()
     setMessages([])
     setSessionStatus(null)
+    setPendingQuestion(null)
     setConnected(false)
     const es = new EventSource(`/api/sessions/${sessionId}/stream`)
     eventSourceRef.current = es
@@ -25,10 +27,17 @@ export function useSessionStream(sessionId: string | undefined) {
 
         if (data.type === "session_complete") {
           setSessionStatus("complete")
+          setPendingQuestion(null)
           return
         }
         if (data.type === "session_error") {
           setSessionStatus("errored")
+          setPendingQuestion(null)
+          return
+        }
+        if (data.type === "ask_user_question") {
+          setSessionStatus("awaiting_user_input")
+          setPendingQuestion({ questions: data.questions })
           return
         }
 
@@ -67,5 +76,7 @@ export function useSessionStream(sessionId: string | undefined) {
     setConnected(false)
   }, [])
 
-  return { messages, connected, sessionStatus, disconnect }
+  const clearPendingQuestion = useCallback(() => setPendingQuestion(null), [])
+
+  return { messages, connected, sessionStatus, pendingQuestion, disconnect, clearPendingQuestion }
 }

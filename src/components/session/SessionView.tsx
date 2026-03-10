@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Textarea } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2 } from "lucide-react"
-import { getSession, resumeSession, abortSession } from "@/api/client"
+import { getSession, resumeSession, abortSession, answerSessionQuestion } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
 import { SessionTranscript } from "./SessionTranscript"
+import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 
@@ -74,7 +75,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
 
   const isRunning = status === "running"
+  const isAwaitingInput = status === "awaiting_user_input" || !!stream.pendingQuestion
   const sending = resumeMutation.isPending
+
+  async function handleAnswer(answers: Record<string, string>) {
+    await answerSessionQuestion(sessionId, answers)
+    stream.clearPendingQuestion()
+    setStatusOverride("running")
+    qc.invalidateQueries({ queryKey: ["sessions"] })
+  }
 
   function handleSend() {
     if (!prompt.trim() || sending) return
@@ -145,28 +154,36 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
         />
       </div>
 
-      {/* Chat input */}
-      <div className="border-t p-3">
-        <div className="flex gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
-            disabled={isRunning || sending}
-            className="min-h-[40px] max-h-[120px] resize-none"
-            rows={1}
-          />
-          <Button
-            onClick={handleSend}
-            disabled={!prompt.trim() || isRunning || sending}
-            size="icon"
-          >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+      {/* Chat input / AskUserPanel */}
+      {isAwaitingInput && stream.pendingQuestion ? (
+        <AskUserPanel pendingQuestion={stream.pendingQuestion} onSubmit={handleAnswer} />
+      ) : (
+        <div className="border-t p-3">
+          <div className="flex gap-2">
+            <Textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
+              disabled={isRunning || sending}
+              className="min-h-[40px] max-h-[120px] resize-none"
+              rows={1}
+            />
+            <Button
+              onClick={handleSend}
+              disabled={!prompt.trim() || isRunning || sending}
+              size="icon"
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -63,7 +63,7 @@ export function EmailThread({ threadId, title }: EmailThreadProps) {
     <PanelHeader
       left={
         <>
-          <BackButton onClick={() => navigate("/inbox")} />
+          <BackButton onClick={() => navigate("/emails")} />
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }
@@ -95,7 +95,7 @@ export function EmailThread({ threadId, title }: EmailThreadProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => navigate(`/inbox/${threadId}/session/new`)} size="sm">
+          <Button onClick={() => navigate(`/emails/${threadId}/session/new`)} size="sm">
             <Bot className="h-4 w-4 md:mr-1" />
             <span className="hidden md:inline">Start Session</span>
           </Button>

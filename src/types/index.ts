@@ -70,7 +70,24 @@ export interface NotionTaskDetail extends NotionTask {
 
 // Session types
 
-export type SessionStatus = "running" | "complete" | "needs_attention" | "errored"
+export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input"
+
+export interface AskUserQuestionOption {
+  label: string
+  description: string
+  preview?: string
+}
+
+export interface AskUserQuestion {
+  question: string
+  header: string
+  options: AskUserQuestionOption[]
+  multiSelect: boolean
+}
+
+export interface PendingQuestion {
+  questions: AskUserQuestion[]
+}
 export type TriggerSource = "manual" | "email_triage" | "webhook_notion" | "webhook_slack"
 
 export interface Session {

@@ -157,6 +157,13 @@ export async function abortSession(sessionId: string) {
   })
 }
 
+export async function answerSessionQuestion(sessionId: string, answers: Record<string, string>) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answers }),
+  })
+}
+
 // Preferences
 
 export async function getPreferences() {

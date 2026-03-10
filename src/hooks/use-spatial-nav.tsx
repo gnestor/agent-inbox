@@ -1,8 +1,8 @@
 import { createContext, useContext, useCallback, useRef, useEffect, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
-export type TabId = "inbox" | "tasks" | "sessions"
-export const TAB_ORDER: TabId[] = ["inbox", "tasks", "sessions"]
+export type TabId = "emails" | "tasks" | "sessions"
+export const TAB_ORDER: TabId[] = ["emails", "tasks", "sessions"]
 
 interface TabState {
   selectedId?: string
@@ -21,10 +21,26 @@ interface SavedNavState {
   itemSessions: Array<[string, { sessionOpen: boolean; sessionId?: string }]>
 }
 
+function migrateNavState(state: SavedNavState): SavedNavState {
+  const tabs = state.tabs as Record<string, TabState>
+  if ("inbox" in tabs && !("emails" in tabs)) {
+    tabs.emails = tabs.inbox
+    delete tabs.inbox
+  }
+  if (state.pathname?.startsWith("/inbox")) {
+    state.pathname = state.pathname.replace(/^\/inbox/, "/emails")
+  }
+  state.itemSessions = (state.itemSessions ?? []).map(([key, val]) => [
+    key.replace(/^inbox:/, "emails:"),
+    val,
+  ])
+  return state
+}
+
 function loadNavState(): SavedNavState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
+    return raw ? migrateNavState(JSON.parse(raw)) : null
   } catch {
     return null
   }
@@ -41,7 +57,7 @@ function saveNavState(state: SavedNavState): void {
 /** Read the saved pathname for initial redirect (called outside React) */
 export function getSavedPathname(): string {
   const saved = loadNavState()
-  return saved?.pathname ?? "/inbox"
+  return saved?.pathname ?? "/emails"
 }
 
 interface SpatialNavContextValue {
@@ -60,7 +76,7 @@ function tabFromPathname(pathname: string): TabId {
   const first = pathname.split("/").filter(Boolean)[0]
   if (first === "tasks") return "tasks"
   if (first === "sessions") return "sessions"
-  return "inbox"
+  return "emails"
 }
 
 export function tabStateFromPathname(pathname: string, tab: TabId): TabState {
@@ -74,7 +90,7 @@ export function tabStateFromPathname(pathname: string, tab: TabId): TabState {
     return state
   }
 
-  // inbox or tasks
+  // emails or tasks
   if (parts[1]) {
     state.selectedId = decodeURIComponent(parts[1])
     if (parts[2] === "session") {
@@ -105,7 +121,7 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
   // Load saved state on first render
   const saved = useRef(loadNavState())
   const persistedRef = useRef<PersistedState>(
-    saved.current?.tabs ?? { inbox: {}, tasks: {}, sessions: {} },
+    saved.current?.tabs ?? { emails: {}, tasks: {}, sessions: {} },
   )
   // Per-item session state: key is "tab:itemId", value is session open/id
   const itemSessionRef = useRef<Map<string, { sessionOpen: boolean; sessionId?: string }>>(

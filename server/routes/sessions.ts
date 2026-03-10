@@ -166,6 +166,21 @@ sessionRoutes.get("/:id", async (c) => {
   })
 })
 
+sessionRoutes.post("/:id/answer", async (c) => {
+  const sessionId = c.req.param("id")
+  const { answers } = await c.req.json()
+
+  if (!answers || typeof answers !== "object") {
+    return c.json({ error: "answers object is required" }, 400)
+  }
+
+  const ok = sessions.provideAskUserAnswer(sessionId, answers as Record<string, string>)
+  if (!ok) {
+    return c.json({ error: "No pending question for this session" }, 404)
+  }
+  return c.json({ ok: true })
+})
+
 sessionRoutes.post("/:id/resume", async (c) => {
   const sessionId = c.req.param("id")
   const { prompt } = await c.req.json()

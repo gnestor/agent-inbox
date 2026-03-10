@@ -104,4 +104,69 @@ describe("useSessionStream", () => {
     renderHook(() => useSessionStream(undefined))
     expect(MockEventSource.instances).toHaveLength(0)
   })
+
+  it("sets pendingQuestion and awaiting_user_input status on ask_user_question event", async () => {
+    const { result } = renderHook(() => useSessionStream("session-1"))
+    const es = MockEventSource.instances[0]
+
+    const questions = [
+      {
+        question: "Which context?",
+        header: "Context",
+        options: [{ label: "Email body", description: "The full email" }],
+        multiSelect: true,
+      },
+    ]
+
+    act(() => {
+      es.emit("message", {
+        data: JSON.stringify({ type: "ask_user_question", questions }),
+      })
+    })
+
+    await waitFor(() => expect(result.current.pendingQuestion).not.toBeNull())
+    expect(result.current.pendingQuestion?.questions).toEqual(questions)
+    expect(result.current.sessionStatus).toBe("awaiting_user_input")
+  })
+
+  it("clears pendingQuestion on clearPendingQuestion()", async () => {
+    const { result } = renderHook(() => useSessionStream("session-1"))
+    const es = MockEventSource.instances[0]
+
+    act(() => {
+      es.emit("message", {
+        data: JSON.stringify({
+          type: "ask_user_question",
+          questions: [{ question: "Q?", header: "H", options: [], multiSelect: false }],
+        }),
+      })
+    })
+    await waitFor(() => expect(result.current.pendingQuestion).not.toBeNull())
+
+    act(() => {
+      result.current.clearPendingQuestion()
+    })
+    expect(result.current.pendingQuestion).toBeNull()
+  })
+
+  it("clears pendingQuestion when session completes", async () => {
+    const { result } = renderHook(() => useSessionStream("session-1"))
+    const es = MockEventSource.instances[0]
+
+    act(() => {
+      es.emit("message", {
+        data: JSON.stringify({
+          type: "ask_user_question",
+          questions: [{ question: "Q?", header: "H", options: [], multiSelect: false }],
+        }),
+      })
+    })
+    await waitFor(() => expect(result.current.pendingQuestion).not.toBeNull())
+
+    act(() => {
+      es.emit("message", { data: JSON.stringify({ type: "session_complete" }) })
+    })
+    await waitFor(() => expect(result.current.pendingQuestion).toBeNull())
+    expect(result.current.sessionStatus).toBe("complete")
+  })
 })

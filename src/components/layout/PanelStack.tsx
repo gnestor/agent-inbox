@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from "react"
+import { useRef, useCallback, useState, useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence, useDragControls } from "motion/react"
 import { useIsMobile } from "@hammies/frontend/hooks"
@@ -200,7 +200,7 @@ function DetailContent({
   selectedId: string
   title: string
 }) {
-  if (tab === "inbox") return <EmailThread threadId={selectedId} title={title} />
+  if (tab === "emails") return <EmailThread threadId={selectedId} title={title} />
   if (tab === "tasks") return <TaskDetail taskId={selectedId} title={title} />
   return <SessionView sessionId={selectedId} title={title} />
 }
@@ -239,7 +239,7 @@ function ItemSlider({
           className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
         >
           <NewSessionPanel
-            threadId={tab === "inbox" ? id : undefined}
+            threadId={tab === "emails" ? id : undefined}
             taskId={tab === "tasks" ? id : undefined}
             sessionId={sId}
           />
@@ -310,7 +310,7 @@ function TabPane({
         isMobile ? "w-full" : "w-[600px] rounded-lg shadow-sm ring-1 ring-inset ring-border",
       )}
     >
-      {tab === "inbox" && (
+      {tab === "emails" && (
         <EmailList
           selectedThreadId={selectedId}
           onSelectedIndexChange={handleIndexChange}
@@ -336,6 +336,15 @@ function TabPane({
       )}
     </div>
   )
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isMobile) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
+  }, [selectedId, sessionOpen, isMobile])
 
   const navigate = useNavigate()
 
@@ -380,7 +389,7 @@ function TabPane({
         >
           {tab !== "sessions" && selectedId && (
             <NewSessionPanel
-              threadId={tab === "inbox" ? selectedId : undefined}
+              threadId={tab === "emails" ? selectedId : undefined}
               taskId={tab === "tasks" ? selectedId : undefined}
               sessionId={sessionId}
             />
@@ -391,7 +400,7 @@ function TabPane({
   }
 
   return (
-    <div className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5">
+    <div ref={scrollRef} className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5">
       {listPanel}
       <ItemSlider
         tab={tab}

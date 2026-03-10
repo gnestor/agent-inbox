@@ -317,7 +317,7 @@ export function EmailList({
                     timestamp={formatRelativeDate(msg.date)}
                     badges={badges}
                     isSelected={selectedThreadId === msg.threadId}
-                    onClick={() => navigate(`/inbox/${msg.threadId}`)}
+                    onClick={() => navigate(`/emails/${msg.threadId}`)}
                   />
                 </div>
               )

@@ -26,7 +26,7 @@ import { useUser } from "@/hooks/use-user"
 import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
 const navItems: { title: string; icon: typeof Mail; tab: TabId }[] = [
-  { title: "Emails", icon: Mail, tab: "inbox" },
+  { title: "Emails", icon: Mail, tab: "emails" },
   { title: "Tasks", icon: CheckSquare, tab: "tasks" },
   { title: "Sessions", icon: Bot, tab: "sessions" },
 ]

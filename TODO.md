@@ -34,6 +34,7 @@
 - [ ] Save filtered view to nav bar (nested under Emails, Tasks, or Sessions)
 - [x] Rich prompt editor (WYSIWYG markdown editor, Tiptap v3: slash commands, bubble menu, markdown shortcuts)
 - [x] Prompt templates (save/load named templates in new-session panel, persisted to preferences)
+- [x] AskUserQuestion panels (agent pauses mid-session, frontend shows interactive form, answers injected as tool result via canUseTool + pending Promise)
 - [ ] Suggested prompts
 - [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
