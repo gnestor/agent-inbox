@@ -145,6 +145,28 @@ export function getSessionMessages(sessionId: string) {
     .all(sessionId) as Array<Record<string, unknown>>
 }
 
+export function getLinkedSession(
+  linkedEmailThreadId?: string,
+  linkedTaskId?: string,
+): Record<string, unknown> | undefined {
+  const db = getDb()
+  if (linkedEmailThreadId) {
+    return db
+      .prepare(
+        "SELECT * FROM sessions WHERE linked_email_thread_id = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .get(linkedEmailThreadId) as Record<string, unknown> | undefined
+  }
+  if (linkedTaskId) {
+    return db
+      .prepare(
+        "SELECT * FROM sessions WHERE linked_task_id = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .get(linkedTaskId) as Record<string, unknown> | undefined
+  }
+  return undefined
+}
+
 export function listSessionRecords(filters?: { status?: string; triggerSource?: string }) {
   const db = getDb()
   let sql = "SELECT * FROM sessions"

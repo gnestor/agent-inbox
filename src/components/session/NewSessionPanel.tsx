@@ -133,6 +133,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       }),
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["linked-session"] })
       if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
       else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
     },

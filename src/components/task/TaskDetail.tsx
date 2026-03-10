@@ -15,7 +15,7 @@ import {
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
 import { Bot, ExternalLink, Ellipsis } from "lucide-react"
-import { getTask } from "@/api/client"
+import { getTask, getLinkedSession } from "@/api/client"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -33,6 +33,11 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     queryKey: ["task", taskId],
     queryFn: () => getTask(taskId),
   })
+  const { data: linkedData } = useQuery({
+    queryKey: ["linked-session", "task", taskId],
+    queryFn: () => getLinkedSession(undefined, taskId),
+  })
+  const linkedSession = linkedData?.session
   const error = queryError?.message ?? null
 
   const header = (
@@ -68,9 +73,20 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
             </DropdownMenuContent>
           </DropdownMenu>
           {!sessionOpen && (
-            <Button onClick={() => navigate(`/tasks/${taskId}/session/new`)} size="sm">
+            <Button
+              onClick={() =>
+                navigate(
+                  linkedSession
+                    ? `/tasks/${taskId}/session/${linkedSession.id}`
+                    : `/tasks/${taskId}/session/new`,
+                )
+              }
+              size="sm"
+            >
               <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">Start Session</span>
+              <span className="hidden md:inline">
+                {linkedSession ? "Open Session" : "Start Session"}
+              </span>
             </Button>
           )}
         </>

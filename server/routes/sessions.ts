@@ -104,6 +104,22 @@ sessionRoutes.get("/projects", async (c) => {
   return c.json({ projects })
 })
 
+sessionRoutes.get("/linked", async (c) => {
+  const threadId = c.req.query("threadId")
+  const taskId = c.req.query("taskId")
+  const session = sessions.getLinkedSession(threadId, taskId)
+  if (!session) return c.json({ session: null })
+  return c.json({
+    session: {
+      id: session.id,
+      status: session.status,
+      prompt: session.prompt,
+      summary: session.summary,
+      updatedAt: session.updated_at,
+    },
+  })
+})
+
 sessionRoutes.get("/:id", async (c) => {
   const sessionId = c.req.param("id")
   const session = sessions.getSessionRecord(sessionId)

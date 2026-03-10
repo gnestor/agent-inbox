@@ -164,6 +164,15 @@ export async function answerSessionQuestion(sessionId: string, answers: Record<s
   })
 }
 
+export async function getLinkedSession(threadId?: string, taskId?: string) {
+  const params = new URLSearchParams()
+  if (threadId) params.set("threadId", threadId)
+  if (taskId) params.set("taskId", taskId)
+  return request<{ session: { id: string; status: string; prompt: string; summary: string | null; updatedAt: string } | null }>(
+    `/sessions/linked?${params}`,
+  )
+}
+
 // Preferences
 
 export async function getPreferences() {

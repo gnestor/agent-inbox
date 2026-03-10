@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
+import { getLinkedSession } from "@/api/client"
 import {
   Button,
   DropdownMenu,
@@ -27,6 +29,11 @@ interface EmailThreadProps {
 export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) {
   const { thread, loading, error } = useEmailThread(threadId)
   const navigate = useNavigate()
+  const { data: linkedData } = useQuery({
+    queryKey: ["linked-session", "thread", threadId],
+    queryFn: () => getLinkedSession(threadId),
+  })
+  const linkedSession = linkedData?.session
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -97,9 +104,20 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
             </DropdownMenuContent>
           </DropdownMenu>
           {!sessionOpen && (
-            <Button onClick={() => navigate(`/emails/${threadId}/session/new`)} size="sm">
+            <Button
+              onClick={() =>
+                navigate(
+                  linkedSession
+                    ? `/emails/${threadId}/session/${linkedSession.id}`
+                    : `/emails/${threadId}/session/new`,
+                )
+              }
+              size="sm"
+            >
               <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">Start Session</span>
+              <span className="hidden md:inline">
+                {linkedSession ? "Open Session" : "Start Session"}
+              </span>
             </Button>
           )}
         </>
