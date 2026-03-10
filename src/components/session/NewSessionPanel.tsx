@@ -96,11 +96,33 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   const navigate = useNavigate()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
-  const [prompt, setPrompt] = useState("")
-  const [ready, setReady] = useState(false)
   const [savingName, setSavingName] = useState("")
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
+
+  const draftKey = threadId
+    ? `inbox:draft:thread:${threadId}`
+    : taskId
+      ? `inbox:draft:task:${taskId}`
+      : null
+
+  // Read once at mount — null means no key, "" means cleared, non-empty means real draft
+  const savedDraft = useState(() => {
+    if (!draftKey) return null
+    try { return localStorage.getItem(draftKey) } catch { return null }
+  })[0]
+
+  const [prompt, setPrompt] = useState(savedDraft ?? "")
+
+  // If there's a saved draft, skip the "Loading..." state — show it immediately
+  const hasSavedDraft = useRef(!!savedDraft)
+  const [ready, setReady] = useState(!!savedDraft)
+
+  // Persist draft on every change
+  useEffect(() => {
+    if (!draftKey) return
+    try { localStorage.setItem(draftKey, prompt) } catch {}
+  }, [draftKey, prompt])
 
   // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
   const { thread } = useEmailThread(threadId)
@@ -112,14 +134,14 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
   useEffect(() => {
     if (threadId && thread) {
-      setPrompt("Process this email")
+      if (!hasSavedDraft.current) setPrompt("Process this email")
       setReady(true)
     }
   }, [thread, threadId])
 
   useEffect(() => {
     if (taskId && task) {
-      setPrompt("Process this task")
+      if (!hasSavedDraft.current) setPrompt("Process this task")
       setReady(true)
     }
   }, [task, taskId])
@@ -140,6 +162,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
         linkedTaskId: task?.id,
       }),
     onSuccess: ({ sessionId }) => {
+      if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
       if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)

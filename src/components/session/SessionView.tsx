@@ -42,8 +42,16 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // This avoids the useState(data?.session.status) bug where the initial value is
   // undefined because the query hasn't resolved yet on first render.
   const [statusOverride, setStatusOverride] = useState<SessionStatus | undefined>()
-  const [prompt, setPrompt] = useState("")
+  const resumeKey = `inbox:resume:${sessionId}`
+  const [prompt, setPrompt] = useState(() => {
+    try { return localStorage.getItem(resumeKey) ?? "" } catch { return "" }
+  })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Persist resume draft on every change
+  useEffect(() => {
+    try { localStorage.setItem(resumeKey, prompt) } catch {}
+  }, [resumeKey, prompt])
 
   // Stream for live updates
   const stream = useSessionStream(sessionId)
@@ -51,6 +59,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // Reset local overrides when navigating to a different session
   useEffect(() => {
     setStatusOverride(undefined)
+    try { setPrompt(localStorage.getItem(resumeKey) ?? "") } catch { setPrompt("") }
   }, [sessionId])
 
   // Update status override from stream
@@ -61,6 +70,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const resumeMutation = useMutation({
     mutationFn: (p: string) => resumeSession(sessionId, p),
     onSuccess: () => {
+      try { localStorage.removeItem(resumeKey) } catch {}
       setPrompt("")
       setStatusOverride("running")
       qc.invalidateQueries({ queryKey: ["sessions"] })

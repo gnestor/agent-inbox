@@ -44,6 +44,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
   })
   const linkedSession = linkedData?.session
   const error = queryError?.message ?? null
+  const [detailsExpanded, setDetailsExpanded] = usePreference("details.task.expanded", false)
 
   const header = (
     <PanelHeader
@@ -119,7 +120,6 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
 
   const dueDate = task.properties?.["Due Date"]?.date?.start
   const createdBy = task.properties?.["Created By"]?.created_by?.name
-  const [detailsExpanded, setDetailsExpanded] = usePreference("details.task.expanded", false)
 
   return (
     <div className="flex flex-col h-full">

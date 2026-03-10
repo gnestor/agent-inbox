@@ -6,7 +6,6 @@ import Placeholder from "@tiptap/extension-placeholder"
 import { TaskList } from "@tiptap/extension-task-list"
 import { TaskItem } from "@tiptap/extension-task-item"
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight"
-import Link from "@tiptap/extension-link"
 import { Extension } from "@tiptap/core"
 import Suggestion from "@tiptap/suggestion"
 import { Markdown } from "tiptap-markdown"
@@ -125,12 +124,11 @@ export function RichTextEditor({
   // Memoize extensions — onCmdEnterRef is stable, so no deps needed
   const extensions = useMemo(
     () => [
-      StarterKit.configure({ codeBlock: false }),
+      StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }),
       Placeholder.configure({ placeholder }),
       TaskList,
       TaskItem.configure({ nested: true }),
       CodeBlockLowlight.configure({ lowlight }),
-      Link.configure({ openOnClick: false }),
       Markdown.configure({
         html: false,
         tightLists: true,
