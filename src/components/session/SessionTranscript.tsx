@@ -59,7 +59,7 @@ export function SessionTranscript({
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 120,
+    estimateSize: () => 44,
     overscan: 10,
   })
 
@@ -138,7 +138,7 @@ export function SessionTranscript({
         )}
       <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative", contain: "layout" }}>
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
               <div
                 key={virtualRow.key}

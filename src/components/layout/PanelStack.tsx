@@ -173,7 +173,7 @@ function MobileOverlayPanelInner({
         style={{ zIndex }}
         className="absolute inset-0 bg-card overflow-hidden"
         initial={skipEntrance ? { x: 0 } : { x: "100%" }}
-        animate={{ x: phase === "open" ? 0 : "100%", y: 0 }}
+        animate={{ x: phase === "open" ? 0 : "100%" }}
         exit={{ x: "100%" }}
         transition={springTransition}
         onAnimationComplete={() => {

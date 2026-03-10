@@ -283,7 +283,7 @@ export function TaskList({
           </>
         )}
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={66} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
         {!loading && filteredTasks.length > 0 && (

@@ -227,7 +227,7 @@ export function SessionList({
           </>
         )}
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={80} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
         {!loading && filteredSessions.length > 0 && (
