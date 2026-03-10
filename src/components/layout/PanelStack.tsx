@@ -322,7 +322,7 @@ function ItemSlider({
     >
       {/* Grid single-cell layout: both entering and exiting items occupy cell (1,1)
           so the grid cell width = max(old, new) — scrollWidth never collapses mid-transition */}
-      <div style={{ display: "grid", height: "100%", overflow: "clip" }}>
+      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr)", height: "100%", overflow: "clip" }}>
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedId}
