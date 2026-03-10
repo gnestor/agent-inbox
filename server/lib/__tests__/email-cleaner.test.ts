@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "fs"
+import { resolve } from "path"
+import { fileURLToPath } from "url"
 import { cleanPlainText, cleanHtmlEmail } from "../email-cleaner.js"
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url))
+function fixture(filename: string) {
+  return readFileSync(resolve(__dirname, "fixtures", filename), "utf-8")
+}
 
 // ─── cleanPlainText ───────────────────────────────────────────────────────────
 
@@ -176,6 +184,14 @@ describe("cleanHtmlEmail", () => {
     expect(cleanHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
+  it("removes Outlook <hr tabindex=-1> separator and everything after", () => {
+    const html = '<p>My reply</p><div><hr tabindex="-1"><p>Old header</p></div>'
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain('tabindex="-1"')
+    expect(result).not.toContain("Old header")
+  })
+
   it("does NOT strip when gmail_quote is at position 0 (whole-email edge case)", () => {
     const html = '<div class="gmail_quote">All quoted</div>'
     expect(cleanHtmlEmail(html)).toContain("All quoted")
@@ -233,6 +249,46 @@ describe("cleanHtmlEmail", () => {
     expect(result).not.toContain("wrote:")
   })
 
+  it("truncates at bold From:/Date: header (Apple Mail / iOS Mail, no border-top div)", () => {
+    // Apple Mail sometimes omits the border-top wrapper; boldFrom/Date text pattern catches it.
+    const html =
+      "<p>My reply</p>" +
+      "<p><b>From: </b>John Smith &lt;john@example.com&gt;<br>" +
+      "<b>Date: </b>Mon, Apr 21, 2025<br>" +
+      "<b>Subject: </b>Re: Test</p>" +
+      "<p>Quoted body</p>"
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain("Quoted body")
+  })
+
+  it("truncates at bold From:/Sent: header (Outlook desktop, no border-top div)", () => {
+    const html =
+      "<p>My reply</p>" +
+      "<p><b>From: </b>John Smith<br><b>Sent: </b>Monday, April 21, 2025<br></p>" +
+      "<p>Quoted body</p>"
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain("Quoted body")
+  })
+
+  it("truncates at -----Original Message----- separator", () => {
+    const html =
+      "<p>My reply</p><p>-----Original Message-----</p><p>From: John</p><p>Old body</p>"
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain("Original Message")
+    expect(result).not.toContain("Old body")
+  })
+
+  it("truncates at -----Forwarded Message----- separator", () => {
+    const html =
+      "<p>My reply</p><p>-----Forwarded Message-----</p><p>Old body</p>"
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain("Forwarded Message")
+  })
+
   it("truncates at Chinese 发件人 pattern", () => {
     const html = "<p>My reply</p><p>发件人：John Smith</p><p>Old content</p>"
     const result = cleanHtmlEmail(html)
@@ -246,6 +302,26 @@ describe("cleanHtmlEmail", () => {
     const result = cleanHtmlEmail(html)
     expect(result).toContain("My reply")
     expect(result).not.toContain("Original message")
+  })
+
+  // ── Outlook border-top separator div ──────────────────────────────────────
+
+  it("removes Outlook border-top separator div and everything after", () => {
+    const html =
+      '<p>My reply</p>' +
+      '<div style="border:none;border-top:solid #B5C4DF 1.0pt;padding:3.0pt 0in 0in 0in">' +
+      '<p><b>From: </b>John Smith</p></div>'
+    const result = cleanHtmlEmail(html)
+    expect(result).toContain("My reply")
+    expect(result).not.toContain("border-top")
+    expect(result).not.toContain("From:")
+  })
+
+  it("does NOT strip border-top div at position 0 (whole-email edge case)", () => {
+    const html =
+      '<div style="border:none;border-top:solid #B5C4DF 1.0pt;padding:3.0pt 0in 0in 0in">' +
+      '<p>Content</p></div>'
+    expect(cleanHtmlEmail(html)).toContain("Content")
   })
 
   // ── Earliest-match logic (regression for the "nested attribution shadows earlier match" bug) ──
@@ -262,5 +338,64 @@ describe("cleanHtmlEmail", () => {
     expect(result).toContain("My reply")
     expect(result).not.toContain("Deep nested")
     expect(result).not.toContain("写道")
+  })
+})
+
+// ─── Real Gmail fixtures ───────────────────────────────────────────────────────
+// Raw HTML fetched from Gmail API. Refresh a fixture:
+//   tsx server/lib/test-cleaner.ts <id> --raw > server/lib/__tests__/fixtures/<id>.html
+
+describe("cleanHtmlEmail — real Gmail fixtures", () => {
+  it("19491ac0c7f23645: strips shortwave-signature div", () => {
+    // Shortwave reply — shortwave-signature div immediately precedes quoted history.
+    const raw = fixture("19491ac0c7f23645.html")
+    const result = cleanHtmlEmail(raw)
+
+    expect(result.length).toBeGreaterThan(100)
+    expect(result).not.toMatch(/class="[^"]*shortwave-signature/)
+    // Removes more than half the raw body
+    expect(result.length).toBeLessThan(raw.length * 0.6)
+  })
+
+  it("19b4749784c16bb2: strips gmail_quote div", () => {
+    // Gmail web reply — quoted history is wrapped in a gmail_quote div.
+    const raw = fixture("19b4749784c16bb2.html")
+    const result = cleanHtmlEmail(raw)
+
+    expect(result.length).toBeGreaterThan(100)
+    expect(result).not.toMatch(/class="[^"]*gmail_quote/)
+    // gmail_quote carries ~99% of the raw body in this thread
+    expect(result.length).toBeLessThan(raw.length * 0.02)
+  })
+
+  it("19b24990f8ff2ca5: strips Outlook border-top reply separator", () => {
+    // Outlook desktop reply — border-top div wraps From/Date header block.
+    const raw = fixture("19b24990f8ff2ca5.html")
+    const result = cleanHtmlEmail(raw)
+
+    expect(result.length).toBeGreaterThan(500)
+    expect(result).not.toMatch(/border:none;border-top:solid/)
+    // Quoted history was ~95% of the body
+    expect(result.length).toBeLessThan(raw.length * 0.05)
+  })
+
+  it("19bb9ce27bf761f5: strips unclosed blockquote (Apple Mail / iOS)", () => {
+    // Apple Mail reply — blockquote is opened but never closed; cleaner cuts at it.
+    const raw = fixture("19bb9ce27bf761f5.html")
+    const result = cleanHtmlEmail(raw)
+
+    expect(result.length).toBeGreaterThan(100)
+    // Removes the vast majority of the accumulated thread HTML
+    expect(result.length).toBeLessThan(raw.length * 0.02)
+  })
+
+  it("19cbb4210e7ef740: preserves standalone email with no reply content", () => {
+    // Single email with signature image — nothing to strip.
+    const raw = fixture("19cbb4210e7ef740.html")
+    const result = cleanHtmlEmail(raw)
+
+    // Blank-block cleanup may remove some trailing whitespace, but body is intact
+    expect(result.length).toBeGreaterThan(raw.length * 0.8)
+    expect(result).not.toMatch(/border:none;border-top:solid/)
   })
 })

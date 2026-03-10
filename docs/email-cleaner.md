@@ -68,39 +68,32 @@ The tag-permissive unit `T = "(?:[^<]|<[^>]+>)"` matches either a non-`<` charac
 
 ## Testing
 
+Run the vitest test suite — covers every pattern with both synthetic inline HTML and real Gmail fixture files:
+
 ```bash
-# Step-by-step trace: which patterns fired, lengths at each stage
 cd packages/inbox
-npm run test:cleaner <messageId>
-
-# Dump raw Gmail HTML for manual inspection or saving as a fixture
-npm run test:cleaner <messageId> --raw > /tmp/raw.html
+npm run test:run -- server/lib/__tests__/email-cleaner.test.ts
 ```
 
-Output example:
-```
-Input: 229327 chars
-  gmail_quote/extra: 229327 → 20902 (-208425)
+Fixture files are in `server/lib/__tests__/fixtures/`. Each fixture is the raw HTML body of a real Gmail message that exercises a specific structural or text pattern:
 
-Pre-text-pattern: 20902 chars
-  [    ] 发件人
-  [    ] 写道
-  [MATCH] On...wrote at index 6839
-  [MATCH] boldFrom/Date at index 4080
+| Fixture | Pattern exercised |
+|---------|------------------|
+| `19491ac0c7f23645.html` | `shortwave-signature` div |
+| `19b4749784c16bb2.html` | `gmail_quote` div |
+| `19b24990f8ff2ca5.html` | Outlook `border:none;border-top:solid` separator div |
+| `19bb9ce27bf761f5.html` | Unclosed `<blockquote>` (Apple Mail / iOS) |
+| `19cbb4210e7ef740.html` | Baseline — no reply content, preserves body |
 
-  → Using "boldFrom/Date" match at 4080, cutting at block boundary 4059
+To add a new fixture when a new pattern is discovered:
 
-Post-text-pattern: 4059 chars
-Actual cleanHtmlEmail output: 3641 chars
-  (difference of 418 from signature/blank cleanup)
-```
-
-To get a message ID from a thread: check the SQLite cache or open DevTools and inspect the API response.
-
-```bash
-sqlite3 packages/inbox/data/inbox.db \
-  "SELECT json_extract(data, '$.messages[1].id') FROM api_cache WHERE key = 'gmail:thread:<threadId>'"
-```
+1. Get the message ID from the thread URL (last path segment) or the SQLite cache:
+   ```bash
+   sqlite3 packages/inbox/data/inbox.db \
+     "SELECT json_extract(data, '$.messages[1].id') FROM api_cache WHERE key = 'gmail:thread:<threadId>'"
+   ```
+2. Fetch the raw HTML via the Gmail API (format=full, decode the base64url body part) and save to `server/lib/__tests__/fixtures/<id>.html`
+3. Add a test that asserts the pattern fires and the body is significantly reduced
 
 ## Cache invalidation
 

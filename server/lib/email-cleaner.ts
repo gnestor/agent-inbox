@@ -133,6 +133,10 @@ export function cleanHtmlEmail(html: string): string {
   const outlookHrIdx = result.search(/<hr[^>]*tabindex="-1"[^>]*>/i)
   if (outlookHrIdx > 0) result = result.slice(0, findBlockStart(result, outlookHrIdx))
 
+  // Outlook desktop / Apple Mail: border-top separator div that wraps the From/Date header block
+  const borderTopIdx = result.search(/<div[^>]*style="[^"]*border:none;border-top:solid[^"]*"/i)
+  if (borderTopIdx > 0) result = result.slice(0, borderTopIdx)
+
   // ── Blockquote removal (loop removes innermost first, handles nesting) ─────
 
   // Match only the innermost blockquotes (no nested <blockquote> inside).

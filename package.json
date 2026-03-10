@@ -13,7 +13,6 @@
     "test:ci": "tsc -b && vitest run",
     "format": "prettier --write \"**/*.{ts,tsx,json,css}\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\" --ignore-path .gitignore",
-    "test:cleaner": "tsx server/lib/test-cleaner.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
