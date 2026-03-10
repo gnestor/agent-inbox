@@ -380,7 +380,11 @@ function toolUseSummary(name: string, input: any): string {
 
 function isIdeContextBlock(block: any): boolean {
   const text = block.text || ""
-  return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
+  return (
+    text.startsWith("<ide_opened_file>") ||
+    text.startsWith("<ide_selection>") ||
+    text.startsWith("Base directory for this skill:")
+  )
 }
 
 function parseIdeContext(
