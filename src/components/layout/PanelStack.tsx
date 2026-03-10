@@ -25,9 +25,13 @@ const DURATION = 0.5
 const ITEM_GAP = 16 // px gap between panels during list item navigation
 
 const itemVariants = {
-  enter: (d: number) => ({ y: d >= 0 ? `calc(100% + ${ITEM_GAP}px)` : `calc(-100% - ${ITEM_GAP}px)` }),
+  enter: (d: number) => ({
+    y: d >= 0 ? `calc(100% + ${ITEM_GAP}px)` : `calc(-100% - ${ITEM_GAP}px)`,
+  }),
   center: { y: 0 },
-  exit: (d: number) => ({ y: d >= 0 ? `calc(-100% - ${ITEM_GAP}px)` : `calc(100% + ${ITEM_GAP}px)` }),
+  exit: (d: number) => ({
+    y: d >= 0 ? `calc(-100% - ${ITEM_GAP}px)` : `calc(100% + ${ITEM_GAP}px)`,
+  }),
 }
 
 // Parse current URL into panel state for the active tab
@@ -202,9 +206,43 @@ function DetailContent({
   title: string
   sessionOpen?: boolean
 }) {
-  if (tab === "emails") return <EmailThread threadId={selectedId} title={title} sessionOpen={sessionOpen} />
-  if (tab === "tasks") return <TaskDetail taskId={selectedId} title={title} sessionOpen={sessionOpen} />
+  if (tab === "emails")
+    return <EmailThread threadId={selectedId} title={title} sessionOpen={sessionOpen} />
+  if (tab === "tasks")
+    return <TaskDetail taskId={selectedId} title={title} sessionOpen={sessionOpen} />
   return <SessionView sessionId={selectedId} title={title} />
+}
+
+function SessionPanelSlide({ tab, id, sId }: { tab: TabId; id: string; sId?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+    }, 100)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  return (
+    <motion.div
+      initial={{ width: 0 }}
+      animate={{ width: 616 }}
+      exit={{ width: 0 }}
+      transition={{ duration: DURATION, ease: EASE }}
+      style={{ zIndex: 1 }}
+      className="shrink-0 h-full overflow-hidden pl-4"
+    >
+      <div
+        ref={ref}
+        className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+      >
+        <NewSessionPanel
+          threadId={tab === "emails" ? id : undefined}
+          taskId={tab === "tasks" ? id : undefined}
+          sessionId={sId}
+        />
+      </div>
+    </motion.div>
+  )
 }
 
 function ItemSlider({
@@ -227,6 +265,12 @@ function ItemSlider({
   // Read direction during ItemSlider's render (after EmailList has updated the ref)
   const direction = directionRef.current
 
+  // Scroll into view when this panel mounts (detail panel first added)
+  const outerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    outerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "end" })
+  }, [])
+
   const renderContent = (id: string, sOpen: boolean, sId?: string) => (
     <div className="shrink-0 h-full flex flex-row">
       <div
@@ -237,23 +281,7 @@ function ItemSlider({
       </div>
       <AnimatePresence>
         {tab !== "sessions" && sOpen && (
-          <motion.div
-            key="session"
-            initial={{ width: 0 }}
-            animate={{ width: 616 }}
-            exit={{ width: 0 }}
-            transition={{ duration: DURATION, ease: EASE }}
-            style={{ zIndex: 1 }}
-            className="shrink-0 h-full overflow-hidden pl-4"
-          >
-            <div className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden">
-              <NewSessionPanel
-                threadId={tab === "emails" ? id : undefined}
-                taskId={tab === "tasks" ? id : undefined}
-                sessionId={sId}
-              />
-            </div>
-          </motion.div>
+          <SessionPanelSlide key="session" tab={tab} id={id} sId={sId} />
         )}
       </AnimatePresence>
     </div>
@@ -261,7 +289,8 @@ function ItemSlider({
 
   return (
     <motion.div
-      className="overflow-clip h-full p-px"
+      ref={outerRef}
+      className="shrink-0 overflow-clip h-full p-px"
       initial={{ opacity: 0, x: 40 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 40 }}
@@ -355,31 +384,24 @@ function TabPane({
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const prevSelectedId = useRef(selectedId)
-  const prevSessionOpen = useRef(sessionOpen)
+  const prevSelectedId = useRef<string | undefined>(undefined)
+  const prevSessionOpen = useRef(false)
 
   useEffect(() => {
     if (isMobile) return
     const el = scrollRef.current
     if (!el) return
 
-    const panelAdded =
-      (!prevSelectedId.current && !!selectedId) ||
-      (!prevSessionOpen.current && sessionOpen)
-    const panelRemoved =
-      (!!prevSelectedId.current && !selectedId) ||
-      (prevSessionOpen.current && !sessionOpen)
+    const detailRemoved = !!prevSelectedId.current && !selectedId
+    const sessionRemoved = prevSessionOpen.current && !sessionOpen
 
     prevSelectedId.current = selectedId
     prevSessionOpen.current = sessionOpen
 
-    if (panelAdded) {
-      // Defer until after AnimatePresence has mounted the new panel into the DOM
-      requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: "smooth" }))
-    } else if (panelRemoved) {
-      // Scroll back to show the panel that remains after dismissal
-      const targetLeft = !selectedId ? 0 : el.scrollLeft - 616 // 600px panel + 16px gap
-      el.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" })
+    if (sessionRemoved) {
+      el.scrollTo({ left: Math.max(0, el.scrollLeft - 616), behavior: "smooth" })
+    } else if (detailRemoved) {
+      el.scrollTo({ left: 0, behavior: "smooth" })
     }
   }, [selectedId, sessionOpen, isMobile])
 
@@ -413,7 +435,14 @@ function TabPane({
           hasNextTab={hasNextTab}
           skipEntrance={skipEntrance}
         >
-          {selectedId && <DetailContent tab={tab} selectedId={selectedId} title={selectedTitle} sessionOpen={sessionOpen} />}
+          {selectedId && (
+            <DetailContent
+              tab={tab}
+              selectedId={selectedId}
+              title={selectedTitle}
+              sessionOpen={sessionOpen}
+            />
+          )}
         </MobileOverlayPanel>
         <MobileOverlayPanel
           zIndex={20}
@@ -437,7 +466,10 @@ function TabPane({
   }
 
   return (
-    <div ref={scrollRef} className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5">
+    <div
+      ref={scrollRef}
+      className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5"
+    >
       {listPanel}
       <AnimatePresence>
         {selectedId && (
@@ -523,7 +555,10 @@ export function PanelStack() {
             drag={isMobile ? "y" : false}
             dragControls={tabDragControls}
             dragListener={false}
-            dragConstraints={{ top: hasNextTab ? -DRAG_RANGE : 0, bottom: hasPrevTab ? DRAG_RANGE : 0 }}
+            dragConstraints={{
+              top: hasNextTab ? -DRAG_RANGE : 0,
+              bottom: hasPrevTab ? DRAG_RANGE : 0,
+            }}
             dragElastic={0}
             dragMomentum={false}
             onDragEnd={isMobile ? handleTabPaneDragEnd : undefined}
