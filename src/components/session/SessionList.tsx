@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState, useDeferredValue } from "react"
 import { useNavigate } from "react-router-dom"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -72,9 +72,12 @@ export function SessionList({
 
   const hasActiveFilters = statusFilter.length > 0 || projectFilter.length > 0
 
+  const deferredSearch = useDeferredValue(search)
+
   const filters: Record<string, string> = {}
   if (statusFilter.length > 0) filters.status = statusFilter.join(",")
   if (projectFilter.length > 0) filters.project = projectFilter.join(",")
+  if (deferredSearch) filters.q = deferredSearch
 
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -82,20 +85,21 @@ export function SessionList({
   )
   const navigate = useNavigate()
 
-  const filteredSessions = useMemo(() => {
-    if (!search) return sessions
-    const q = search.toLowerCase()
-    return sessions.filter(
-      (s) =>
-        (s.summary && s.summary.toLowerCase().includes(q)) || s.prompt.toLowerCase().includes(q),
-    )
-  }, [sessions, search])
+  const filteredSessions = sessions
 
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Reset scroll position when filters/search change so the top of results is visible
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [deferredSearch, statusFilter, projectFilter])
+
   const virtualizer = useVirtualizer({
     count: filteredSessions.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 66,
+    // Items with a subtitle row ("X messages") are ~88px; without subtitle ~66px.
+    // A per-item estimate reduces layout shift before measureElement fires.
+    estimateSize: (index) => (filteredSessions[index]?.messageCount > 0 ? 88 : 66),
     overscan: 5,
   })
 
@@ -224,7 +228,7 @@ export function SessionList({
         )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {loading && <ListSkeleton itemHeight={66} />}
+        {loading && <ListSkeleton itemHeight={80} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
         {!loading && filteredSessions.length > 0 && (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

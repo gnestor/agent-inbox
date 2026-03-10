@@ -5,6 +5,7 @@ interface SessionFilters {
   status?: string
   triggerSource?: string
   project?: string
+  q?: string
 }
 
 export function useSessions(filters?: SessionFilters, enabled = true) {

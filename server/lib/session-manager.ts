@@ -167,31 +167,45 @@ export function getLinkedSession(
   return undefined
 }
 
-export function listSessionRecords(filters?: { status?: string; triggerSource?: string }) {
+export function listSessionRecords(filters?: {
+  status?: string
+  triggerSource?: string
+  q?: string
+}) {
   const db = getDb()
-  let sql = "SELECT * FROM sessions"
   const conditions: string[] = []
   const params: unknown[] = []
 
   if (filters?.status) {
     const values = filters.status.split(",")
     if (values.length === 1) {
-      conditions.push("status = ?")
+      conditions.push("s.status = ?")
       params.push(values[0])
     } else {
-      conditions.push(`status IN (${values.map(() => "?").join(",")})`)
+      conditions.push(`s.status IN (${values.map(() => "?").join(",")})`)
       params.push(...values)
     }
   }
   if (filters?.triggerSource) {
-    conditions.push("trigger_source = ?")
+    conditions.push("s.trigger_source = ?")
     params.push(filters.triggerSource)
+  }
+
+  let sql: string
+  if (filters?.q) {
+    const like = `%${filters.q}%`
+    // Join session_messages to search full message content
+    sql = `SELECT DISTINCT s.* FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
+    conditions.push("(s.prompt LIKE ? OR s.summary LIKE ? OR sm.message LIKE ?)")
+    params.push(like, like, like)
+  } else {
+    sql = "SELECT s.* FROM sessions s"
   }
 
   if (conditions.length) {
     sql += " WHERE " + conditions.join(" AND ")
   }
-  sql += " ORDER BY updated_at DESC"
+  sql += " ORDER BY s.updated_at DESC"
 
   return db.prepare(sql).all(...params) as Array<Record<string, unknown>>
 }
@@ -529,6 +543,83 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
   }
 
   return { cwd, firstPrompt, summary }
+}
+
+/**
+ * Search agent sessions (JSONL files) for a query string in raw file content.
+ * Unlike listAllAgentSessions, this searches the full raw text rather than
+ * the truncated firstPrompt metadata, so terms that appear deep in a prompt
+ * are still found.
+ */
+export async function searchAgentSessions(q: string) {
+  const fs = await import("fs")
+  const { join } = await import("path")
+  const { homedir } = await import("os")
+
+  const projectsDir = join(homedir(), ".claude", "projects")
+  if (!fs.existsSync(projectsDir)) return []
+
+  const qLower = q.toLowerCase()
+
+  const results: Array<{
+    sessionId: string
+    summary: string | null
+    lastModified: number
+    firstPrompt: string | null
+    cwd: string
+    project: string
+  }> = []
+
+  const dirs = fs
+    .readdirSync(projectsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+
+  for (const dirName of dirs) {
+    const dirPath = join(projectsDir, dirName)
+    try {
+      const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
+      for (const fileName of files) {
+        const filePath = join(dirPath, fileName)
+        try {
+          const stat = fs.statSync(filePath)
+          // Read more lines than the list view to capture long prompts
+          const { headLines, tailLines } = readHeadTailLines(filePath, 50, 10, fs)
+
+          // Search raw content — avoids the 200-char firstPrompt truncation limit
+          const rawHead = headLines.join("\n").toLowerCase()
+          const rawTail = tailLines.join("\n").toLowerCase()
+          if (!rawHead.includes(qLower) && !rawTail.includes(qLower)) continue
+
+          const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+          if (!cwd) continue
+
+          results.push({
+            sessionId: fileName.replace(".jsonl", ""),
+            summary,
+            lastModified: stat.mtimeMs,
+            firstPrompt,
+            cwd,
+            project: projectLabel(cwd),
+          })
+        } catch {
+          /* skip unreadable files */
+        }
+      }
+    } catch {
+      /* skip unreadable dirs */
+    }
+  }
+
+  // Deduplicate by sessionId, keeping most recently modified
+  const byId = new Map<string, (typeof results)[0]>()
+  for (const r of results) {
+    const existing = byId.get(r.sessionId)
+    if (!existing || r.lastModified > existing.lastModified) {
+      byId.set(r.sessionId, r)
+    }
+  }
+  return [...byId.values()]
 }
 
 export async function listAllAgentSessions() {

@@ -112,11 +112,13 @@ export async function getSessions(filters?: {
   status?: string
   triggerSource?: string
   project?: string
+  q?: string
 }) {
   const params = new URLSearchParams()
   if (filters?.status) params.set("status", filters.status)
   if (filters?.triggerSource) params.set("trigger_source", filters.triggerSource)
   if (filters?.project) params.set("project", filters.project)
+  if (filters?.q) params.set("q", filters.q)
   const qs = params.toString()
   return request<{ sessions: import("@/types").Session[] }>(`/sessions${qs ? `?${qs}` : ""}`)
 }

@@ -29,15 +29,22 @@ sessionRoutes.get("/", async (c) => {
   const status = c.req.query("status")
   const triggerSource = c.req.query("trigger_source")
   const project = c.req.query("project")
+  const q = c.req.query("q")
 
   // Get sessions from local DB
   const dbSessions = sessions.listSessionRecords({
     status: status || undefined,
     triggerSource: triggerSource || undefined,
+    q: q || undefined,
   })
 
-  // Also get sessions from Agent SDK (discovers CC sessions not started by us)
-  const agentSessions = await sessions.listAllAgentSessions().catch((err: unknown) => {
+  // Also get sessions from Agent SDK (discovers CC sessions not started by us).
+  // When searching, use searchAgentSessions which scans raw JSONL content rather
+  // than the truncated firstPrompt metadata so deep-in-prompt terms are found.
+  const agentSessions = await (q
+    ? sessions.searchAgentSessions(q)
+    : sessions.listAllAgentSessions()
+  ).catch((err: unknown) => {
     console.error("listAllAgentSessions failed:", err)
     return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
   })
