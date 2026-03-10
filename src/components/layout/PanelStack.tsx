@@ -20,11 +20,48 @@ import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
 const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
-const DURATION = 0.5
+const DURATION = 0.6
 
 const ITEM_GAP = 16 // px gap between panels during list item navigation
 
-const itemVariants = {
+export function smoothScrollTo(el: HTMLElement, left: number, rafRef: { current: number }) {
+  cancelAnimationFrame(rafRef.current)
+  const start = el.scrollLeft
+  const distance = left - start
+  if (distance === 0) return
+  const durationMs = DURATION * 1000
+  const startTime = performance.now()
+  function step(now: number) {
+    const t = Math.min((now - startTime) / durationMs, 1)
+    const eased = 1 - Math.pow(1 - t, 3)
+    el.scrollLeft = start + distance * eased
+    if (t < 1) rafRef.current = requestAnimationFrame(step)
+  }
+  rafRef.current = requestAnimationFrame(step)
+}
+
+// Pure function — extracted for unit testing
+export function getScrollTarget(
+  prevId: string | undefined,
+  selectedId: string | undefined,
+  prevSession: boolean,
+  sessionOpen: boolean,
+  scrollLeft: number,
+  scrollWidth: number,
+  clientWidth: number,
+): { target: number; deferred?: true } | null {
+  const detailAdded = !prevId && !!selectedId
+  const detailRemoved = !!prevId && !selectedId
+  const sessionAdded = !prevSession && sessionOpen
+  const sessionRemoved = prevSession && !sessionOpen
+  if (detailAdded) return { target: scrollWidth - clientWidth }
+  if (sessionAdded) return { target: scrollWidth - clientWidth, deferred: true }
+  if (sessionRemoved) return { target: Math.max(0, scrollLeft - 632) }
+  if (detailRemoved) return { target: 0 }
+  return null
+}
+
+export const itemVariants = {
   enter: (d: number) => ({
     y: d >= 0 ? `calc(100% + ${ITEM_GAP}px)` : `calc(-100% - ${ITEM_GAP}px)`,
   }),
@@ -59,6 +96,33 @@ const TAB_SWIPE_VELOCITY = 400 // px/s
 // Large enough to cover any mobile screen — allows 1:1 drag tracking
 const DRAG_RANGE = 1000
 
+// Pure functions — extracted for unit testing
+
+export function classifyTabDrag(vy: number, oy: number, height: number): "prev" | "next" | null {
+  if (vy > TAB_SWIPE_VELOCITY || oy > height * TAB_SWIPE_THRESHOLD) return "prev"
+  if (vy < -TAB_SWIPE_VELOCITY || oy < -height * 0.05) return "next"
+  return null
+}
+
+export function classifyOverlayDrag(
+  vx: number,
+  vy: number,
+  ox: number,
+  oy: number,
+  width: number,
+  height: number,
+  hasTabSwipe: boolean,
+): "tabPrev" | "tabNext" | "dismiss" | "forward" | null {
+  if (hasTabSwipe && Math.abs(oy) > Math.abs(ox)) {
+    if (vy > TAB_SWIPE_VELOCITY || oy > height * TAB_SWIPE_THRESHOLD) return "tabPrev"
+    if (vy < -TAB_SWIPE_VELOCITY || oy < -height * 0.05) return "tabNext"
+    return null
+  }
+  if (vx > DISMISS_VELOCITY || ox > width * DISMISS_THRESHOLD) return "dismiss"
+  if (vx < -DISMISS_VELOCITY || ox < -width * DISMISS_THRESHOLD) return "forward"
+  return null
+}
+
 function MobileOverlayPanelInner({
   children,
   zIndex,
@@ -91,30 +155,11 @@ function MobileOverlayPanelInner({
   ) => {
     const { x: vx, y: vy } = info.velocity
     const { x: ox, y: oy } = info.offset
-    const width = window.innerWidth
-    const height = window.innerHeight
-
-    // If the gesture is more vertical than horizontal, treat as tab swipe
-    if (onTabSwipe && Math.abs(oy) > Math.abs(ox)) {
-      // Drag DOWN 35% or fast → prev tab (above)
-      if (vy > TAB_SWIPE_VELOCITY || oy > height * TAB_SWIPE_THRESHOLD) onTabSwipe(-1)
-      // Drag UP 5% or fast → next tab (below) — limited space from title bar to screen edge
-      else if (vy < -TAB_SWIPE_VELOCITY || oy < -height * 0.05) onTabSwipe(1)
-      return
-    }
-
-    // Swipe right → dismiss (go back)
-    if (onDismiss && (vx > DISMISS_VELOCITY || ox > width * DISMISS_THRESHOLD)) {
-      setPhase("dismissing")
-      return
-    }
-
-    // Swipe left → forward (go deeper)
-    if (onForward && (vx < -DISMISS_VELOCITY || ox < -width * DISMISS_THRESHOLD)) {
-      onForward()
-      return
-    }
-
+    const action = classifyOverlayDrag(vx, vy, ox, oy, window.innerWidth, window.innerHeight, !!onTabSwipe)
+    if (action === "tabPrev") { onTabSwipe?.(-1); return }
+    if (action === "tabNext") { onTabSwipe?.(1); return }
+    if (action === "dismiss" && onDismiss) { setPhase("dismissing"); return }
+    if (action === "forward" && onForward) { onForward(); return }
     // Otherwise Motion snaps back to animate={{ x: 0 }} automatically
   }
 
@@ -214,26 +259,14 @@ function DetailContent({
 }
 
 function SessionPanelSlide({ tab, id, sId }: { tab: TabId; id: string; sId?: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      ref.current?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
-    }, 100)
-    return () => window.clearTimeout(timer)
-  }, [])
-
   return (
     <motion.div
-      initial={{ width: 0 }}
-      animate={{ width: 616 }}
+      style={{ zIndex: 1 }}
+      className="shrink-0 h-full overflow-hidden pl-4 w-[632px]"
       exit={{ width: 0 }}
       transition={{ duration: DURATION, ease: EASE }}
-      style={{ zIndex: 1 }}
-      className="shrink-0 h-full overflow-hidden pl-4"
     >
-      <div
-        ref={ref}
-        className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+      <div className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
       >
         <NewSessionPanel
           threadId={tab === "emails" ? id : undefined}
@@ -265,12 +298,6 @@ function ItemSlider({
   // Read direction during ItemSlider's render (after EmailList has updated the ref)
   const direction = directionRef.current
 
-  // Scroll into view when this panel mounts (detail panel first added)
-  const outerRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    outerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "end" })
-  }, [])
-
   const renderContent = (id: string, sOpen: boolean, sId?: string) => (
     <div className="shrink-0 h-full flex flex-row">
       <div
@@ -289,27 +316,29 @@ function ItemSlider({
 
   return (
     <motion.div
-      ref={outerRef}
       className="shrink-0 overflow-clip h-full p-px"
-      initial={{ opacity: 0, x: 40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 40 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: DURATION, ease: EASE }}
     >
-      <AnimatePresence initial={false} mode="popLayout" custom={direction}>
-        <motion.div
-          key={selectedId}
-          custom={direction}
-          variants={itemVariants}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{ duration: DURATION, ease: EASE }}
-          className="h-full"
-        >
+      {/* Grid single-cell layout: both entering and exiting items occupy cell (1,1)
+          so the grid cell width = max(old, new) — scrollWidth never collapses mid-transition */}
+      <div style={{ display: "grid", height: "100%", overflow: "clip" }}>
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.div
+            key={selectedId}
+            custom={direction}
+            variants={itemVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: DURATION, ease: EASE }}
+            style={{ gridRow: 1, gridColumn: 1 }}
+            className="h-full"
+          >
           {renderContent(selectedId, sessionOpen, sessionId)}
-        </motion.div>
-      </AnimatePresence>
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </motion.div>
   )
 }
@@ -384,6 +413,7 @@ function TabPane({
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRafRef = useRef(0)
   const prevSelectedId = useRef<string | undefined>(undefined)
   const prevSessionOpen = useRef(false)
 
@@ -392,16 +422,22 @@ function TabPane({
     const el = scrollRef.current
     if (!el) return
 
-    const detailRemoved = !!prevSelectedId.current && !selectedId
-    const sessionRemoved = prevSessionOpen.current && !sessionOpen
-
+    const prevId = prevSelectedId.current
+    const prevSession = prevSessionOpen.current
     prevSelectedId.current = selectedId
     prevSessionOpen.current = sessionOpen
 
-    if (sessionRemoved) {
-      el.scrollTo({ left: Math.max(0, el.scrollLeft - 616), behavior: "smooth" })
-    } else if (detailRemoved) {
-      el.scrollTo({ left: 0, behavior: "smooth" })
+    const action = getScrollTarget(prevId, selectedId, prevSession, sessionOpen, el.scrollLeft, el.scrollWidth, el.clientWidth)
+    if (!action) return
+    if (action.deferred) {
+      // Defer one frame so the session panel is fully laid out before measuring scrollWidth
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = requestAnimationFrame(() => {
+        const el2 = scrollRef.current
+        if (el2) smoothScrollTo(el2, el2.scrollWidth - el2.clientWidth, scrollRafRef)
+      })
+    } else {
+      smoothScrollTo(el, action.target, scrollRafRef)
     }
   }, [selectedId, sessionOpen, isMobile])
 
@@ -490,7 +526,7 @@ function TabPane({
 
 const GAP = 16 // px gap between tab panel groups during transition
 
-const tabVariants = {
+export const tabVariants = {
   enter: (d: number) => ({ y: d >= 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)` }),
   center: { y: 0 },
   exit: (d: number) => ({ y: d >= 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)` }),
@@ -525,11 +561,9 @@ export function PanelStack() {
 
   const handleTabPaneDragEnd = useCallback(
     (_: PointerEvent, info: { velocity: { y: number }; offset: { y: number } }) => {
-      const { y: vy } = info.velocity
-      const { y: oy } = info.offset
-      const height = window.innerHeight
-      if (vy > TAB_SWIPE_VELOCITY || oy > height * TAB_SWIPE_THRESHOLD) handleTabSwipe(-1)
-      else if (vy < -TAB_SWIPE_VELOCITY || oy < -height * 0.05) handleTabSwipe(1)
+      const action = classifyTabDrag(info.velocity.y, info.offset.y, window.innerHeight)
+      if (action === "prev") handleTabSwipe(-1)
+      else if (action === "next") handleTabSwipe(1)
     },
     [handleTabSwipe],
   )
