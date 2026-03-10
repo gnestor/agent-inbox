@@ -35,6 +35,7 @@
 - [x] Rich prompt editor (WYSIWYG markdown editor, Tiptap v3: slash commands, bubble menu, markdown shortcuts)
 - [x] Prompt templates (save/load named templates in new-session panel, persisted to preferences)
 - [x] AskUserQuestion panels (agent pauses mid-session, frontend shows interactive form, answers injected as tool result via canUseTool + pending Promise)
+- [x] Auto-start sessions from detail view (skip ComposePanel; fires createSession immediately with <ide_opened_file> prompt including subject/title and URL)
 - [ ] Suggested prompts
 - [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)

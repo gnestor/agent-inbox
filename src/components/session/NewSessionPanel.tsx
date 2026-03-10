@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Input } from "@hammies/frontend/components/ui"
@@ -21,15 +21,70 @@ interface NewSessionPanelProps {
   threadId?: string
   taskId?: string
   sessionId?: string
+  autoStart?: boolean
 }
 
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ threadId, taskId, sessionId }: NewSessionPanelProps) {
+export function NewSessionPanel({ threadId, taskId, sessionId, autoStart }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} />
   }
+  if (autoStart && (threadId || taskId)) {
+    return <AutoStartPanel threadId={threadId} taskId={taskId} />
+  }
   return <ComposePanel threadId={threadId} taskId={taskId} />
+}
+
+// ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
+
+function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const fired = useRef(false)
+
+  const { thread } = useEmailThread(threadId)
+  const { data: task } = useQuery<NotionTaskDetail>({
+    queryKey: ["task", taskId],
+    queryFn: () => getTask(taskId!),
+    enabled: !!taskId,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (prompt: string) =>
+      createSession({
+        prompt,
+        linkedEmailThreadId: thread?.id,
+        linkedEmailId: thread?.messages[0]?.id,
+        linkedTaskId: task?.id,
+      }),
+    onSuccess: ({ sessionId }) => {
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
+      else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
+    },
+  })
+
+  useEffect(() => {
+    if (fired.current) return
+    if (threadId && thread) {
+      fired.current = true
+      const url = `https://mail.google.com/mail/u/0/#all/${thread.id}`
+      const prompt = `<ide_opened_file>The user opened an email thread "${thread.subject}" ${url} in the IDE. Gather context related to it.</ide_opened_file>`
+      createMutation.mutate(prompt)
+    } else if (taskId && task) {
+      fired.current = true
+      const prompt = `<ide_opened_file>The user opened a Notion task "${task.title}" ${task.url} in the IDE. Gather context related to it.</ide_opened_file>`
+      createMutation.mutate(prompt)
+    }
+  }, [thread, task])
+
+  return (
+    <div className="flex flex-col h-full items-center justify-center gap-3 text-muted-foreground">
+      <Loader2 className="h-6 w-6 animate-spin" />
+      <p className="text-sm">Starting session…</p>
+    </div>
+  )
 }
 
 // ── Compose panel ────────────────────────────────────────────────────────────

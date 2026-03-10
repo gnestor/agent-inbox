@@ -226,30 +226,46 @@ function ItemSlider({
   const direction = directionRef.current
 
   const renderContent = (id: string, sOpen: boolean, sId?: string) => (
-    <div className="shrink-0 h-full flex flex-row gap-4">
+    <div className="shrink-0 h-full flex flex-row">
       <div
         style={{ zIndex: 2 }}
         className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
       >
         <DetailContent tab={tab} selectedId={id} title={title} />
       </div>
-      {tab !== "sessions" && sOpen && (
-        <div
-          style={{ zIndex: 1 }}
-          className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
-        >
-          <NewSessionPanel
-            threadId={tab === "emails" ? id : undefined}
-            taskId={tab === "tasks" ? id : undefined}
-            sessionId={sId}
-          />
-        </div>
-      )}
+      <AnimatePresence>
+        {tab !== "sessions" && sOpen && (
+          <motion.div
+            key="session"
+            initial={{ width: 0 }}
+            animate={{ width: 616 }}
+            exit={{ width: 0 }}
+            transition={{ duration: DURATION, ease: EASE }}
+            style={{ zIndex: 1 }}
+            className="shrink-0 h-full overflow-hidden pl-4"
+          >
+            <div className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden">
+              <NewSessionPanel
+                threadId={tab === "emails" ? id : undefined}
+                taskId={tab === "tasks" ? id : undefined}
+                sessionId={sId}
+                autoStart={!sId}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 
   return (
-    <div className="overflow-clip h-full p-px">
+    <motion.div
+      className="overflow-clip h-full p-px"
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 40 }}
+      transition={{ duration: DURATION, ease: EASE }}
+    >
       <AnimatePresence initial={false} mode="popLayout" custom={direction}>
         <motion.div
           key={selectedId}
@@ -264,7 +280,7 @@ function ItemSlider({
           {renderContent(selectedId, sessionOpen, sessionId)}
         </motion.div>
       </AnimatePresence>
-    </div>
+    </motion.div>
   )
 }
 
@@ -338,12 +354,31 @@ function TabPane({
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prevSelectedId = useRef(selectedId)
+  const prevSessionOpen = useRef(sessionOpen)
 
   useEffect(() => {
     if (isMobile) return
     const el = scrollRef.current
     if (!el) return
-    el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
+
+    const panelAdded =
+      (!prevSelectedId.current && !!selectedId) ||
+      (!prevSessionOpen.current && sessionOpen)
+    const panelRemoved =
+      (!!prevSelectedId.current && !selectedId) ||
+      (prevSessionOpen.current && !sessionOpen)
+
+    prevSelectedId.current = selectedId
+    prevSessionOpen.current = sessionOpen
+
+    if (panelAdded) {
+      el.scrollTo({ left: el.scrollWidth, behavior: "smooth" })
+    } else if (panelRemoved) {
+      // Scroll back to show the panel that remains after dismissal
+      const targetLeft = !selectedId ? 0 : el.scrollLeft - 616 // 600px panel + 16px gap
+      el.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" })
+    }
   }, [selectedId, sessionOpen, isMobile])
 
   const navigate = useNavigate()
@@ -392,6 +427,7 @@ function TabPane({
               threadId={tab === "emails" ? selectedId : undefined}
               taskId={tab === "tasks" ? selectedId : undefined}
               sessionId={sessionId}
+              autoStart={!sessionId}
             />
           )}
         </MobileOverlayPanel>
@@ -402,14 +438,19 @@ function TabPane({
   return (
     <div ref={scrollRef} className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5">
       {listPanel}
-      <ItemSlider
-        tab={tab}
-        selectedId={selectedId}
-        sessionOpen={sessionOpen}
-        sessionId={sessionId}
-        directionRef={directionRef}
-        title={selectedTitle}
-      />
+      <AnimatePresence>
+        {selectedId && (
+          <ItemSlider
+            key="item-slider"
+            tab={tab}
+            selectedId={selectedId}
+            sessionOpen={sessionOpen}
+            sessionId={sessionId}
+            directionRef={directionRef}
+            title={selectedTitle}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
