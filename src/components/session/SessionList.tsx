@@ -97,11 +97,19 @@ export function SessionList({
   const virtualizer = useVirtualizer({
     count: filteredSessions.length,
     getScrollElement: () => scrollRef.current,
-    // Items with a subtitle row ("X messages") are ~88px; without subtitle ~66px.
-    // A per-item estimate reduces layout shift before measureElement fires.
-    estimateSize: (index) => (filteredSessions[index]?.messageCount > 0 ? 88 : 66),
+    // Items with a subtitle row ("X messages") are taller (~100px); without ~76px.
+    // Overestimate slightly so badges that wrap to 2 lines don't cause overlap before
+    // measureElement fires.
+    estimateSize: (index) => (filteredSessions[index]?.messageCount > 0 ? 100 : 76),
     overscan: 5,
   })
+
+  // Reset cached measurements when the session list changes (e.g. search results arrive).
+  // Without this, stale heights from the previous list are reused for new items at the
+  // same indices, causing rows to overlap until ResizeObserver corrects them.
+  useEffect(() => {
+    virtualizer.measure()
+  }, [filteredSessions])
 
   // Report index synchronously during render (only updates refs, no state)
   const selectedIdx = selectedSessionId
