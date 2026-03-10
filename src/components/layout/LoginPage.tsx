@@ -88,7 +88,7 @@ export function LoginPage() {
           <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
             <Inbox className="size-5" />
           </div>
-          <h1 className="text-xl font-bold">Welcome to Hammies Inbox</h1>
+          <h1 className="text-xl font-bold">Welcome to Agent Inbox</h1>
           <p className="text-sm text-muted-foreground">
             Sign in with your Google account to continue
           </p>
