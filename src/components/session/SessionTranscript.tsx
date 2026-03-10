@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
+import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
 import {
@@ -51,13 +52,14 @@ export function SessionTranscript({
   isLive,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
 }: SessionTranscriptProps) {
+  const [detailsExpanded, setDetailsExpanded] = usePreference("details.session.expanded", false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
 
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => 120,
     overscan: 10,
   })
 
@@ -97,10 +99,11 @@ export function SessionTranscript({
     <div
       ref={scrollRef}
       className="h-full overflow-y-auto overflow-x-hidden"
+      style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
       {status && (
-        <Accordion defaultValue={[]}>
+        <Accordion value={detailsExpanded ? ["details"] : []} onValueChange={(v) => setDetailsExpanded(v.includes("details"))}>
           <AccordionItem value="details" className="border-b">
             <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
               Details
@@ -109,8 +112,8 @@ export function SessionTranscript({
                 <Table>
                   <TableBody>
                     <TableRow>
-                      <TableCell className="text-muted-foreground font-medium">Status</TableCell>
-                      <TableCell>
+                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Status</TableCell>
+                      <TableCell className="px-4 py-2">
                         <span className={`text-xs font-medium ${sessionStatusColor(status)}`}>
                           {sessionStatusLabel(status)}
                         </span>
@@ -123,8 +126,8 @@ export function SessionTranscript({
                     </TableRow>
                     {(messageCount ?? 0) > 0 && (
                       <TableRow>
-                        <TableCell className="text-muted-foreground font-medium">Messages</TableCell>
-                        <TableCell>{messageCount}</TableCell>
+                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Messages</TableCell>
+                        <TableCell className="px-4 py-2">{messageCount}</TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -135,7 +138,7 @@ export function SessionTranscript({
         )}
       <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative", contain: "layout" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
               <div
                 key={virtualRow.key}

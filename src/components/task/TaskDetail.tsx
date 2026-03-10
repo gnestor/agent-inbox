@@ -21,6 +21,7 @@ import { cn } from "@hammies/frontend/lib/utils"
 import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { getTask, getLinkedSession } from "@/api/client"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
+import { usePreference } from "@/hooks/use-preferences"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
@@ -118,12 +119,13 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
 
   const dueDate = task.properties?.["Due Date"]?.date?.start
   const createdBy = task.properties?.["Created By"]?.created_by?.name
+  const [detailsExpanded, setDetailsExpanded] = usePreference("details.task.expanded", false)
 
   return (
     <div className="flex flex-col h-full">
       {header}
       <ScrollArea className="flex-1 overflow-hidden">
-        <Accordion defaultValue={[]}>
+        <Accordion value={detailsExpanded ? ["details"] : []} onValueChange={(v) => setDetailsExpanded(v.includes("details"))}>
           <AccordionItem value="details" className="border-b">
             <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
               Details
@@ -132,8 +134,8 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                 <Table>
                   <TableBody>
                     <TableRow>
-                      <TableCell className="text-muted-foreground font-medium">Status</TableCell>
-                      <TableCell>
+                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Status</TableCell>
+                      <TableCell className="px-4 py-2">
                         <Badge
                           variant="outline"
                           className={cn(
@@ -148,14 +150,14 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                     </TableRow>
                     {task.priority && (
                       <TableRow>
-                        <TableCell className="text-muted-foreground font-medium">Priority</TableCell>
-                        <TableCell>{task.priority}</TableCell>
+                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Priority</TableCell>
+                        <TableCell className="px-4 py-2">{task.priority}</TableCell>
                       </TableRow>
                     )}
                     {task.tags.length > 0 && (
                       <TableRow>
-                        <TableCell className="text-muted-foreground font-medium">Tags</TableCell>
-                        <TableCell>
+                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Tags</TableCell>
+                        <TableCell className="px-4 py-2">
                           <div className="flex items-center gap-1 flex-wrap">
                             {task.tags.map((tag) => (
                               <Badge key={tag} variant="secondary" className="text-xs">
@@ -168,19 +170,19 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                     )}
                     {(task.assignee || createdBy) && (
                       <TableRow>
-                        <TableCell className="text-muted-foreground font-medium">Assignee</TableCell>
-                        <TableCell>{task.assignee || createdBy}</TableCell>
+                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Assignee</TableCell>
+                        <TableCell className="px-4 py-2">{task.assignee || createdBy}</TableCell>
                       </TableRow>
                     )}
                     {dueDate && (
                       <TableRow>
-                        <TableCell className="text-muted-foreground font-medium">Due Date</TableCell>
-                        <TableCell>{new Date(dueDate).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Due Date</TableCell>
+                        <TableCell className="px-4 py-2">{new Date(dueDate).toLocaleDateString()}</TableCell>
                       </TableRow>
                     )}
                     <TableRow>
-                      <TableCell className="text-muted-foreground font-medium">Updated</TableCell>
-                      <TableCell>{formatRelativeDate(task.updatedAt)}</TableCell>
+                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Updated</TableCell>
+                      <TableCell className="px-4 py-2">{formatRelativeDate(task.updatedAt)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
