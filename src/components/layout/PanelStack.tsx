@@ -316,13 +316,13 @@ function ItemSlider({
 
   return (
     <motion.div
-      className="shrink-0 overflow-clip h-full p-px"
+      className="shrink-0 overflow-clip h-full p-px [overflow-clip-margin:1rem]"
       exit={{ opacity: 0 }}
       transition={{ duration: DURATION, ease: EASE }}
     >
       {/* Grid single-cell layout: both entering and exiting items occupy cell (1,1)
           so the grid cell width = max(old, new) — scrollWidth never collapses mid-transition */}
-      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr)", height: "100%", overflow: "clip" }}>
+      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr)", height: "100%", overflow: "clip", overflowClipMargin: "1rem" }}>
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedId}
@@ -369,6 +369,8 @@ function TabPane({
   const initialDetailId = useRef(selectedId)
   const skipEntrance = selectedId != null && selectedId === initialDetailId.current
 
+  const listPanelRef = useRef<HTMLDivElement>(null)
+
   // Direction is computed synchronously during render (list renders before ItemSlider)
   const handleIndexChange = useCallback((index: number) => {
     if (prevIndexRef.current >= 0 && index !== prevIndexRef.current) {
@@ -379,6 +381,7 @@ function TabPane({
 
   const listPanel = (
     <div
+      ref={listPanelRef}
       style={{ zIndex: isMobile ? undefined : 3 }}
       className={cn(
         "shrink-0 h-full bg-card overflow-hidden",
@@ -416,6 +419,24 @@ function TabPane({
   const scrollRafRef = useRef(0)
   const prevSelectedId = useRef<string | undefined>(undefined)
   const prevSessionOpen = useRef(false)
+
+  // Intercept horizontal wheel events inside the list panel and redirect them to the
+  // outer horizontal scroll container, so trackpad horizontal swipes scroll the panel
+  // group rather than getting absorbed by the inner overflow-y-auto list.
+  useEffect(() => {
+    if (isMobile) return
+    const listEl = listPanelRef.current
+    if (!listEl) return
+    const handler = (e: WheelEvent) => {
+      if (!scrollRef.current) return
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault()
+        scrollRef.current.scrollLeft += e.deltaX
+      }
+    }
+    listEl.addEventListener("wheel", handler, { passive: false })
+    return () => listEl.removeEventListener("wheel", handler)
+  }, [isMobile])
 
   useEffect(() => {
     if (isMobile) return
@@ -504,7 +525,7 @@ function TabPane({
   return (
     <div
       ref={scrollRef}
-      className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-0.5"
+      className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
     >
       {listPanel}
       <AnimatePresence>
