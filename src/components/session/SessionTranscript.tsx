@@ -1,7 +1,7 @@
-import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
+import { useRef, useEffect, useMemo, memo, useState, type ElementType, type ReactNode } from "react"
 import { usePreference } from "@/hooks/use-preferences"
-import { useVirtualizer } from "@tanstack/react-virtual"
-import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
+import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown } from "lucide-react"
 import {
   Accordion,
   AccordionItem,
@@ -60,17 +60,21 @@ export function SessionTranscript({
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
 
-  const virtualizer = useVirtualizer({
+  const virtualizer = useVirtualizerSafe({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 80,
+    // estimateSize must be <= the minimum actual item height (accordion trigger
+    // ~44px). When items are taller than the estimate, measuring them increases
+    // total size → items only EXIT the virtual window, never enter → no new
+    // commitAttachRef calls → the flushSpawnedWork cascade terminates at depth 1.
+    // If estimate > any item height, that item's measurement DECREASES total size,
+    // adding new items to the window → more commitAttachRef → deeper cascade →
+    // "Maximum update depth exceeded" after 50 levels.
+    estimateSize: () => 44,
     overscan: 5,
-    // useAnimationFrameWithResizeObserver defers ResizeObserver callbacks to
-    // requestAnimationFrame. Without this, accordion open animations fire the
-    // ResizeObserver ~60×/sec synchronously during React's commit phase, which
-    // increments React's nested-update depth counter until it hits the limit of
-    // 50 and throws "Maximum update depth exceeded". RAF runs outside the commit
-    // phase so each measurement is treated as a normal async state update.
+    // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
+    // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
+    // React state updates during the commit phase.
     useAnimationFrameWithResizeObserver: true,
   })
 
@@ -178,8 +182,14 @@ export function SessionTranscript({
   )
 }
 
+// Simple toggle — intentionally avoids base-ui Accordion/AccordionItem.
+// base-ui's CompositeList registers each AccordionItem via setState in
+// useLayoutEffect. When many virtual rows mount simultaneously (one per
+// message), each with multiple content blocks (each with its own AccordionItem),
+// the total exceeds React 19's 50-nested-update limit and throws
+// "Maximum update depth exceeded". Local useState has no registration cascade.
 function TranscriptAccordionEntry({
-  value,
+  value: _,
   icon: Icon,
   label,
   color,
@@ -195,19 +205,23 @@ function TranscriptAccordionEntry({
   extra?: ReactNode
   children: ReactNode
 }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <Accordion defaultValue={defaultOpen ? [value] : []}>
-      <AccordionItem value={value} className="border-0 min-w-0">
-        <AccordionTrigger className="py-2 hover:no-underline">
-          <div className="flex items-center gap-2 min-w-0">
-            <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
-            <span className={`text-xs font-medium ${color}`}>{label}</span>
-            {extra}
-          </div>
-        </AccordionTrigger>
-        <AccordionContent>{children}</AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    <div className="min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 py-2 w-full text-left"
+      >
+        <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
+        <span className={`text-xs font-medium ${color}`}>{label}</span>
+        {extra}
+        <ChevronDown
+          className={`h-3 w-3 ml-auto shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div>{children}</div>}
+    </div>
   )
 }
 

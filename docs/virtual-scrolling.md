@@ -4,12 +4,12 @@ All list views and the session transcript use `@tanstack/react-virtual` for virt
 
 ## Virtualized Components
 
-| Component | `estimateSize` | Notes |
-|---|---|---|
-| `EmailList` | 88px | Fixed-height items |
-| `TaskList` | 66px | Fixed-height items |
-| `SessionList` | 66px | Fixed-height items |
-| `SessionTranscript` | 40px | Variable height, uses `measureElement` with ResizeObserver |
+| Component | Hook | `estimateSize` | Notes |
+|---|---|---|---|
+| `EmailList` | `useVirtualizer` | 88px | Fixed-height items |
+| `TaskList` | `useVirtualizer` | 66px | Fixed-height items |
+| `SessionList` | `useVirtualizer` | 76px | Fixed-height items |
+| `SessionTranscript` | `useVirtualizerSafe` | 44px | Variable height, uses `measureElement` |
 
 `EmailThread` is **not** virtualized — threads typically have <20 messages, and each contains an auto-resizing iframe.
 
@@ -25,6 +25,7 @@ const virtualizer = useVirtualizer({
   getScrollElement: () => scrollRef.current,
   estimateSize: () => HEIGHT,
   overscan: 5,
+  useAnimationFrameWithResizeObserver: true,
 })
 
 return (
@@ -48,6 +49,18 @@ return (
   </div>
 )
 ```
+
+`useAnimationFrameWithResizeObserver: true` defers ResizeObserver callbacks to RAF so accordion-open animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous React state updates during the commit phase.
+
+## SessionTranscript: useVirtualizerSafe
+
+`SessionTranscript` uses `useVirtualizerSafe` (`src/hooks/use-virtualizer-safe.ts`) instead of `useVirtualizer`. This is a drop-in replacement that prevents "Maximum update depth exceeded" in React 19.
+
+**Root cause:** When `ref={virtualizer.measureElement}` fires during `commitAttachRef`, TanStack Virtual calls `resizeItem → notify(false) → onChange(instance, false)`. The default `useVirtualizer` dispatches a plain `useState` update synchronously. React 19's `flushSpawnedWork` processes this within `commitRoot`, triggering another synchronous commit. If any items measure differently from the estimate, new items enter the virtual window, attach more refs, dispatch more updates — cascading until the 50-nested-update limit throws.
+
+**Fix:** `useVirtualizerSafe` wraps `onChange` with `sync=false` (item resize) in `React.startTransition`. Transition updates use `TransitionLane`, which `flushSyncWorkAcrossRoots_impl` does NOT process synchronously, so the cascade never starts. Scroll updates (`sync=true`) remain immediate for smooth UX.
+
+`TranscriptAccordionEntry` also uses a local `useState` toggle instead of base-ui's `Accordion`/`AccordionItem`, which registers items via `setState` in `useLayoutEffect` — a second source of the same cascade when many messages mount simultaneously.
 
 ## Infinite Scroll
 

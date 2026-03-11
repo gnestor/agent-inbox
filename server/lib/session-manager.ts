@@ -75,14 +75,18 @@ export async function createSessionRecord(
     linkedEmailThreadId?: string
     linkedTaskId?: string
     triggerSource?: string
+    linkedItemTitle?: string
   },
 ) {
   const db = getDb()
   const now = new Date().toISOString()
+  const metadata = options?.linkedItemTitle
+    ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
+    : null
 
   db.prepare(
-    `INSERT INTO sessions (id, status, prompt, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, trigger_source)
-     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, status, prompt, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, trigger_source, metadata)
+     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     sessionId,
     prompt,
@@ -92,6 +96,7 @@ export async function createSessionRecord(
     options?.linkedEmailThreadId || null,
     options?.linkedTaskId || null,
     options?.triggerSource || "manual",
+    metadata,
   )
 }
 
@@ -195,11 +200,11 @@ export function listSessionRecords(filters?: {
   if (filters?.q) {
     const like = `%${filters.q}%`
     // Join session_messages to search full message content
-    sql = `SELECT DISTINCT s.* FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
+    sql = `SELECT DISTINCT s.*, pe.subject AS linked_email_subject, json_extract(s.metadata, '$.linkedItemTitle') AS linked_task_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id LEFT JOIN processed_emails pe ON pe.thread_id = s.linked_email_thread_id`
     conditions.push("(s.prompt LIKE ? OR s.summary LIKE ? OR sm.message LIKE ?)")
     params.push(like, like, like)
   } else {
-    sql = "SELECT s.* FROM sessions s"
+    sql = "SELECT s.*, pe.subject AS linked_email_subject, json_extract(s.metadata, '$.linkedItemTitle') AS linked_task_title FROM sessions s LEFT JOIN processed_emails pe ON pe.thread_id = s.linked_email_thread_id"
   }
 
   if (conditions.length) {

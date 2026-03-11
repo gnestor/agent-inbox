@@ -146,6 +146,7 @@ export interface Session {
   linkedTaskId: string | null
   triggerSource: TriggerSource
   project: string
+  linkedItemTitle: string | null
 }
 
 export interface SessionMessage {

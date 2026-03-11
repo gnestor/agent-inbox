@@ -44,6 +44,7 @@
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
 - [ ] Prompt template categories (group templates by type: email, task, general)
 - [x] Virtual scrolling (TanStack Virtual for all list views and session transcript; useAnimationFrameWithResizeObserver:true prevents infinite loops from accordion animations firing ResizeObserver synchronously during React commit phase)
+- [x] Fix "Maximum update depth exceeded" cascade in SessionTranscript (React 19 flushSpawnedWork + TanStack Virtual measureElement ref; replaced base-ui Accordion with local useState toggle; replaced useVirtualizer with useVirtualizerSafe wrapping resize onChange in startTransition)
 - [x] TanStack Query + IndexedDB persistence (replaces localStorage list-cache and server-side SQLite API caches; `useInfiniteQuery` for emails/tasks, `useQuery` for sessions/detail/thread; persisted to IndexedDB via `idb-keyval` for instant reload; `staleTime: Infinity` + `onSuccess` invalidation for page-load refresh; `useMutation` for session create/resume/abort with cache invalidation)
 - [x] Persistent app state (navigation state, open panels, per-tab selection saved to localStorage)
 - [x] Refresh on focus (all list hooks refetch when window regains focus)

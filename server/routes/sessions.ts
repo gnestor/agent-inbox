@@ -70,6 +70,8 @@ sessionRoutes.get("/", async (c) => {
       linkedTaskId: (s.linked_task_id as string) || null,
       triggerSource: (s.trigger_source as string) || "manual",
       project: currentProject,
+      linkedItemTitle:
+        (s.linked_email_subject as string) || (s.linked_task_title as string) || null,
     })),
     ...agentSessions
       .filter((s) => projectsFilter.includes(s.project))

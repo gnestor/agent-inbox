@@ -97,10 +97,7 @@ export function SessionList({
   const virtualizer = useVirtualizer({
     count: filteredSessions.length,
     getScrollElement: () => scrollRef.current,
-    // Items with a subtitle row ("X messages") are taller (~100px); without ~76px.
-    // Overestimate slightly so badges that wrap to 2 lines don't cause overlap before
-    // measureElement fires.
-    estimateSize: (index) => (filteredSessions[index]?.messageCount > 0 ? 100 : 76),
+    estimateSize: () => 76,
     overscan: 5,
     useAnimationFrameWithResizeObserver: true,
   })
@@ -275,9 +272,6 @@ export function SessionList({
                 >
                   <ListItem
                     title={session.summary || truncate(session.prompt, 60)}
-                    subtitle={
-                      session.messageCount > 0 ? `${session.messageCount} messages` : undefined
-                    }
                     timestamp={formatRelativeDate(session.updatedAt)}
                     badges={badges}
                     isSelected={selectedSessionId === session.id}
