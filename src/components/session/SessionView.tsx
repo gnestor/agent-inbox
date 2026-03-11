@@ -227,6 +227,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           messageCount={data.session.messageCount}
           isLive={stream.connected}
           visibility={visibility}
+          sessionId={sessionId}
         />
       </div>
 

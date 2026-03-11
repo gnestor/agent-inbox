@@ -88,7 +88,49 @@ export interface AskUserQuestion {
 export interface PendingQuestion {
   questions: AskUserQuestion[]
 }
-export type TriggerSource = "manual" | "email_triage" | "webhook_notion" | "webhook_slack"
+export type TriggerSource = "manual" | "inbox" | "email_triage" | "webhook_notion" | "webhook_slack"
+
+// Inbox workflow structured output types (from <inbox-context> and <inbox-result> XML blocks)
+
+export interface InboxContextData {
+  entity: {
+    type: "person" | "company" | "topic"
+    name: string
+    email: string | null
+    domain: string | null
+    company: string | null
+    role: string | null
+  }
+  source: {
+    type: "email" | "task"
+    id: string
+    threadId: string | null
+    subject: string | null
+    from: string | null
+    date: string | null
+    snippet: string
+  }
+  contextPages: Array<{ file: string; title: string; summary: string; tags: string[] }>
+  relatedThreads: Array<{ threadId: string; subject: string; date: string; snippet: string }>
+  relatedTasks: Array<{ id: string; title: string; status: string; url: string }>
+  summary: string
+}
+
+export type InboxResultAction = "draft" | "task" | "context_updated" | "skipped"
+
+export interface InboxResultData {
+  action: InboxResultAction
+  draft?: {
+    to: string
+    subject: string
+    body: string
+    threadId: string | null
+    inReplyTo: string | null
+  }
+  task?: { id: string; title: string; status: string; url: string }
+  contextUpdated?: string[]
+  summary: string
+}
 
 export interface Session {
   id: string

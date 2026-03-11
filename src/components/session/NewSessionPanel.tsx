@@ -12,9 +12,6 @@ import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import type { NotionTaskDetail } from "@/types"
 
-function gmailThreadUrl(threadId: string) {
-  return `https://mail.google.com/mail/u/0/#all/${threadId}`
-}
 
 interface PromptTemplate {
   name: string
@@ -73,11 +70,11 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
     if (fired.current) return
     if (threadId && thread) {
       fired.current = true
-      const prompt = `<ide_opened_file>The user opened an email thread ${gmailThreadUrl(thread.id)} in the IDE.</ide_opened_file>\nProcess this email`
+      const prompt = `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>\nProcess this email`
       createMutation.mutate(prompt)
     } else if (taskId && task) {
       fired.current = true
-      const prompt = `<ide_opened_file>The user opened a Notion page ${task.url} in the IDE.</ide_opened_file>\nProcess this task`
+      const prompt = `<ide_opened_file>Notion task: ${task.id}</ide_opened_file>\nProcess this task`
       createMutation.mutate(prompt)
     }
   }, [thread, task])
@@ -147,9 +144,9 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   }, [task, taskId])
 
   const contextPrefix = thread
-    ? `<ide_opened_file>The user opened an email thread ${gmailThreadUrl(thread.id)} in the IDE.</ide_opened_file>`
+    ? `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>`
     : task
-      ? `<ide_opened_file>The user opened a Notion page ${task.url} in the IDE.</ide_opened_file>`
+      ? `<ide_opened_file>Notion task: ${task.id}</ide_opened_file>`
       : ""
   const fullPrompt = contextPrefix ? `${contextPrefix}\n${prompt}` : prompt
 

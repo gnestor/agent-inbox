@@ -35,7 +35,8 @@
 - [x] Rich prompt editor (WYSIWYG markdown editor, Tiptap v3: slash commands, bubble menu, markdown shortcuts)
 - [x] Prompt templates (save/load named templates in new-session panel, persisted to preferences)
 - [x] AskUserQuestion panels (agent pauses mid-session, frontend shows interactive form, answers injected as tool result via canUseTool + pending Promise)
-- [x] Auto-start sessions from detail view (skip ComposePanel; fires createSession immediately with <ide_opened_file> prompt including subject/title and URL)
+- [x] Auto-start sessions from detail view (skip ComposePanel; fires createSession immediately with <ide_opened_file> prompt including thread/task ID)
+- [x] Workflow UI components (ContextPanel renders <inbox-context> XML; InboxResultPanel renders <inbox-result> with draft editor + Send or task + Mark Complete)
 - [x] Open Session button (email/task detail shows "Open Session" instead of "Start Session" when a linked session already exists, using linked_email_thread_id/linked_task_id)
 - [x] Skill context blocks in transcript (user-role "Base directory for this skill:" messages rendered as collapsed accordion with Wrench icon)
 - [ ] Suggested prompts

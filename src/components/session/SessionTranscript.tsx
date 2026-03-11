@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
+import { useRef, useEffect, useMemo, memo, useCallback, type ElementType, type ReactNode } from "react"
 import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
@@ -14,7 +14,9 @@ import {
   TableCell,
 } from "@hammies/frontend/components/ui"
 import { sessionStatusLabel, sessionStatusColor } from "@/lib/formatters"
-import type { SessionMessage } from "@/types"
+import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
+import { ContextPanel } from "./ContextPanel"
+import { InboxResultPanel } from "./InboxResultPanel"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -42,6 +44,7 @@ interface SessionTranscriptProps {
   messageCount?: number
   isLive?: boolean
   visibility?: TranscriptVisibility
+  sessionId?: string
 }
 
 export function SessionTranscript({
@@ -51,6 +54,7 @@ export function SessionTranscript({
   messageCount,
   isLive,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
+  sessionId,
 }: SessionTranscriptProps) {
   const [detailsExpanded, setDetailsExpanded] = usePreference("details.session.expanded", false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -62,6 +66,19 @@ export function SessionTranscript({
     estimateSize: () => 44,
     overscan: 10,
   })
+
+  // Stable ref callback: React 19 fires callback refs on every render when the
+  // function reference changes. virtualizer.measureElement is recreated each
+  // render (via setOptions inside useVirtualizer), causing an infinite
+  // measure → resize → re-render loop with the animated Accordion content.
+  // Wrapping in useCallback gives React a stable reference so the ref is only
+  // attached once; TanStack Virtual's internal ResizeObserver handles subsequent
+  // size changes.
+  const measureRow = useCallback(
+    (node: Element | null) => virtualizer.measureElement(node),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   // Auto-scroll to bottom when new messages arrive (streaming or initial load).
   const needsScrollRef = useRef(false)
@@ -143,7 +160,7 @@ export function SessionTranscript({
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
+                ref={measureRow}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -152,7 +169,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} />
+                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} />
               </div>
             ))}
           </div>
@@ -208,9 +225,11 @@ function TranscriptAccordionEntry({
 const TranscriptEntry = memo(function TranscriptEntry({
   message,
   visibility,
+  sessionId,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
+  sessionId?: string
 }) {
   const msg = message.message as any
 
@@ -318,7 +337,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <div className="space-y-1">
         {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} />
+          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} />
         ))}
       </div>
     )
@@ -331,36 +350,65 @@ const TranscriptEntry = memo(function TranscriptEntry({
   return null
 })
 
+function MarkdownEntry({ value, text }: { value: string; text: string }) {
+  return (
+    <TranscriptAccordionEntry value={value} icon={Bot} label="Claude" color="text-chart-4" defaultOpen>
+      <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          {text}
+        </ReactMarkdown>
+      </div>
+    </TranscriptAccordionEntry>
+  )
+}
+
 function ContentBlock({
   block,
   sequence,
   index,
   visibility,
+  sessionId,
 }: {
   block: any
   sequence: number
   index: number
   visibility: TranscriptVisibility
+  sessionId?: string
 }) {
   const id = `${sequence}-${index}`
 
   if (block.type === "text") {
     if (!block.text || !visibility.messages) return null
-    return (
-      <TranscriptAccordionEntry
-        value={`text-${id}`}
-        icon={Bot}
-        label="Claude"
-        color="text-chart-4"
-        defaultOpen
-      >
-        <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-            {block.text}
-          </ReactMarkdown>
-        </div>
-      </TranscriptAccordionEntry>
-    )
+
+    const inboxContextJson = extractXmlTag(block.text, "inbox-context")
+    if (inboxContextJson) {
+      try {
+        const data = JSON.parse(inboxContextJson) as InboxContextData
+        const rest = block.text.replace(/<inbox-context>[\s\S]*?<\/inbox-context>/, "").trim()
+        return (
+          <>
+            <ContextPanel data={data} />
+            {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+          </>
+        )
+      } catch { /* fall through to normal render */ }
+    }
+
+    const inboxResultJson = extractXmlTag(block.text, "inbox-result")
+    if (inboxResultJson) {
+      try {
+        const data = JSON.parse(inboxResultJson) as InboxResultData
+        const rest = block.text.replace(/<inbox-result>[\s\S]*?<\/inbox-result>/, "").trim()
+        return (
+          <>
+            <InboxResultPanel data={data} sessionId={sessionId ?? ""} />
+            {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+          </>
+        )
+      } catch { /* fall through to normal render */ }
+    }
+
+    return <MarkdownEntry value={`text-${id}`} text={block.text} />
   }
 
   if (block.type === "tool_use") {
@@ -446,6 +494,11 @@ function toolUseSummary(name: string, input: any): string {
 function isIdeContextBlock(block: any): boolean {
   const text = block.text || ""
   return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
+}
+
+export function extractXmlTag(text: string, tag: string): string | null {
+  const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`))
+  return match ? match[1].trim() : null
 }
 
 function extractSkillBlock(msg: any): { name: string; content: string } | null {
