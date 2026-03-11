@@ -189,8 +189,8 @@ describe("tabVariants", () => {
     expect(tabVariants.enter(-1)).toEqual({ y: "calc(-100% - 16px)" })
   })
 
-  it("center is y=0", () => {
-    expect(tabVariants.center).toEqual({ y: 0 })
+  it("center is y=0, opacity=1", () => {
+    expect(tabVariants.center).toEqual({ y: 0, opacity: 1 })
   })
 
   it("exit upward when direction >= 0", () => {

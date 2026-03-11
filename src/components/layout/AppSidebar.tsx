@@ -1,4 +1,5 @@
 import { useLocation } from "react-router-dom"
+import { SidebarRecentSessions } from "@/components/session/SidebarRecentSessions"
 import {
   Avatar,
   AvatarFallback,
@@ -45,6 +46,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useUser()
   const { navigateToTab } = useSpatialNav()
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
 
   return (
     <Sidebar variant="floating" {...props}>
@@ -114,7 +116,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location.pathname.startsWith(`/${item.tab}`)
+                const isActive = !isFromSidebar && location.pathname.startsWith(`/${item.tab}`)
                 return (
                   <SidebarMenuItem key={item.tab}>
                     <SidebarMenuButton
@@ -135,6 +137,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <SidebarRecentSessions />
       </SidebarContent>
     </Sidebar>
   )

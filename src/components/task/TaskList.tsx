@@ -18,7 +18,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useTasks } from "@/hooks/use-tasks"
 import { getNotionOptions, getTaskAssignees } from "@/api/client"
@@ -128,7 +127,6 @@ export function TaskList({
       <PanelHeader
         left={
           <>
-            <SidebarTrigger className="-ml-1" />
             <h2 className="font-semibold text-sm">Tasks</h2>
           </>
         }

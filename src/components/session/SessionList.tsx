@@ -18,7 +18,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { Bot, SlidersHorizontal, Ellipsis } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { getSessionProjects } from "@/api/client"
@@ -129,7 +128,6 @@ export function SessionList({
       <PanelHeader
         left={
           <>
-            <SidebarTrigger className="-ml-1" />
             <h2 className="font-semibold text-sm">Sessions</h2>
           </>
         }

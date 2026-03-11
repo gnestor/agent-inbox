@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Button,
@@ -19,7 +19,7 @@ import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
 import type { TranscriptVisibility } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
-import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
+import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { usePreference } from "@/hooks/use-preferences"
 
@@ -30,13 +30,23 @@ interface SessionViewProps {
 
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
   const { activeTab, persistedState } = useSpatialNav()
-  // Sessions tab: parent is the list (/sessions). Emails/tasks: parent is the detail panel (dismiss session overlay).
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+  // Sessions tab: parent is the list. Emails/tasks: parent is the detail panel.
+  // For sidebar-originated views, derive the parent from the URL (persisted state
+  // is not updated for sidebar navigations and may point to a different item).
+  const pathParts = location.pathname.split("/").filter(Boolean)
+  const parentFromUrl =
+    pathParts.length >= 4 && pathParts[2] === "session"
+      ? `/${pathParts[0]}/${decodeURIComponent(pathParts[1])}`
+      : null
   const parentPath =
     activeTab === "sessions"
       ? "/sessions"
-      : buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
+      : (parentFromUrl ?? buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId }))
+  const parentNavState = isFromSidebar ? { fromSidebar: true } : undefined
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -144,7 +154,11 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     <PanelHeader
       left={
         <>
-          <BackButton onClick={() => navigate(parentPath)} />
+          {isFromSidebar ? (
+            <SidebarButton />
+          ) : (
+            <BackButton onClick={() => navigate(parentPath, { state: parentNavState })} />
+          )}
           <h2 className="font-semibold text-sm truncate min-w-0">{title || "Session"}</h2>
         </>
       }
@@ -196,13 +210,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button
-            type="button"
-            className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-            onClick={() => navigate(parentPath)}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {!isFromSidebar && (
+            <button
+              type="button"
+              className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              onClick={() => navigate(parentPath, { state: parentNavState })}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
       }
     />

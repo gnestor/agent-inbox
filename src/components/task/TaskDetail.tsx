@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   Button,
@@ -22,7 +22,7 @@ import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { getTask, getLinkedSession } from "@/api/client"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
 import { usePreference } from "@/hooks/use-preferences"
-import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
+import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
 
@@ -34,6 +34,8 @@ interface TaskDetailProps {
 
 export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: task, isLoading: loading, error: queryError } = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => getTask(taskId),
@@ -50,7 +52,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     <PanelHeader
       left={
         <>
-          <BackButton onClick={() => navigate("/tasks")} />
+          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => navigate("/tasks")} />}
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }

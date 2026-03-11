@@ -76,6 +76,20 @@ Imported from `@tiptap/react/menus` (moved out of the main `@tiptap/react` barre
 - Selection highlight: `color-mix(in oklch, var(--primary) 30%, transparent)` — required because `--primary` is a full `oklch(...)` value, not raw channel numbers.
 - The `::selection` rule targets both `.ProseMirror::selection` and `.ProseMirror *::selection` to cover all descendant text nodes.
 
+## Ancestor Scroll Suppression
+
+ProseMirror's default `scrollRectIntoView` implementation walks **all** ancestor scroll containers and adjusts their `scrollLeft`/`scrollTop` whenever the editor wants to scroll the selection into view. This is triggered by `tr.scrollIntoView()`, which TipTap calls internally during `setContent` (e.g. when the `value` prop changes as a session panel loads in).
+
+In the panel group layout, this caused the outer `overflow-x-auto` container to jump horizontally to reveal the session panel whenever content loaded.
+
+Fix: `editorProps.handleScrollToSelection` is set to `() => true`. Returning `true` tells ProseMirror that the host has handled scrolling — suppressing the ancestor walk entirely. Native browser behavior handles cursor-within-editor visibility.
+
+```tsx
+editorProps: {
+  handleScrollToSelection: () => true,
+},
+```
+
 ## Current Integrations
 
 - **NewSessionPanel** — prompt composer for new Claude agent sessions. Pre-fills from email subject or task metadata. Cmd+Enter starts the session. Templates save/load as markdown strings.

@@ -123,6 +123,10 @@ export function SpatialNavProvider({
   const navigate = useNavigate()
 
   const activeTab = tabFromPathname(location.pathname)
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+  // Ref so navigateToTab can read the latest value without re-creating the callback
+  const isFromSidebarRef = useRef(isFromSidebar)
+  isFromSidebarRef.current = isFromSidebar
 
   // Load saved state on first render
   const saved = useRef(loadNavState())
@@ -137,16 +141,9 @@ export function SpatialNavProvider({
   // Sync URL changes into persisted state for the active tab
   // Save/restore per-item session state
   useEffect(() => {
-    // /focus/ routes render FocusPane (no tab panel). Save pathname for reload
-    // but don't touch tab state — it would clear the previously selected item.
-    if (location.pathname.startsWith("/focus/")) {
-      saveNavState({
-        pathname: location.pathname,
-        tabs: { ...persistedRef.current },
-        itemSessions: [...itemSessionRef.current.entries()],
-      })
-      return
-    }
+    // Sidebar-originated views should not update tab state or persisted pathname —
+    // so clicking a tab still returns to the last real navigation for that tab.
+    if (isFromSidebar) return
 
     const newState = tabStateFromPathname(location.pathname, activeTab)
     const oldState = persistedRef.current[activeTab]
@@ -204,11 +201,13 @@ export function SpatialNavProvider({
       tabs: { ...persistedRef.current },
       itemSessions: [...itemSessionRef.current.entries()],
     })
-  }, [location.pathname, activeTab, navigate, isMobile])
+  }, [location.pathname, isFromSidebar, activeTab, navigate, isMobile])
 
   const navigateToTab = useCallback(
     (tab: TabId) => {
-      if (tab === activeTab) return
+      // When currently on a sidebar-originated view, always navigate — don't treat it
+      // as "already on that tab".
+      if (tab === activeTab && !isFromSidebarRef.current) return
       const url = buildUrl(tab, persistedRef.current[tab])
       navigate(url)
     },

@@ -137,8 +137,10 @@ The `TabPane` scroll container (`overflow-x-auto`) scrolls horizontally when det
 |--------|--------------|
 | Detail added | `scrollWidth - clientWidth` (immediate) |
 | Detail removed | `0` (immediate) |
-| Session added | `scrollWidth - clientWidth` (deferred one frame for layout) |
-| Session removed | `scrollLeft - 632` clamped to 0 (immediate) |
+| Session added (same item) | `scrollWidth - clientWidth` (deferred one frame for layout) |
+| Session removed (same item) | `scrollLeft - 632` clamped to 0 (immediate) |
+
+**Item switches are excluded from session scroll**: when `selectedId` changes, the new item's session state is pre-existing (restored from `itemSessionRef`), not a user action. Only a session open/close on the *same* item triggers the scroll. This prevents the panel group from jumping to the session panel when switching between items that already have sessions open.
 
 Scroll behavior depends on **when** the effect runs:
 

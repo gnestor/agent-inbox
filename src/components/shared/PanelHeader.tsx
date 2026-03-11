@@ -1,7 +1,8 @@
 import { useCallback } from "react"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, PanelLeft } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { cn } from "@hammies/frontend/lib/utils"
+import { useSidebar } from "@hammies/frontend/components/ui"
 import { useHeaderNav } from "@/hooks/use-header-nav"
 
 const AXIS_THRESHOLD = 8
@@ -30,13 +31,10 @@ export function PanelHeader({ left, right }: { left: React.ReactNode; right?: Re
         window.removeEventListener("pointerup", onUp)
 
         if (startOverlayDrag) {
-          // Overlay panel present — hand off both axes to Framer Motion
           startOverlayDrag(nativeEvent)
         } else if (dy > dx && startTabDrag) {
-          // No overlay — hand off vertical gesture to tab pane drag
           startTabDrag(nativeEvent)
         } else if (dy > dx && onTabSwipe) {
-          // Fallback: manual discrete tab swipe
           const onTabUp = (upEv: PointerEvent) => {
             window.removeEventListener("pointerup", onTabUp)
             const totalDy = upEv.clientY - startY
@@ -79,6 +77,21 @@ export function BackButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
     >
       <ChevronLeft className="h-5 w-5" />
+    </button>
+  )
+}
+
+/** Shown instead of BackButton when the detail panel is the first visible panel
+ *  (e.g. sidebar-originated navigation with the list hidden). Opens the sidebar drawer. */
+export function SidebarButton() {
+  const { setOpenMobile } = useSidebar()
+  return (
+    <button
+      type="button"
+      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
+      onClick={() => setOpenMobile(true)}
+    >
+      <PanelLeft className="h-5 w-5" />
     </button>
   )
 }

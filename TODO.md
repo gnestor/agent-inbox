@@ -103,7 +103,8 @@
 - [ ] Email cleaner: handle more Outlook Word quirks (e.g. `<o:p>` noise in visible content)
 - [x] Email cleaner: test coverage (vitest unit tests for each pattern with HTML fixtures)
 - [x] Bug fixes: iframe XSS (sandbox allow-scripts removed), session stream state reset on navigation, statusOverride reset on sessionId change, email-cleaner index-0 match, GET /sessions/:id missing project field, Notion block pagination
-- [x] Session panel UX: X close button on session view; hide Start Session when session panel is open; auto-scroll desktop panel stack to newly opened panel
+- [x] Session panel UX: X close button on session view; hide Start Session when session panel is open; auto-scroll desktop panel stack to newly opened panel (but not when switching items — session state is pre-existing)
+- [x] Panel group outer scroll suppression: ProseMirror's scrollRectIntoView walks all ancestors; suppressed via handleScrollToSelection:()=>true in RichTextEditor editorProps so setContent doesn't jump the overflow-x-auto panel group horizontally
 - [x] Sessions list staleness fix: refetchOnMount:true override in useSessions and session detail query (staleTime:Infinity + refetchOnMount:false globals don't refetch after invalidation)
 - [ ] Virtualize EmailThread (low priority — typically <20 messages per thread)
 - [x] Key-scoped preference subscriptions (Map<key, Set> — toggling one pref re-renders only that key's subscribers)

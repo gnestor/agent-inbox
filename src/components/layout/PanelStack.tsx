@@ -171,9 +171,23 @@ function MobileOverlayPanelInner({
   ) => {
     const { x: vx, y: vy } = info.velocity
     const { x: ox, y: oy } = info.offset
-    const action = classifyOverlayDrag(vx, vy, ox, oy, window.innerWidth, window.innerHeight, !!onTabSwipe)
-    if (action === "tabPrev") { onTabSwipe?.(-1); return }
-    if (action === "tabNext") { onTabSwipe?.(1); return }
+    const action = classifyOverlayDrag(
+      vx,
+      vy,
+      ox,
+      oy,
+      window.innerWidth,
+      window.innerHeight,
+      !!onTabSwipe,
+    )
+    if (action === "tabPrev") {
+      onTabSwipe?.(-1)
+      return
+    }
+    if (action === "tabNext") {
+      onTabSwipe?.(1)
+      return
+    }
     if (action === "dismiss" && onDismiss) {
       animate(x, window.innerWidth, SLIDE_SPRING).then(() => dismissRef.current?.())
       return
@@ -284,7 +298,9 @@ function SessionPanelSlide({ tab, id, sId }: { tab: TabId; id: string; sId?: str
       exit={{ width: 0 }}
       transition={{ duration: DURATION, ease: EASE }}
     >
-      <div className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+      <div
+        className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+        // style={{ width: "calc((100vw - 224px - (16px * 4)) / 2)", minWidth: 600 }}
       >
         <NewSessionPanel
           threadId={tab === "emails" ? id : undefined}
@@ -320,6 +336,7 @@ function ItemSlider({
     <div className="shrink-0 h-full flex flex-row">
       <div
         style={{ zIndex: 2 }}
+        // style={{ zIndex: 2, width: "calc((100vw - 224px - (16px * 4)) / 2)", minWidth: 600 }}
         className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
       >
         <DetailContent tab={tab} selectedId={id} title={title} sessionOpen={sOpen} />
@@ -340,7 +357,15 @@ function ItemSlider({
     >
       {/* Grid single-cell layout: both entering and exiting items occupy cell (1,1)
           so the grid cell width = max(old, new) — scrollWidth never collapses mid-transition */}
-      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr)", height: "100%", overflow: "clip", overflowClipMargin: "1rem" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: "minmax(0, 1fr)",
+          height: "100%",
+          overflow: "clip",
+          overflowClipMargin: "1rem",
+        }}
+      >
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedId}
@@ -353,7 +378,7 @@ function ItemSlider({
             style={{ gridRow: 1, gridColumn: 1 }}
             className="h-full"
           >
-          {renderContent(selectedId, sessionOpen, sessionId)}
+            {renderContent(selectedId, sessionOpen, sessionId)}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -376,6 +401,11 @@ function TabPane({
   hasPrevTab?: boolean
   hasNextTab?: boolean
 }) {
+  const location = useLocation()
+  // Sidebar-originated views hide the list panel on desktop so only the
+  // detail + session panels are visible (same layout, no list).
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+
   const { selectedId, sessionOpen, sessionId } = usePanelState(tab)
   const directionRef = useRef(1)
   const prevIndexRef = useRef(-1)
@@ -400,10 +430,15 @@ function TabPane({
   const listPanel = (
     <div
       ref={listPanelRef}
-      style={{ zIndex: isMobile ? undefined : 3 }}
+      style={{
+        zIndex: isMobile ? undefined : 3,
+        // width: "calc((100vw - 224px - (16px * 4)) / 2)",
+        minWidth: 600,
+      }}
       className={cn(
         "shrink-0 h-full bg-card overflow-hidden",
         isMobile ? "w-full" : "w-[600px] rounded-lg shadow-sm ring-1 ring-inset ring-border",
+        !isMobile && isFromSidebar && "hidden",
       )}
     >
       {tab === "emails" && (
@@ -454,7 +489,9 @@ function TabPane({
         scrollRef.current.scrollLeft += e.deltaX
       }
     }
-    const els = [listPanelRef.current, itemSliderWrapperRef.current].filter(Boolean) as HTMLElement[]
+    const els = [listPanelRef.current, itemSliderWrapperRef.current].filter(
+      Boolean,
+    ) as HTMLElement[]
     els.forEach((el) => el.addEventListener("wheel", handler, { passive: false }))
     return () => els.forEach((el) => el.removeEventListener("wheel", handler))
   }, [isMobile])
@@ -476,7 +513,15 @@ function TabPane({
     const first = isFirstScroll.current
     isFirstScroll.current = false
 
-    const action = getScrollTarget(prevId, selectedId, prevSession, sessionOpen, el.scrollLeft, el.scrollWidth, el.clientWidth)
+    const action = getScrollTarget(
+      prevId,
+      selectedId,
+      prevSession,
+      sessionOpen,
+      el.scrollLeft,
+      el.scrollWidth,
+      el.clientWidth,
+    )
     if (!action) return
 
     if (action.deferred) {
@@ -505,8 +550,12 @@ function TabPane({
   }, [navigate, tab])
 
   const dismissSession = useCallback(() => {
-    if (selectedId) navigate(buildUrl(tab, { selectedId }))
-  }, [navigate, tab, selectedId])
+    if (selectedId) {
+      navigate(buildUrl(tab, { selectedId }), {
+        state: isFromSidebar ? { fromSidebar: true } : undefined,
+      })
+    }
+  }, [navigate, tab, selectedId, isFromSidebar])
 
   const openSession = useCallback(() => {
     if (selectedId && tab !== "sessions") {
@@ -586,22 +635,36 @@ function TabPane({
 const GAP = 16 // px gap between tab panel groups during transition
 
 export const tabVariants = {
-  enter: (d: number) => ({ y: d >= 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)` }),
-  center: { y: 0 },
-  exit: (d: number) => ({ y: d >= 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)` }),
+  enter: (d: number) =>
+    d === 0
+      ? { opacity: 0, y: 0 }
+      : { y: d > 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)` },
+  center: { y: 0, opacity: 1 },
+  exit: (d: number) =>
+    d === 0
+      ? { opacity: 0, y: 0 }
+      : { y: d > 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)` },
 }
 
 export function PanelStack() {
   const { activeTab, navigateToTab } = useSpatialNav()
+  const location = useLocation()
   const tabIndex = TAB_ORDER.indexOf(activeTab)
   const isMobile = useIsMobile()
   const prevTabIndexRef = useRef(tabIndex)
+  const prevIsFromSidebarRef = useRef(false)
   const directionRef = useRef(0)
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
 
-  if (tabIndex !== prevTabIndexRef.current) {
-    directionRef.current = tabIndex > prevTabIndexRef.current ? 1 : -1
+  const tabChanged = tabIndex !== prevTabIndexRef.current
+  const sidebarChanged = isFromSidebar !== prevIsFromSidebarRef.current
+  if (tabChanged || sidebarChanged) {
+    // Sidebar-originated navigations fade rather than slide to avoid the awkward
+    // "going down through tab order" animation when clicking unrelated recent sessions.
+    directionRef.current = isFromSidebar ? 0 : tabIndex > prevTabIndexRef.current ? 1 : -1
     prevTabIndexRef.current = tabIndex
   }
+  prevIsFromSidebarRef.current = isFromSidebar
 
   const direction = directionRef.current
   const hasPrevTab = tabIndex > 0
@@ -666,7 +729,6 @@ export function PanelStack() {
           <AnimatePresence initial={false} custom={direction}>
             <motion.div
               key={activeTab}
-              custom={direction}
               variants={tabVariants}
               initial="enter"
               animate="center"

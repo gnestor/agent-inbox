@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { getLinkedSession } from "@/api/client"
 import {
@@ -16,7 +16,7 @@ import {
 import { Bot, ExternalLink, Ellipsis } from "lucide-react"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
-import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
+import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import type { GmailMessage } from "@/types"
 
@@ -29,6 +29,8 @@ interface EmailThreadProps {
 export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) {
   const { thread, loading, error } = useEmailThread(threadId)
   const navigate = useNavigate()
+  const location = useLocation()
+  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", "thread", threadId],
     queryFn: () => getLinkedSession(threadId),
@@ -76,7 +78,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     <PanelHeader
       left={
         <>
-          <BackButton onClick={() => navigate("/emails")} />
+          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => navigate("/emails")} />}
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }

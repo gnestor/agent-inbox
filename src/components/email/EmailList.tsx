@@ -18,7 +18,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { Mail, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useEmails } from "@/hooks/use-emails"
 import { getEmailLabels } from "@/api/client"
@@ -143,7 +142,6 @@ export function EmailList({
       <PanelHeader
         left={
           <>
-            <SidebarTrigger className="-ml-1" />
             <h2 className="font-semibold text-sm">Emails</h2>
           </>
         }
