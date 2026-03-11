@@ -243,14 +243,14 @@ function BlockChildren({ children }: { children?: NotionBlock[] }) {
 
 function ParagraphBlock({ block }: { block: NotionBlock }) {
   const data = block.paragraph as { rich_text: RichTextItem[] }
-  if (!data?.rich_text?.length) return <div className="min-h-[1.5em] my-px" />
+  if (!data?.rich_text?.length) return <p className="min-h-[1.5em]" />
   return (
-    <div className="my-px">
+    <>
       <p>
         <RichText items={data.rich_text} />
       </p>
       <BlockChildren children={block.children} />
-    </div>
+    </>
   )
 }
 
@@ -261,9 +261,9 @@ function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }
     is_toggleable?: boolean
   }
   const sizes = {
-    1: "notion-h1 text-[1.875em] font-bold leading-[1.3] mt-[2em] mb-[1px]",
-    2: "notion-h2 text-[1.5em] font-semibold leading-[1.3] mt-[1.4em] mb-[1px]",
-    3: "notion-h3 text-[1.25em] font-semibold leading-[1.3] mt-[1em] mb-[1px]",
+    1: "notion-h1",
+    2: "notion-h2",
+    3: "notion-h3",
   }
 
   if (data?.is_toggleable || block.has_children) {
@@ -347,7 +347,7 @@ function ToDoBlock({ block }: { block: NotionBlock }) {
 function QuoteBlock({ block }: { block: NotionBlock }) {
   const data = block.quote as { rich_text: RichTextItem[] }
   return (
-    <blockquote className="border-l-[3px] border-current pl-[0.9em] my-px my-2">
+    <blockquote>
       <RichText items={data?.rich_text || []} />
       <BlockChildren children={block.children} />
     </blockquote>
@@ -382,7 +382,7 @@ function CodeBlock({ block }: { block: NotionBlock }) {
   const lang = data?.language?.toLowerCase()
 
   return (
-    <div className="notion-code rounded-[4px] bg-[#f7f6f3] dark:bg-[#1e1e1e] overflow-hidden border border-border/30 my-2">
+    <div className="not-prose notion-code rounded-[4px] bg-[#f7f6f3] dark:bg-[#1e1e1e] overflow-hidden border border-border/30 my-2">
       <pre className="p-[2em_1.2em_1.2em] text-[0.875em] font-mono leading-[1.6] overflow-x-auto">
         <HighlightedCode code={text} language={lang} />
       </pre>
@@ -516,7 +516,7 @@ export function NotionBlockRenderer({ blocks }: { blocks: NotionBlock[] }) {
   let numberedCounter = 0
 
   return (
-    <div className="notion-content text-[0.9375rem] leading-[1.5] flex flex-col gap-px p-2">
+    <div className="notion-content prose prose-sm max-w-none dark:prose-invert p-2">
       {blocks.map((block) => {
         if (block.type !== "numbered_list_item") {
           numberedCounter = 0

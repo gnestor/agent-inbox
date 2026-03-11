@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, memo, useState, type ElementType, type ReactNode } from "react"
+import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown } from "lucide-react"
@@ -24,6 +24,26 @@ import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
 
 hljs.registerLanguage("json", json)
+
+// Unwrap immediate children matching `tag` — e.g. strip <strong> inside headings,
+// <p> inside <li> (ReactMarkdown wraps loose-list items in <p>).
+function unwrapTag(children: ReactNode, tag: string): ReactNode {
+  return Children.map(children, (child) =>
+    isValidElement(child) && child.type === tag
+      ? (child.props as { children: ReactNode }).children
+      : child
+  )
+}
+
+const markdownComponents = {
+  h1: ({ children, node: _n, ...props }: any) => <h1 {...props}>{unwrapTag(children, "strong")}</h1>,
+  h2: ({ children, node: _n, ...props }: any) => <h2 {...props}>{unwrapTag(children, "strong")}</h2>,
+  h3: ({ children, node: _n, ...props }: any) => <h3 {...props}>{unwrapTag(children, "strong")}</h3>,
+  h4: ({ children, node: _n, ...props }: any) => <h4 {...props}>{unwrapTag(children, "strong")}</h4>,
+  li: ({ children, node: _n, ordered: _o, ...props }: any) => (
+    <li {...props}>{unwrapTag(children, "p")}</li>
+  ),
+}
 
 export interface TranscriptVisibility {
   messages: boolean
@@ -248,8 +268,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
           color="text-chart-1"
           defaultOpen
         >
-          <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {msg.result || "Session completed"}
             </ReactMarkdown>
           </div>
@@ -270,8 +290,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
           label={skillBlock.name}
           color="text-muted-foreground"
         >
-          <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {skillBlock.content}
             </ReactMarkdown>
           </div>
@@ -328,8 +348,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
           color="text-chart-4"
           defaultOpen
         >
-          <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {text}
             </ReactMarkdown>
           </div>
@@ -356,7 +376,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
 function MarkdownEntry({ value, text }: { value: string; text: string }) {
   return (
     <TranscriptAccordionEntry value={value} icon={Bot} label="Claude" color="text-chart-4" defaultOpen>
-      <div className="text-sm prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+      <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {text}
         </ReactMarkdown>

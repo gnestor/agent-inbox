@@ -3,6 +3,12 @@
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
 
+/* Suppress prose's auto-backtick wrapping around inline code */
+.prose :where(code)::before,
+.prose :where(code)::after {
+  content: none;
+}
+
 /* Mobile app feel: disable zoom and text selection */
 html {
   touch-action: pan-x pan-y;

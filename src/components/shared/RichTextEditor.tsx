@@ -153,6 +153,9 @@ export function RichTextEditor({
       // (e.g. when setContent is called as the panel slides in). Native browser
       // behavior handles cursor visibility within the editor.
       handleScrollToSelection: () => true,
+      attributes: {
+        class: "prose prose-sm max-w-none dark:prose-invert",
+      },
     },
     onUpdate: ({ editor }) => {
       const md = (editor.storage as any).markdown.getMarkdown() as string
