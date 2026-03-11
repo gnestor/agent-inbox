@@ -248,13 +248,13 @@ export function SessionList({
                 })
               }
               if (showProject && session.project) {
-                badges.push({ label: session.project, variant: "outline" })
+                badges.push({ label: session.project, className: "bg-foreground/10 text-muted-foreground" })
               }
               if (session.linkedEmailId) {
-                badges.push({ label: "Email", variant: "secondary" })
+                badges.push({ label: "Email", className: "bg-foreground/10 text-muted-foreground" })
               }
               if (session.linkedTaskId) {
-                badges.push({ label: "Task", variant: "secondary" })
+                badges.push({ label: "Task", className: "bg-foreground/10 text-muted-foreground" })
               }
               return (
                 <div

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Combobox,
   ComboboxContent,
@@ -115,12 +115,11 @@ export function EmailList({
     })
   }, [messages])
 
-  const virtualizer = useVirtualizer({
+  const virtualizer = useVirtualizerSafe({
     count: threads.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 88,
     overscan: 5,
-    useAnimationFrameWithResizeObserver: true,
   })
 
   useVirtualInfiniteScroll(virtualizer, loadMore, hasMore, loading || loadingMore)
@@ -262,20 +261,18 @@ export function EmailList({
               const msg = threads[virtualRow.index]
               const badges: ListItemBadge[] = []
               if (showReadStatus && msg.isUnread) {
-                badges.push({ label: "Unread", variant: "secondary" })
+                badges.push({ label: "Unread", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" })
               }
               if (showImportant && msg.labelIds.includes("IMPORTANT")) {
                 badges.push({
                   label: "Important",
-                  variant: "outline",
-                  className: "bg-chart-2/20 text-chart-2 border-chart-2/30",
+                  className: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
                 })
               }
               if (showStarred && msg.labelIds.includes("STARRED")) {
                 badges.push({
                   label: "Starred",
-                  variant: "outline",
-                  className: "bg-primary/20 text-primary border-primary/30",
+                  className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
                 })
               }
               if (showLabels) {
@@ -295,19 +292,19 @@ export function EmailList({
                 )
                 for (const label of userLabels.slice(0, 3)) {
                   const l = labels.find((lb) => lb.id === label)
-                  badges.push({ label: l?.name || label, variant: "outline" })
+                  badges.push({ label: l?.name || label, className: "bg-foreground/10 text-muted-foreground" })
                 }
               }
               return (
                 <div
                   key={msg.id}
                   data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
+                    height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >

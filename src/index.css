@@ -1,7 +1,11 @@
 @import "@hammies/frontend/styles";
-@import "highlight.js/styles/github.css";
+@import "@hammies/frontend/github-syntax.css";
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
+
+:root:not(.dark) {
+  --background: oklch(0.98 0 0);
+}
 
 /* Suppress prose's auto-backtick wrapping around inline code */
 .prose :where(code)::before,
@@ -9,6 +13,10 @@
   content: none;
 }
 
+/* Code block background uses theme background */
+.prose :where(pre) {
+  background: var(--background);
+}
 /* Bold headings in prose (markdown) and Notion content */
 .prose :where(h1, h2, h3, h4, h5, h6) {
   font-weight: 700;
@@ -47,29 +55,31 @@ html {
 /* ── Sidebar: Apple Liquid Glass ────────────────────────────────────────────── */
 
 /* Wrapper: transparent so ::before's backdrop-filter sees through to panels */
+/* Remove ring from floating variant — the ::after shine layer provides the edge */
 [data-sidebar="sidebar"]:not([data-mobile="true"]) {
   position: relative;
   overflow: hidden;
   background: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
 }
 
 /* Effect layer: backdrop blur + SVG distortion + tint */
 [data-sidebar="sidebar"]:not([data-mobile="true"])::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   backdrop-filter: blur(8px) saturate(180%);
   -webkit-backdrop-filter: blur(8px) saturate(180%);
   filter: url(#liquid-glass);
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.5);
   z-index: 0;
   pointer-events: none;
 }
 
 /* Shine layer: inset box-shadow for edge highlights */
 [data-sidebar="sidebar"]:not([data-mobile="true"])::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -97,87 +107,4 @@ html {
   box-shadow:
     inset 1.5px 1.5px 1px 0 rgba(255, 255, 255, 0.12),
     inset -1px -1px 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.bg-background {
-  background-color: var(--card);
-}
-
-/* GitHub dark overrides (applied via .dark class on <html>) */
-.dark .hljs {
-  color: #c9d1d9;
-  background: #0d1117;
-}
-.dark .hljs-doctag,
-.dark .hljs-keyword,
-.dark .hljs-meta .hljs-keyword,
-.dark .hljs-template-tag,
-.dark .hljs-template-variable,
-.dark .hljs-type,
-.dark .hljs-variable.language_ {
-  color: #ff7b72;
-}
-.dark .hljs-title,
-.dark .hljs-title.class_,
-.dark .hljs-title.class_.inherited__,
-.dark .hljs-title.function_ {
-  color: #d2a8ff;
-}
-.dark .hljs-attr,
-.dark .hljs-attribute,
-.dark .hljs-literal,
-.dark .hljs-meta,
-.dark .hljs-number,
-.dark .hljs-operator,
-.dark .hljs-variable,
-.dark .hljs-selector-attr,
-.dark .hljs-selector-class,
-.dark .hljs-selector-id {
-  color: #79c0ff;
-}
-.dark .hljs-regexp,
-.dark .hljs-string,
-.dark .hljs-meta .hljs-string {
-  color: #a5d6ff;
-}
-.dark .hljs-built_in,
-.dark .hljs-symbol {
-  color: #ffa657;
-}
-.dark .hljs-comment,
-.dark .hljs-code,
-.dark .hljs-formula {
-  color: #8b949e;
-}
-.dark .hljs-name,
-.dark .hljs-quote,
-.dark .hljs-selector-tag,
-.dark .hljs-selector-pseudo {
-  color: #7ee787;
-}
-.dark .hljs-subst {
-  color: #c9d1d9;
-}
-.dark .hljs-section {
-  color: #1f6feb;
-  font-weight: bold;
-}
-.dark .hljs-bullet {
-  color: #f2cc60;
-}
-.dark .hljs-emphasis {
-  color: #c9d1d9;
-  font-style: italic;
-}
-.dark .hljs-strong {
-  color: #c9d1d9;
-  font-weight: bold;
-}
-.dark .hljs-addition {
-  color: #aff5b4;
-  background-color: #033a16;
-}
-.dark .hljs-deletion {
-  color: #ffdcd7;
-  background-color: #67060c;
 }

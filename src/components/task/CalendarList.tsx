@@ -262,11 +262,11 @@ export function CalendarList({
                 badges.push(
                   ...item.tags
                     .slice(0, 3)
-                    .map((tag) => ({ label: tag, variant: "secondary" as const })),
+                    .map((tag) => ({ label: tag, className: "bg-foreground/10 text-muted-foreground" })),
                 )
               }
               if (showAssignee && item.assignee) {
-                badges.push({ label: item.assignee, variant: "outline" as const })
+                badges.push({ label: item.assignee, className: "bg-foreground/10 text-muted-foreground" })
               }
               return (
                 <div

@@ -299,17 +299,17 @@ export function TaskList({
                 })
               }
               if (showPriority && task.priority) {
-                badges.push({ label: task.priority, variant: "outline" })
+                badges.push({ label: task.priority, className: "bg-foreground/10 text-muted-foreground" })
               }
               if (showTags) {
                 badges.push(
                   ...task.tags
                     .slice(0, 3)
-                    .map((tag) => ({ label: tag, variant: "secondary" as const })),
+                    .map((tag) => ({ label: tag, className: "bg-foreground/10 text-muted-foreground" })),
                 )
               }
               if (showAssignee && task.assignee) {
-                badges.push({ label: task.assignee, variant: "outline" as const })
+                badges.push({ label: task.assignee, className: "bg-foreground/10 text-muted-foreground" })
               }
               return (
                 <div

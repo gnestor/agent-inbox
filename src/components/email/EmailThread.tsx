@@ -47,7 +47,9 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   })
   const linkedSession = linkedData?.session
   const scrollRef = useRef<HTMLDivElement>(null)
-  const actions = useEmailActions(threadId, thread)
+  const actions = useEmailActions(threadId, thread, {
+    onRemove: () => navigate("/emails"),
+  })
   const [replyOpen, setReplyOpen] = useState(false)
 
   useEffect(() => {

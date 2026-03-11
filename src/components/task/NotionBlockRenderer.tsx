@@ -517,7 +517,7 @@ export function NotionBlockRenderer({ blocks }: { blocks: NotionBlock[] }) {
   let numberedCounter = 0
 
   return (
-    <div className="notion-content prose prose-sm max-w-none dark:prose-invert p-2">
+    <div className="notion-content prose prose-sm max-w-none dark:prose-invert">
       {blocks.map((block) => {
         if (block.type !== "numbered_list_item") {
           numberedCounter = 0

@@ -3,7 +3,11 @@ import { trashThread, modifyThreadLabels } from "@/api/client"
 import { toast } from "sonner"
 import type { GmailThread } from "@/types"
 
-export function useEmailActions(threadId: string, thread?: GmailThread | null) {
+interface EmailActionsOptions {
+  onRemove?: () => void
+}
+
+export function useEmailActions(threadId: string, thread?: GmailThread | null, options?: EmailActionsOptions) {
   const queryClient = useQueryClient()
   const labelIds = thread?.labelIds ?? []
 
@@ -34,6 +38,7 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null) {
     onSuccess: () => {
       invalidateEmailQueries()
       toast.success("Thread archived")
+      options?.onRemove?.()
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
@@ -48,6 +53,7 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null) {
     onSuccess: () => {
       invalidateEmailQueries()
       toast.success("Thread deleted")
+      options?.onRemove?.()
     },
     onError: (err) => toast.error(`Delete failed: ${err.message}`),
   })
