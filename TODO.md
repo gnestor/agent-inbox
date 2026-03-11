@@ -43,7 +43,7 @@
 - [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
 - [ ] Prompt template categories (group templates by type: email, task, general)
-- [x] Virtual scrolling (TanStack Virtual for all list views and session transcript)
+- [x] Virtual scrolling (TanStack Virtual for all list views; session transcript uses direct render — virtualizer caused infinite loops with dynamic-height accordion content in React 19)
 - [x] TanStack Query + IndexedDB persistence (replaces localStorage list-cache and server-side SQLite API caches; `useInfiniteQuery` for emails/tasks, `useQuery` for sessions/detail/thread; persisted to IndexedDB via `idb-keyval` for instant reload; `staleTime: Infinity` + `onSuccess` invalidation for page-load refresh; `useMutation` for session create/resume/abort with cache invalidation)
 - [x] Persistent app state (navigation state, open panels, per-tab selection saved to localStorage)
 - [x] Refresh on focus (all list hooks refetch when window regains focus)

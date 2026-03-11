@@ -1,6 +1,5 @@
-import { useRef, useEffect, useMemo, memo, useCallback, type ElementType, type ReactNode } from "react"
+import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
 import { usePreference } from "@/hooks/use-preferences"
-import { useVirtualizer } from "@tanstack/react-virtual"
 import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
 import {
   Accordion,
@@ -59,52 +58,14 @@ export function SessionTranscript({
   const [detailsExpanded, setDetailsExpanded] = usePreference("details.session.expanded", false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
-  const virtualizer = useVirtualizer({
-    count: messages.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 44,
-    overscan: 10,
-  })
-
-  // Stable ref callback: React 19 fires callback refs on every render when the
-  // function reference changes. virtualizer.measureElement is recreated each
-  // render (via setOptions inside useVirtualizer), causing an infinite
-  // measure → resize → re-render loop with the animated Accordion content.
-  // Wrapping in useCallback gives React a stable reference so the ref is only
-  // attached once; TanStack Virtual's internal ResizeObserver handles subsequent
-  // size changes.
-  const measureRow = useCallback(
-    (node: Element | null) => virtualizer.measureElement(node),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
-
-  // Auto-scroll to bottom when new messages arrive (streaming or initial load).
-  const needsScrollRef = useRef(false)
+  // Scroll to bottom when new messages arrive, unless the user has scrolled up.
   useEffect(() => {
-    if (shouldAutoScroll.current && messages.length > 0) {
-      needsScrollRef.current = true
+    if (shouldAutoScroll.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
   }, [messages.length])
-
-  // Re-run on every totalSize change (items being measured via ResizeObserver).
-  // Each iteration scrolls toward the last item using best available measurements.
-  // The loop terminates once the last item enters the rendered range, confirming
-  // its position is accurate. This handles both:
-  //   - Small sessions: estimated total < viewport → scrollToIndex says "no scroll
-  //     needed" on first call; re-fires after measurement expands the total size.
-  //   - Large sessions: estimates far from reality → iteratively converges as items
-  //     near the scroll target are rendered and measured each iteration.
-  const totalSize = virtualizer.getTotalSize()
-  useEffect(() => {
-    if (!needsScrollRef.current) return
-    const idx = messages.length - 1
-    virtualizer.scrollToIndex(idx, { align: "end" })
-    if (virtualizer.getVirtualItems().some((vi) => vi.index === idx)) {
-      needsScrollRef.current = false
-    }
-  }, [totalSize])
 
   function handleScroll() {
     if (!scrollRef.current) return
@@ -155,24 +116,9 @@ export function SessionTranscript({
         )}
       <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={measureRow}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} />
-              </div>
-            ))}
-          </div>
+          messages.map((message) => (
+            <TranscriptEntry key={message.id} message={message} visibility={visibility} sessionId={sessionId} />
+          ))
         ) : !isStreaming ? (
           <div className="flex items-center justify-center p-8 text-muted-foreground">
             <p className="text-sm">No messages yet</p>
@@ -184,6 +130,7 @@ export function SessionTranscript({
             <span>Agent is working...</span>
           </div>
         )}
+        <div ref={bottomRef} />
       </div>
     </div>
   )
