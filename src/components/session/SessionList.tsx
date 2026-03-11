@@ -102,6 +102,7 @@ export function SessionList({
     // measureElement fires.
     estimateSize: (index) => (filteredSessions[index]?.messageCount > 0 ? 100 : 76),
     overscan: 5,
+    useAnimationFrameWithResizeObserver: true,
   })
 
   // Reset cached measurements when the session list changes (e.g. search results arrive).

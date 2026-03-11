@@ -108,6 +108,7 @@ export function TaskList({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 66,
     overscan: 5,
+    useAnimationFrameWithResizeObserver: true,
   })
 
   useVirtualInfiniteScroll(virtualizer, loadMore, hasMore, loading || loadingMore)

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, memo, type ElementType, type ReactNode } from "react"
 import { usePreference } from "@/hooks/use-preferences"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { User, Bot, Wrench, Brain, Loader2, FileText } from "lucide-react"
 import {
   Accordion,
@@ -58,14 +59,41 @@ export function SessionTranscript({
   const [detailsExpanded, setDetailsExpanded] = usePreference("details.session.expanded", false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom when new messages arrive, unless the user has scrolled up.
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 80,
+    overscan: 5,
+    // useAnimationFrameWithResizeObserver defers ResizeObserver callbacks to
+    // requestAnimationFrame. Without this, accordion open animations fire the
+    // ResizeObserver ~60×/sec synchronously during React's commit phase, which
+    // increments React's nested-update depth counter until it hits the limit of
+    // 50 and throws "Maximum update depth exceeded". RAF runs outside the commit
+    // phase so each measurement is treated as a normal async state update.
+    useAnimationFrameWithResizeObserver: true,
+  })
+
+  // Auto-scroll to bottom when new messages arrive, unless the user has scrolled up.
+  const needsScrollRef = useRef(false)
   useEffect(() => {
-    if (shouldAutoScroll.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (shouldAutoScroll.current && messages.length > 0) {
+      needsScrollRef.current = true
     }
   }, [messages.length])
+
+  // Re-run whenever totalSize changes (items measured via ResizeObserver).
+  // Iteratively scrolls toward the last item until it enters the rendered range,
+  // at which point the position is accurate and we stop.
+  const totalSize = virtualizer.getTotalSize()
+  useEffect(() => {
+    if (!needsScrollRef.current) return
+    const idx = messages.length - 1
+    virtualizer.scrollToIndex(idx, { align: "end" })
+    if (virtualizer.getVirtualItems().some((vi) => vi.index === idx)) {
+      needsScrollRef.current = false
+    }
+  }, [totalSize])
 
   function handleScroll() {
     if (!scrollRef.current) return
@@ -116,9 +144,24 @@ export function SessionTranscript({
         )}
       <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
-          messages.map((message) => (
-            <TranscriptEntry key={message.id} message={message} visibility={visibility} sessionId={sessionId} />
-          ))
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} />
+              </div>
+            ))}
+          </div>
         ) : !isStreaming ? (
           <div className="flex items-center justify-center p-8 text-muted-foreground">
             <p className="text-sm">No messages yet</p>
@@ -130,7 +173,6 @@ export function SessionTranscript({
             <span>Agent is working...</span>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   )

@@ -121,6 +121,7 @@ export function EmailList({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 88,
     overscan: 5,
+    useAnimationFrameWithResizeObserver: true,
   })
 
   useVirtualInfiniteScroll(virtualizer, loadMore, hasMore, loading || loadingMore)
