@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { PanelStack } from "@/components/layout/PanelStack"
 import { SpatialNavProvider, getSavedPathname } from "@/hooks/use-spatial-nav"
+import { LiquidGlassFilter } from "@/components/layout/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 
 function AuthenticatedApp() {
@@ -12,6 +13,7 @@ function AuthenticatedApp() {
   return (
     <SpatialNavProvider isMobile={isMobile}>
       <SidebarProvider>
+        <LiquidGlassFilter />
         <AppSidebar />
         <SidebarInset className="max-h-svh overflow-hidden">
           <div className="flex flex-1 h-full">
