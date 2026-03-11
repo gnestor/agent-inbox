@@ -112,7 +112,13 @@ export function buildUrl(tab: TabId, state: TabState): string {
   return url
 }
 
-export function SpatialNavProvider({ children }: { children: React.ReactNode }) {
+export function SpatialNavProvider({
+  children,
+  isMobile = false,
+}: {
+  children: React.ReactNode
+  isMobile?: boolean
+}) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -158,8 +164,10 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
       })
     }
 
-    // Restore session state when navigating to an item that had a session open
+    // Restore session state when navigating to an item that had a session open.
+    // Skipped on mobile — users open sessions manually from the detail view.
     if (
+      !isMobile &&
       activeTab !== "sessions" &&
       newState.selectedId &&
       newState.selectedId !== oldState.selectedId &&
@@ -185,7 +193,7 @@ export function SpatialNavProvider({ children }: { children: React.ReactNode }) 
       tabs: { ...persistedRef.current },
       itemSessions: [...itemSessionRef.current.entries()],
     })
-  }, [location.pathname, activeTab, navigate])
+  }, [location.pathname, activeTab, navigate, isMobile])
 
   const navigateToTab = useCallback(
     (tab: TabId) => {

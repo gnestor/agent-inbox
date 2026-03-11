@@ -6,7 +6,7 @@ The inbox uses a 2D spatial canvas for navigation. The vertical axis represents 
           ← panels (horizontal) →
           List       Detail      Session
     ↑  ┌──────────┬───────────┬──────────┐
-       │ Email    │ Thread    │ New      │  /inbox  /inbox/:id  /inbox/:id/session/…
+       │ Email    │ Thread    │ New      │  /emails  /emails/:id  /emails/:id/session/…
   tabs │ list     │ view      │ session  │
   (vert│──────────┼───────────┼──────────┤
   ical)│ Task     │ Task      │ New      │  /tasks  /tasks/:id  /tasks/:id/session/…
@@ -32,10 +32,10 @@ The inbox uses a 2D spatial canvas for navigation. The vertical axis represents 
 The URL is the canonical source of truth for what's visible.
 
 ```
-/inbox                              → email list, nothing selected
-/inbox/:threadId                    → email list + thread detail
-/inbox/:threadId/session/new        → + new session panel
-/inbox/:threadId/session/:sessionId → + existing session panel
+/emails                              → email list, nothing selected
+/emails/:threadId                    → email list + thread detail
+/emails/:threadId/session/new        → + new session panel
+/emails/:threadId/session/:sessionId → + existing session panel
 
 /tasks                              → task list, nothing selected
 /tasks/:taskId                      → task list + task detail
@@ -45,7 +45,7 @@ The URL is the canonical source of truth for what's visible.
 /sessions/:sessionId                → session list + session view
 ```
 
-The `inbox` segment doubles as both the route prefix and the tab identifier. `tabFromPathname` maps `/inbox*` → `"inbox"`, `/tasks*` → `"tasks"`, `/sessions*` → `"sessions"`.
+`tabFromPathname` maps `/emails*` → `"emails"`, `/tasks*` → `"tasks"`, `/sessions*` → `"sessions"`.
 
 ## State management
 
@@ -54,7 +54,7 @@ The `inbox` segment doubles as both the route prefix and the tab identifier. `ta
 The URL is the only source of truth for what the active tab is currently showing. `tabStateFromPathname(pathname, tab)` is a pure function that parses it:
 
 ```ts
-tabStateFromPathname("/inbox/abc123/session/new", "inbox")
+tabStateFromPathname("/emails/abc123/session/new", "emails")
 // → { selectedId: "abc123", sessionOpen: true, sessionId: undefined }
 ```
 
@@ -64,12 +64,12 @@ When the user switches tabs, their state in the previous tab needs to survive. `
 
 ```ts
 type PersistedState = Record<TabId, TabState>
-persistedRef.current = { inbox: { selectedId: "abc" }, tasks: {}, sessions: {} }
+persistedRef.current = { emails: { selectedId: "abc" }, tasks: {}, sessions: {} }
 ```
 
 On every `location.pathname` change, the active tab's state is synced into `persistedRef.current[activeTab]`. When navigating to a tab, `navigateToTab(tab)` calls `buildUrl(tab, persistedRef.current[tab])` to reconstruct the URL with the persisted state.
 
-**localStorage persistence**: After every URL change, `saveNavState` writes the current pathname, all tab states, and the full `itemSessionRef` map to `localStorage` under the key `"spatial-nav-state"`. On mount, if the user lands at the default `/inbox` route, `SpatialNavProvider` reads the saved state and calls `navigate(saved.pathname, { replace: true })` to restore the last-visited URL. This survives page refreshes.
+**localStorage persistence**: After every URL change, `saveNavState` writes the current pathname, all tab states, and the full `itemSessionRef` map to `localStorage` under the key `"spatial-nav-state"`. On mount, if the user lands at the default `/emails` route, `SpatialNavProvider` reads the saved state and calls `navigate(saved.pathname, { replace: true })` to restore the last-visited URL. This survives page refreshes.
 
 ```ts
 interface SavedNavState {
@@ -113,23 +113,49 @@ exit:  (d) => ({ y: d >= 0 ? `calc(-100% - 16px)` : `calc(100% + 16px)` })
 Going Emails→Tasks (direction +1): Tasks enters from bottom, Emails exits to top.
 Going Tasks→Emails (direction -1): Emails enters from top, Tasks exits to bottom.
 
+Animation: `cubic-bezier(0.32, 0.72, 0, 1)` at 600ms duration.
+
 ### Item switching — Framer Motion `AnimatePresence` (vertical, inside `ItemSlider`)
 
-Within a tab, selecting a different item animates the detail (and session) panel vertically. `ItemSlider` wraps the detail+session group in `AnimatePresence mode="popLayout"`. Direction is derived from the item's list index — if the new item is below the previous one in the list (higher index), direction is +1 (enter from below). The list components call `onSelectedIndexChange` to update `directionRef` synchronously during the list's render, before `ItemSlider` reads it.
+Within a tab, selecting a different item animates the detail (and session) panel vertically. `ItemSlider` wraps the detail+session group in `AnimatePresence mode="popLayout"` using a grid single-cell layout (both entering and exiting items occupy cell (1,1) so `scrollWidth` never collapses mid-transition). Direction is derived from the item's list index — if the new item is below the previous one in the list (higher index), direction is +1 (enter from below). The list components call `onSelectedIndexChange` to update `directionRef` synchronously during the list's render, before `ItemSlider` reads it.
 
 ```ts
 const itemVariants = {
-  enter: (d) => ({ y: `${d * 100}%` }),   // +1 = from below, -1 = from above
+  enter: (d) => ({ y: d >= 0 ? `calc(100% + 16px)` : `calc(-100% - 16px)` }),
   center: { y: 0 },
-  exit:  (d) => ({ y: `${-d * 100}%` }),  // opposite direction
+  exit:  (d) => ({ y: d >= 0 ? `calc(-100% - 16px)` : `calc(100% + 16px)` }),
 }
 ```
 
 The detail and session panels animate together as a unit (they share one `motion.div` with `key={selectedId}`), so switching items slides both panels simultaneously.
 
-### Session panel open/close — no separate animation
+### Panel group horizontal scroll (desktop)
 
-The session panel lives inside `ItemSlider`'s `renderContent`. Opening/closing it changes `sessionOpen` which changes the content of the existing `motion.div`, not a separate enter/exit — the item-slide animation handles it if the item also changes. If only the session state changes (same item), the session panel appears/disappears without animation at the desktop level (the content change is immediate inside the stable item motion.div). This avoids double-animation when switching items while a session is open.
+The `TabPane` scroll container (`overflow-x-auto`) scrolls horizontally when detail/session panels open or close. `getScrollTarget` is a pure function that computes where to scroll based on what changed:
+
+| Change | Scroll target |
+|--------|--------------|
+| Detail added | `scrollWidth - clientWidth` (immediate) |
+| Detail removed | `0` (immediate) |
+| Session added | `scrollWidth - clientWidth` (deferred one frame for layout) |
+| Session removed | `scrollLeft - 632` clamped to 0 (immediate) |
+
+Scroll behavior depends on **when** the effect runs:
+
+- **Tab mount (first run)**: `isFirstScroll.current` is `true`. Uses instant `el.scrollLeft = target` so the scroll position is already correct before the tab enter animation plays. The flag is cleared before the early-return guard so a tab mounting with no selected item also resets it.
+- **Subsequent runs (user interaction)**: Uses `smoothScrollTo()` — a `requestAnimationFrame` loop with cubic-ease-out over 600ms.
+
+```ts
+const isFirstScroll = useRef(true)
+// Cleared before action check — ensures the flag resets even if action is null
+const first = isFirstScroll.current
+isFirstScroll.current = false
+if (!action) return
+// ...
+if (first) { el.scrollLeft = action.target } else { smoothScrollTo(el, action.target, rafRef) }
+```
+
+Horizontal trackpad swipes inside panels are intercepted via `wheel` event handlers on the list panel and item slider, redirected to the outer scroll container so they scroll the panel group rather than inner `overflow-y-auto` elements.
 
 ## Mobile animations
 
@@ -137,28 +163,40 @@ Mobile uses Framer Motion `motion.div` overlays with spring physics and drag ges
 
 ### Tab switching
 
-Same `AnimatePresence` + `tabVariants` as desktop, but the `motion.div` is also draggable (`drag="y"`). The drag is started from the header via `HeaderNavContext.startTabDrag` — the header initiates the drag but the `motion.div` in `PanelStack` actually tracks it (`dragListener={false}` + `dragControls`). This prevents accidental tab swipes when scrolling content.
+Same `AnimatePresence` + `tabVariants` as desktop. The `AnimatePresence` is wrapped in a **persistent** `<motion.div style={{ y: tabY }}>` that carries the drag-y offset. This persistent wrapper avoids the `dragControls` binding issues that occur when `AnimatePresence` mounts both exiting and entering elements simultaneously.
 
 **Direction semantics** (mirroring natural swipe-to-scroll behavior):
-- Drag panel **DOWN** → navigate to the tab **above** (lower index): triggered at >35% of screen height _or_ velocity >400px/s. There is plenty of screen space to drag, so distance threshold applies.
-- Flick panel **UP** → navigate to the tab **below** (higher index): velocity only (>400px/s). Dragging upward takes the panel off-screen quickly, so only fast flicks are practical.
+- Drag panel **DOWN** → navigate to the tab **above** (lower index): triggered at >35% of screen height _or_ velocity >400px/s.
+- Flick panel **UP** → navigate to the tab **below** (higher index): velocity only (>400px/s) or offset >5% height.
 
-These semantics match the `tabVariants` animation: higher-index tab enters from below, lower-index enters from above.
+**Manual pointer tracking** (`startTabDrag`): The header initiates a drag by calling `startTabDrag(nativeEvent)`. This registers `pointermove`/`pointerup` listeners on `window` and updates `tabY` motion value directly (no Framer Motion drag system). On `pointerup`, `classifyTabDrag` decides: navigate (instant `tabY.set(0)` then `navigateToTab`) or snap back (`animate(tabY, 0, SNAP_SPRING)`).
 
 ### Detail overlay (`MobileOverlayPanel`)
 
-`MobileOverlayPanelInner` is a `motion.div` with `position: absolute; inset: 0` that slides in from the right on mount (`initial={{ x: "100%" }}`). Spring transition (`damping: 30, stiffness: 300`).
+`MobileOverlayPanelInner` uses `useMotionValue` for `x` and `y` instead of Framer Motion's `animate` prop. This gives explicit control over snap-back after sub-threshold drags, which `dragMomentum={false}` + `animate={{ x: 0 }}` alone cannot achieve (Framer Motion's drag offset accumulates independently of the `animate` target).
 
-Drag gestures are direction-locked and controlled from the header (same pattern as tab drag):
-- **Swipe right** (dismiss): >30% width or >400px/s → `setPhase("dismissing")` → animate to `x: "100%"` → on animation complete, call `onDismiss()` which navigates back. The two-step (phase → animation → navigate) prevents the immediate unmount that would cut the exit animation short.
-- **Swipe left** (forward): >30% width or >400px/s → `onForward()` (navigate to session). Only available on detail overlay, not session overlay.
-- **Swipe vertical** (tab switch): If `|oy| > |ox|`, treat as a tab swipe gesture instead of dismiss/forward. Same direction semantics as the base panel: drag DOWN → prev tab, flick UP → next tab.
+On mount: `x` starts at `window.innerWidth` (off-screen right) and slides in via `animate(x, 0, SLIDE_SPRING)`. If `skipEntrance` is true, `x` starts at `0` immediately (no slide-in animation — for tab switches where the overlay was already open).
+
+Drag gestures are direction-locked (`dragDirectionLock`) and controlled from the header (`dragListener={false}` + `dragControls`):
+- **Swipe right** (dismiss): >30% width or >400px/s → `animate(x, window.innerWidth, SLIDE_SPRING).then(() => onDismiss())`. The two-step (animate → callback) prevents the immediate unmount that would cut the exit animation short.
+- **Swipe left** (forward): >30% width or >400px/s → `animate(x, 0, SNAP_SPRING)` then `onForward()`. Only on detail overlay, not session overlay.
+- **Swipe vertical** (tab switch): If `|oy| > |ox|`, treat as a tab swipe. Same direction semantics as the base panel: drag DOWN → prev tab, flick UP → next tab.
+- **Below all thresholds** (snap-back): `animate(x, 0, SNAP_SPRING)` + `animate(y, 0, SNAP_SPRING)`.
 
 `skipEntrance` prop: when the detail was already open before the tab switch (e.g., switching back to a tab that had an item selected), the overlay should snap into place rather than slide in. `TabPane` computes this by comparing `selectedId` to `initialDetailId.current` (captured at mount).
 
 ### Session overlay
 
 Same as detail overlay but at `zIndex: 20` (above detail at `zIndex: 10`). Only has `onDismiss`, not `onForward`.
+
+### Spring constants
+
+```ts
+// Snappy — for snap-back after sub-threshold drag
+const SNAP_SPRING = { type: "spring", stiffness: 400, damping: 35 }
+// Smooth — for entrance, dismiss, and tab pane exit animations
+const SLIDE_SPRING = { type: "spring", damping: 30, stiffness: 300 }
+```
 
 ### `HeaderNavContext`
 
@@ -167,34 +205,34 @@ Passed down through the component tree so header components (back button, title,
 | Callback | Provided by | Used when |
 |----------|-------------|-----------|
 | `onTabSwipe` | `PanelStack` (top-level) | Fires after gesture resolves to a tab change |
-| `startTabDrag` | `PanelStack` (top-level) | Header on the **base list panel** — starts drag on the tab pane `motion.div` |
-| `startOverlayDrag` | `MobileOverlayPanelInner` | Header **inside an overlay** — starts drag on that overlay's `motion.div` |
+| `startTabDrag` | `PanelStack` (top-level) | Header on the **base list panel** — starts manual pointer tracking for tab-y drag |
+| `startOverlayDrag` | `MobileOverlayPanelInner` | Header **inside an overlay** — starts drag on that overlay's `motion.div` via `dragControls` |
 
 `PanelHeader` detects direction after `AXIS_THRESHOLD` (8px) of movement and routes accordingly:
 1. If `startOverlayDrag` is set → hand off both axes (overlay handles direction-lock)
-2. Else if vertical and `startTabDrag` is set → hand off to tab pane drag
+2. Else if vertical and `startTabDrag` is set → hand off to tab pane manual pointer tracking
 3. Else if vertical and `onTabSwipe` → manual discrete tracking (fallback)
 
 ```ts
 // Example: header inside a detail overlay
 const { startOverlayDrag } = useHeaderNav()  // provided by MobileOverlayPanelInner
-// PanelHeader calls controls.start(nativeEvent) after detecting 8px of movement
+// PanelHeader calls startOverlayDrag(nativeEvent) after detecting 8px of movement
 ```
 
 ## Easing
 
-All animations use `cubic-bezier(0.32, 0.72, 0, 1)` at 500ms duration. Defined once:
+All non-spring animations use `cubic-bezier(0.32, 0.72, 0, 1)` at 600ms duration:
 
 ```ts
 const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
-const DURATION = 0.5
+const DURATION = 0.6
 ```
 
-Spring transitions for mobile overlays use `damping: 30, stiffness: 300` (no duration — spring physics).
+Mobile overlay entrance/dismiss use spring transitions (no fixed duration — spring physics). Snap-back uses a stiffer spring for a snappier feel.
 
 ## List data caching (`list-cache.ts`)
 
-`useEmails`, `useTasks`, and `useSessions` share a thin in-memory cache (`src/lib/list-cache.ts`) keyed by a string (e.g. `"emails:in:inbox is:important"`, `"tasks:{\"status\":\"In Progress\"}"`). On hook mount, if there's a cache hit the hook initializes state from the cache and skips the loading skeleton. New data from the server replaces the cache entry and updates state in-place.
+`useEmails`, `useTasks`, and `useSessions` share a thin in-memory cache (`src/lib/list-cache.ts`) keyed by a string (e.g. `"emails:in:inbox is:important"`, `"tasks:{\"status\":\"In Progress\"}""`). On hook mount, if there's a cache hit the hook initializes state from the cache and skips the loading skeleton. New data from the server replaces the cache entry and updates state in-place.
 
 This keeps list views instant when switching tabs or navigating back — the list rerenders immediately with cached data while a background refresh happens (if needed).
 

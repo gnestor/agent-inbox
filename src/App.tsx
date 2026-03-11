@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
+import { useIsMobile } from "@hammies/frontend/hooks"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { PanelStack } from "@/components/layout/PanelStack"
@@ -7,8 +8,9 @@ import { SpatialNavProvider, getSavedPathname } from "@/hooks/use-spatial-nav"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 
 function AuthenticatedApp() {
+  const isMobile = useIsMobile()
   return (
-    <SpatialNavProvider>
+    <SpatialNavProvider isMobile={isMobile}>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset className="max-h-svh overflow-hidden">

@@ -80,6 +80,10 @@ html {
   );
 }
 
+.bg-background {
+  background-color: var(--card);
+}
+
 /* GitHub dark overrides (applied via .dark class on <html>) */
 .dark .hljs {
   color: #c9d1d9;

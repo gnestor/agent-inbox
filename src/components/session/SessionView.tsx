@@ -32,7 +32,11 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { activeTab, persistedState } = useSpatialNav()
-  const parentPath = buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
+  // Sessions tab: parent is the list (/sessions). Emails/tasks: parent is the detail panel (dismiss session overlay).
+  const parentPath =
+    activeTab === "sessions"
+      ? "/sessions"
+      : buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId })
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -194,7 +198,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           </DropdownMenu>
           <button
             type="button"
-            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
             onClick={() => navigate(parentPath)}
           >
             <X className="h-4 w-4" />

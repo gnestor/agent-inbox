@@ -162,7 +162,7 @@ export function SessionList({
           </DropdownMenu>
         }
       />
-      <div className="px-4 py-2 border-b space-y-1.5">
+      <div className="px-2 py-2 border-b space-y-1.5">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
             className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"

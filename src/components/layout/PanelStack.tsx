@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { motion, AnimatePresence, useDragControls } from "motion/react"
+import { motion, AnimatePresence, useDragControls, useMotionValue, animate } from "motion/react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { cn } from "@hammies/frontend/lib/utils"
 import {
@@ -88,9 +88,9 @@ function usePanelState(tab: TabId) {
 }
 
 // Mobile overlay that slides in from right and supports drag-to-dismiss/forward
-const DISMISS_THRESHOLD = 0.3 // fraction of width to trigger action
+const DISMISS_THRESHOLD = 0.1 // fraction of width to trigger action
 const DISMISS_VELOCITY = 400 // px/s velocity to trigger action
-const TAB_SWIPE_THRESHOLD = 0.35 // fraction of height (drag down → prev tab)
+const TAB_SWIPE_THRESHOLD = 0.1 // fraction of height (drag down → prev tab)
 const TAB_SWIPE_VELOCITY = 400 // px/s
 
 // Large enough to cover any mobile screen — allows 1:1 drag tracking
@@ -123,6 +123,9 @@ export function classifyOverlayDrag(
   return null
 }
 
+const SNAP_SPRING = { type: "spring" as const, stiffness: 400, damping: 35 }
+const SLIDE_SPRING = { type: "spring" as const, damping: 30, stiffness: 300 }
+
 function MobileOverlayPanelInner({
   children,
   zIndex,
@@ -142,12 +145,22 @@ function MobileOverlayPanelInner({
   hasNextTab?: boolean
   skipEntrance?: boolean
 }) {
-  const [phase, setPhase] = useState<"open" | "dismissing">("open")
   const dismissRef = useRef(onDismiss)
   dismissRef.current = onDismiss
 
   const controls = useDragControls()
   const isDraggable = !!(onDismiss || onForward)
+
+  // Use motion values so we can imperatively animate snap-back and dismiss.
+  // With dragMomentum={false} Framer Motion does NOT auto-return the drag offset
+  // to the animate target — only imperative animate() calls do that.
+  const x = useMotionValue(skipEntrance ? 0 : window.innerWidth)
+  const y = useMotionValue(0)
+
+  useEffect(() => {
+    if (!skipEntrance) animate(x, 0, SLIDE_SPRING)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleDragEnd = (
     _e: PointerEvent,
@@ -158,27 +171,29 @@ function MobileOverlayPanelInner({
     const action = classifyOverlayDrag(vx, vy, ox, oy, window.innerWidth, window.innerHeight, !!onTabSwipe)
     if (action === "tabPrev") { onTabSwipe?.(-1); return }
     if (action === "tabNext") { onTabSwipe?.(1); return }
-    if (action === "dismiss" && onDismiss) { setPhase("dismissing"); return }
-    if (action === "forward" && onForward) { onForward(); return }
-    // Otherwise Motion snaps back to animate={{ x: 0 }} automatically
+    if (action === "dismiss" && onDismiss) {
+      animate(x, window.innerWidth, SLIDE_SPRING).then(() => dismissRef.current?.())
+      return
+    }
+    if (action === "forward" && onForward) {
+      animate(x, 0, SNAP_SPRING)
+      onForward()
+      return
+    }
+    // Below threshold — spring back to origin
+    animate(x, 0, SNAP_SPRING)
+    animate(y, 0, SNAP_SPRING)
   }
-
-  const springTransition = { type: "spring" as const, damping: 30, stiffness: 300 }
 
   const startOverlayDrag = useCallback((e: PointerEvent) => controls.start(e), [controls])
 
   return (
     <HeaderNavContext.Provider value={{ onTabSwipe, startOverlayDrag }}>
       <motion.div
-        style={{ zIndex }}
+        style={{ zIndex, x, y }}
         className="absolute inset-0 bg-card overflow-hidden"
-        initial={skipEntrance ? { x: 0 } : { x: "100%" }}
-        animate={{ x: phase === "open" ? 0 : "100%" }}
-        exit={{ x: "100%" }}
-        transition={springTransition}
-        onAnimationComplete={() => {
-          if (phase === "dismissing") dismissRef.current?.()
-        }}
+        exit={{ x: window.innerWidth }}
+        transition={SLIDE_SPRING}
         drag={isDraggable || !!onTabSwipe}
         dragDirectionLock
         dragListener={false}
@@ -419,14 +434,16 @@ function TabPane({
   const scrollRafRef = useRef(0)
   const prevSelectedId = useRef<string | undefined>(undefined)
   const prevSessionOpen = useRef(false)
+  // True only on the first effect run after mount — scroll instantly so the position
+  // is already set before the tab enter animation plays, avoiding competing animations.
+  const isFirstScroll = useRef(true)
+  const itemSliderWrapperRef = useRef<HTMLDivElement>(null)
 
-  // Intercept horizontal wheel events inside the list panel and redirect them to the
+  // Intercept horizontal wheel events inside a panel and redirect them to the
   // outer horizontal scroll container, so trackpad horizontal swipes scroll the panel
-  // group rather than getting absorbed by the inner overflow-y-auto list.
+  // group rather than getting absorbed by inner overflow-y-auto elements.
   useEffect(() => {
     if (isMobile) return
-    const listEl = listPanelRef.current
-    if (!listEl) return
     const handler = (e: WheelEvent) => {
       if (!scrollRef.current) return
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
@@ -434,8 +451,9 @@ function TabPane({
         scrollRef.current.scrollLeft += e.deltaX
       }
     }
-    listEl.addEventListener("wheel", handler, { passive: false })
-    return () => listEl.removeEventListener("wheel", handler)
+    const els = [listPanelRef.current, itemSliderWrapperRef.current].filter(Boolean) as HTMLElement[]
+    els.forEach((el) => el.addEventListener("wheel", handler, { passive: false }))
+    return () => els.forEach((el) => el.removeEventListener("wheel", handler))
   }, [isMobile])
 
   useEffect(() => {
@@ -448,15 +466,30 @@ function TabPane({
     prevSelectedId.current = selectedId
     prevSessionOpen.current = sessionOpen
 
+    // Always clear on the first run after mount, even when action is null.
+    // If we only cleared it after finding an action, a tab that mounts with no
+    // selected item would keep first=true, then instant-scroll when the user
+    // selects the first item — which should be smooth.
+    const first = isFirstScroll.current
+    isFirstScroll.current = false
+
     const action = getScrollTarget(prevId, selectedId, prevSession, sessionOpen, el.scrollLeft, el.scrollWidth, el.clientWidth)
     if (!action) return
+
     if (action.deferred) {
       // Defer one frame so the session panel is fully laid out before measuring scrollWidth
       cancelAnimationFrame(scrollRafRef.current)
       scrollRafRef.current = requestAnimationFrame(() => {
         const el2 = scrollRef.current
-        if (el2) smoothScrollTo(el2, el2.scrollWidth - el2.clientWidth, scrollRafRef)
+        if (!el2) return
+        if (first) {
+          el2.scrollLeft = el2.scrollWidth - el2.clientWidth
+        } else {
+          smoothScrollTo(el2, el2.scrollWidth - el2.clientWidth, scrollRafRef)
+        }
       })
+    } else if (first) {
+      el.scrollLeft = action.target
     } else {
       smoothScrollTo(el, action.target, scrollRafRef)
     }
@@ -528,19 +561,21 @@ function TabPane({
       className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
     >
       {listPanel}
-      <AnimatePresence>
-        {selectedId && (
-          <ItemSlider
-            key="item-slider"
-            tab={tab}
-            selectedId={selectedId}
-            sessionOpen={sessionOpen}
-            sessionId={sessionId}
-            directionRef={directionRef}
-            title={selectedTitle}
-          />
-        )}
-      </AnimatePresence>
+      <div ref={itemSliderWrapperRef} className="contents">
+        <AnimatePresence>
+          {selectedId && (
+            <ItemSlider
+              key="item-slider"
+              tab={tab}
+              selectedId={selectedId}
+              sessionOpen={sessionOpen}
+              sessionId={sessionId}
+              directionRef={directionRef}
+              title={selectedTitle}
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
@@ -559,7 +594,6 @@ export function PanelStack() {
   const isMobile = useIsMobile()
   const prevTabIndexRef = useRef(tabIndex)
   const directionRef = useRef(0)
-  const tabDragControls = useDragControls()
 
   if (tabIndex !== prevTabIndexRef.current) {
     directionRef.current = tabIndex > prevTabIndexRef.current ? 1 : -1
@@ -578,15 +612,42 @@ export function PanelStack() {
     [tabIndex, navigateToTab],
   )
 
-  const startTabDrag = useCallback((e: PointerEvent) => tabDragControls.start(e), [tabDragControls])
+  // Manual drag tracking for tab swipe — avoids Framer Motion dragControls binding
+  // issues when the tab pane remounts via AnimatePresence on each tab switch.
+  const tabY = useMotionValue(0)
 
-  const handleTabPaneDragEnd = useCallback(
-    (_: PointerEvent, info: { velocity: { y: number }; offset: { y: number } }) => {
-      const action = classifyTabDrag(info.velocity.y, info.offset.y, window.innerHeight)
-      if (action === "prev") handleTabSwipe(-1)
-      else if (action === "next") handleTabSwipe(1)
+  const startTabDrag = useCallback(
+    (e: PointerEvent) => {
+      const startClientY = e.clientY
+      const startTime = performance.now()
+
+      function onMove(ev: PointerEvent) {
+        const dy = ev.clientY - startClientY
+        // Clamp to available direction
+        if (dy > 0 && !hasPrevTab) return
+        if (dy < 0 && !hasNextTab) return
+        tabY.set(dy)
+      }
+
+      function onUp(ev: PointerEvent) {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+        const dy = ev.clientY - startClientY
+        const dt = Math.max((performance.now() - startTime) / 1000, 0.05)
+        const vy = dy / dt
+        const action = classifyTabDrag(vy, dy, window.innerHeight)
+        if (action === "prev" || action === "next") {
+          tabY.set(0) // instant reset so the AnimatePresence enter animation runs cleanly
+          handleTabSwipe(action === "prev" ? -1 : 1)
+        } else {
+          animate(tabY, 0, SNAP_SPRING)
+        }
+      }
+
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
     },
-    [handleTabSwipe],
+    [tabY, hasPrevTab, hasNextTab, handleTabSwipe],
   )
 
   return (
@@ -597,37 +658,30 @@ export function PanelStack() {
       }}
     >
       <div className="h-full w-full overflow-clip relative">
-        <AnimatePresence initial={false} custom={direction}>
-          <motion.div
-            key={activeTab}
-            custom={direction}
-            variants={tabVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: DURATION, ease: EASE }}
-            className="absolute inset-0"
-            drag={isMobile ? "y" : false}
-            dragControls={tabDragControls}
-            dragListener={false}
-            dragConstraints={{
-              top: hasNextTab ? -DRAG_RANGE : 0,
-              bottom: hasPrevTab ? DRAG_RANGE : 0,
-            }}
-            dragElastic={0}
-            dragMomentum={false}
-            onDragEnd={isMobile ? handleTabPaneDragEnd : undefined}
-          >
-            <TabPane
-              tab={activeTab}
-              isMobile={isMobile}
-              active={true}
-              onTabSwipe={isMobile ? handleTabSwipe : undefined}
-              hasPrevTab={hasPrevTab}
-              hasNextTab={hasNextTab}
-            />
-          </motion.div>
-        </AnimatePresence>
+        {/* Persistent wrapper carries the drag-y offset; inner motion.div handles tab transitions */}
+        <motion.div style={{ y: tabY }} className="absolute inset-0">
+          <AnimatePresence initial={false} custom={direction}>
+            <motion.div
+              key={activeTab}
+              custom={direction}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: DURATION, ease: EASE }}
+              className="absolute inset-0"
+            >
+              <TabPane
+                tab={activeTab}
+                isMobile={isMobile}
+                active={true}
+                onTabSwipe={isMobile ? handleTabSwipe : undefined}
+                hasPrevTab={hasPrevTab}
+                hasNextTab={hasNextTab}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </motion.div>
       </div>
     </HeaderNavContext.Provider>
   )

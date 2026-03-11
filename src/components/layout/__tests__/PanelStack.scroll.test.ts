@@ -183,24 +183,24 @@ describe("tabVariants", () => {
 })
 
 // ─── classifyTabDrag ───────────────────────────────────────────────────────────
-// TAB_SWIPE_VELOCITY = 400, TAB_SWIPE_THRESHOLD = 0.35
+// TAB_SWIPE_VELOCITY = 400, TAB_SWIPE_THRESHOLD = 0.1
 // "prev" = drag DOWN (positive oy / vy) → navigate to previous tab
 // "next" = drag UP   (negative oy / vy) → navigate to next tab
 
 describe("classifyTabDrag", () => {
-  const H = 800 // threshold = H * 0.35 = 280, up-threshold = H * 0.05 = 40
+  const H = 800 // threshold = H * 0.1 = 80, up-threshold = H * 0.05 = 40
 
   it("returns null for small slow drag", () => {
     expect(classifyTabDrag(0, 0, H)).toBeNull()
-    expect(classifyTabDrag(100, 100, H)).toBeNull()
+    expect(classifyTabDrag(100, 50, H)).toBeNull()
   })
 
-  it('"prev" when oy exceeds 35% of height', () => {
-    expect(classifyTabDrag(0, 281, H)).toBe("prev")
+  it('"prev" when oy exceeds 10% of height', () => {
+    expect(classifyTabDrag(0, 81, H)).toBe("prev")
   })
 
-  it("does NOT fire at exactly the 35% threshold (strictly greater)", () => {
-    expect(classifyTabDrag(0, 280, H)).toBeNull()
+  it("does NOT fire at exactly the 10% threshold (strictly greater)", () => {
+    expect(classifyTabDrag(0, 80, H)).toBeNull()
   })
 
   it('"prev" when vy exceeds velocity threshold', () => {
@@ -225,8 +225,8 @@ describe("classifyTabDrag", () => {
 })
 
 // ─── classifyOverlayDrag ───────────────────────────────────────────────────────
-// DISMISS_VELOCITY = 400, DISMISS_THRESHOLD = 0.3
-// TAB_SWIPE_VELOCITY = 400, TAB_SWIPE_THRESHOLD = 0.35
+// DISMISS_VELOCITY = 400, DISMISS_THRESHOLD = 0.1
+// TAB_SWIPE_VELOCITY = 400, TAB_SWIPE_THRESHOLD = 0.1
 
 describe("classifyOverlayDrag", () => {
   const W = 1000
@@ -279,8 +279,8 @@ describe("classifyOverlayDrag", () => {
   })
 
   it("vertical-dominant slow drag returns null — does NOT fall through to dismiss/forward", () => {
-    // |oy|=100 > |ox|=50, but vy=50 < 400 and oy=100 < 280
-    expect(classifyOverlayDrag(0, 50, 50, 100, W, H, true)).toBeNull()
+    // |oy|=50 > |ox|=25, but vy=50 < 400 and oy=50 < H*0.1=80
+    expect(classifyOverlayDrag(0, 50, 25, 50, W, H, true)).toBeNull()
   })
 
   // ── hasTabSwipe=false — vertical gesture falls through to horizontal ──────────

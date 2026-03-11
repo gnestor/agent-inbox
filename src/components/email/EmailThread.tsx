@@ -46,10 +46,13 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       last?.scrollIntoView({ behavior: "instant" })
     }
 
-    scrollToLast()
+    // Defer the initial scroll until after the overlay entrance animation (600ms).
+    // Without this delay, scrollIntoView fires while the panel is mid-slide and
+    // the MutationObserver keeps re-firing during layout changes in the animation.
+    const initial = setTimeout(scrollToLast, 650)
 
     let timer: ReturnType<typeof setTimeout>
-    const deadline = Date.now() + 2000
+    const deadline = Date.now() + 2650 // 650ms delay + 2000ms observation window
     const observer = new MutationObserver(() => {
       clearTimeout(timer)
       timer = setTimeout(() => {
@@ -59,8 +62,9 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     })
     observer.observe(container, { attributes: true, subtree: true, attributeFilter: ["style"] })
 
-    const cleanup = setTimeout(() => observer.disconnect(), 2000)
+    const cleanup = setTimeout(() => observer.disconnect(), 2650)
     return () => {
+      clearTimeout(initial)
       clearTimeout(timer)
       clearTimeout(cleanup)
       observer.disconnect()
