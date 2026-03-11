@@ -8,6 +8,7 @@ export function useEmails(query = "in:inbox is:important OR is:starred", enabled
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextPageToken ?? undefined,
     enabled,
+    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })
   const messages = result.data?.pages.flatMap((p) => p.messages) ?? []
   return {

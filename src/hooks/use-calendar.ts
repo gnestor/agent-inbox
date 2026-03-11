@@ -14,6 +14,7 @@ export function useCalendar(filters?: CalendarFilters, enabled = true) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled,
+    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })
   const items = result.data?.pages.flatMap((p) => p.items) ?? []
   return {

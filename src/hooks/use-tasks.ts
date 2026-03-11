@@ -15,6 +15,7 @@ export function useTasks(filters?: TaskFilters, enabled = true) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled,
+    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })
   const tasks = result.data?.pages.flatMap((p) => p.tasks) ?? []
   return {

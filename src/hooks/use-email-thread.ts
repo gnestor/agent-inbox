@@ -6,6 +6,7 @@ export function useEmailThread(threadId: string | undefined) {
     queryKey: ["thread", threadId],
     queryFn: () => getEmailThread(threadId!),
     enabled: !!threadId,
+    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })
   return {
     thread: thread ?? null,
