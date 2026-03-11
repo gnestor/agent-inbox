@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Input } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
@@ -41,7 +41,9 @@ export function NewSessionPanel({ threadId, taskId, sessionId, autoStart }: NewS
 
 function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
+  const taskTab = location.pathname.startsWith("/calendar") ? "calendar" : "tasks"
   const fired = useRef(false)
 
   const { thread } = useEmailThread(threadId)
@@ -62,7 +64,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
       if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
-      else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
+      else if (taskId) navigate(`/${taskTab}/${taskId}/session/${sessionId}`)
     },
   })
 
@@ -91,8 +93,10 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
+  const taskTab = location.pathname.startsWith("/calendar") ? "calendar" : "tasks"
   const [savingName, setSavingName] = useState("")
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
@@ -163,14 +167,14 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
       if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
-      else if (taskId) navigate(`/tasks/${taskId}/session/${sessionId}`)
+      else if (taskId) navigate(`/${taskTab}/${taskId}/session/${sessionId}`)
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })
 
   function parentPath() {
     if (threadId) return `/emails/${threadId}`
-    if (taskId) return `/tasks/${taskId}`
+    if (taskId) return `/${taskTab}/${taskId}`
     return "/"
   }
 

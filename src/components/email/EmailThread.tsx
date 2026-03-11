@@ -324,7 +324,7 @@ function HtmlBody({ html }: { html: string }) {
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\s+style="[^"]*"/gi, "")
 
-  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><style>
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
     html, body { margin: 0; padding: 0; overflow: hidden; background: ${bg} !important; color: ${fg}; font-family: ${font}; font-size: 14px; line-height: 1.625; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
