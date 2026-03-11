@@ -12,7 +12,6 @@ import {
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
-import { MoreHorizontal } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { TAB_ORDER, type TabId } from "@/hooks/use-spatial-nav"
 import type { Session } from "@/types"
@@ -195,7 +194,7 @@ export function SidebarRecentSessions({ navigateToTab }: SidebarRecentSessionsPr
                 if (isMobile) setOpenMobile(false)
               }}
             >
-              <MoreHorizontal className="size-4" />
+              <span>•••</span>
               <span>All Sessions</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

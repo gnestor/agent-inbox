@@ -23,14 +23,14 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { Mail, CheckSquare, Calendar, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
+import { ChevronsUpDown, LogOut } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
-const navItems: { title: string; icon: typeof Mail; tab: TabId }[] = [
-  { title: "Emails", icon: Mail, tab: "emails" },
-  { title: "Tasks", icon: CheckSquare, tab: "tasks" },
-  { title: "Calendar", icon: Calendar, tab: "calendar" },
+const navItems: { title: string; emoji: string; tab: TabId }[] = [
+  { title: "Emails", emoji: "✉️", tab: "emails" },
+  { title: "Tasks", emoji: "✅", tab: "tasks" },
+  { title: "Calendar", emoji: "📅", tab: "calendar" },
 ]
 
 function getInitials(name: string) {
@@ -63,8 +63,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   />
                 }
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Inbox className="size-4" />
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
+                  <span className="text-lg">📥</span>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">Hammies</span>
@@ -130,7 +130,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         if (isMobile) setOpenMobile(false)
                       }}
                     >
-                      <item.icon />
+                      <span>{item.emoji}</span>
                       <span>{item.title}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
