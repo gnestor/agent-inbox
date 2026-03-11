@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { motion, AnimatePresence, useDragControls, useMotionValue, animate } from "motion/react"
+import { motion, AnimatePresence, useDragControls, useMotionValue, animate, usePresence, useAnimation } from "motion/react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { cn } from "@hammies/frontend/lib/utils"
 import {
@@ -15,6 +15,8 @@ import { EmailList } from "@/components/email/EmailList"
 import { EmailThread } from "@/components/email/EmailThread"
 import { TaskList } from "@/components/task/TaskList"
 import { TaskDetail } from "@/components/task/TaskDetail"
+import { CalendarList } from "@/components/task/CalendarList"
+import { CalendarDetail } from "@/components/task/CalendarDetail"
 import { SessionList } from "@/components/session/SessionList"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
@@ -287,6 +289,8 @@ function DetailContent({
     return <EmailThread threadId={selectedId} title={title} sessionOpen={sessionOpen} />
   if (tab === "tasks")
     return <TaskDetail taskId={selectedId} title={title} sessionOpen={sessionOpen} />
+  if (tab === "calendar")
+    return <CalendarDetail itemId={selectedId} title={title} sessionOpen={sessionOpen} />
   return <SessionView sessionId={selectedId} title={title} />
 }
 
@@ -304,7 +308,7 @@ function SessionPanelSlide({ tab, id, sId }: { tab: TabId; id: string; sId?: str
       >
         <NewSessionPanel
           threadId={tab === "emails" ? id : undefined}
-          taskId={tab === "tasks" ? id : undefined}
+          taskId={tab === "tasks" || tab === "calendar" ? id : undefined}
           sessionId={sId}
         />
       </div>
@@ -457,6 +461,14 @@ function TabPane({
           enabled={enabled}
         />
       )}
+      {tab === "calendar" && (
+        <CalendarList
+          selectedItemId={selectedId}
+          onSelectedIndexChange={handleIndexChange}
+          onSelectedTitleChange={setSelectedTitle}
+          enabled={enabled}
+        />
+      )}
       {tab === "sessions" && (
         <SessionList
           selectedSessionId={selectedId}
@@ -598,7 +610,7 @@ function TabPane({
           {tab !== "sessions" && selectedId && (
             <NewSessionPanel
               threadId={tab === "emails" ? selectedId : undefined}
-              taskId={tab === "tasks" ? selectedId : undefined}
+              taskId={tab === "tasks" || tab === "calendar" ? selectedId : undefined}
               sessionId={sessionId}
             />
           )}
@@ -634,16 +646,66 @@ function TabPane({
 
 const GAP = 16 // px gap between tab panel groups during transition
 
+// Pure functions exported for testing
 export const tabVariants = {
   enter: (d: number) =>
     d === 0
       ? { opacity: 0, y: 0 }
-      : { y: d > 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)` },
+      : { y: d > 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)`, opacity: 1 },
   center: { y: 0, opacity: 1 },
-  exit: (d: number) =>
-    d === 0
-      ? { opacity: 0, y: 0 }
-      : { y: d > 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)` },
+  exit: { opacity: 0, y: 0 },
+}
+
+export function computeTabExit(d: number) {
+  if (d === 0) return { opacity: 0, y: 0 as const }
+  return {
+    y: d > 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)`,
+    opacity: 1 as const,
+  }
+}
+
+// Drives tab enter/exit with correct directional slide or fade.
+// Uses usePresence so the EXIT reads directionRef at the moment of exit — not
+// at mount time — fixing the case where the exit direction differs from entry
+// (e.g. normal tabs should slide, sidebar navigation should fade).
+function AnimatedTabPane({
+  children,
+  entryDirection,
+  directionRef,
+}: {
+  children: React.ReactNode
+  entryDirection: number
+  directionRef: React.RefObject<number>
+}) {
+  const [isPresent, safeToRemove] = usePresence()
+  const controls = useAnimation()
+  const safeRef = useRef(safeToRemove)
+  safeRef.current = safeToRemove
+
+  // Enter: animate from initial position to center
+  useEffect(() => {
+    controls.start({ y: 0, opacity: 1, transition: { duration: DURATION, ease: EASE } })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Exit: read current direction at the moment of removal, then animate out
+  useEffect(() => {
+    if (!isPresent) {
+      const exit = computeTabExit(directionRef.current)
+      controls
+        .start({ ...exit, transition: { duration: DURATION, ease: EASE } })
+        .then(() => safeRef.current?.())
+    }
+  }, [isPresent]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <motion.div
+      initial={tabVariants.enter(entryDirection)}
+      animate={controls}
+      className="absolute inset-0"
+    >
+      {children}
+    </motion.div>
+  )
 }
 
 export function PanelStack() {
@@ -726,15 +788,11 @@ export function PanelStack() {
       <div className="h-full w-full overflow-clip relative">
         {/* Persistent wrapper carries the drag-y offset; inner motion.div handles tab transitions */}
         <motion.div style={{ y: tabY }} className="absolute inset-0">
-          <AnimatePresence initial={false} custom={direction}>
-            <motion.div
+          <AnimatePresence initial={false}>
+            <AnimatedTabPane
               key={activeTab}
-              variants={tabVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: DURATION, ease: EASE }}
-              className="absolute inset-0"
+              entryDirection={direction}
+              directionRef={directionRef}
             >
               <TabPane
                 tab={activeTab}
@@ -744,7 +802,7 @@ export function PanelStack() {
                 hasPrevTab={hasPrevTab}
                 hasNextTab={hasNextTab}
               />
-            </motion.div>
+            </AnimatedTabPane>
           </AnimatePresence>
         </motion.div>
       </div>

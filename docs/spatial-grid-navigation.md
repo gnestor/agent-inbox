@@ -1,6 +1,6 @@
 # Spatial Grid Navigation
 
-The inbox uses a 2D spatial canvas for navigation. The vertical axis represents the three top-level tabs (Emails, Tasks, Sessions). The horizontal axis represents panels within each tab (list → detail → session). The viewport clips to one cell at a time — switching tabs slides the canvas vertically, and selecting an item slides the detail panel in horizontally.
+The inbox uses a 2D spatial canvas for navigation. The vertical axis represents the four top-level tabs (Emails, Tasks, Calendar, Sessions). The horizontal axis represents panels within each tab (list → detail → session). The viewport clips to one cell at a time — switching tabs slides the canvas vertically, and selecting an item slides the detail panel in horizontally.
 
 ```
           ← panels (horizontal) →
@@ -10,6 +10,9 @@ The inbox uses a 2D spatial canvas for navigation. The vertical axis represents 
   tabs │ list     │ view      │ session  │
   (vert│──────────┼───────────┼──────────┤
   ical)│ Task     │ Task      │ New      │  /tasks  /tasks/:id  /tasks/:id/session/…
+       │ list     │ detail    │ session  │
+       │──────────┼───────────┼──────────┤
+       │ Calendar │ Calendar  │ New      │  /calendar  /calendar/:id  /calendar/:id/session/…
        │ list     │ detail    │ session  │
     ↓  │──────────┼───────────┼──────────┤
        │ Session  │ Session   │          │  /sessions  /sessions/:id
@@ -41,11 +44,15 @@ The URL is the canonical source of truth for what's visible.
 /tasks/:taskId                      → task list + task detail
 /tasks/:taskId/session/…            → + session panel
 
+/calendar                           → calendar list, nothing selected
+/calendar/:itemId                   → calendar list + item detail
+/calendar/:itemId/session/…         → + session panel
+
 /sessions                           → session list, nothing selected
 /sessions/:sessionId                → session list + session view
 ```
 
-`tabFromPathname` maps `/emails*` → `"emails"`, `/tasks*` → `"tasks"`, `/sessions*` → `"sessions"`.
+`tabFromPathname` maps `/emails*` → `"emails"`, `/tasks*` → `"tasks"`, `/calendar*` → `"calendar"`, `/sessions*` → `"sessions"`.
 
 ## State management
 

@@ -8,6 +8,7 @@ describe("buildUrl", () => {
   it("returns tab root when no selectedId", () => {
     expect(buildUrl("emails", {})).toBe("/emails")
     expect(buildUrl("tasks", {})).toBe("/tasks")
+    expect(buildUrl("calendar", {})).toBe("/calendar")
     expect(buildUrl("sessions", {})).toBe("/sessions")
   })
 
@@ -80,6 +81,28 @@ describe("tabStateFromPathname", () => {
       sessionOpen: true,
       sessionId: "s-99",
     })
+  })
+
+  it("parses calendar tab routes", () => {
+    expect(tabStateFromPathname("/calendar", "calendar")).toEqual({})
+    expect(tabStateFromPathname("/calendar/item-1", "calendar")).toEqual({
+      selectedId: "item-1",
+    })
+    expect(tabStateFromPathname("/calendar/item-1/session/new", "calendar")).toEqual({
+      selectedId: "item-1",
+      sessionOpen: true,
+      sessionId: undefined,
+    })
+    expect(tabStateFromPathname("/calendar/item-1/session/s-5", "calendar")).toEqual({
+      selectedId: "item-1",
+      sessionOpen: true,
+      sessionId: "s-5",
+    })
+  })
+
+  it("does not match calendar path for other tabs", () => {
+    expect(tabStateFromPathname("/calendar/item-1", "tasks")).toEqual({})
+    expect(tabStateFromPathname("/calendar/item-1", "emails")).toEqual({})
   })
 
   it("decodes URI-encoded selectedId", () => {

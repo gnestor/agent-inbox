@@ -17,7 +17,7 @@ import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath } from "./lib/session-manager.js"
 import { getSession } from "./lib/auth.js"
-import { syncPropertyOptions } from "./lib/notion.js"
+import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -87,4 +87,5 @@ serve({ fetch: app.fetch, port }, () => {
   pruneExpired()
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
+  syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
 })

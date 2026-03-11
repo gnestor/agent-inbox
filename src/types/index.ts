@@ -68,6 +68,24 @@ export interface NotionTaskDetail extends NotionTask {
   children: import("../components/task/NotionBlockRenderer").NotionBlock[]
 }
 
+export interface NotionCalendarItem {
+  id: string
+  title: string
+  status: string
+  tags: string[]
+  assignee: string
+  date: string
+  createdAt: string
+  updatedAt: string
+  url: string
+}
+
+export interface NotionCalendarItemDetail extends NotionCalendarItem {
+  body: string
+  properties: Record<string, NotionProperty>
+  children: import("../components/task/NotionBlockRenderer").NotionBlock[]
+}
+
 // Session types
 
 export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input"

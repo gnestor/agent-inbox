@@ -1,8 +1,8 @@
 import { createContext, useContext, useCallback, useRef, useEffect, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
-export type TabId = "emails" | "tasks" | "sessions"
-export const TAB_ORDER: TabId[] = ["emails", "tasks", "sessions"]
+export type TabId = "emails" | "tasks" | "calendar" | "sessions"
+export const TAB_ORDER: TabId[] = ["emails", "tasks", "calendar", "sessions"]
 
 interface TabState {
   selectedId?: string
@@ -75,6 +75,7 @@ const SpatialNavContext = createContext<SpatialNavContextValue | null>(null)
 function tabFromPathname(pathname: string): TabId {
   const first = pathname.split("/").filter(Boolean)[0]
   if (first === "tasks") return "tasks"
+  if (first === "calendar") return "calendar"
   if (first === "sessions") return "sessions"
   return "emails"
 }
@@ -131,7 +132,7 @@ export function SpatialNavProvider({
   // Load saved state on first render
   const saved = useRef(loadNavState())
   const persistedRef = useRef<PersistedState>(
-    saved.current?.tabs ?? { emails: {}, tasks: {}, sessions: {} },
+    { emails: {}, tasks: {}, calendar: {}, sessions: {}, ...saved.current?.tabs },
   )
   // Per-item session state: key is "tab:itemId", value is session open/id
   const itemSessionRef = useRef<Map<string, { sessionOpen: boolean; sessionId?: string }>>(

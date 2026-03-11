@@ -106,6 +106,31 @@ export async function updateTask(taskId: string, properties: Record<string, unkn
   })
 }
 
+export async function getCalendarItems(filters?: {
+  status?: string
+  tags?: string
+  assignee?: string
+  cursor?: string
+}) {
+  const params = new URLSearchParams()
+  if (filters?.status) params.set("status", filters.status)
+  if (filters?.tags) params.set("tags", filters.tags)
+  if (filters?.assignee) params.set("assignee", filters.assignee)
+  if (filters?.cursor) params.set("cursor", filters.cursor)
+  const qs = params.toString()
+  return request<{ items: import("@/types").NotionCalendarItem[]; nextCursor: string | null }>(
+    `/notion/calendar${qs ? `?${qs}` : ""}`,
+  )
+}
+
+export async function getCalendarItem(itemId: string) {
+  return request<import("@/types").NotionCalendarItemDetail>(`/notion/calendar/${itemId}`)
+}
+
+export async function getCalendarAssignees() {
+  return request<{ assignees: string[] }>(`/notion/calendar-assignees`)
+}
+
 // Sessions
 
 export async function getSessions(filters?: {

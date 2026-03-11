@@ -9,6 +9,7 @@
 - [x] Frontend shell (sidebar nav, routing, theme)
 - [x] Email views (EmailList, EmailThread)
 - [x] Task views (TaskList, TaskDetail)
+- [x] Calendar views (CalendarList, CalendarDetail) — Notion Calendar database (Date, Status, Tags, Assignee)
 - [x] Session management (Agent SDK: create, resume, list, stream via SSE)
 - [x] Session views (SessionTranscript, SessionView with chat input)
 - [x] Start session from email/task

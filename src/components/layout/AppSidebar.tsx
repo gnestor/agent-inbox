@@ -22,13 +22,14 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { Mail, CheckSquare, Bot, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
+import { Mail, CheckSquare, Calendar, Bot, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
 const navItems: { title: string; icon: typeof Mail; tab: TabId }[] = [
   { title: "Emails", icon: Mail, tab: "emails" },
   { title: "Tasks", icon: CheckSquare, tab: "tasks" },
+  { title: "Calendar", icon: Calendar, tab: "calendar" },
   { title: "Sessions", icon: Bot, tab: "sessions" },
 ]
 

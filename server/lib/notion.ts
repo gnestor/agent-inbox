@@ -4,6 +4,7 @@ import { getDb } from "../db/schema.js"
 const NOTION_BASE = "https://api.notion.com/v1"
 const NOTION_VERSION = "2022-06-28"
 const TASKS_DB = "fd81d546-0ca5-4452-8171-15bce4957403"
+const CALENDAR_DB = "66dfb652-32f1-4b24-b7df-0d4b52528f42"
 
 async function notionRequest(path: string, options?: RequestInit) {
   const token = getNotionToken()
@@ -230,6 +231,148 @@ export async function createTask(
   })
 
   return parseTask(result)
+}
+
+// Calendar database functions
+
+function parseCalendarItem(page: any) {
+  const props = page.properties || {}
+  return {
+    id: page.id,
+    title: extractTitle(props),
+    status: extractSelect(props, "Status"),
+    tags: extractMultiSelect(props, "Tags"),
+    assignee: extractPerson(props, "Assignee"),
+    date: props["Date"]?.date?.start || "",
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time,
+    url: page.url,
+  }
+}
+
+export async function queryCalendarItems(filters?: {
+  status?: string
+  tags?: string
+  assignee?: string
+  cursor?: string
+  pageSize?: number
+}) {
+  const filterConditions: any[] = []
+
+  if (filters?.status) {
+    const values = filters.status.split(",")
+    if (values.length === 1) {
+      filterConditions.push({
+        property: "Status",
+        status: { equals: values[0] },
+      })
+    } else {
+      filterConditions.push({
+        or: values.map((v) => ({
+          property: "Status",
+          status: { equals: v },
+        })),
+      })
+    }
+  }
+  if (filters?.tags) {
+    const values = filters.tags.split(",")
+    for (const tag of values) {
+      filterConditions.push({
+        property: "Tags",
+        multi_select: { contains: tag },
+      })
+    }
+  }
+  if (filters?.assignee) {
+    filterConditions.push({
+      property: "Assignee",
+      people: { contains: filters.assignee },
+    })
+  }
+
+  const body: any = {
+    sorts: [{ property: "Date", direction: "ascending" }],
+    page_size: filters?.pageSize || 50,
+  }
+  if (filters?.cursor) body.start_cursor = filters.cursor
+
+  if (filterConditions.length === 1) {
+    body.filter = filterConditions[0]
+  } else if (filterConditions.length > 1) {
+    body.filter = { and: filterConditions }
+  }
+
+  const result = await notionRequest(`/databases/${CALENDAR_DB}/query`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+
+  return {
+    items: (result.results || []).map(parseCalendarItem),
+    nextCursor: result.has_more ? result.next_cursor : null,
+  }
+}
+
+export async function getCalendarItemDetail(itemId: string) {
+  const [page, children] = await Promise.all([
+    notionRequest(`/pages/${itemId}`),
+    fetchBlockChildren(itemId),
+  ])
+
+  const item = parseCalendarItem(page)
+
+  const body = children
+    .map((block: any) => {
+      const type = block.type
+      const content = block[type]
+      if (!content?.rich_text) return ""
+      return content.rich_text.map((t: any) => t.plain_text).join("")
+    })
+    .filter(Boolean)
+    .join("\n")
+
+  return {
+    ...item,
+    body,
+    properties: page.properties,
+    children,
+  }
+}
+
+// Fetch calendar database schema and cache property options in SQLite (prefixed with "calendar:")
+export async function syncCalendarPropertyOptions() {
+  const schema = await notionRequest(`/databases/${CALENDAR_DB}`)
+  const db = getDb()
+  const now = new Date().toISOString()
+
+  const insert = db.prepare(
+    `INSERT OR REPLACE INTO notion_options (property, value, color, updated_at)
+     VALUES (?, ?, ?, ?)`,
+  )
+
+  const syncProperty = db.transaction(
+    (property: string, options: { name: string; color?: string }[]) => {
+      db.prepare(`DELETE FROM notion_options WHERE property = ?`).run(property)
+      for (const opt of options) {
+        insert.run(property, opt.name, opt.color || null, now)
+      }
+    },
+  )
+
+  const props = schema.properties || {}
+  for (const [name, prop] of Object.entries(props) as [string, any][]) {
+    const prefixedName = `calendar:${name}`
+    if (prop.type === "status" && prop.status?.options) {
+      syncProperty(prefixedName, prop.status.options)
+    } else if (prop.type === "select" && prop.select?.options) {
+      syncProperty(prefixedName, prop.select.options)
+    } else if (prop.type === "multi_select" && prop.multi_select?.options) {
+      syncProperty(prefixedName, prop.multi_select.options)
+    }
+  }
+
+  console.log("Synced Calendar property options")
 }
 
 // Fetch database schema and cache property options in SQLite

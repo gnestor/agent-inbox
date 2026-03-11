@@ -3,6 +3,27 @@ import * as notion from "../lib/notion.js"
 
 export const notionRoutes = new Hono()
 
+notionRoutes.get("/calendar", async (c) => {
+  const status = c.req.query("status")
+  const tags = c.req.query("tags")
+  const assignee = c.req.query("assignee")
+  const cursor = c.req.query("cursor")
+  const result = await notion.queryCalendarItems({ status, tags, assignee, cursor: cursor || undefined })
+  return c.json(result)
+})
+
+notionRoutes.get("/calendar-assignees", async (c) => {
+  const result = await notion.queryCalendarItems({})
+  const assignees = [...new Set(result.items.map((i: any) => i.assignee).filter(Boolean))].sort()
+  return c.json({ assignees })
+})
+
+notionRoutes.get("/calendar/:id", async (c) => {
+  const id = c.req.param("id")
+  const item = await notion.getCalendarItemDetail(id)
+  return c.json(item)
+})
+
 notionRoutes.get("/tasks", async (c) => {
   const status = c.req.query("status")
   const tags = c.req.query("tags")
