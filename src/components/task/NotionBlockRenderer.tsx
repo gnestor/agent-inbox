@@ -260,10 +260,11 @@ function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }
     rich_text: RichTextItem[]
     is_toggleable?: boolean
   }
-  const sizes = {
-    1: "notion-h1",
-    2: "notion-h2",
-    3: "notion-h3",
+  // Match prose-sm heading sizes (em-based so they scale with the prose container)
+  const toggleSizes = {
+    1: "text-[2.1428571em] leading-[1.2] mt-0 mb-[0.8em]",
+    2: "text-[1.4285714em] leading-[1.4] mt-[1.6em] mb-[0.8em]",
+    3: "text-[1.2857143em] leading-[1.5555556] mt-[1.5555556em] mb-[0.4444444em]",
   }
 
   if (data?.is_toggleable || block.has_children) {
@@ -271,8 +272,8 @@ function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }
       <details className="group" open={false}>
         <summary
           className={cn(
-            sizes[level],
-            "cursor-pointer list-none flex items-start gap-0.5 [&::-webkit-details-marker]:hidden",
+            toggleSizes[level],
+            "font-bold cursor-pointer list-none flex items-start gap-0.5 [&::-webkit-details-marker]:hidden",
           )}
         >
           <span className="text-[0.65em] text-muted-foreground group-open:rotate-90 transition-transform duration-200 mt-[0.25em] shrink-0 select-none">
@@ -289,7 +290,7 @@ function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }
 
   const Tag = `h${level}` as "h1" | "h2" | "h3"
   return (
-    <Tag className={sizes[level]}>
+    <Tag className="font-bold">
       <RichText items={data?.rich_text || []} />
     </Tag>
   )

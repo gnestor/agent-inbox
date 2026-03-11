@@ -31,6 +31,10 @@
 - [ ] Email triage (parse config.yaml, show matched rule, triage action button)
 - [ ] Batch triage (process multiple emails at once)
 - [x] Draft creation (create Gmail draft reply from thread view)
+- [x] Email actions (archive, delete, star, important via thread label modification + reply composer with Send/Save Draft)
+- [x] Task/Calendar property editing (inline Select/Combobox for status, priority, tags + date picker for calendar)
+- [x] Gmail write endpoints (sendMessage, trashThread, modifyThreadLabels)
+- [x] Notion calendar PATCH endpoint (reuses updateTaskProperties for calendar items)
 - [x] Mobile responsive layout (spatial grid: overlay panels, drag-to-dismiss/forward, vertical tab swipe)
 - [ ] Save filtered view to nav bar (nested under Emails, Tasks, or Sessions)
 - [x] Rich prompt editor (WYSIWYG markdown editor, Tiptap v3: slash commands, bubble menu, markdown shortcuts)
@@ -41,7 +45,7 @@
 - [x] Open Session button (email/task detail shows "Open Session" instead of "Start Session" when a linked session already exists, using linked_email_thread_id/linked_task_id)
 - [x] Skill context blocks in transcript (user-role "Base directory for this skill:" messages rendered as collapsed accordion with Wrench icon)
 - [ ] Suggested prompts
-- [ ] Notion task body editing (RichTextEditor in TaskDetail with write-back to Notion API)
+- [ ] Notion body editing (replace NotionBlockRenderer with TipTap RichTextEditor + 15s idle auto-save + updatePageBlocks endpoint + markdown↔Notion blocks conversion)
 - [ ] Link insertion UI (replace window.prompt in bubble menu with inline popover)
 - [ ] Prompt template categories (group templates by type: email, task, general)
 - [x] Virtual scrolling (TanStack Virtual for all list views and session transcript; useAnimationFrameWithResizeObserver:true prevents infinite loops from accordion animations firing ResizeObserver synchronously during React commit phase)
@@ -66,6 +70,8 @@
 - [ ] Session cost tracking (display usage/cost from SDKMessage data)
 - [ ] Resizable column persistence (save widths to preferences)
 - [ ] Batch operations (multi-select emails/tasks for bulk actions)
+- [ ] Assignee editing (requires person name→UUID mapping from Notion API for people property updates)
+- [ ] Labels management UI (Combobox multi-select for Gmail label add/remove on email threads)
 - [ ] Global search (search across emails, tasks, and sessions)
 
 ## UI Polish (Ongoing)
@@ -84,6 +90,11 @@
 - [x] Text selection disabled outside content areas on mobile (user-select: none with .prose/.notion-content/.selectable-content exceptions)
 - [x] Skip detail slide-in animation on tab switch (skipEntrance prop)
 - [x] Floating panel card styling (rounded-lg shadow ring-1 ring-sidebar-border — matches shadcn floating sidebar variant)
+- [x] Optimistic updates for email star/important (instant UI feedback, rollback on error)
+- [x] Properties popover in task/calendar detail (two-column grid layout with inline editable controls)
+- [x] Streamlined detail headers (replaced dropdown menus with direct action buttons, native tooltips, Sparkles session icon)
+- [x] Removed details accordion from session/task/calendar detail views (cleaner layout)
+- [x] Bold markdown headings (font-weight 700 for prose and Notion headings)
 - [ ] Empty state illustrations
 - [ ] Error boundary with retry
 

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom"
+import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -50,6 +51,7 @@ export function App() {
   return (
     <UserContext.Provider value={userContext}>
       <AppContent />
+      <Toaster theme="dark" position="bottom-right" richColors />
     </UserContext.Provider>
   )
 }

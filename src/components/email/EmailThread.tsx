@@ -1,23 +1,33 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { getLinkedSession } from "@/api/client"
+import { useQuery, useMutation } from "@tanstack/react-query"
+import { getLinkedSession, sendEmail, createDraft } from "@/api/client"
 import {
   Button,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from "@hammies/frontend/components/ui"
-import { Bot, ExternalLink, Ellipsis } from "lucide-react"
+import {
+  Sparkles,
+  ExternalLink,
+  Archive,
+  Trash2,
+  Star,
+  Milestone,
+  Reply,
+  Send,
+  Save,
+  X,
+} from "lucide-react"
+import { toast } from "sonner"
 import { useEmailThread } from "@/hooks/use-email-thread"
+import { useEmailActions } from "@/hooks/use-email-actions"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import type { GmailMessage } from "@/types"
 
 interface EmailThreadProps {
@@ -37,25 +47,21 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   })
   const linkedSession = linkedData?.session
   const scrollRef = useRef<HTMLDivElement>(null)
+  const actions = useEmailActions(threadId, thread)
+  const [replyOpen, setReplyOpen] = useState(false)
 
   useEffect(() => {
     if (!thread || !scrollRef.current) return
     const container = scrollRef.current
 
     function scrollToLast() {
-      // Set scrollTop directly instead of scrollIntoView — scrollIntoView bubbles
-      // up through parent containers and can cause the outer panel group to scroll
-      // horizontally when the email detail is off-screen to the right.
       container.scrollTop = container.scrollHeight
     }
 
-    // Defer the initial scroll until after the overlay entrance animation (600ms).
-    // Without this delay, scrollIntoView fires while the panel is mid-slide and
-    // the MutationObserver keeps re-firing during layout changes in the animation.
     const initial = setTimeout(scrollToLast, 650)
 
     let timer: ReturnType<typeof setTimeout>
-    const deadline = Date.now() + 2650 // 650ms delay + 2000ms observation window
+    const deadline = Date.now() + 2650
     const observer = new MutationObserver(() => {
       clearTimeout(timer)
       timer = setTimeout(() => {
@@ -84,34 +90,50 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       }
       right={
         <>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
-            >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-40">
-              <DropdownMenuItem
-                render={
-                  <a
-                    href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                }
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in Gmail
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            type="button"
+            onClick={actions.archive}
+            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            title="Archive"
+          >
+            <Archive className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={actions.trash}
+            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={actions.toggleStar}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${actions.isStarred ? "text-yellow-500" : "text-muted-foreground"}`}
+            title={actions.isStarred ? "Unstar" : "Star"}
+          >
+            <Star className="h-4 w-4" fill={actions.isStarred ? "currentColor" : "none"} />
+          </button>
+          <button
+            type="button"
+            onClick={actions.toggleImportant}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${actions.isImportant ? "text-yellow-500" : "text-muted-foreground"}`}
+            title={actions.isImportant ? "Mark not important" : "Mark important"}
+          >
+            <Milestone className="h-4 w-4" fill={actions.isImportant ? "currentColor" : "none"} />
+          </button>
+          <a
+            href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            title="Open in Gmail"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
           {!sessionOpen && (
-            <Button
+            <button
+              type="button"
               onClick={() =>
                 navigate(
                   linkedSession
@@ -119,13 +141,11 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                     : `/emails/${threadId}/session/new`,
                 )
               }
-              size="sm"
+              className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSession ? "text-chart-4" : "text-muted-foreground"}`}
+              title={linkedSession ? "Open Session" : "Start Session"}
             >
-              <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">
-                {linkedSession ? "Open Session" : "Start Session"}
-              </span>
-            </Button>
+              <Sparkles className="h-4 w-4" />
+            </button>
           )}
         </>
       }
@@ -149,6 +169,8 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       </div>
     )
   }
+
+  const lastMessage = thread.messages[thread.messages.length - 1]
 
   return (
     <div className="flex flex-col h-full">
@@ -178,6 +200,111 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
             </div>
           )
         })}
+
+        {/* Reply section */}
+        <div className="border-t p-3">
+          {replyOpen ? (
+            <ReplyComposer
+              threadId={threadId}
+              lastMessage={lastMessage}
+              subject={thread.subject}
+              onClose={() => setReplyOpen(false)}
+            />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setReplyOpen(true)}
+            >
+              <Reply className="h-4 w-4 mr-1.5" />
+              Reply
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReplyComposer({
+  threadId,
+  lastMessage,
+  subject,
+  onClose,
+}: {
+  threadId: string
+  lastMessage: GmailMessage
+  subject: string
+  onClose: () => void
+}) {
+  const [body, setBody] = useState("")
+  const replyTo = lastMessage.from
+  const replySubject = subject.startsWith("Re: ") ? subject : `Re: ${subject}`
+  const inReplyTo = lastMessage.id
+
+  const sendMutation = useMutation({
+    mutationFn: () =>
+      sendEmail({ to: replyTo, subject: replySubject, body, threadId, inReplyTo }),
+    onSuccess: () => {
+      toast.success("Reply sent")
+      onClose()
+    },
+    onError: (err) => toast.error(`Send failed: ${err.message}`),
+  })
+
+  const draftMutation = useMutation({
+    mutationFn: () =>
+      createDraft({ to: replyTo, subject: replySubject, body, threadId, inReplyTo }),
+    onSuccess: () => {
+      toast.success("Draft saved")
+      onClose()
+    },
+    onError: (err) => toast.error(`Save draft failed: ${err.message}`),
+  })
+
+  const isPending = sendMutation.isPending || draftMutation.isPending
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground truncate">
+          To: {formatEmailAddress(replyTo)}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1 rounded-md hover:bg-accent text-muted-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <RichTextEditor
+        value={body}
+        onChange={setBody}
+        placeholder="Write your reply..."
+        disabled={isPending}
+        autofocus
+        onCmdEnter={() => sendMutation.mutate()}
+      />
+      <div className="flex items-center gap-2 justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => draftMutation.mutate()}
+          disabled={isPending || !body.trim()}
+        >
+          <Save className="h-3.5 w-3.5 mr-1" />
+          Save Draft
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => sendMutation.mutate()}
+          disabled={isPending || !body.trim()}
+        >
+          <Send className="h-3.5 w-3.5 mr-1" />
+          Send
+        </Button>
       </div>
     </div>
   )

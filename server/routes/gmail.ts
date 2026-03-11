@@ -143,6 +143,31 @@ function sniffImageType(buf: Buffer): string {
   return "application/octet-stream"
 }
 
+gmailRoutes.post("/send", async (c) => {
+  const { to, subject, body, threadId, inReplyTo } = await c.req.json()
+  const result = await gmail.sendMessage(to, subject, body, threadId, inReplyTo)
+  invalidate("gmail:sync:")
+  if (threadId) invalidate(`gmail:thread:${threadId}`)
+  return c.json(result)
+})
+
+gmailRoutes.post("/threads/:id/trash", async (c) => {
+  const id = c.req.param("id")
+  await gmail.trashThread(id)
+  invalidate("gmail:sync:")
+  invalidate(`gmail:thread:${id}`)
+  return c.json({ ok: true })
+})
+
+gmailRoutes.patch("/threads/:id/labels", async (c) => {
+  const id = c.req.param("id")
+  const { addLabelIds, removeLabelIds } = await c.req.json()
+  await gmail.modifyThreadLabels(id, addLabelIds || [], removeLabelIds || [])
+  invalidate("gmail:sync:")
+  invalidate(`gmail:thread:${id}`)
+  return c.json({ ok: true })
+})
+
 gmailRoutes.patch("/messages/:id/labels", async (c) => {
   const { addLabelIds, removeLabelIds } = await c.req.json()
   await gmail.modifyLabels(c.req.param("id"), addLabelIds || [], removeLabelIds || [])

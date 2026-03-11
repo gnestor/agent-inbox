@@ -24,6 +24,13 @@ notionRoutes.get("/calendar/:id", async (c) => {
   return c.json(item)
 })
 
+notionRoutes.patch("/calendar/:id", async (c) => {
+  const properties = await c.req.json()
+  const id = c.req.param("id")
+  const result = await notion.updateTaskProperties(id, properties)
+  return c.json(result)
+})
+
 notionRoutes.get("/tasks", async (c) => {
   const status = c.req.query("status")
   const tags = c.req.query("tags")

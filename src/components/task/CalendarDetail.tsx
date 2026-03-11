@@ -1,29 +1,18 @@
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Button,
   ScrollArea,
-  Badge,
-  Table,
-  TableBody,
-  TableRow,
-  TableCell,
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
 } from "@hammies/frontend/components/ui"
-import { cn } from "@hammies/frontend/lib/utils"
-import { Bot, ExternalLink, Ellipsis } from "lucide-react"
-import { getCalendarItem, getLinkedSession } from "@/api/client"
-import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
-import { usePreference } from "@/hooks/use-preferences"
+import { Sparkles, ExternalLink, SlidersHorizontal } from "lucide-react"
+import { getCalendarItem, getLinkedSession, getNotionOptions } from "@/api/client"
+import { formatRelativeDate } from "@/lib/formatters"
+import { useCalendarMutation } from "@/hooks/use-calendar-mutation"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { PropertySelect, PropertyMultiSelect, PropertyDate } from "@/components/shared/PropertyEditor"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
 
 interface CalendarDetailProps {
@@ -42,9 +31,19 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
     queryKey: ["linked-session", "calendar", itemId],
     queryFn: () => getLinkedSession(undefined, itemId),
   })
+  const { data: statusOpts } = useQuery({
+    queryKey: ["notion-options", "calendar:Status"],
+    queryFn: () => getNotionOptions("calendar:Status"),
+  })
+  const { data: tagOpts } = useQuery({
+    queryKey: ["notion-options", "calendar:Tags"],
+    queryFn: () => getNotionOptions("calendar:Tags"),
+  })
   const linkedSession = linkedData?.session
   const error = queryError?.message ?? null
-  const [detailsExpanded, setDetailsExpanded] = usePreference("details.calendar.expanded", false)
+  const mutation = useCalendarMutation(itemId)
+
+  const date = item?.properties?.["Date"]?.date?.start
 
   const header = (
     <PanelHeader
@@ -56,30 +55,68 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
       }
       right={
         <>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
+          {item && (
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    title="Properties"
+                  />
+                }
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-4 gap-0">
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+                  <label className="text-sm font-medium">Date</label>
+                  <PropertyDate
+                    value={date}
+                    onChange={mutation.updateDate}
+                    loading={mutation.isPending}
+                  />
+                  <label className="text-sm font-medium">Status</label>
+                  <PropertySelect
+                    value={item.status}
+                    options={statusOpts?.options ?? []}
+                    onChange={mutation.updateStatus}
+                    loading={mutation.isPending}
+                  />
+                  <label className="text-sm font-medium self-start pt-1.5">Tags</label>
+                  <PropertyMultiSelect
+                    value={item.tags}
+                    options={tagOpts?.options ?? []}
+                    onChange={mutation.updateTags}
+                    loading={mutation.isPending}
+                    placeholder="Add tag..."
+                  />
+                  {item.assignee && (
+                    <>
+                      <label className="text-sm font-medium">Assignee</label>
+                      <div className="text-sm py-1">{item.assignee}</div>
+                    </>
+                  )}
+                  <label className="text-sm font-medium">Updated</label>
+                  <div className="text-sm py-1">{formatRelativeDate(item.updatedAt)}</div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          {item?.url && (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              title="Open in Notion"
             >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-40">
-              {item?.url && (
-                <DropdownMenuItem
-                  render={<a href={item.url} target="_blank" rel="noopener noreferrer" />}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open in Notion
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
           {!sessionOpen && (
-            <Button
+            <button
+              type="button"
               onClick={() =>
                 navigate(
                   linkedSession
@@ -87,13 +124,11 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
                     : `/calendar/${itemId}/session/new`,
                 )
               }
-              size="sm"
+              className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSession ? "text-chart-4" : "text-muted-foreground"}`}
+              title={linkedSession ? "Open Session" : "Start Session"}
             >
-              <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">
-                {linkedSession ? "Open Session" : "Start Session"}
-              </span>
-            </Button>
+              <Sparkles className="h-4 w-4" />
+            </button>
           )}
         </>
       }
@@ -118,71 +153,10 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
     )
   }
 
-  const date = item.properties?.["Date"]?.date?.start
-
   return (
     <div className="flex flex-col h-full">
       {header}
       <ScrollArea className="flex-1 overflow-hidden">
-        <Accordion value={detailsExpanded ? ["details"] : []} onValueChange={(v) => setDetailsExpanded(v.includes("details"))}>
-          <AccordionItem value="details" className="border-b">
-            <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
-              Details
-            </AccordionTrigger>
-            <AccordionContent className="pb-0">
-              <Table>
-                <TableBody>
-                  {date && (
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Date</TableCell>
-                      <TableCell className="px-4 py-2">{new Date(date).toLocaleDateString()}</TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow>
-                    <TableCell className="text-muted-foreground font-medium px-4 py-2">Status</TableCell>
-                    <TableCell className="px-4 py-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-xs",
-                          taskStatusBadgeClass(item.status) ||
-                            "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
-                        )}
-                      >
-                        {item.status || "—"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                  {item.tags.length > 0 && (
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Tags</TableCell>
-                      <TableCell className="px-4 py-2">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {item.tags.map((tag) => (
-                            <Badge key={tag} variant="secondary" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {item.assignee && (
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Assignee</TableCell>
-                      <TableCell className="px-4 py-2">{item.assignee}</TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow>
-                    <TableCell className="text-muted-foreground font-medium px-4 py-2">Updated</TableCell>
-                    <TableCell className="px-4 py-2">{formatRelativeDate(item.updatedAt)}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-
         <div className="p-4">
           <NotionBlockRenderer blocks={item.children} />
         </div>

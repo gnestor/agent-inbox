@@ -293,6 +293,54 @@ export async function modifyLabels(
   })
 }
 
+export async function trashThread(threadId: string) {
+  return gmailRequest(`/threads/${threadId}/trash`, { method: "POST" })
+}
+
+export async function modifyThreadLabels(
+  threadId: string,
+  addLabelIds: string[],
+  removeLabelIds: string[],
+) {
+  return gmailRequest(`/threads/${threadId}/modify`, {
+    method: "POST",
+    body: JSON.stringify({ addLabelIds, removeLabelIds }),
+  })
+}
+
+export async function sendMessage(
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string,
+  inReplyTo?: string,
+) {
+  const headers: string[] = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+  ]
+  if (inReplyTo) {
+    headers.push(`In-Reply-To: ${inReplyTo}`)
+    headers.push(`References: ${inReplyTo}`)
+  }
+
+  const rawMessage = [...headers, "", body].join("\r\n")
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+
+  const message: any = { raw: encodedMessage }
+  if (threadId) message.threadId = threadId
+
+  return gmailRequest("/messages/send", {
+    method: "POST",
+    body: JSON.stringify(message),
+  })
+}
+
 export async function getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
   const data = await gmailRequest(`/messages/${messageId}/attachments/${attachmentId}`)
   const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/")

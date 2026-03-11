@@ -64,6 +64,35 @@ export async function createDraft(body: {
   })
 }
 
+export async function sendEmail(body: {
+  to: string
+  subject: string
+  body: string
+  threadId?: string
+  inReplyTo?: string
+}) {
+  return request<{ id: string }>(`/gmail/send`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function trashThread(threadId: string) {
+  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/trash`, {
+    method: "POST",
+  })
+}
+
+export async function modifyThreadLabels(
+  threadId: string,
+  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
+) {
+  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/labels`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+}
+
 // Notion
 
 export async function getNotionOptions(property: string) {
@@ -125,6 +154,13 @@ export async function getCalendarItems(filters?: {
 
 export async function getCalendarItem(itemId: string) {
   return request<import("@/types").NotionCalendarItemDetail>(`/notion/calendar/${itemId}`)
+}
+
+export async function updateCalendarItem(itemId: string, properties: Record<string, unknown>) {
+  return request<{ ok: boolean }>(`/notion/calendar/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(properties),
+  })
 }
 
 export async function getCalendarAssignees() {

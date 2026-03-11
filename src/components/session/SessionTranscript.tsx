@@ -1,19 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
-import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown } from "lucide-react"
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-  Badge,
-  Table,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@hammies/frontend/components/ui"
-import { sessionStatusLabel, sessionStatusColor } from "@/lib/formatters"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -70,13 +57,9 @@ interface SessionTranscriptProps {
 export function SessionTranscript({
   messages,
   isStreaming,
-  status,
-  messageCount,
-  isLive,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
 }: SessionTranscriptProps) {
-  const [detailsExpanded, setDetailsExpanded] = usePreference("details.session.expanded", false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
 
@@ -132,40 +115,6 @@ export function SessionTranscript({
       style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
-      {status && (
-        <Accordion value={detailsExpanded ? ["details"] : []} onValueChange={(v) => setDetailsExpanded(v.includes("details"))}>
-          <AccordionItem value="details" className="border-b">
-            <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
-              Details
-            </AccordionTrigger>
-            <AccordionContent className="pb-0">
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Status</TableCell>
-                      <TableCell className="px-4 py-2">
-                        <span className={`text-xs font-medium ${sessionStatusColor(status)}`}>
-                          {sessionStatusLabel(status)}
-                        </span>
-                        {isLive && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-2">
-                            Live
-                          </Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    {(messageCount ?? 0) > 0 && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Messages</TableCell>
-                        <TableCell className="px-4 py-2">{messageCount}</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )}
       <div className="p-4 space-y-4 min-w-0">
         {messages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

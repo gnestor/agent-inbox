@@ -9,6 +9,11 @@
   content: none;
 }
 
+/* Bold headings in prose (markdown) and Notion content */
+.prose :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 700;
+}
+
 /* Mobile app feel: disable zoom and text selection */
 html {
   touch-action: pan-x pan-y;
@@ -57,7 +62,7 @@ html {
   backdrop-filter: blur(8px) saturate(180%);
   -webkit-backdrop-filter: blur(8px) saturate(180%);
   filter: url(#liquid-glass);
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.35);
   z-index: 0;
   pointer-events: none;
 }
@@ -85,7 +90,7 @@ html {
 .dark [data-sidebar="sidebar"]:not([data-mobile="true"])::before {
   backdrop-filter: blur(8px) saturate(160%) brightness(0.92);
   -webkit-backdrop-filter: blur(8px) saturate(160%) brightness(0.92);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .dark [data-sidebar="sidebar"]:not([data-mobile="true"])::after {

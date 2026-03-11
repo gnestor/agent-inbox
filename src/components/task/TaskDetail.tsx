@@ -1,29 +1,18 @@
 import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Button,
   ScrollArea,
-  Badge,
-  Table,
-  TableBody,
-  TableRow,
-  TableCell,
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
 } from "@hammies/frontend/components/ui"
-import { cn } from "@hammies/frontend/lib/utils"
-import { Bot, ExternalLink, Ellipsis } from "lucide-react"
-import { getTask, getLinkedSession } from "@/api/client"
-import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
-import { usePreference } from "@/hooks/use-preferences"
+import { Sparkles, ExternalLink, SlidersHorizontal } from "lucide-react"
+import { getTask, getLinkedSession, getNotionOptions } from "@/api/client"
+import { formatRelativeDate } from "@/lib/formatters"
+import { useTaskMutation } from "@/hooks/use-task-mutation"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
 
 interface TaskDetailProps {
@@ -44,9 +33,24 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     queryKey: ["linked-session", "task", taskId],
     queryFn: () => getLinkedSession(undefined, taskId),
   })
+  const { data: statusOpts } = useQuery({
+    queryKey: ["notion-options", "Status"],
+    queryFn: () => getNotionOptions("Status"),
+  })
+  const { data: priorityOpts } = useQuery({
+    queryKey: ["notion-options", "Priority"],
+    queryFn: () => getNotionOptions("Priority"),
+  })
+  const { data: tagOpts } = useQuery({
+    queryKey: ["notion-options", "Tags"],
+    queryFn: () => getNotionOptions("Tags"),
+  })
   const linkedSession = linkedData?.session
   const error = queryError?.message ?? null
-  const [detailsExpanded, setDetailsExpanded] = usePreference("details.task.expanded", false)
+  const mutation = useTaskMutation(taskId)
+
+  const dueDate = task?.properties?.["Due Date"]?.date?.start
+  const createdBy = task?.properties?.["Created By"]?.created_by?.name
 
   const header = (
     <PanelHeader
@@ -58,30 +62,75 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
       }
       right={
         <>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
+          {task && (
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    title="Properties"
+                  />
+                }
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-4 gap-0">
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+                  <label className="text-sm font-medium">Status</label>
+                  <PropertySelect
+                    value={task.status}
+                    options={statusOpts?.options ?? []}
+                    onChange={mutation.updateStatus}
+                    loading={mutation.isPending}
+                  />
+                  <label className="text-sm font-medium">Priority</label>
+                  <PropertySelect
+                    value={task.priority || ""}
+                    options={priorityOpts?.options ?? []}
+                    onChange={mutation.updatePriority}
+                    loading={mutation.isPending}
+                  />
+                  <label className="text-sm font-medium self-start pt-1.5">Tags</label>
+                  <PropertyMultiSelect
+                    value={task.tags}
+                    options={tagOpts?.options ?? []}
+                    onChange={mutation.updateTags}
+                    loading={mutation.isPending}
+                    placeholder="Add tag..."
+                  />
+                  {(task.assignee || createdBy) && (
+                    <>
+                      <label className="text-sm font-medium">Assignee</label>
+                      <div className="text-sm py-1">{task.assignee || createdBy}</div>
+                    </>
+                  )}
+                  {dueDate && (
+                    <>
+                      <label className="text-sm font-medium">Due Date</label>
+                      <div className="text-sm py-1">{new Date(dueDate).toLocaleDateString()}</div>
+                    </>
+                  )}
+                  <label className="text-sm font-medium">Updated</label>
+                  <div className="text-sm py-1">{formatRelativeDate(task.updatedAt)}</div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          {task?.url && (
+            <a
+              href={task.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              title="Open in Notion"
             >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-40">
-              {task?.url && (
-                <DropdownMenuItem
-                  render={<a href={task.url} target="_blank" rel="noopener noreferrer" />}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open in Notion
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
           {!sessionOpen && (
-            <Button
+            <button
+              type="button"
               onClick={() =>
                 navigate(
                   linkedSession
@@ -89,13 +138,11 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                     : `/tasks/${taskId}/session/new`,
                 )
               }
-              size="sm"
+              className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSession ? "text-chart-4" : "text-muted-foreground"}`}
+              title={linkedSession ? "Open Session" : "Start Session"}
             >
-              <Bot className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">
-                {linkedSession ? "Open Session" : "Start Session"}
-              </span>
-            </Button>
+              <Sparkles className="h-4 w-4" />
+            </button>
           )}
         </>
       }
@@ -120,78 +167,10 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     )
   }
 
-  const dueDate = task.properties?.["Due Date"]?.date?.start
-  const createdBy = task.properties?.["Created By"]?.created_by?.name
-
   return (
     <div className="flex flex-col h-full">
       {header}
       <ScrollArea className="flex-1 overflow-hidden">
-        <Accordion value={detailsExpanded ? ["details"] : []} onValueChange={(v) => setDetailsExpanded(v.includes("details"))}>
-          <AccordionItem value="details" className="border-b">
-            <AccordionTrigger className="px-4 py-2 text-sm font-medium hover:no-underline">
-              Details
-            </AccordionTrigger>
-            <AccordionContent className="pb-0">
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Status</TableCell>
-                      <TableCell className="px-4 py-2">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs",
-                            taskStatusBadgeClass(task.status) ||
-                              "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
-                          )}
-                        >
-                          {task.status || "—"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                    {task.priority && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Priority</TableCell>
-                        <TableCell className="px-4 py-2">{task.priority}</TableCell>
-                      </TableRow>
-                    )}
-                    {task.tags.length > 0 && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Tags</TableCell>
-                        <TableCell className="px-4 py-2">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {task.tags.map((tag) => (
-                              <Badge key={tag} variant="secondary" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {(task.assignee || createdBy) && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Assignee</TableCell>
-                        <TableCell className="px-4 py-2">{task.assignee || createdBy}</TableCell>
-                      </TableRow>
-                    )}
-                    {dueDate && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground font-medium px-4 py-2">Due Date</TableCell>
-                        <TableCell className="px-4 py-2">{new Date(dueDate).toLocaleDateString()}</TableCell>
-                      </TableRow>
-                    )}
-                    <TableRow>
-                      <TableCell className="text-muted-foreground font-medium px-4 py-2">Updated</TableCell>
-                      <TableCell className="px-4 py-2">{formatRelativeDate(task.updatedAt)}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-
         <div className="p-4">
           <NotionBlockRenderer blocks={task.children} />
         </div>
