@@ -35,10 +35,13 @@ html {
 
 /* ── Sidebar: Apple Liquid Glass ────────────────────────────────────────────── */
 [data-sidebar="sidebar"] {
-  position: relative;
   background: color-mix(in srgb, var(--color-sidebar) 70%, transparent) !important;
   backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
   -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.05);
+}
+/* Desktop sidebar needs position:relative for the ::before glass overlay */
+[data-sidebar="sidebar"]:not([data-mobile="true"]) {
+  position: relative;
 }
 
 /* Top-left specular highlight simulating glass edge refraction */
