@@ -44,7 +44,7 @@ function ListItemInner({
   return (
     <button
       className={cn(
-        "w-full text-left px-3 py-2.5 border-b hover:bg-accent/50 transition-colors",
+        "w-full h-full text-left px-3 py-2.5 border-b hover:bg-accent/50 transition-colors overflow-hidden flex flex-col justify-start",
         isSelected && "bg-accent",
       )}
       onClick={onClick}
@@ -60,12 +60,12 @@ function ListItemInner({
           </div>
           {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
           {badges && badges.length > 0 && (
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex items-center gap-1 overflow-hidden">
               {badges.map((badge, i) => (
                 <Badge
                   key={i}
                   variant={badge.variant ?? "secondary"}
-                  className={cn("text-[10px] px-1.5 py-0", badge.className)}
+                  className={cn("text-[10px] px-1.5 py-0 border-0", badge.className)}
                 >
                   {badge.label}
                 </Badge>

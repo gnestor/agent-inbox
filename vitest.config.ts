@@ -20,7 +20,15 @@ export default defineConfig({
       provider: "v8",
       // Scope coverage to files that have tests — thresholds only apply here.
       // Expand this list as new test files are added.
-      include: ["server/lib/email-sanitizer.ts", "server/lib/cache.ts", "src/hooks/use-swipe.ts"],
+      include: [
+        "server/lib/email-sanitizer.ts",
+        "server/lib/cache.ts",
+        "server/lib/gmail.ts",
+        "server/lib/auth.ts",
+        "server/lib/credentials.ts",
+        "src/hooks/use-swipe.ts",
+        "src/lib/formatters.ts",
+      ],
       thresholds: {
         statements: 80,
         branches: 75,
