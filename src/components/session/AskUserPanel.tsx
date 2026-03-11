@@ -178,7 +178,7 @@ export function AskUserPanel({ pendingQuestion, onSubmit }: AskUserPanelProps) {
         ))}
       </div>
 
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Button
           onClick={handleSubmit}
           disabled={!isComplete() || submitting}

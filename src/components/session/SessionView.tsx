@@ -53,6 +53,14 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     try { localStorage.setItem(resumeKey, prompt) } catch {}
   }, [resumeKey, prompt])
 
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [prompt])
+
   // Stream for live updates
   const stream = useSessionStream(sessionId)
 
@@ -235,8 +243,8 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       {isAwaitingInput && stream.pendingQuestion ? (
         <AskUserPanel pendingQuestion={stream.pendingQuestion} onSubmit={handleAnswer} />
       ) : (
-        <div className="border-t p-3">
-          <div className="flex gap-2">
+        <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
               value={prompt}
@@ -244,13 +252,13 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               onKeyDown={handleKeyDown}
               placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
               disabled={isRunning || sending}
-              className="min-h-[40px] max-h-[120px] resize-none"
+              className="min-h-10 max-h-[120px] resize-none overflow-hidden [field-sizing:normal]"
               rows={1}
             />
             <Button
               onClick={handleSend}
               disabled={!prompt.trim() || isRunning || sending}
-              size="icon"
+              size="icon-lg"
             >
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
