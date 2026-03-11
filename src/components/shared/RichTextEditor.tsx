@@ -146,6 +146,14 @@ export function RichTextEditor({
     content: value,
     editable: !disabled,
     autofocus: autofocus ? "end" : false,
+    editorProps: {
+      // Suppress ProseMirror's automatic scroll-into-view. Its default implementation
+      // walks ALL ancestor scroll containers and scrolls each one, which causes the
+      // outer overflow-x-auto panel group to jump horizontally when content loads
+      // (e.g. when setContent is called as the panel slides in). Native browser
+      // behavior handles cursor visibility within the editor.
+      handleScrollToSelection: () => true,
+    },
     onUpdate: ({ editor }) => {
       const md = (editor.storage as any).markdown.getMarkdown() as string
       lastEmittedRef.current = md

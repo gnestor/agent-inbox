@@ -137,6 +137,17 @@ export function SpatialNavProvider({
   // Sync URL changes into persisted state for the active tab
   // Save/restore per-item session state
   useEffect(() => {
+    // /focus/ routes render FocusPane (no tab panel). Save pathname for reload
+    // but don't touch tab state — it would clear the previously selected item.
+    if (location.pathname.startsWith("/focus/")) {
+      saveNavState({
+        pathname: location.pathname,
+        tabs: { ...persistedRef.current },
+        itemSessions: [...itemSessionRef.current.entries()],
+      })
+      return
+    }
+
     const newState = tabStateFromPathname(location.pathname, activeTab)
     const oldState = persistedRef.current[activeTab]
 

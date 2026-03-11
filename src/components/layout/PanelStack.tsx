@@ -52,8 +52,11 @@ export function getScrollTarget(
 ): { target: number; deferred?: true } | null {
   const detailAdded = !prevId && !!selectedId
   const detailRemoved = !!prevId && !selectedId
-  const sessionAdded = !prevSession && sessionOpen
-  const sessionRemoved = prevSession && !sessionOpen
+  const itemChanged = prevId !== selectedId
+  // Only scroll for session open/close when the item itself hasn't changed.
+  // When switching items, the new item's session state is pre-existing — not a user action.
+  const sessionAdded = !prevSession && sessionOpen && !itemChanged
+  const sessionRemoved = prevSession && !sessionOpen && !itemChanged
   if (detailAdded) return { target: scrollWidth - clientWidth }
   if (sessionAdded) return { target: scrollWidth - clientWidth, deferred: true }
   if (sessionRemoved) return { target: Math.max(0, scrollLeft - 632) }

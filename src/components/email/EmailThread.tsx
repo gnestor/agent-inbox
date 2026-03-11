@@ -41,9 +41,10 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     const container = scrollRef.current
 
     function scrollToLast() {
-      const msgs = container.querySelectorAll("[data-message-id]")
-      const last = msgs[msgs.length - 1]
-      last?.scrollIntoView({ behavior: "instant" })
+      // Set scrollTop directly instead of scrollIntoView — scrollIntoView bubbles
+      // up through parent containers and can cause the outer panel group to scroll
+      // horizontally when the email detail is off-screen to the right.
+      container.scrollTop = container.scrollHeight
     }
 
     // Defer the initial scroll until after the overlay entrance animation (600ms).

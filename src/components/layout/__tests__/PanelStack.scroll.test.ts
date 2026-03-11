@@ -130,6 +130,26 @@ describe("getScrollTarget", () => {
     expect(getScrollTarget("a", "b", false, false, sl, sw, cw)).toBeNull()
     expect(getScrollTarget("a", "b", true, true, sl, sw, cw)).toBeNull()
   })
+
+  it("item switch to item WITH session: no scroll (session state is pre-existing, not user action)", () => {
+    // switching from item a (no session) → item b (has session): should NOT scroll to session
+    expect(getScrollTarget("a", "b", false, true, sl, sw, cw)).toBeNull()
+  })
+
+  it("item switch from item WITH session to item without: no scroll-back", () => {
+    // switching from item a (has session) → item b (no session): should NOT scroll back
+    expect(getScrollTarget("a", "b", true, false, sl, sw, cw)).toBeNull()
+  })
+
+  it("sessionAdded: deferred scroll only when SAME item opens session", () => {
+    // same item "a" going from no session → session: should scroll
+    expect(getScrollTarget("a", "a", false, true, 0, sw, cw)).toEqual({ target: sw - cw, deferred: true })
+  })
+
+  it("sessionRemoved: scroll back only when SAME item closes session", () => {
+    // same item "a" going from session → no session: should scroll back
+    expect(getScrollTarget("a", "a", true, false, sl, sw, cw)).toEqual({ target: Math.max(0, sl - 632) })
+  })
 })
 
 // ─── itemVariants ──────────────────────────────────────────────────────────────
