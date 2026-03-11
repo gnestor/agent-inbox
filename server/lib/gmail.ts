@@ -1,5 +1,5 @@
 import { getGoogleAccessToken } from "./credentials.js"
-import { cleanPlainText, cleanHtmlEmail } from "./email-cleaner.js"
+import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -20,7 +20,7 @@ async function gmailRequest(path: string, options?: RequestInit) {
   return res.json()
 }
 
-function decodeBase64Url(data: string): string {
+export function decodeBase64Url(data: string): string {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
   return Buffer.from(base64, "base64").toString("utf-8")
 }
@@ -36,14 +36,14 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&apos;/g, "'")
 }
 
-function getHeader(message: any, name: string): string {
+export function getHeader(message: any, name: string): string {
   return (
     message.payload?.headers?.find((h: any) => h.name.toLowerCase() === name.toLowerCase())
       ?.value || ""
   )
 }
 
-function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
+export function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
   const payload = message.payload
   if (!payload) return { body: "", bodyIsHtml: false }
 
@@ -87,9 +87,53 @@ function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
   return { body: "", bodyIsHtml: false }
 }
 
-function parseMessage(message: any) {
+/**
+ * Build a map of Content-ID → attachmentId for inline images.
+ * Walks all MIME parts recursively to find image/* parts with a Content-ID header.
+ */
+function getInlineAttachments(payload: any): Map<string, { attachmentId: string; mimeType: string }> {
+  const map = new Map<string, { attachmentId: string; mimeType: string }>()
+
+  function walk(part: any) {
+    if (part.mimeType?.startsWith("image/") && part.body?.attachmentId) {
+      const cidHeader = part.headers?.find(
+        (h: any) => h.name.toLowerCase() === "content-id",
+      )
+      if (cidHeader) {
+        // Content-ID comes as "<image001.png@01DCB162.3A573F60>", strip angle brackets
+        const cid = cidHeader.value.replace(/^<|>$/g, "")
+        map.set(cid, { attachmentId: part.body.attachmentId, mimeType: part.mimeType })
+      }
+    }
+    if (part.parts) part.parts.forEach(walk)
+  }
+
+  walk(payload)
+  return map
+}
+
+/**
+ * Replace cid: references in HTML with proxy URLs to our attachment endpoint.
+ */
+function replaceCidReferences(html: string, messageId: string, cidMap: Map<string, { attachmentId: string; mimeType: string }>): string {
+  if (cidMap.size === 0) return html
+  return html.replace(/src="cid:([^"]+)"/gi, (match, cid) => {
+    const attachment = cidMap.get(cid)
+    if (!attachment) return match
+    return `src="/api/gmail/messages/${messageId}/attachments/${encodeURIComponent(attachment.attachmentId)}"`
+  })
+}
+
+function parseMessage(message: any, sanitizeOpts?: SanitizeOptions) {
   const { body, bodyIsHtml } = getEmailBody(message)
-  const cleanedBody = bodyIsHtml ? cleanHtmlEmail(body) : cleanPlainText(body)
+  let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
+
+  // Replace cid: inline image references with proxy URLs
+  if (bodyIsHtml && message.payload) {
+    const cidMap = getInlineAttachments(message.payload)
+    cleanedBody = replaceCidReferences(cleanedBody, message.id, cidMap)
+  }
+
   return {
     id: message.id,
     threadId: message.threadId,
@@ -201,12 +245,15 @@ export async function searchMessages(query: string, maxResults = 50, pageToken?:
 
 export async function getMessage(messageId: string) {
   const full = await gmailRequest(`/messages/${messageId}?format=full`)
-  return parseMessage(full)
+  return parseMessage(full, { keepSignature: true })
 }
 
 export async function getThread(threadId: string) {
   const thread = await gmailRequest(`/threads/${threadId}?format=full`)
-  const messages = (thread.messages || []).map(parseMessage)
+  const rawMessages = thread.messages || []
+  const messages = rawMessages.map((msg: any, i: number) =>
+    parseMessage(msg, { keepSignature: i === rawMessages.length - 1 }),
+  )
   const firstMessage = messages[0]
 
   return {
@@ -244,6 +291,12 @@ export async function modifyLabels(
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   })
+}
+
+export async function getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
+  const data = await gmailRequest(`/messages/${messageId}/attachments/${attachmentId}`)
+  const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/")
+  return Buffer.from(base64, "base64")
 }
 
 export async function createDraft(

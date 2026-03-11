@@ -10,7 +10,7 @@ Managing emails, Notion tasks, and Claude Code agent sessions is fragmented acro
 packages/inbox/
 ├── server/              # Hono API server (Node, port 3002)
 │   ├── routes/          # auth, gmail, notion, sessions, preferences, webhooks
-│   ├── lib/             # auth, gmail, notion, session-manager, credentials, cache, email-cleaner
+│   ├── lib/             # auth, gmail, notion, session-manager, credentials, cache, email-sanitizer
 │   └── db/              # SQLite schema (better-sqlite3, WAL mode)
 ├── src/                 # React 19 + Vite 7 frontend (port 5175)
 │   ├── components/      # email/, task/, session/, layout/, shared/

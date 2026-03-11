@@ -192,9 +192,14 @@ function HtmlBody({ html }: { html: string }) {
     style.getPropertyValue("--font-sans").trim() ||
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 
+  // Strip <style> elements and inline style attributes so the iframe's reset stylesheet applies cleanly
+  const sanitizedHtml = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/\s+style="[^"]*"/gi, "")
+
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    * { box-sizing: border-box; color: ${fg} !important; font-family: ${font} !important; font-size: 13px !important; line-height: 1.5 !important; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: ${bg} !important; }
+    *, *::before, *::after { box-sizing: border-box; background: none !important; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: ${bg} !important; color: ${fg}; font-family: ${font}; font-size: 14px; line-height: 1.625; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.12); border-radius: 3px; }
@@ -203,11 +208,16 @@ function HtmlBody({ html }: { html: string }) {
     img { max-width: 100%; height: auto; }
     a { color: ${fg} !important; opacity: 0.7; word-break: break-all; }
     pre, code { white-space: pre-wrap !important; font-family: monospace !important; }
-    table { max-width: 100%; border-collapse: collapse; }
-    td, th { padding: 2px 4px; }
-    h1, h2, h3, h4, h5, h6 { font-size: 13px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
-    p { margin: 0.25em 0 !important; }
-  </style></head><body>${html}</body></html>`
+    table, thead, tbody, tr, th, td { border: none !important; }
+    table { max-width: 100%; border-collapse: collapse; width: 100%; table-layout: auto; text-align: left; margin: 1em 0; }
+    thead { border-bottom: 1px solid color-mix(in srgb, ${fg} 20%, transparent) !important; }
+    tbody tr { border-bottom: 1px solid color-mix(in srgb, ${fg} 10%, transparent) !important; }
+    th { font-weight: 600; padding: 0.5em 0.75em; vertical-align: bottom; }
+    td { padding: 0.5em 0.75em; vertical-align: top; }
+    p { margin: 0.25em 0; }
+    div + div { margin-top: 0.5em; }
+    h1, h2, h3, h4, h5, h6 { font-size: 14px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
+  </style></head><body>${sanitizedHtml}</body></html>`
 
   // Size the iframe from the parent using allow-same-origin DOM access (no scripts needed)
   useEffect(() => {

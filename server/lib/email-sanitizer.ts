@@ -1,10 +1,10 @@
 /**
  * Strips quoted reply history and app signatures from email bodies.
- * Applied server-side in parseMessage() so clean content is cached.
+ * Applied server-side in parseMessage() so sanitized content is cached.
  *
  * Strategy:
  *  1. For HTML: remove known structural quote wrappers (gmail_quote, shortwave-signature,
- *     blockquotes), then fall back to text-pattern scanning of the raw HTML string.
+ *     blockquotes, reply-timestamp-box), then fall back to text-pattern scanning of the raw HTML string.
  *  2. For plain text: scan lines for known attribution/header patterns and truncate.
  */
 
@@ -13,7 +13,7 @@ const APP_SIGNATURE_RE = /^(Shortwave|Superhuman|Spark|Hey|Fastmail|Newton|Airma
 
 // ─── Plain Text ──────────────────────────────────────────────────────────────
 
-export function cleanPlainText(text: string): string {
+export function sanitizePlainText(text: string): string {
   // Normalize CRLF (Outlook, Chinese clients use \r\n)
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
   const result: string[] = []
@@ -87,10 +87,11 @@ const HTML_TEXT_QUOTE_PATTERNS: RegExp[] = [
   new RegExp(`发件人(?:<[^>]*>)*[:：]`),
   // Chinese "wrote:" attribution (e.g. "2025年9月5日 01:14，Kevin Mahany 写道：")
   new RegExp(`\\d{4}年\\d+月\\d+日${T}{0,80}写道(?:<[^>]*>)*[:：]`),
-  // Standard "On [month or weekday] ... wrote:" — text may span multiple <span> elements
-  // Handles both "On Mon Apr 21..." (weekday-first) and "On Jan 27..." (month-first)
+  // Standard "On [month or weekday] ... wrote:" — text may span multiple <span> elements.
+  // Allows optional HTML tags between "On" and the weekday/month name (e.g. <span>Friday</span>).
+  // Handles both abbreviated (Mon, Jan) and full (Monday, January) names.
   new RegExp(
-    `\\bOn\\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)${T}{5,400}wrote:`,
+    `\\bOn\\s+(?:<[^>]*>\\s*)*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)${T}{5,400}wrote:`,
   ),
   // Bold reply header: bold "From:" followed by bold "Sent:" or "Date:" within ~400 chars
   // Outlook: <b><span>From:</span></b> ... <b>Sent:</b>
@@ -112,7 +113,12 @@ function findBlockStart(html: string, pos: number): number {
   return matches.length > 0 ? matches[matches.length - 1].index! : pos
 }
 
-export function cleanHtmlEmail(html: string): string {
+export interface SanitizeOptions {
+  /** When true, preserve the sender's own signature (strip only on non-last messages). */
+  keepSignature?: boolean
+}
+
+export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string {
   let result = html
 
   // ── Structural truncations (fast path for common clients) ──────────────────
@@ -136,6 +142,18 @@ export function cleanHtmlEmail(html: string): string {
   // Outlook desktop / Apple Mail: border-top separator div that wraps the From/Date header block
   const borderTopIdx = result.search(/<div[^>]*style="[^"]*border:none;border-top:solid[^"]*"/i)
   if (borderTopIdx > 0) result = result.slice(0, borderTopIdx)
+
+  // Reply-timestamp-box: used by GoHighLevel / Lead Connector and similar email clients
+  const replyTsIdx = result.search(/<div[^>]*class="[^"]*reply-timestamp-box[^"]*"/i)
+  if (replyTsIdx > 0) result = result.slice(0, replyTsIdx)
+
+  // Gmail signature: strip on non-last messages, keep on last message
+  if (!opts?.keepSignature) {
+    const gmailSigPrefixIdx = result.search(/<span[^>]*class="[^"]*gmail_signature_prefix[^"]*"/i)
+    if (gmailSigPrefixIdx > 0) result = result.slice(0, gmailSigPrefixIdx)
+    const gmailSigIdx = result.search(/<div[^>]*class="[^"]*gmail_signature[^"]*"/i)
+    if (gmailSigIdx > 0) result = result.slice(0, gmailSigIdx)
+  }
 
   // ── Blockquote removal (loop removes innermost first, handles nesting) ─────
 
@@ -165,7 +183,7 @@ export function cleanHtmlEmail(html: string): string {
   for (const pattern of HTML_TEXT_QUOTE_PATTERNS) {
     const match = result.match(pattern)
     if (process.env.DEBUG_CLEANER)
-      console.log(`[cleaner] pattern ${pattern} → index=${match?.index}`)
+      console.log(`[sanitizer] pattern ${pattern} → index=${match?.index}`)
     if (match?.index != null && match.index < earliestIndex) {
       earliestIndex = match.index
       earliestMatchIndex = match.index
@@ -174,7 +192,7 @@ export function cleanHtmlEmail(html: string): string {
   if (earliestMatchIndex !== null) {
     const cutAt = findBlockStart(result, earliestMatchIndex)
     if (process.env.DEBUG_CLEANER)
-      console.log(`[cleaner] cutting at ${cutAt}, result was ${result.length}`)
+      console.log(`[sanitizer] cutting at ${cutAt}, result was ${result.length}`)
     result = result.slice(0, cutAt)
   }
 
@@ -201,6 +219,10 @@ export function cleanHtmlEmail(html: string): string {
     prev2 = result
     result = result.replace(BLANK_BLOCK, "")
   } while (result !== prev2)
+
+  // Strip trailing whitespace-only content: standalone <br> elements, unclosed empty
+  // block elements (e.g. <div><br><br> without closing tag), and bare whitespace/&nbsp;.
+  result = result.replace(/(?:<(?:div|p)[^>]*>)?(?:\s|&nbsp;|<br\b[^>]*\/?>)+$/gi, "")
 
   return result.trimEnd()
 }

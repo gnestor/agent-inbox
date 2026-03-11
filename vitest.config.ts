@@ -11,6 +11,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    exclude: ["**/node_modules/**", "**/dist/**", "**/*-live.test.ts"],
     environmentMatchGlobs: [
       ["src/**/*.test.{ts,tsx}", "jsdom"],
       ["server/**/*.test.ts", "node"],
@@ -19,7 +20,7 @@ export default defineConfig({
       provider: "v8",
       // Scope coverage to files that have tests — thresholds only apply here.
       // Expand this list as new test files are added.
-      include: ["server/lib/email-cleaner.ts", "server/lib/cache.ts", "src/hooks/use-swipe.ts"],
+      include: ["server/lib/email-sanitizer.ts", "server/lib/cache.ts", "src/hooks/use-swipe.ts"],
       thresholds: {
         statements: 80,
         branches: 75,

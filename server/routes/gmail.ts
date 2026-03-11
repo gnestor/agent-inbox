@@ -124,6 +124,25 @@ gmailRoutes.get("/labels", async (c) => {
   return c.json(result)
 })
 
+gmailRoutes.get("/messages/:id/attachments/:attachmentId", async (c) => {
+  const messageId = c.req.param("id")
+  const attachmentId = c.req.param("attachmentId")
+  const data = await gmail.getAttachment(messageId, attachmentId)
+  // Sniff image type from magic bytes
+  const mime = sniffImageType(data)
+  c.header("Cache-Control", "public, max-age=31536000, immutable")
+  c.header("Content-Type", mime)
+  return c.body(data)
+})
+
+function sniffImageType(buf: Buffer): string {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png"
+  if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg"
+  if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif"
+  if (buf[0] === 0x52 && buf[1] === 0x49) return "image/webp" // RIFF header
+  return "application/octet-stream"
+}
+
 gmailRoutes.patch("/messages/:id/labels", async (c) => {
   const { addLabelIds, removeLabelIds } = await c.req.json()
   await gmail.modifyLabels(c.req.param("id"), addLabelIds || [], removeLabelIds || [])
