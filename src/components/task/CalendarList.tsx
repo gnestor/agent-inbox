@@ -18,7 +18,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { SidebarTrigger } from "@hammies/frontend/components/ui"
 import { Calendar, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useCalendar } from "@/hooks/use-calendar"
 import { getNotionOptions, getCalendarAssignees } from "@/api/client"
@@ -27,7 +26,7 @@ import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
-import { PanelHeader } from "@/components/shared/PanelHeader"
+import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualInfiniteScroll } from "@/hooks/use-infinite-scroll"
 
@@ -116,7 +115,7 @@ export function CalendarList({
       <PanelHeader
         left={
           <>
-            <SidebarTrigger className="-ml-1" />
+            <SidebarButton />
             <h2 className="font-semibold text-sm">Calendar</h2>
           </>
         }

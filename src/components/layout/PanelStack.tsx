@@ -1,6 +1,6 @@
-import { useRef, useCallback, useState, useEffect } from "react"
+import { useRef, useCallback, useState, useEffect, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { motion, AnimatePresence, useDragControls, useMotionValue, animate, usePresence, useAnimation } from "motion/react"
+import { motion, AnimatePresence, useDragControls, useMotionValue, animate, usePresence } from "motion/react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { cn } from "@hammies/frontend/lib/utils"
 import {
@@ -20,11 +20,58 @@ import { CalendarDetail } from "@/components/task/CalendarDetail"
 import { SessionList } from "@/components/session/SessionList"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
+import { RecentPane } from "@/components/session/RecentPane"
+import { useSessions } from "@/hooks/use-sessions"
+import { isRecentSession, getSessionUrl } from "@/components/session/SidebarRecentSessions"
 
-const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
-const DURATION = 0.6
+export const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
+export const DURATION = 0.6
 
 const ITEM_GAP = 16 // px gap between panels during list item navigation
+
+export const PANEL_CARD = "shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+
+// Shared animated slot: both entering and exiting items occupy the same grid cell
+// so the container width never collapses mid-transition.
+export function AnimatedItemSlot({
+  itemKey,
+  direction,
+  children,
+}: {
+  itemKey: string
+  direction: number
+  children: React.ReactNode
+}) {
+  return (
+    <div className="h-full shrink-0 overflow-clip p-px [overflow-clip-margin:1rem]">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: "minmax(0, 1fr)",
+          height: "100%",
+          overflow: "clip",
+          overflowClipMargin: "1rem",
+        }}
+      >
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.div
+            key={itemKey}
+            custom={direction}
+            variants={itemVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: DURATION, ease: EASE }}
+            style={{ gridRow: 1, gridColumn: 1 }}
+            className="h-full"
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
 
 export function smoothScrollTo(el: HTMLElement, left: number, rafRef: { current: number }) {
   cancelAnimationFrame(rafRef.current)
@@ -274,7 +321,7 @@ function MobileOverlayPanel({
   )
 }
 
-function DetailContent({
+export function DetailContent({
   tab,
   selectedId,
   title,
@@ -303,8 +350,8 @@ function SessionPanelSlide({ tab, id, sId }: { tab: TabId; id: string; sId?: str
       transition={{ duration: DURATION, ease: EASE }}
     >
       <div
-        className="w-[600px] h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
-        // style={{ width: "calc((100vw - 224px - (16px * 4)) / 2)", minWidth: 600 }}
+        className={PANEL_CARD}
+        // style={{ width: "calc((100vw - var(--sidebar-width) - (16px * 4)) / 2)", minWidth: 600 }
       >
         <NewSessionPanel
           threadId={tab === "emails" ? id : undefined}
@@ -340,8 +387,8 @@ function ItemSlider({
     <div className="shrink-0 h-full flex flex-row">
       <div
         style={{ zIndex: 2 }}
-        // style={{ zIndex: 2, width: "calc((100vw - 224px - (16px * 4)) / 2)", minWidth: 600 }}
-        className="shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+        // style={{ zIndex: 2, width: "calc((100vw - var(--sidebar-width) - (16px * 4)) / 2)", minWidth: 600 }}
+        className={PANEL_CARD}
       >
         <DetailContent tab={tab} selectedId={id} title={title} sessionOpen={sOpen} />
       </div>
@@ -359,33 +406,9 @@ function ItemSlider({
       exit={{ opacity: 0 }}
       transition={{ duration: DURATION, ease: EASE }}
     >
-      {/* Grid single-cell layout: both entering and exiting items occupy cell (1,1)
-          so the grid cell width = max(old, new) — scrollWidth never collapses mid-transition */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateRows: "minmax(0, 1fr)",
-          height: "100%",
-          overflow: "clip",
-          overflowClipMargin: "1rem",
-        }}
-      >
-        <AnimatePresence initial={false} custom={direction}>
-          <motion.div
-            key={selectedId}
-            custom={direction}
-            variants={itemVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: DURATION, ease: EASE }}
-            style={{ gridRow: 1, gridColumn: 1 }}
-            className="h-full"
-          >
-            {renderContent(selectedId, sessionOpen, sessionId)}
-          </motion.div>
-        </AnimatePresence>
-      </div>
+      <AnimatedItemSlot itemKey={selectedId} direction={direction}>
+        {renderContent(selectedId, sessionOpen, sessionId)}
+      </AnimatedItemSlot>
     </motion.div>
   )
 }
@@ -405,11 +428,6 @@ function TabPane({
   hasPrevTab?: boolean
   hasNextTab?: boolean
 }) {
-  const location = useLocation()
-  // Sidebar-originated views hide the list panel on desktop so only the
-  // detail + session panels are visible (same layout, no list).
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
-
   const { selectedId, sessionOpen, sessionId } = usePanelState(tab)
   const directionRef = useRef(1)
   const prevIndexRef = useRef(-1)
@@ -436,13 +454,12 @@ function TabPane({
       ref={listPanelRef}
       style={{
         zIndex: isMobile ? undefined : 3,
-        // width: "calc((100vw - 224px - (16px * 4)) / 2)",
+        // width: "calc((100vw - var(--sidebar-width) - (16px * 4)) / 2)",
         minWidth: 600,
       }}
       className={cn(
         "shrink-0 h-full bg-card overflow-hidden",
         isMobile ? "w-full" : "w-[600px] rounded-lg shadow-sm ring-1 ring-inset ring-border",
-        !isMobile && isFromSidebar && "hidden",
       )}
     >
       {tab === "emails" && (
@@ -563,11 +580,9 @@ function TabPane({
 
   const dismissSession = useCallback(() => {
     if (selectedId) {
-      navigate(buildUrl(tab, { selectedId }), {
-        state: isFromSidebar ? { fromSidebar: true } : undefined,
-      })
+      navigate(buildUrl(tab, { selectedId }))
     }
-  }, [navigate, tab, selectedId, isFromSidebar])
+  }, [navigate, tab, selectedId])
 
   const openSession = useCallback(() => {
     if (selectedId && tab !== "sessions") {
@@ -648,26 +663,26 @@ const GAP = 16 // px gap between tab panel groups during transition
 
 // Pure functions exported for testing
 export const tabVariants = {
-  enter: (d: number) =>
-    d === 0
-      ? { opacity: 0, y: 0 }
-      : { y: d > 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)`, opacity: 1 },
+  enter: (d: number) => ({
+    y: d >= 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)`,
+    opacity: 1,
+  }),
   center: { y: 0, opacity: 1 },
   exit: { opacity: 0, y: 0 },
 }
 
 export function computeTabExit(d: number) {
-  if (d === 0) return { opacity: 0, y: 0 as const }
   return {
-    y: d > 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)`,
+    y: d >= 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)`,
     opacity: 1 as const,
   }
 }
 
-// Drives tab enter/exit with correct directional slide or fade.
+// Drives tab enter/exit with correct directional slide.
 // Uses usePresence so the EXIT reads directionRef at the moment of exit — not
-// at mount time — fixing the case where the exit direction differs from entry
-// (e.g. normal tabs should slide, sidebar navigation should fade).
+// at mount time — fixing the case where the exit direction differs from entry.
+// Uses state-based animate target instead of useAnimation controls, which get
+// cancelled by framer-motion's internal reconciliation during AnimatePresence swaps.
 function AnimatedTabPane({
   children,
   entryDirection,
@@ -678,29 +693,26 @@ function AnimatedTabPane({
   directionRef: React.RefObject<number>
 }) {
   const [isPresent, safeToRemove] = usePresence()
-  const controls = useAnimation()
   const safeRef = useRef(safeToRemove)
   safeRef.current = safeToRemove
 
-  // Enter: animate from initial position to center
-  useEffect(() => {
-    controls.start({ y: 0, opacity: 1, transition: { duration: DURATION, ease: EASE } })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [target, setTarget] = useState<{ y: number | string; opacity: number }>(tabVariants.center)
 
   // Exit: read current direction at the moment of removal, then animate out
   useEffect(() => {
     if (!isPresent) {
       const exit = computeTabExit(directionRef.current)
-      controls
-        .start({ ...exit, transition: { duration: DURATION, ease: EASE } })
-        .then(() => safeRef.current?.())
+      setTarget(exit)
+      const timer = setTimeout(() => safeRef.current?.(), DURATION * 1000 + 50)
+      return () => clearTimeout(timer)
     }
   }, [isPresent]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div
       initial={tabVariants.enter(entryDirection)}
-      animate={controls}
+      animate={target}
+      transition={{ duration: DURATION, ease: EASE }}
       className="absolute inset-0"
     >
       {children}
@@ -711,33 +723,75 @@ function AnimatedTabPane({
 export function PanelStack() {
   const { activeTab, navigateToTab } = useSpatialNav()
   const location = useLocation()
-  const tabIndex = TAB_ORDER.indexOf(activeTab)
+  const navigate = useNavigate()
   const isMobile = useIsMobile()
-  const prevTabIndexRef = useRef(tabIndex)
-  const prevIsFromSidebarRef = useRef(false)
-  const directionRef = useRef(0)
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
 
-  const tabChanged = tabIndex !== prevTabIndexRef.current
-  const sidebarChanged = isFromSidebar !== prevIsFromSidebarRef.current
-  if (tabChanged || sidebarChanged) {
-    // Sidebar-originated navigations fade rather than slide to avoid the awkward
-    // "going down through tab order" animation when clicking unrelated recent sessions.
-    directionRef.current = isFromSidebar ? 0 : tabIndex > prevTabIndexRef.current ? 1 : -1
-    prevTabIndexRef.current = tabIndex
+  // /recent/* routes use "recent" as the animKey; individual item transitions are handled
+  // inside RecentPane. All direction is index-based: tabs are 0-3, recent sessions are 4+.
+  const isRecentRoute = location.pathname.startsWith("/recent/")
+  const animKey = isRecentRoute ? "recent" : activeTab
+
+  // Recent sessions for mobile swipe navigation (skip fetch on desktop)
+  const { sessions } = useSessions(undefined, isMobile)
+  const recentSessions = useMemo(
+    () => (isMobile ? sessions.filter(isRecentSession).slice(0, 10) : []),
+    [sessions, isMobile],
+  )
+  const recentSessionsRef = useRef(recentSessions)
+  recentSessionsRef.current = recentSessions
+
+  // Compute a global index: tabs use TAB_ORDER position, recent sessions use state.index.
+  // Tab routes can also carry state.index to override (e.g. "All Sessions" at the end).
+  const stateIndex = (location.state as { index?: number } | null)?.index
+  const currentIndex = isRecentRoute
+    ? (stateIndex ?? TAB_ORDER.length)
+    : (stateIndex ?? TAB_ORDER.indexOf(activeTab))
+
+  const prevAnimKeyRef = useRef(animKey)
+  const prevIndexRef = useRef(currentIndex)
+  const directionRef = useRef(0)
+
+  if (animKey !== prevAnimKeyRef.current) {
+    directionRef.current = currentIndex > prevIndexRef.current ? 1 : -1
+    prevAnimKeyRef.current = animKey
   }
-  prevIsFromSidebarRef.current = isFromSidebar
+  prevIndexRef.current = currentIndex
 
   const direction = directionRef.current
-  const hasPrevTab = tabIndex > 0
-  const hasNextTab = tabIndex < TAB_ORDER.length - 1
+  const tabIndex = TAB_ORDER.indexOf(activeTab)
+
+  // hasPrevTab/hasNextTab account for recent sessions beyond the regular tab order
+  const hasPrevTab = isRecentRoute ? true : tabIndex > 0
+  const hasNextTab = isRecentRoute
+    ? currentIndex < TAB_ORDER.length + recentSessions.length - 1
+    : tabIndex < TAB_ORDER.length - 1 || recentSessions.length > 0
+
+  const isRecentRouteRef = useRef(isRecentRoute)
+  isRecentRouteRef.current = isRecentRoute
+  const currentIndexRef = useRef(currentIndex)
+  currentIndexRef.current = currentIndex
+  const hasPrevTabRef = useRef(hasPrevTab)
+  hasPrevTabRef.current = hasPrevTab
+  const hasNextTabRef = useRef(hasNextTab)
+  hasNextTabRef.current = hasNextTab
 
   const handleTabSwipe = useCallback(
     (dir: 1 | -1) => {
-      const next = tabIndex + dir
-      if (next >= 0 && next < TAB_ORDER.length) navigateToTab(TAB_ORDER[next])
+      const idx = currentIndexRef.current
+      const nextIdx = idx + dir
+      const recent = recentSessionsRef.current
+
+      if (nextIdx >= 0 && nextIdx < TAB_ORDER.length) {
+        // Navigate to a regular tab
+        navigateToTab(TAB_ORDER[nextIdx])
+      } else if (nextIdx >= TAB_ORDER.length && nextIdx < TAB_ORDER.length + recent.length) {
+        // Navigate to a recent session
+        const sessionIdx = nextIdx - TAB_ORDER.length
+        const session = recent[sessionIdx]
+        navigate(getSessionUrl(session), { state: { index: nextIdx } })
+      }
     },
-    [tabIndex, navigateToTab],
+    [navigateToTab, navigate],
   )
 
   // Manual drag tracking for tab swipe — avoids Framer Motion dragControls binding
@@ -749,23 +803,27 @@ export function PanelStack() {
       const startClientY = e.clientY
       const startTime = performance.now()
 
+      function cleanup() {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onEnd)
+        window.removeEventListener("pointercancel", onEnd)
+      }
+
       function onMove(ev: PointerEvent) {
         const dy = ev.clientY - startClientY
-        // Clamp to available direction
-        if (dy > 0 && !hasPrevTab) return
-        if (dy < 0 && !hasNextTab) return
+        if (dy > 0 && !hasPrevTabRef.current) return
+        if (dy < 0 && !hasNextTabRef.current) return
         tabY.set(dy)
       }
 
-      function onUp(ev: PointerEvent) {
-        window.removeEventListener("pointermove", onMove)
-        window.removeEventListener("pointerup", onUp)
+      function onEnd(ev: PointerEvent) {
+        cleanup()
         const dy = ev.clientY - startClientY
         const dt = Math.max((performance.now() - startTime) / 1000, 0.05)
         const vy = dy / dt
         const action = classifyTabDrag(vy, dy, window.innerHeight)
         if (action === "prev" || action === "next") {
-          tabY.set(0) // instant reset so the AnimatePresence enter animation runs cleanly
+          tabY.set(0)
           handleTabSwipe(action === "prev" ? -1 : 1)
         } else {
           animate(tabY, 0, SNAP_SPRING)
@@ -773,9 +831,10 @@ export function PanelStack() {
       }
 
       window.addEventListener("pointermove", onMove)
-      window.addEventListener("pointerup", onUp)
+      window.addEventListener("pointerup", onEnd)
+      window.addEventListener("pointercancel", onEnd)
     },
-    [tabY, hasPrevTab, hasNextTab, handleTabSwipe],
+    [tabY, handleTabSwipe],
   )
 
   return (
@@ -790,18 +849,22 @@ export function PanelStack() {
         <motion.div style={{ y: tabY }} className="absolute inset-0">
           <AnimatePresence initial={false}>
             <AnimatedTabPane
-              key={activeTab}
+              key={animKey}
               entryDirection={direction}
               directionRef={directionRef}
             >
-              <TabPane
-                tab={activeTab}
-                isMobile={isMobile}
-                active={true}
-                onTabSwipe={isMobile ? handleTabSwipe : undefined}
-                hasPrevTab={hasPrevTab}
-                hasNextTab={hasNextTab}
-              />
+              {isRecentRoute ? (
+                <RecentPane />
+              ) : (
+                <TabPane
+                  tab={activeTab}
+                  isMobile={isMobile}
+                  active={true}
+                  onTabSwipe={isMobile ? handleTabSwipe : undefined}
+                  hasPrevTab={hasPrevTab}
+                  hasNextTab={hasNextTab}
+                />
+              )}
             </AnimatedTabPane>
           </AnimatePresence>
         </motion.div>

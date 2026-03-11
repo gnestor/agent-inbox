@@ -63,7 +63,7 @@ export function getSavedPathname(): string {
 interface SpatialNavContextValue {
   activeTab: TabId
   persistedState: PersistedState
-  navigateToTab: (tab: TabId) => void
+  navigateToTab: (tab: TabId, options?: { state?: Record<string, unknown> }) => void
   getItemState: (
     tab: TabId,
     itemId: string,
@@ -124,10 +124,11 @@ export function SpatialNavProvider({
   const navigate = useNavigate()
 
   const activeTab = tabFromPathname(location.pathname)
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
-  // Ref so navigateToTab can read the latest value without re-creating the callback
-  const isFromSidebarRef = useRef(isFromSidebar)
-  isFromSidebarRef.current = isFromSidebar
+  // /recent/* routes are sidebar-originated — don't update persisted tab state for them,
+  // and allow tab nav to navigate away even if the derived activeTab happens to match.
+  const isRecentRoute = location.pathname.startsWith("/recent/")
+  const isRecentRouteRef = useRef(isRecentRoute)
+  isRecentRouteRef.current = isRecentRoute
 
   // Load saved state on first render
   const saved = useRef(loadNavState())
@@ -144,7 +145,7 @@ export function SpatialNavProvider({
   useEffect(() => {
     // Sidebar-originated views should not update tab state or persisted pathname —
     // so clicking a tab still returns to the last real navigation for that tab.
-    if (isFromSidebar) return
+    if (isRecentRoute) return
 
     const newState = tabStateFromPathname(location.pathname, activeTab)
     const oldState = persistedRef.current[activeTab]
@@ -202,15 +203,15 @@ export function SpatialNavProvider({
       tabs: { ...persistedRef.current },
       itemSessions: [...itemSessionRef.current.entries()],
     })
-  }, [location.pathname, isFromSidebar, activeTab, navigate, isMobile])
+  }, [location.pathname, isRecentRoute, activeTab, navigate, isMobile])
 
   const navigateToTab = useCallback(
-    (tab: TabId) => {
+    (tab: TabId, options?: { state?: Record<string, unknown> }) => {
       // When currently on a sidebar-originated view, always navigate — don't treat it
       // as "already on that tab".
-      if (tab === activeTab && !isFromSidebarRef.current) return
+      if (tab === activeTab && !isRecentRouteRef.current) return
       const url = buildUrl(tab, persistedRef.current[tab])
-      navigate(url)
+      navigate(url, options?.state ? { state: options.state } : undefined)
     },
     [activeTab, navigate],
   )

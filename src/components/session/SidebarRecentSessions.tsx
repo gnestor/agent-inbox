@@ -1,5 +1,6 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
+import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -10,12 +11,15 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
+import { getEmailThread, getTask } from "@/api/client"
+import { MoreHorizontal } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
+import { TAB_ORDER, type TabId } from "@/hooks/use-spatial-nav"
 import type { Session } from "@/types"
 
 const ONE_DAY_MS = 86_400_000
 
-function isRecentSession(session: Session): boolean {
+export function isRecentSession(session: Session): boolean {
   if (session.status === "running" || session.status === "awaiting_user_input") return true
   const ref = session.completedAt ?? session.updatedAt
   return Date.now() - new Date(ref).getTime() < ONE_DAY_MS
@@ -33,25 +37,25 @@ function getSessionTitle(session: Session): string {
   return session.prompt.length > 60 ? session.prompt.slice(0, 60) + "…" : session.prompt
 }
 
-function getSessionUrl(session: Session): string {
+export function getSessionUrl(session: Session): string {
   if (session.linkedEmailThreadId) {
-    return `/emails/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
+    return `/recent/emails/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
   }
   if (session.linkedTaskId) {
-    return `/tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
+    return `/recent/tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
   }
-  return `/sessions/${session.id}`
+  return `/recent/sessions/${session.id}`
 }
 
 // Extract the active session ID from the current URL:
-//   /emails/{id}/session/{sessionId}  →  sessionId
-//   /tasks/{id}/session/{sessionId}   →  sessionId
-//   /sessions/{sessionId}             →  sessionId
+//   /recent/emails/{id}/session/{sessionId}  →  sessionId
+//   /recent/tasks/{id}/session/{sessionId}   →  sessionId
+//   /recent/sessions/{sessionId}             →  sessionId
 function activeSessionIdFromPath(pathname: string): string | null {
-  const overlayMatch = pathname.match(/^\/(emails|tasks)\/[^/]+\/session\/(.+)/)
-  if (overlayMatch) return decodeURIComponent(overlayMatch[2])
-  const sessionMatch = pathname.match(/^\/sessions\/(.+)/)
-  if (sessionMatch) return decodeURIComponent(sessionMatch[1])
+  const m = pathname.match(/^\/recent\/(emails|tasks)\/[^/]+\/session\/([^/]+)/)
+  if (m) return decodeURIComponent(m[2])
+  const m2 = pathname.match(/^\/recent\/sessions\/([^/]+)/)
+  if (m2) return decodeURIComponent(m2[1])
   return null
 }
 
@@ -74,7 +78,11 @@ export function markSessionRead(sessionId: string): void {
   }
 }
 
-export function SidebarRecentSessions() {
+interface SidebarRecentSessionsProps {
+  navigateToTab: (tab: TabId, options?: { state?: Record<string, unknown> }) => void
+}
+
+export function SidebarRecentSessions({ navigateToTab }: SidebarRecentSessionsProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
@@ -85,6 +93,50 @@ export function SidebarRecentSessions() {
     (s) => s.status === "running" || s.status === "awaiting_user_input",
   )
 
+  // Collect linked IDs that need title lookups (no linkedItemTitle yet)
+  const linkedEmailIds = useMemo(
+    () =>
+      [...new Set(recent.filter((s) => s.linkedEmailThreadId && !s.linkedItemTitle).map((s) => s.linkedEmailThreadId!))],
+    [recent],
+  )
+  const linkedTaskIds = useMemo(
+    () =>
+      [...new Set(recent.filter((s) => s.linkedTaskId && !s.linkedItemTitle).map((s) => s.linkedTaskId!))],
+    [recent],
+  )
+
+  // Fetch email subjects and task titles in parallel
+  const emailQueries = useQueries({
+    queries: linkedEmailIds.map((threadId) => ({
+      queryKey: ["gmail-thread", threadId],
+      queryFn: () => getEmailThread(threadId),
+      staleTime: 5 * 60 * 1000,
+    })),
+  })
+  const taskQueries = useQueries({
+    queries: linkedTaskIds.map((taskId) => ({
+      queryKey: ["task", taskId],
+      queryFn: () => getTask(taskId),
+      staleTime: 5 * 60 * 1000,
+    })),
+  })
+
+  // Build lookup maps: linkedId → title
+  // Derive stable dep keys from query data (not the query arrays themselves, which are new each render)
+  const emailSubjects = emailQueries.map((q) => q.data?.subject ?? "")
+  const taskTitles = taskQueries.map((q) => q.data?.title ?? "")
+  const titleLookup = useMemo(() => {
+    const map = new Map<string, string>()
+    linkedEmailIds.forEach((id, i) => {
+      if (emailSubjects[i]) map.set(id, emailSubjects[i])
+    })
+    linkedTaskIds.forEach((id, i) => {
+      if (taskTitles[i]) map.set(id, taskTitles[i])
+    })
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedEmailIds, linkedTaskIds, emailSubjects.join("\0"), taskTitles.join("\0")])
+
   // Poll every 5s while there are active sessions
   useEffect(() => {
     if (!hasActive) return
@@ -92,23 +144,24 @@ export function SidebarRecentSessions() {
     return () => clearInterval(id)
   }, [hasActive, refresh])
 
-  if (recent.length === 0) return null
-
-  const readSet = loadReadSet()
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const readSet = useMemo(() => loadReadSet(), [recent])
+  const isRecentRoute = location.pathname.startsWith("/recent/")
   const activeSessionId = activeSessionIdFromPath(location.pathname)
+  const isSessionsTab = !isRecentRoute && location.pathname.startsWith("/sessions")
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Recent</SidebarGroupLabel>
+      <SidebarGroupLabel>Sessions</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {recent.map((session) => {
+          {recent.map((session, i) => {
             const isRead = readSet.has(session.id)
             const color = getIndicatorColor(session, isRead)
-            const title = getSessionTitle(session)
+            const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
+            const title = linkedTitle || getSessionTitle(session)
             const url = getSessionUrl(session)
-            const isActive = isFromSidebar && session.id === activeSessionId
+            const isActive = isRecentRoute && session.id === activeSessionId
 
             return (
               <SidebarMenuItem key={session.id}>
@@ -117,7 +170,7 @@ export function SidebarRecentSessions() {
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    navigate(url, { state: { fromSidebar: true, title } })
+                    navigate(url, { state: { index: TAB_ORDER.length + i } })
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn("gap-2", isActive && "bg-accent text-accent-foreground font-medium")}
@@ -132,6 +185,20 @@ export function SidebarRecentSessions() {
               </SidebarMenuItem>
             )
           })}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={isSessionsTab}
+              tooltip="All Sessions"
+              className={cn(!isSessionsTab && "text-muted-foreground")}
+              onClick={() => {
+                navigateToTab("sessions", { state: { index: TAB_ORDER.length + recent.length } })
+                if (isMobile) setOpenMobile(false)
+              }}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>All Sessions</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

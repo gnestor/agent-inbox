@@ -15,6 +15,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -22,7 +23,7 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { Mail, CheckSquare, Calendar, Bot, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
+import { Mail, CheckSquare, Calendar, Inbox, ChevronsUpDown, LogOut } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
@@ -30,7 +31,6 @@ const navItems: { title: string; icon: typeof Mail; tab: TabId }[] = [
   { title: "Emails", icon: Mail, tab: "emails" },
   { title: "Tasks", icon: CheckSquare, tab: "tasks" },
   { title: "Calendar", icon: Calendar, tab: "calendar" },
-  { title: "Sessions", icon: Bot, tab: "sessions" },
 ]
 
 function getInitials(name: string) {
@@ -47,7 +47,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useUser()
   const { navigateToTab } = useSpatialNav()
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+  const isRecentRoute = location.pathname.startsWith("/recent/")
 
   return (
     <Sidebar variant="floating" {...props}>
@@ -114,10 +114,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>Sources</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = !isFromSidebar && location.pathname.startsWith(`/${item.tab}`)
+                const isActive = !isRecentRoute && location.pathname.startsWith(`/${item.tab}`)
                 return (
                   <SidebarMenuItem key={item.tab}>
                     <SidebarMenuButton
@@ -138,7 +139,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarRecentSessions />
+        <SidebarRecentSessions navigateToTab={navigateToTab} />
       </SidebarContent>
     </Sidebar>
   )

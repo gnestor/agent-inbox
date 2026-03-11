@@ -7,6 +7,7 @@ import {
   classifyOverlayDrag,
   itemVariants,
   tabVariants,
+  computeTabExit,
 } from "../PanelStack.js"
 
 // ─── smoothScrollTo ────────────────────────────────────────────────────────────
@@ -178,27 +179,66 @@ describe("itemVariants", () => {
   })
 })
 
+// ─── computeTabExit ────────────────────────────────────────────────────────────
+
+describe("computeTabExit", () => {
+  it("exit slides UP when direction = 0 (treated as >= 0)", () => {
+    const result = computeTabExit(0)
+    expect(result.opacity).toBe(1)
+    expect(typeof result.y).toBe("string")
+    expect((result.y as string).startsWith("calc(-100%")).toBe(true)
+  })
+
+  it("exit slides UP when direction > 0 (entering panel came from below)", () => {
+    const result = computeTabExit(1)
+    expect(result.opacity).toBe(1)
+    // y must be negative — panel exits upward
+    expect(typeof result.y).toBe("string")
+    expect((result.y as string).startsWith("calc(-100%")).toBe(true)
+  })
+
+  it("exit slides DOWN when direction < 0 (entering panel came from above)", () => {
+    const result = computeTabExit(-1)
+    expect(result.opacity).toBe(1)
+    // y must be positive — panel exits downward
+    expect(typeof result.y).toBe("string")
+    expect((result.y as string).startsWith("calc(100%")).toBe(true)
+  })
+
+  it("exit and enter are complementary (regression: exit was always fading)", () => {
+    // When a panel enters from below (direction > 0), the old panel must exit upward — not fade.
+    const enter = tabVariants.enter(1)
+    const exit = computeTabExit(1)
+    // enter.y starts positive (below), exit.y must be negative (above)
+    expect((enter.y as string).startsWith("calc(100%")).toBe(true)
+    expect((exit.y as string).startsWith("calc(-100%")).toBe(true)
+    // opacity stays 1 throughout a slide transition (no cross-fade)
+    expect(enter.opacity).toBe(1)
+    expect(exit.opacity).toBe(1)
+  })
+})
+
 // ─── tabVariants ───────────────────────────────────────────────────────────────
 
 describe("tabVariants", () => {
   it("enter from below when direction >= 0", () => {
-    expect(tabVariants.enter(1)).toEqual({ y: "calc(100% + 16px)" })
+    expect(tabVariants.enter(1)).toEqual({ y: "calc(100% + 16px)", opacity: 1 })
   })
 
   it("enter from above when direction < 0", () => {
-    expect(tabVariants.enter(-1)).toEqual({ y: "calc(-100% - 16px)" })
+    expect(tabVariants.enter(-1)).toEqual({ y: "calc(-100% - 16px)", opacity: 1 })
+  })
+
+  it("enter from below when direction = 0 (treated as >= 0)", () => {
+    expect(tabVariants.enter(0)).toEqual({ y: "calc(100% + 16px)", opacity: 1 })
   })
 
   it("center is y=0, opacity=1", () => {
     expect(tabVariants.center).toEqual({ y: 0, opacity: 1 })
   })
 
-  it("exit upward when direction >= 0", () => {
-    expect(tabVariants.exit(1)).toEqual({ y: "calc(-100% - 16px)" })
-  })
-
-  it("exit downward when direction < 0", () => {
-    expect(tabVariants.exit(-1)).toEqual({ y: "calc(100% + 16px)" })
+  it("exit always fades regardless of direction", () => {
+    expect(tabVariants.exit).toEqual({ opacity: 0, y: 0 })
   })
 })
 

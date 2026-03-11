@@ -26,7 +26,7 @@ import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
-import { PanelHeader } from "@/components/shared/PanelHeader"
+import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { usePreference } from "@/hooks/use-preferences"
 
 const STATUS_ITEMS = [
@@ -128,6 +128,7 @@ export function SessionList({
       <PanelHeader
         left={
           <>
+            <SidebarButton />
             <h2 className="font-semibold text-sm">Sessions</h2>
           </>
         }

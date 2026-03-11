@@ -33,10 +33,8 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const location = useLocation()
   const qc = useQueryClient()
   const { activeTab, persistedState } = useSpatialNav()
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
-  // Sessions tab: parent is the list. Emails/tasks: parent is the detail panel.
-  // For sidebar-originated views, derive the parent from the URL (persisted state
-  // is not updated for sidebar navigations and may point to a different item).
+  // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
+  const isFromSidebar = location.pathname.startsWith("/recent/")
   const pathParts = location.pathname.split("/").filter(Boolean)
   const parentFromUrl =
     pathParts.length >= 4 && pathParts[2] === "session"
@@ -46,7 +44,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     activeTab === "sessions"
       ? "/sessions"
       : (parentFromUrl ?? buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId }))
-  const parentNavState = isFromSidebar ? { fromSidebar: true } : undefined
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -115,6 +112,9 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const loading = isLoading
   const error = queryError?.message ?? null
 
+  // Prefer the linked item title (email subject / task title) over whatever title was passed in
+  const displayTitle = data?.session.linkedItemTitle || title || "Session"
+
   // Merge initial messages with streamed ones
   const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
 
@@ -157,9 +157,9 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           {isFromSidebar ? (
             <SidebarButton />
           ) : (
-            <BackButton onClick={() => navigate(parentPath, { state: parentNavState })} />
+            <BackButton onClick={() => navigate(parentPath)} />
           )}
-          <h2 className="font-semibold text-sm truncate min-w-0">{title || "Session"}</h2>
+          <h2 className="font-semibold text-sm truncate min-w-0">{displayTitle}</h2>
         </>
       }
       right={
@@ -214,7 +214,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
             <button
               type="button"
               className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-              onClick={() => navigate(parentPath, { state: parentNavState })}
+              onClick={() => navigate(parentPath)}
             >
               <X className="h-4 w-4" />
             </button>
