@@ -128,18 +128,45 @@ gmailRoutes.get("/messages/:id/attachments/:attachmentId", async (c) => {
   const messageId = c.req.param("id")
   const attachmentId = c.req.param("attachmentId")
   const data = await gmail.getAttachment(messageId, attachmentId)
-  // Sniff image type from magic bytes
-  const mime = sniffImageType(data)
+  const filename = c.req.query("filename")
+  const mime = filename ? mimeFromFilename(filename) : sniffMimeType(data)
   c.header("Cache-Control", "public, max-age=31536000, immutable")
   c.header("Content-Type", mime)
+  if (filename) {
+    c.header("Content-Disposition", `inline; filename="${filename}"`)
+  }
   return c.body(data)
 })
 
-function sniffImageType(buf: Buffer): string {
+function mimeFromFilename(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase()
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    csv: "text/csv",
+    txt: "text/plain",
+    zip: "application/zip",
+    mp4: "video/mp4",
+    mp3: "audio/mpeg",
+  }
+  return map[ext || ""] || "application/octet-stream"
+}
+
+function sniffMimeType(buf: Buffer): string {
   if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png"
   if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg"
   if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif"
   if (buf[0] === 0x52 && buf[1] === 0x49) return "image/webp" // RIFF header
+  if (buf[0] === 0x25 && buf[1] === 0x50) return "application/pdf" // %PDF
   return "application/octet-stream"
 }
 

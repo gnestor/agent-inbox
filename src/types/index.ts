@@ -8,6 +8,13 @@ export interface UserProfile {
 
 // Gmail types
 
+export interface GmailAttachment {
+  attachmentId: string
+  filename: string
+  mimeType: string
+  size: number
+}
+
 export interface GmailMessage {
   id: string
   threadId: string
@@ -20,6 +27,7 @@ export interface GmailMessage {
   body: string
   bodyIsHtml: boolean
   isUnread: boolean
+  attachments: GmailAttachment[]
 }
 
 export interface GmailThread {

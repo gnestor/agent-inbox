@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { useEmailActions } from "@/hooks/use-email-actions"
-import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
+import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/formatters"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
@@ -408,6 +408,37 @@ function EmailMessage({ message }: { message: GmailMessage }) {
         <HtmlBody html={message.body} />
       ) : (
         <div className="text-sm whitespace-pre-wrap leading-relaxed">{message.body}</div>
+      )}
+      {message.attachments?.length > 0 && (
+        <div className="border rounded-md overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="text-left px-3 py-1.5 font-medium">File</th>
+                <th className="text-right px-3 py-1.5 font-medium">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {message.attachments.map((att) => (
+                <tr key={att.attachmentId} className="border-t">
+                  <td className="px-3 py-1.5">
+                    <a
+                      href={`/api/gmail/messages/${message.id}/attachments/${encodeURIComponent(att.attachmentId)}?filename=${encodeURIComponent(att.filename)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {att.filename}
+                    </a>
+                  </td>
+                  <td className="text-right px-3 py-1.5 text-muted-foreground">
+                    {formatFileSize(att.size)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

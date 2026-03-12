@@ -113,6 +113,34 @@ function getInlineAttachments(payload: any): Map<string, { attachmentId: string;
 }
 
 /**
+ * Collect non-inline file attachments from a message payload.
+ * Excludes inline images (which have a Content-ID header and are image/*).
+ */
+export function getAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+  const attachments: { attachmentId: string; filename: string; mimeType: string; size: number }[] = []
+
+  function walk(part: any) {
+    if (part.filename && part.body?.attachmentId) {
+      // Skip inline images (have Content-ID header and are image/*)
+      const hasCid = part.headers?.some((h: any) => h.name.toLowerCase() === "content-id")
+      const isImage = part.mimeType?.startsWith("image/")
+      if (!(hasCid && isImage)) {
+        attachments.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename,
+          mimeType: part.mimeType || "application/octet-stream",
+          size: part.body.size || 0,
+        })
+      }
+    }
+    if (part.parts) part.parts.forEach(walk)
+  }
+
+  walk(payload)
+  return attachments
+}
+
+/**
  * Replace cid: references in HTML with proxy URLs to our attachment endpoint.
  */
 function replaceCidReferences(html: string, messageId: string, cidMap: Map<string, { attachmentId: string; mimeType: string }>): string {
@@ -146,6 +174,7 @@ function parseMessage(message: any, sanitizeOpts?: SanitizeOptions) {
     body: cleanedBody,
     bodyIsHtml,
     isUnread: (message.labelIds || []).includes("UNREAD"),
+    attachments: message.payload ? getAttachments(message.payload) : [],
   }
 }
 

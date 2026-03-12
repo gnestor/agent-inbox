@@ -50,6 +50,7 @@ const {
   getLabels,
   getMessage,
   getAttachment,
+  getAttachments,
 } = await import("../gmail.js")
 
 describe("decodeBase64Url", () => {
@@ -358,6 +359,84 @@ describe("Gmail API functions", () => {
 
       const result = await getAttachment("msg1", "att1")
       expect(result.toString()).toBe(content)
+    })
+  })
+
+  describe("getAttachments", () => {
+    it("extracts non-inline file attachments", () => {
+      const payload = {
+        parts: [
+          { mimeType: "text/html", body: { data: "abc" } },
+          {
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            body: { attachmentId: "att-pdf", size: 12345 },
+          },
+          {
+            filename: "photo.png",
+            mimeType: "image/png",
+            body: { attachmentId: "att-img", size: 5000 },
+            headers: [{ name: "Content-ID", value: "<img001@example>" }],
+          },
+        ],
+      }
+
+      const result = getAttachments(payload)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({
+        attachmentId: "att-pdf",
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        size: 12345,
+      })
+    })
+
+    it("returns empty array when no attachments", () => {
+      const payload = {
+        mimeType: "text/plain",
+        body: { data: "abc" },
+      }
+      expect(getAttachments(payload)).toEqual([])
+    })
+
+    it("includes non-image attachments with Content-ID", () => {
+      const payload = {
+        parts: [
+          {
+            filename: "data.csv",
+            mimeType: "text/csv",
+            body: { attachmentId: "att-csv", size: 200 },
+            headers: [{ name: "Content-ID", value: "<csv@example>" }],
+          },
+        ],
+      }
+
+      const result = getAttachments(payload)
+      expect(result).toHaveLength(1)
+      expect(result[0].filename).toBe("data.csv")
+    })
+
+    it("walks nested multipart structures", () => {
+      const payload = {
+        parts: [
+          {
+            mimeType: "multipart/alternative",
+            parts: [
+              { mimeType: "text/plain", body: { data: "abc" } },
+              { mimeType: "text/html", body: { data: "def" } },
+            ],
+          },
+          {
+            filename: "doc.docx",
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            body: { attachmentId: "att-docx", size: 98765 },
+          },
+        ],
+      }
+
+      const result = getAttachments(payload)
+      expect(result).toHaveLength(1)
+      expect(result[0].filename).toBe("doc.docx")
     })
   })
 
