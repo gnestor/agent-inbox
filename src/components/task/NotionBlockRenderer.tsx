@@ -260,35 +260,26 @@ function HeadingBlock({ block, level }: { block: NotionBlock; level: 1 | 2 | 3 }
     rich_text: RichTextItem[]
     is_toggleable?: boolean
   }
-  // Match prose-sm heading sizes (em-based so they scale with the prose container)
-  const toggleSizes = {
-    1: "text-[2.1428571em] leading-[1.2] mt-0 mb-[0.8em]",
-    2: "text-[1.4285714em] leading-[1.4] mt-[1.6em] mb-[0.8em]",
-    3: "text-[1.2857143em] leading-[1.5555556] mt-[1.5555556em] mb-[0.4444444em]",
-  }
+  const Tag = `h${level}` as "h1" | "h2" | "h3"
+
+  const detailsMargin = "mt-[1.6em] mb-[0.8em]"
 
   if (data?.is_toggleable || block.has_children) {
     return (
-      <details className="group" open={false}>
-        <summary
-          className={cn(
-            toggleSizes[level],
-            "font-bold cursor-pointer list-none flex items-start gap-0.5 [&::-webkit-details-marker]:hidden",
-          )}
-        >
-          <span className="text-[0.65em] text-muted-foreground group-open:rotate-90 transition-transform duration-200 mt-[0.25em] shrink-0 select-none">
+      <details className={cn("group", detailsMargin)} open={false}>
+        <summary className="cursor-pointer list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+          <span className="max-w-4 text-muted-foreground group-open:rotate-90 transition-transform duration-200 shrink-0 select-none">
             ▶
           </span>
-          <span>
+          <Tag className="font-bold !m-0">
             <RichText items={data?.rich_text || []} />
-          </span>
+          </Tag>
         </summary>
         <BlockChildren children={block.children} />
       </details>
     )
   }
 
-  const Tag = `h${level}` as "h1" | "h2" | "h3"
   return (
     <Tag className="font-bold">
       <RichText items={data?.rich_text || []} />
@@ -445,8 +436,8 @@ function ToggleBlock({ block }: { block: NotionBlock }) {
   const data = block.toggle as { rich_text: RichTextItem[] }
   return (
     <details className="group my-px">
-      <summary className="cursor-pointer list-none flex items-start gap-0.5 [&::-webkit-details-marker]:hidden">
-        <span className="text-[0.65em] text-muted-foreground group-open:rotate-90 transition-transform duration-200 mt-[0.3em] shrink-0 select-none">
+      <summary className="cursor-pointer list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+        <span className="max-w-4 text-muted-foreground group-open:rotate-90 transition-transform duration-200 shrink-0 select-none">
           ▶
         </span>
         <span>
@@ -468,8 +459,8 @@ function TableBlock({ block }: { block: NotionBlock }) {
   if (!rows.length) return null
 
   return (
-    <div className="overflow-x-auto rounded-[3px] border border-border my-2">
-      <table className="w-full text-[0.9em] border-collapse">
+    <div className="overflow-x-auto my-2">
+      <table className="w-full text-[1em] border-collapse !my-0">
         <tbody>
           {rows.map((row, rowIdx) => {
             const cells = (row.table_row as { cells: RichTextItem[][] })?.cells || []
@@ -490,7 +481,6 @@ function TableBlock({ block }: { block: NotionBlock }) {
                       key={cellIdx}
                       className={cn(
                         "px-[0.75em] py-[0.45em] text-left align-top",
-                        cellIdx !== cells.length - 1 && "border-r border-border",
                         (isHeader || isRowHeader) && "font-medium",
                       )}
                     >

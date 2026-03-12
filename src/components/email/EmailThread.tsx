@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { useQuery, useMutation } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getLinkedSession, sendEmail, createDraft } from "@/api/client"
 import {
   Button,
@@ -16,10 +16,9 @@ import {
   Trash2,
   Star,
   Milestone,
-  Reply,
+  Pencil,
   Send,
   Save,
-  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useEmailThread } from "@/hooks/use-email-thread"
@@ -50,7 +49,64 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const actions = useEmailActions(threadId, thread, {
     onRemove: () => navigate("/emails"),
   })
-  const [replyOpen, setReplyOpen] = useState(false)
+  const queryClient = useQueryClient()
+  const draftKey = `inbox:reply-draft:${threadId}`
+  const [draftBody, setDraftBody] = useState(() => {
+    try { return localStorage.getItem(draftKey) ?? "" } catch { return "" }
+  })
+  const draftKeyRef = useRef(draftKey)
+
+  // Reset draft state when switching threads
+  useEffect(() => {
+    draftKeyRef.current = draftKey
+    try { setDraftBody(localStorage.getItem(draftKey) ?? "") } catch { setDraftBody("") }
+  }, [draftKey])
+
+  // Persist draft to localStorage (only for the current thread)
+  useEffect(() => {
+    if (draftKey !== draftKeyRef.current) return
+    try {
+      if (draftBody) localStorage.setItem(draftKey, draftBody)
+      else localStorage.removeItem(draftKey)
+    } catch {}
+  }, [draftKey, draftBody])
+
+  // Ref for stable mutation access to current draft body
+  const draftBodyRef = useRef(draftBody)
+  draftBodyRef.current = draftBody
+
+  const sendMutation = useMutation({
+    mutationFn: () => {
+      const last = thread?.messages[thread.messages.length - 1]
+      if (!last || !thread) throw new Error("No thread loaded")
+      const to = last.from
+      const subject = thread.subject.startsWith("Re: ") ? thread.subject : `Re: ${thread.subject}`
+      return sendEmail({ to, subject, body: draftBodyRef.current, threadId, inReplyTo: last.id })
+    },
+    onSuccess: () => {
+      setDraftBody("")
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: ["emails"] })
+      toast.success("Reply sent")
+    },
+    onError: (err) => toast.error(`Send failed: ${err.message}`),
+  })
+
+  const draftMutation = useMutation({
+    mutationFn: () => {
+      const last = thread?.messages[thread.messages.length - 1]
+      if (!last || !thread) throw new Error("No thread loaded")
+      const to = last.from
+      const subject = thread.subject.startsWith("Re: ") ? thread.subject : `Re: ${thread.subject}`
+      return createDraft({ to, subject, body: draftBodyRef.current, threadId, inReplyTo: last.id })
+    },
+    onSuccess: () => {
+      toast.success("Draft saved")
+    },
+    onError: (err) => toast.error(`Save draft failed: ${err.message}`),
+  })
+
+  const isPending = sendMutation.isPending || draftMutation.isPending
 
   useEffect(() => {
     if (!thread || !scrollRef.current) return
@@ -172,14 +228,24 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     )
   }
 
-  const lastMessage = thread.messages[thread.messages.length - 1]
+  const sentMessages = thread.messages.filter((m) => !m.labelIds.includes("DRAFT"))
+  const gmailDraft = thread.messages.find((m) => m.labelIds.includes("DRAFT"))
+  const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
+  const replyTo = lastMessage.from
+
+  // Seed editor from Gmail draft if no local draft exists
+  useEffect(() => {
+    if (!draftBody && gmailDraft?.body) {
+      setDraftBody(gmailDraft.body)
+    }
+  }, [gmailDraft?.id])
 
   return (
     <div className="flex flex-col h-full">
       {header}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {thread.messages.map((message, i) => {
-          const isLast = i === thread.messages.length - 1
+        {sentMessages.map((message, i) => {
+          const isLast = i === sentMessages.length - 1
           return (
             <div key={message.id} data-message-id={message.id} className="border-b">
               <Accordion defaultValue={isLast ? [`msg-${message.id}`] : []}>
@@ -189,7 +255,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                       <span className="text-sm font-medium truncate">
                         {formatEmailAddress(message.from)}
                       </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 px-2">
                         {formatRelativeDate(message.date)}
                       </span>
                     </div>
@@ -203,114 +269,59 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           )
         })}
 
-        {/* Reply section */}
-        <div className="border-t p-3">
-          {replyOpen ? (
-            <ReplyComposer
-              threadId={threadId}
-              lastMessage={lastMessage}
-              subject={thread.subject}
-              onClose={() => setReplyOpen(false)}
-            />
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => setReplyOpen(true)}
-            >
-              <Reply className="h-4 w-4 mr-1.5" />
-              Reply
-            </Button>
-          )}
+        {/* Draft reply accordion */}
+        <div className="border-b">
+          <Accordion key={threadId} defaultValue={draftBody || gmailDraft ? ["draft-reply"] : []}>
+            <AccordionItem value="draft-reply" className="border-0">
+              <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50">
+                <div className="flex items-center gap-2 w-full min-w-0">
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium text-muted-foreground truncate">
+                    Draft reply
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-0">
+                <div className="px-4 py-3 pb-4 space-y-4">
+                  <div className="text-xs text-muted-foreground truncate">
+                    To: {formatEmailAddress(replyTo)}
+                  </div>
+                  <RichTextEditor
+                    value={draftBody}
+                    onChange={setDraftBody}
+                    placeholder="Write your reply..."
+                    disabled={isPending}
+                    onCmdEnter={() => sendMutation.mutate()}
+                  />
+                  <div className="flex items-center gap-4 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => draftMutation.mutate()}
+                      disabled={isPending || !draftBody.trim()}
+                    >
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                      Save Draft
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => sendMutation.mutate()}
+                      disabled={isPending || !draftBody.trim()}
+                    >
+                      <Send className="h-3.5 w-3.5 mr-1" />
+                      Send
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </div>
     </div>
   )
 }
 
-function ReplyComposer({
-  threadId,
-  lastMessage,
-  subject,
-  onClose,
-}: {
-  threadId: string
-  lastMessage: GmailMessage
-  subject: string
-  onClose: () => void
-}) {
-  const [body, setBody] = useState("")
-  const replyTo = lastMessage.from
-  const replySubject = subject.startsWith("Re: ") ? subject : `Re: ${subject}`
-  const inReplyTo = lastMessage.id
-
-  const sendMutation = useMutation({
-    mutationFn: () =>
-      sendEmail({ to: replyTo, subject: replySubject, body, threadId, inReplyTo }),
-    onSuccess: () => {
-      toast.success("Reply sent")
-      onClose()
-    },
-    onError: (err) => toast.error(`Send failed: ${err.message}`),
-  })
-
-  const draftMutation = useMutation({
-    mutationFn: () =>
-      createDraft({ to: replyTo, subject: replySubject, body, threadId, inReplyTo }),
-    onSuccess: () => {
-      toast.success("Draft saved")
-      onClose()
-    },
-    onError: (err) => toast.error(`Save draft failed: ${err.message}`),
-  })
-
-  const isPending = sendMutation.isPending || draftMutation.isPending
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground truncate">
-          To: {formatEmailAddress(replyTo)}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1 rounded-md hover:bg-accent text-muted-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <RichTextEditor
-        value={body}
-        onChange={setBody}
-        placeholder="Write your reply..."
-        disabled={isPending}
-        autofocus
-        onCmdEnter={() => sendMutation.mutate()}
-      />
-      <div className="flex items-center gap-2 justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => draftMutation.mutate()}
-          disabled={isPending || !body.trim()}
-        >
-          <Save className="h-3.5 w-3.5 mr-1" />
-          Save Draft
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => sendMutation.mutate()}
-          disabled={isPending || !body.trim()}
-        >
-          <Send className="h-3.5 w-3.5 mr-1" />
-          Send
-        </Button>
-      </div>
-    </div>
-  )
-}
 
 function HtmlBody({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -391,7 +402,7 @@ function HtmlBody({ html }: { html: string }) {
 
 function EmailMessage({ message }: { message: GmailMessage }) {
   return (
-    <div className="px-4 pb-4 space-y-3 selectable-content">
+    <div className="px-4 py-3 pb-4 space-y-3 selectable-content">
       <div className="text-xs text-muted-foreground">to {formatEmailAddress(message.to)}</div>
       {message.bodyIsHtml ? (
         <HtmlBody html={message.body} />
