@@ -138,6 +138,14 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     }
   }, [thread?.id])
 
+  // Seed editor from Gmail draft if no local draft exists
+  const gmailDraft = thread?.messages.find((m) => m.labelIds.includes("DRAFT"))
+  useEffect(() => {
+    if (!draftBody && gmailDraft?.body) {
+      setDraftBody(gmailDraft.body)
+    }
+  }, [gmailDraft?.id])
+
   const header = (
     <PanelHeader
       left={
@@ -229,16 +237,8 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   }
 
   const sentMessages = thread.messages.filter((m) => !m.labelIds.includes("DRAFT"))
-  const gmailDraft = thread.messages.find((m) => m.labelIds.includes("DRAFT"))
   const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
   const replyTo = lastMessage.from
-
-  // Seed editor from Gmail draft if no local draft exists
-  useEffect(() => {
-    if (!draftBody && gmailDraft?.body) {
-      setDraftBody(gmailDraft.body)
-    }
-  }, [gmailDraft?.id])
 
   return (
     <div className="flex flex-col h-full">
