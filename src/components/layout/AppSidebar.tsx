@@ -25,6 +25,8 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { ChevronsUpDown, LogOut } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
+import { usePlugins } from "@/hooks/use-plugins"
+import { useNavigate } from "react-router-dom"
 import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
 
 const navItems: { title: string; emoji: string; tab: TabId }[] = [
@@ -47,6 +49,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useUser()
   const { navigateToTab } = useSpatialNav()
+  const navigate = useNavigate()
+  const { data: plugins } = usePlugins()
   const isRecentRoute = location.pathname.startsWith("/recent/")
 
   return (
@@ -139,6 +143,34 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {plugins && plugins.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Plugins</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {plugins.map((plugin) => {
+                  const isActive = location.pathname.startsWith(`/plugins/${plugin.id}`)
+                  return (
+                    <SidebarMenuItem key={plugin.id}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        tooltip={plugin.name}
+                        className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
+                        onClick={() => {
+                          navigate(`/plugins/${plugin.id}`)
+                          if (isMobile) setOpenMobile(false)
+                        }}
+                      >
+                        <span className="text-sm">🔌</span>
+                        <span>{plugin.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         <SidebarRecentSessions navigateToTab={navigateToTab} />
       </SidebarContent>
     </Sidebar>

@@ -1,13 +1,24 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom"
+import React from "react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionTranscript } from "../SessionTranscript"
 import type { SessionMessage } from "@/types"
 
 vi.mock("@/hooks/use-preferences", () => ({
   usePreference: (_key: string, defaultValue: unknown) => [defaultValue, vi.fn()],
 }))
+
+vi.mock("@/api/client", () => ({
+  getPanelSchemas: () => Promise.resolve({}),
+}))
+
+function withQueryClient(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+}
 
 function makeMessages(count: number): SessionMessage[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -59,7 +70,7 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
   it("does not log Maximum update depth exceeded with 100 messages", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
-    render(<SessionTranscript messages={makeMessages(100)} isStreaming={false} />)
+    render(withQueryClient(<SessionTranscript messages={makeMessages(100)} isStreaming={false} />))
 
     const cascadeErrors = errorSpy.mock.calls.filter((call) =>
       call.some(
@@ -73,7 +84,7 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
 
   it("renders without throwing when items measure below estimateSize", () => {
     expect(() =>
-      render(<SessionTranscript messages={makeMessages(60)} isStreaming={false} />),
+      render(withQueryClient(<SessionTranscript messages={makeMessages(60)} isStreaming={false} />)),
     ).not.toThrow()
   })
 })

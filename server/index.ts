@@ -13,12 +13,16 @@ import { sessionRoutes } from "./routes/sessions.js"
 import { webhookRoutes } from "./routes/webhooks.js"
 import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
+import { pluginRoutes } from "./routes/plugins.js"
+import { panelRoutes } from "./routes/panels.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath } from "./lib/session-manager.js"
 import { getSession } from "./lib/auth.js"
 import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
+import { loadPlugins } from "./lib/plugin-loader.js"
+import { loadPanels } from "./lib/panel-registry.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -72,6 +76,8 @@ app.route("/api/notion", notionRoutes)
 app.route("/api/sessions", sessionRoutes)
 app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
+app.route("/api/plugins", pluginRoutes)
+app.route("/api/panels", panelRoutes)
 
 // Error handler
 app.onError((err, c) => {
@@ -88,4 +94,8 @@ serve({ fetch: app.fetch, port }, () => {
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
+  // Load source plugins and workflow panel schemas (non-blocking)
+  process.env.WORKSPACE_PATH = workspacePath
+  loadPlugins(workspacePath).catch((err) => console.warn("Failed to load plugins:", err.message))
+  loadPanels(workspacePath).catch((err) => console.warn("Failed to load panels:", err.message))
 })

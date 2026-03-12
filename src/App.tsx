@@ -8,6 +8,7 @@ import { PanelStack } from "@/components/layout/PanelStack"
 import { SpatialNavProvider, getSavedPathname } from "@/hooks/use-spatial-nav"
 import { LiquidGlassFilter } from "@/components/layout/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
+import { PluginList } from "@/components/plugin/PluginList"
 
 function AuthenticatedApp() {
   const isMobile = useIsMobile()
@@ -20,6 +21,7 @@ function AuthenticatedApp() {
           <div className="flex flex-1 h-full">
             <Routes>
               <Route path="/" element={<Navigate to={getSavedPathname()} replace />} />
+              <Route path="/plugins/:id/*" element={<PluginList />} />
               <Route path="/*" element={<PanelStack />} />
             </Routes>
           </div>

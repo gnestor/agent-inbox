@@ -112,5 +112,14 @@ export function initializeDatabase() {
       ON api_cache(expires_at);
   `)
 
+  // Migrations for existing tables
+  const sessionCols = (database.pragma("table_info(sessions)") as { name: string }[]).map(c => c.name)
+  if (!sessionCols.includes("linked_source_id")) {
+    database.exec("ALTER TABLE sessions ADD COLUMN linked_source_id TEXT")
+  }
+  if (!sessionCols.includes("linked_source_type")) {
+    database.exec("ALTER TABLE sessions ADD COLUMN linked_source_type TEXT")
+  }
+
   console.log("Database initialized at", DB_PATH)
 }

@@ -236,6 +236,48 @@ export async function getLinkedSession(threadId?: string, taskId?: string) {
   )
 }
 
+// Plugins
+
+export interface PluginManifest {
+  id: string
+  name: string
+  icon: string
+  fieldSchema: import("@/types/plugin").FieldDef[]
+}
+
+export async function getPlugins() {
+  return request<PluginManifest[]>(`/plugins`)
+}
+
+export async function queryPluginItems(
+  sourceId: string,
+  filters: Record<string, string>,
+  cursor?: string
+) {
+  const params = new URLSearchParams(filters)
+  if (cursor) params.set("cursor", cursor)
+  const qs = params.toString()
+  return request<{ items: import("@/types/plugin").PluginItem[]; nextCursor?: string }>(
+    `/plugins/${sourceId}/items${qs ? `?${qs}` : ""}`,
+  )
+}
+
+export async function getPanelSchemas() {
+  return request<Record<string, import("@/types/panels").WidgetDef[]>>(`/panels`)
+}
+
+export async function mutatePluginItem(
+  sourceId: string,
+  itemId: string,
+  action: string,
+  payload?: unknown
+) {
+  return request<{ ok: boolean }>(`/plugins/${sourceId}/items/${itemId}/mutate`, {
+    method: "POST",
+    body: JSON.stringify({ action, payload }),
+  })
+}
+
 // Preferences
 
 export async function getPreferences() {

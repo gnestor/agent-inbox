@@ -4,6 +4,9 @@ import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown } from "lucide
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
+import { useQuery } from "@tanstack/react-query"
+import { getPanelSchemas } from "@/api/client"
+import { PanelWidget } from "@/components/plugin/PanelWidget"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -347,6 +350,11 @@ function ContentBlock({
   visibility: TranscriptVisibility
   sessionId?: string
 }) {
+  const { data: panelSchemas } = useQuery({
+    queryKey: ["panel-schemas"],
+    queryFn: getPanelSchemas,
+    staleTime: 60_000,
+  })
   const id = `${sequence}-${index}`
 
   if (block.type === "text") {
@@ -378,6 +386,27 @@ function ContentBlock({
           </>
         )
       } catch { /* fall through to normal render */ }
+    }
+
+    // Check for registered panel tags from workflow plugins
+    if (panelSchemas) {
+      for (const [tag, widgets] of Object.entries(panelSchemas)) {
+        const json = extractXmlTag(block.text, tag)
+        if (json) {
+          try {
+            const data = JSON.parse(json) as Record<string, unknown>
+            const rest = block.text.replace(new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`), "").trim()
+            return (
+              <>
+                <div className="rounded-lg border p-3 bg-card">
+                  <PanelWidget widgets={widgets} data={data} />
+                </div>
+                {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+              </>
+            )
+          } catch { /* fall through */ }
+        }
+      }
     }
 
     return <MarkdownEntry value={`text-${id}`} text={block.text} />
