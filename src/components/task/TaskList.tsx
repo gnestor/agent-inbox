@@ -2,15 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
-  Combobox,
-  ComboboxContent,
-  ComboboxList,
-  ComboboxItem,
-  ComboboxEmpty,
-  ComboboxChips,
-  ComboboxChip,
-  ComboboxChipsInput,
-  useComboboxAnchor,
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -21,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2, X } from "lucide-react"
+import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useTasks } from "@/hooks/use-tasks"
 import { getNotionOptions, getTaskAssignees } from "@/api/client"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
@@ -30,6 +21,8 @@ import type { ListItemBadge } from "@/components/shared/ListItem"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
+import { SearchInput } from "@/components/shared/SearchInput"
+import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualInfiniteScroll } from "@/hooks/use-infinite-scroll"
 
@@ -59,10 +52,6 @@ export function TaskList({
   const [showAssignee, setShowAssignee] = usePreference("tasks.showAssignee", true)
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([])
   const [assigneeFilter, setAssigneeFilter] = usePreference<string[]>("tasks.assigneeFilter", [])
-  const statusAnchor = useComboboxAnchor()
-  const priorityAnchor = useComboboxAnchor()
-  const tagAnchor = useComboboxAnchor()
-  const assigneeAnchor = useComboboxAnchor()
 
   useEffect(() => {
     Promise.all([
@@ -148,103 +137,32 @@ export function TaskList({
                 <SlidersHorizontal className="h-4 w-4" />
               </PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
-                <Combobox
-                  multiple
+                <FilterCombobox
                   value={statusFilter}
                   onValueChange={setStatusFilter}
                   items={statusOptions}
-                >
-                  <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
-                    {statusFilter.map((v) => (
-                      <ComboboxChip key={v}>{v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={statusFilter.length === 0 ? "Status..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={statusAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-                <Combobox
-                  multiple
+                  placeholder="Status..."
+                />
+                <FilterCombobox
                   value={priorityFilter}
                   onValueChange={setPriorityFilter}
                   items={priorityOptions}
-                >
-                  <ComboboxChips ref={priorityAnchor} className="min-h-8 text-xs">
-                    {priorityFilter.map((v) => (
-                      <ComboboxChip key={v}>{v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={priorityFilter.length === 0 ? "Priority..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={priorityAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-                <Combobox multiple value={tagFilter} onValueChange={setTagFilter} items={tagOptions}>
-                  <ComboboxChips ref={tagAnchor} className="min-h-8 text-xs">
-                    {tagFilter.map((v) => (
-                      <ComboboxChip key={v}>{v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={tagFilter.length === 0 ? "Tags..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={tagAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                    <ComboboxEmpty>No tags found</ComboboxEmpty>
-                  </ComboboxContent>
-                </Combobox>
-                <Combobox
-                  multiple
+                  placeholder="Priority..."
+                />
+                <FilterCombobox
+                  value={tagFilter}
+                  onValueChange={setTagFilter}
+                  items={tagOptions}
+                  placeholder="Tags..."
+                  emptyMessage="No tags found"
+                />
+                <FilterCombobox
                   value={assigneeFilter}
                   onValueChange={setAssigneeFilter}
                   items={assigneeOptions}
-                >
-                  <ComboboxChips ref={assigneeAnchor} className="min-h-8 text-xs">
-                    {assigneeFilter.map((v) => (
-                      <ComboboxChip key={v}>{v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={assigneeFilter.length === 0 ? "Assignee..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={assigneeAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                    <ComboboxEmpty>No assignees found</ComboboxEmpty>
-                  </ComboboxContent>
-                </Combobox>
+                  placeholder="Assignee..."
+                  emptyMessage="No assignees found"
+                />
               </PopoverContent>
             </Popover>
             <DropdownMenu>
@@ -279,25 +197,7 @@ export function TaskList({
           </>
         }
       />
-      <div className="px-2 py-2 border-b">
-        <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
-          <input
-            className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            placeholder="Search tasks..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="shrink-0 p-1 rounded hover:bg-accent"
-            >
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          )}
-        </div>
-      </div>
+      <SearchInput value={search} onChange={setSearch} placeholder="Search tasks..." />
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={66} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}

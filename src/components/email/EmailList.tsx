@@ -2,15 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
-  Combobox,
-  ComboboxContent,
-  ComboboxList,
-  ComboboxItem,
-  ComboboxEmpty,
-  ComboboxChips,
-  ComboboxChip,
-  ComboboxChipsInput,
-  useComboboxAnchor,
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -21,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { Mail, SlidersHorizontal, Ellipsis, Loader2, X } from "lucide-react"
+import { Mail, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
 import { useEmails } from "@/hooks/use-emails"
 import { getEmailLabels } from "@/api/client"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
@@ -30,6 +21,8 @@ import type { ListItemBadge } from "@/components/shared/ListItem"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
+import { SearchInput } from "@/components/shared/SearchInput"
+import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { usePreference } from "@/hooks/use-preferences"
 import { useVirtualInfiniteScroll } from "@/hooks/use-infinite-scroll"
 import type { GmailLabel } from "@/types"
@@ -67,8 +60,6 @@ export function EmailList({
   const [showImportant, setShowImportant] = usePreference("emails.showImportant", true)
   const [showStarred, setShowStarred] = usePreference("emails.showStarred", true)
   const [labels, setLabels] = useState<GmailLabel[]>([])
-  const filterAnchor = useComboboxAnchor()
-  const labelAnchor = useComboboxAnchor()
 
   useEffect(() => {
     getEmailLabels()
@@ -162,52 +153,20 @@ export function EmailList({
                 <SlidersHorizontal className="h-4 w-4" />
               </PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
-                <Combobox multiple value={filters} onValueChange={setFilters} items={FILTER_OPTIONS}>
-                  <ComboboxChips ref={filterAnchor} className="min-h-8 text-xs">
-                    {filters.map((v) => (
-                      <ComboboxChip key={v}>{FILTER_LABEL_MAP[v] || v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={filters.length === 0 ? "Filter..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={filterAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item.value} value={item.value}>
-                          {item.label}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-                <Combobox
-                  multiple
+                <FilterCombobox
+                  value={filters}
+                  onValueChange={setFilters}
+                  items={FILTER_OPTIONS}
+                  placeholder="Filter..."
+                  labelMap={FILTER_LABEL_MAP}
+                />
+                <FilterCombobox
                   value={selectedLabels}
                   onValueChange={setSelectedLabels}
                   items={labelNames}
-                >
-                  <ComboboxChips ref={labelAnchor} className="min-h-8 text-xs">
-                    {selectedLabels.map((v) => (
-                      <ComboboxChip key={v}>{v}</ComboboxChip>
-                    ))}
-                    <ComboboxChipsInput
-                      placeholder={selectedLabels.length === 0 ? "Labels..." : ""}
-                      className="text-xs"
-                    />
-                  </ComboboxChips>
-                  <ComboboxContent anchor={labelAnchor}>
-                    <ComboboxList>
-                      {(item) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                    <ComboboxEmpty>No labels found</ComboboxEmpty>
-                  </ComboboxContent>
-                </Combobox>
+                  placeholder="Labels..."
+                  emptyMessage="No labels found"
+                />
               </PopoverContent>
             </Popover>
             <DropdownMenu>
@@ -248,25 +207,7 @@ export function EmailList({
           </>
         }
       />
-      <div className="px-2 py-2 border-b">
-        <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
-          <input
-            className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            placeholder="Search emails..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="shrink-0 p-1 rounded hover:bg-accent"
-            >
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          )}
-        </div>
-      </div>
+      <SearchInput value={search} onChange={setSearch} placeholder="Search emails..." />
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={88} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
