@@ -11,6 +11,9 @@ import {
   ComboboxChip,
   ComboboxChipsInput,
   useComboboxAnchor,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -18,7 +21,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
+import { CheckSquare, SlidersHorizontal, Ellipsis, Loader2, X } from "lucide-react"
 import { useTasks } from "@/hooks/use-tasks"
 import { getNotionOptions, getTaskAssignees } from "@/api/client"
 import { formatRelativeDate, taskStatusBadgeClass } from "@/lib/formatters"
@@ -50,7 +53,6 @@ export function TaskList({
   const [priorityFilter, setPriorityFilter] = usePreference<string[]>("tasks.priorityFilter", [])
   const [tagFilter, setTagFilter] = usePreference<string[]>("tasks.tagFilter", [])
   const [search, setSearch] = useState("")
-  const [showFilters, setShowFilters] = usePreference("tasks.showFilters", false)
   const [showStatus, setShowStatus] = usePreference("tasks.showStatus", true)
   const [showTags, setShowTags] = usePreference("tasks.showTags", true)
   const [showPriority, setShowPriority] = usePreference("tasks.showPriority", false)
@@ -132,38 +134,152 @@ export function TaskList({
           </>
         }
         right={
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
-            >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
-                  Status
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showPriority} onCheckedChange={setShowPriority}>
-                  Priority
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showTags} onCheckedChange={setShowTags}>
-                  Tags
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showAssignee} onCheckedChange={setShowAssignee}>
-                  Assignee
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+                    title="Filters"
+                  />
+                }
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
+                <Combobox
+                  multiple
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                  items={statusOptions}
+                >
+                  <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
+                    {statusFilter.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={statusFilter.length === 0 ? "Status..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={statusAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                <Combobox
+                  multiple
+                  value={priorityFilter}
+                  onValueChange={setPriorityFilter}
+                  items={priorityOptions}
+                >
+                  <ComboboxChips ref={priorityAnchor} className="min-h-8 text-xs">
+                    {priorityFilter.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={priorityFilter.length === 0 ? "Priority..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={priorityAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                <Combobox multiple value={tagFilter} onValueChange={setTagFilter} items={tagOptions}>
+                  <ComboboxChips ref={tagAnchor} className="min-h-8 text-xs">
+                    {tagFilter.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={tagFilter.length === 0 ? "Tags..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={tagAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                    <ComboboxEmpty>No tags found</ComboboxEmpty>
+                  </ComboboxContent>
+                </Combobox>
+                <Combobox
+                  multiple
+                  value={assigneeFilter}
+                  onValueChange={setAssigneeFilter}
+                  items={assigneeOptions}
+                >
+                  <ComboboxChips ref={assigneeAnchor} className="min-h-8 text-xs">
+                    {assigneeFilter.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={assigneeFilter.length === 0 ? "Assignee..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={assigneeAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                    <ComboboxEmpty>No assignees found</ComboboxEmpty>
+                  </ComboboxContent>
+                </Combobox>
+              </PopoverContent>
+            </Popover>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                  />
+                }
+              >
+                <Ellipsis className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
+                    Status
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showPriority} onCheckedChange={setShowPriority}>
+                    Priority
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showTags} onCheckedChange={setShowTags}>
+                    Tags
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showAssignee} onCheckedChange={setShowAssignee}>
+                    Assignee
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       />
-      <div className="px-2 py-2 border-b space-y-1.5">
+      <div className="px-2 py-2 border-b">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
             className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
@@ -171,117 +287,16 @@ export function TaskList({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className="shrink-0 p-1 rounded hover:bg-accent"
-          >
-            <SlidersHorizontal
-              className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
-            />
-          </button>
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="shrink-0 p-1 rounded hover:bg-accent"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
-        {showFilters && (
-          <>
-            <Combobox
-              multiple
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              items={statusOptions}
-            >
-              <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
-                {statusFilter.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={statusFilter.length === 0 ? "Status..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={statusAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            <Combobox
-              multiple
-              value={priorityFilter}
-              onValueChange={setPriorityFilter}
-              items={priorityOptions}
-            >
-              <ComboboxChips ref={priorityAnchor} className="min-h-8 text-xs">
-                {priorityFilter.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={priorityFilter.length === 0 ? "Priority..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={priorityAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            <Combobox multiple value={tagFilter} onValueChange={setTagFilter} items={tagOptions}>
-              <ComboboxChips ref={tagAnchor} className="min-h-8 text-xs">
-                {tagFilter.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={tagFilter.length === 0 ? "Tags..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={tagAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-                <ComboboxEmpty>No tags found</ComboboxEmpty>
-              </ComboboxContent>
-            </Combobox>
-            <Combobox
-              multiple
-              value={assigneeFilter}
-              onValueChange={setAssigneeFilter}
-              items={assigneeOptions}
-            >
-              <ComboboxChips ref={assigneeAnchor} className="min-h-8 text-xs">
-                {assigneeFilter.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={assigneeFilter.length === 0 ? "Assignee..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={assigneeAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-                <ComboboxEmpty>No assignees found</ComboboxEmpty>
-              </ComboboxContent>
-            </Combobox>
-          </>
-        )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={66} />}

@@ -374,7 +374,7 @@ function CodeBlock({ block }: { block: NotionBlock }) {
   const lang = data?.language?.toLowerCase()
 
   return (
-    <div className="not-prose notion-code rounded-[4px] bg-[#f7f6f3] dark:bg-[#1e1e1e] overflow-hidden border border-border/30 my-2">
+    <div className="not-prose notion-code rounded-[4px] overflow-hidden border border-border/30 my-2">
       <pre className="p-[2em_1.2em_1.2em] text-[0.875em] font-mono leading-[1.6] overflow-x-auto">
         <HighlightedCode code={text} language={lang} />
       </pre>

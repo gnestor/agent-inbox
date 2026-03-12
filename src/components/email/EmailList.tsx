@@ -11,6 +11,9 @@ import {
   ComboboxChip,
   ComboboxChipsInput,
   useComboboxAnchor,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -18,7 +21,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { Mail, SlidersHorizontal, Ellipsis, Loader2 } from "lucide-react"
+import { Mail, SlidersHorizontal, Ellipsis, Loader2, X } from "lucide-react"
 import { useEmails } from "@/hooks/use-emails"
 import { getEmailLabels } from "@/api/client"
 import { formatRelativeDate, formatEmailAddress } from "@/lib/formatters"
@@ -59,7 +62,6 @@ export function EmailList({
   const [selectedLabels, setSelectedLabels] = usePreference<string[]>("emails.labels", [])
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
-  const [showFilters, setShowFilters] = usePreference("emails.showFilters", false)
   const [showReadStatus, setShowReadStatus] = usePreference("emails.showReadStatus", true)
   const [showLabels, setShowLabels] = usePreference("emails.showLabels", false)
   const [showImportant, setShowImportant] = usePreference("emails.showImportant", true)
@@ -146,44 +148,107 @@ export function EmailList({
           </>
         }
         right={
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
-            >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={showReadStatus}
-                  onCheckedChange={setShowReadStatus}
+          <>
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+                    title="Filters"
+                  />
+                }
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
+                <Combobox multiple value={filters} onValueChange={setFilters} items={FILTER_OPTIONS}>
+                  <ComboboxChips ref={filterAnchor} className="min-h-8 text-xs">
+                    {filters.map((v) => (
+                      <ComboboxChip key={v}>{FILTER_LABEL_MAP[v] || v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={filters.length === 0 ? "Filter..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={filterAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item.value} value={item.value}>
+                          {item.label}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                <Combobox
+                  multiple
+                  value={selectedLabels}
+                  onValueChange={setSelectedLabels}
+                  items={labelNames}
                 >
-                  Read status
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>
-                  Labels
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={showImportant}
-                  onCheckedChange={setShowImportant}
-                >
-                  Important
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showStarred} onCheckedChange={setShowStarred}>
-                  Starred
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <ComboboxChips ref={labelAnchor} className="min-h-8 text-xs">
+                    {selectedLabels.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={selectedLabels.length === 0 ? "Labels..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={labelAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                    <ComboboxEmpty>No labels found</ComboboxEmpty>
+                  </ComboboxContent>
+                </Combobox>
+              </PopoverContent>
+            </Popover>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                  />
+                }
+              >
+                <Ellipsis className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={showReadStatus}
+                    onCheckedChange={setShowReadStatus}
+                  >
+                    Read status
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>
+                    Labels
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={showImportant}
+                    onCheckedChange={setShowImportant}
+                  >
+                    Important
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showStarred} onCheckedChange={setShowStarred}>
+                    Starred
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       />
-      <div className="px-2 py-2 border-b space-y-1.5">
+      <div className="px-2 py-2 border-b">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
             className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
@@ -191,66 +256,16 @@ export function EmailList({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className="shrink-0 p-1 rounded hover:bg-accent"
-          >
-            <SlidersHorizontal
-              className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
-            />
-          </button>
-        </div>
-        {showFilters && (
-          <>
-            <Combobox multiple value={filters} onValueChange={setFilters} items={FILTER_OPTIONS}>
-              <ComboboxChips ref={filterAnchor} className="min-h-8 text-xs">
-                {filters.map((v) => (
-                  <ComboboxChip key={v}>{FILTER_LABEL_MAP[v] || v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={filters.length === 0 ? "Filter..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={filterAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item.value} value={item.value}>
-                      {item.label}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            <Combobox
-              multiple
-              value={selectedLabels}
-              onValueChange={setSelectedLabels}
-              items={labelNames}
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="shrink-0 p-1 rounded hover:bg-accent"
             >
-              <ComboboxChips ref={labelAnchor} className="min-h-8 text-xs">
-                {selectedLabels.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={selectedLabels.length === 0 ? "Labels..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={labelAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-                <ComboboxEmpty>No labels found</ComboboxEmpty>
-              </ComboboxContent>
-            </Combobox>
-          </>
-        )}
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
+        </div>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={88} />}

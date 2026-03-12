@@ -455,7 +455,7 @@ function TabPane({
       style={{
         zIndex: isMobile ? undefined : 3,
         // width: "calc((100vw - var(--sidebar-width) - (16px * 4)) / 2)",
-        minWidth: 600,
+        minWidth: isMobile ? undefined : 600,
       }}
       className={cn(
         "shrink-0 h-full bg-card overflow-hidden",

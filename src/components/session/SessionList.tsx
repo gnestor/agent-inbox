@@ -11,6 +11,9 @@ import {
   ComboboxChipsInput,
   ComboboxEmpty,
   useComboboxAnchor,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -18,7 +21,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { Bot, SlidersHorizontal, Ellipsis } from "lucide-react"
+import { Bot, SlidersHorizontal, Ellipsis, X } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { getSessionProjects } from "@/api/client"
 import { formatRelativeDate, truncate, sessionStatusBadgeClass } from "@/lib/formatters"
@@ -57,7 +60,6 @@ export function SessionList({
   const [projectFilter, setProjectFilter] = usePreference<string[]>("sessions.projectFilter", [])
   const [projectOptions, setProjectOptions] = useState<string[]>([])
   const [search, setSearch] = useState("")
-  const [showFilters, setShowFilters] = usePreference("sessions.showFilters", false)
   const [showProject, setShowProject] = usePreference("sessions.showProject", true)
   const [showStatus, setShowStatus] = usePreference("sessions.showStatus", true)
   const statusAnchor = useComboboxAnchor()
@@ -133,32 +135,100 @@ export function SessionList({
           </>
         }
         right={
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-                />
-              }
-            >
-              <Ellipsis className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
-                  Status
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showProject} onCheckedChange={setShowProject}>
-                  Project
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+                    title="Filters"
+                  />
+                }
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
+                <Combobox
+                  multiple
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                  items={STATUS_ITEMS}
+                >
+                  <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
+                    {statusFilter.map((v) => (
+                      <ComboboxChip key={v}>{STATUS_LABEL_MAP[v] || v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={statusFilter.length === 0 ? "Status..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={statusAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item.value} value={item.value}>
+                          {item.label}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                <Combobox
+                  multiple
+                  value={projectFilter}
+                  onValueChange={setProjectFilter}
+                  items={projectOptions}
+                >
+                  <ComboboxChips ref={projectAnchor} className="min-h-8 text-xs">
+                    {projectFilter.map((v) => (
+                      <ComboboxChip key={v}>{v}</ComboboxChip>
+                    ))}
+                    <ComboboxChipsInput
+                      placeholder={projectFilter.length === 0 ? "Project..." : ""}
+                      className="text-xs"
+                    />
+                  </ComboboxChips>
+                  <ComboboxContent anchor={projectAnchor}>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                    <ComboboxEmpty>No projects found</ComboboxEmpty>
+                  </ComboboxContent>
+                </Combobox>
+              </PopoverContent>
+            </Popover>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                  />
+                }
+              >
+                <Ellipsis className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Toggle badges</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked={showStatus} onCheckedChange={setShowStatus}>
+                    Status
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showProject} onCheckedChange={setShowProject}>
+                    Project
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       />
-      <div className="px-2 py-2 border-b space-y-1.5">
+      <div className="px-2 py-2 border-b">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
           <input
             className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
@@ -166,71 +236,16 @@ export function SessionList({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className="shrink-0 p-1 rounded hover:bg-accent"
-          >
-            <SlidersHorizontal
-              className={`h-3.5 w-3.5 ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
-            />
-          </button>
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="shrink-0 p-1 rounded hover:bg-accent"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
-        {showFilters && (
-          <>
-            <Combobox
-              multiple
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              items={STATUS_ITEMS}
-            >
-              <ComboboxChips ref={statusAnchor} className="min-h-8 text-xs">
-                {statusFilter.map((v) => (
-                  <ComboboxChip key={v}>{STATUS_LABEL_MAP[v] || v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={statusFilter.length === 0 ? "Status..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={statusAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item.value} value={item.value}>
-                      {item.label}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            <Combobox
-              multiple
-              value={projectFilter}
-              onValueChange={setProjectFilter}
-              items={projectOptions}
-            >
-              <ComboboxChips ref={projectAnchor} className="min-h-8 text-xs">
-                {projectFilter.map((v) => (
-                  <ComboboxChip key={v}>{v}</ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  placeholder={projectFilter.length === 0 ? "Project..." : ""}
-                  className="text-xs"
-                />
-              </ComboboxChips>
-              <ComboboxContent anchor={projectAnchor}>
-                <ComboboxList>
-                  {(item) => (
-                    <ComboboxItem key={item} value={item}>
-                      {item}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-                <ComboboxEmpty>No projects found</ComboboxEmpty>
-              </ComboboxContent>
-            </Combobox>
-          </>
-        )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={80} />}

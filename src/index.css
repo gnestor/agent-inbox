@@ -13,10 +13,6 @@
   content: none;
 }
 
-/* Code block background uses theme background */
-.prose :where(pre) {
-  background: var(--background);
-}
 /* Bold headings in prose (markdown) and Notion content */
 .prose :where(h1, h2, h3, h4, h5, h6) {
   font-weight: 700;

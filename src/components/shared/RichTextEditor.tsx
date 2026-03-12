@@ -180,7 +180,7 @@ export function RichTextEditor({
 
   return (
     <div
-      className={`relative rounded-md border border-input bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${disabled ? "opacity-50 pointer-events-none" : ""} ${className}`}
+      className={`relative rounded-md border-input ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${disabled ? "opacity-50 pointer-events-none" : ""} ${className}`}
     >
       {editor && (
         <BubbleMenu editor={editor} className="rich-text-bubble-menu">
