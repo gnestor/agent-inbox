@@ -50,7 +50,7 @@ html {
 
 /* ── Sidebar: Apple Liquid Glass ────────────────────────────────────────────── */
 
-/* Wrapper: transparent so ::before's backdrop-filter sees through to panels */
+/* Desktop: transparent so ::before's backdrop-filter sees through to panels */
 /* Remove ring from floating variant — the ::after shine layer provides the edge */
 [data-sidebar="sidebar"]:not([data-mobile="true"]) {
   position: relative;
@@ -59,7 +59,7 @@ html {
   --tw-ring-shadow: 0 0 #0000 !important;
 }
 
-/* Effect layer: backdrop blur + SVG distortion + tint */
+/* Desktop effect layer: backdrop blur + SVG distortion + tint */
 [data-sidebar="sidebar"]:not([data-mobile="true"])::before {
   content: "";
   position: absolute;
@@ -73,7 +73,7 @@ html {
   pointer-events: none;
 }
 
-/* Shine layer: inset box-shadow for edge highlights */
+/* Desktop shine layer: inset box-shadow for edge highlights */
 [data-sidebar="sidebar"]:not([data-mobile="true"])::after {
   content: "";
   position: absolute;
@@ -92,7 +92,20 @@ html {
   z-index: 2;
 }
 
-/* ── Dark mode ─────────────────────────────────────────────────────────────── */
+/* ── Mobile sidebar: glass tint via backdrop-filter on the element itself ─── */
+[data-sidebar="sidebar"][data-mobile="true"] {
+  backdrop-filter: blur(5px) saturate(180%);
+  -webkit-backdrop-filter: blur(5px) saturate(180%);
+  background: rgba(255, 255, 255, 0.65) !important;
+}
+
+.dark [data-sidebar="sidebar"][data-mobile="true"] {
+  backdrop-filter: blur(5px) saturate(160%) brightness(0.92);
+  -webkit-backdrop-filter: blur(5px) saturate(160%) brightness(0.92);
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+/* ── Desktop dark mode ─────────────────────────────────────────────────────── */
 .dark [data-sidebar="sidebar"]:not([data-mobile="true"])::before {
   backdrop-filter: blur(8px) saturate(160%) brightness(0.92);
   -webkit-backdrop-filter: blur(8px) saturate(160%) brightness(0.92);
