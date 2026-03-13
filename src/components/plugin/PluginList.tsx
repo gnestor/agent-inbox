@@ -112,7 +112,7 @@ function PluginListInner({
   ) : null
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-1 flex-col min-h-0">
       <PanelHeader
         left={
           <div className="flex items-center gap-2">
