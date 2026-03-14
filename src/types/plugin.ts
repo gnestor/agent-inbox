@@ -135,4 +135,15 @@ export interface SourcePlugin {
    * other fields become kv-table entries).
    */
   detailSchema?: import("./panels").WidgetDef[]
+
+  /**
+   * Optional sub-item query — e.g. messages within a channel.
+   * When present, the detail panel renders a scrollable sub-item list instead
+   * of the widget tree.  The `itemId` is the parent item's id.
+   */
+  querySubItems?(
+    itemId: string,
+    filters: Record<string, string>,
+    cursor?: string
+  ): Promise<QueryResult>
 }

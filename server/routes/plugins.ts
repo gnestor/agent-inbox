@@ -11,6 +11,8 @@ pluginRoutes.get("/", (c) => {
     name: p.name,
     icon: p.icon,
     fieldSchema: p.fieldSchema,
+    detailSchema: p.detailSchema,
+    hasSubItems: !!p.querySubItems,
   }))
   return c.json(plugins)
 })
@@ -28,6 +30,23 @@ pluginRoutes.get("/:sourceId/items", async (c) => {
   )
 
   const result = await plugin.query(filters, cursor)
+  return c.json(result)
+})
+
+/** GET /api/plugins/:sourceId/items/:itemId/subitems — query sub-items (e.g. messages in a channel) */
+pluginRoutes.get("/:sourceId/items/:itemId/subitems", async (c) => {
+  const { sourceId, itemId } = c.req.param()
+  const plugin = getPlugin(sourceId)
+  if (!plugin) throw new HTTPException(404, { message: `Plugin "${sourceId}" not found` })
+  if (!plugin.querySubItems) throw new HTTPException(404, { message: `Plugin "${sourceId}" does not support sub-items` })
+
+  const raw = c.req.query()
+  const cursor = raw.cursor
+  const filters = Object.fromEntries(
+    Object.entries(raw).filter(([k]) => k !== "cursor")
+  )
+
+  const result = await plugin.querySubItems(itemId, filters, cursor)
   return c.json(result)
 })
 

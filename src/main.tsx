@@ -20,7 +20,13 @@ createRoot(document.getElementById("root")!).render(
       <ThemeProvider defaultTheme="system" storageKey="inbox-theme">
         <PersistQueryClientProvider
           client={queryClient}
-          persistOptions={{ persister }}
+          persistOptions={{
+            persister,
+            // Don't cache plugin manifests — they must always be fresh
+            dehydrateOptions: {
+              shouldDehydrateQuery: (query) => query.queryKey[0] !== "plugins",
+            },
+          }}
           // After IndexedDB cache is restored, invalidate all queries so active
           // components refetch fresh data in the background on page load.
           onSuccess={() => queryClient.invalidateQueries()}

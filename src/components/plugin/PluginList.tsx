@@ -1,7 +1,8 @@
-import { useState, useRef } from "react"
+import { useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { Plug } from "lucide-react"
+import { Plug, SlidersHorizontal } from "lucide-react"
+import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
 import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { FilterCombobox } from "@/components/shared/FilterCombobox"
+import { usePreference } from "@/hooks/use-preferences"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem, FieldDef } from "@/types/plugin"
 
@@ -20,7 +22,7 @@ function buildBadges(item: PluginItem, fieldSchema: FieldDef[]): ListItemBadge[]
     const raw = item[field.id]
     if (raw == null) continue
     const value = String(raw)
-    if (field.badge.show === "if-set" && !value) continue
+    if (field.badge.show === "if-set" && !raw) continue
     badges.push({
       label: value,
       variant: field.badge.variant,
@@ -45,7 +47,7 @@ function getItemSubtitle(item: PluginItem): string | undefined {
 }
 
 function getItemTimestamp(item: PluginItem): string {
-  for (const key of ["latestTs", "updatedAt", "createdAt", "timestamp", "date"]) {
+  for (const key of ["latestTs", "updatedAt", "createdAt", "timestamp", "date", "ts"]) {
     const val = item[key]
     if (!val) continue
     if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
@@ -72,12 +74,25 @@ function PluginListInner({
   onSelectedTitleChange,
 }: PluginListInnerProps) {
   const navigate = useNavigate()
-  const [filters, setFilters] = useState<Record<string, string>>({})
 
-  const { data, isLoading } = usePluginItems(plugin.id, filters)
-  const items = data?.items ?? []
+  // Persist filter state per plugin via user preferences
+  const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
+    `plugin:${plugin.id}.filters`,
+    {},
+  )
 
   const filterableFields = plugin.fieldSchema.filter((f) => f.filter?.filterable)
+
+  // Convert string[] per field → comma-joined string for the API query
+  const queryFilters: Record<string, string> = {}
+  for (const [k, v] of Object.entries(filterState)) {
+    if (v.length > 0) queryFilters[k] = v.join(",")
+  }
+
+  const hasActiveFilters = Object.values(filterState).some((v) => v.length > 0)
+
+  const { data, isLoading } = usePluginItems(plugin.id, queryFilters)
+  const items = data?.items ?? []
 
   const containerRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
@@ -88,27 +103,35 @@ function PluginListInner({
   })
 
   const filterUI = filterableFields.length > 0 ? (
-    <div className="flex gap-1 flex-wrap">
-      {filterableFields.map((field) => {
-        const options = (field.filter?.filterOptions ?? []) as string[]
-        return (
-          <FilterCombobox
-            key={field.id}
-            placeholder={field.label}
-            items={options}
-            value={filters[field.id] ? filters[field.id].split(",") : []}
-            onValueChange={(vals) =>
-              setFilters((prev) => {
-                const next = { ...prev }
-                if (vals.length > 0) next[field.id] = vals.join(",")
-                else delete next[field.id]
-                return next
-              })
-            }
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+            title="Filters"
           />
-        )
-      })}
-    </div>
+        }
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
+        {filterableFields.map((field) => {
+          const options = (field.filter?.filterOptions ?? []) as string[]
+          return (
+            <FilterCombobox
+              key={field.id}
+              placeholder={`${field.label}...`}
+              items={options}
+              value={filterState[field.id] ?? []}
+              onValueChange={(vals) =>
+                setFilterState({ ...filterState, [field.id]: vals })
+              }
+            />
+          )
+        })}
+      </PopoverContent>
+    </Popover>
   ) : null
 
   return (

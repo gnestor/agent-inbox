@@ -243,6 +243,8 @@ export interface PluginManifest {
   name: string
   icon: string
   fieldSchema: import("@/types/plugin").FieldDef[]
+  detailSchema?: import("@/types/panels").WidgetDef[]
+  hasSubItems?: boolean
 }
 
 export async function getPlugins() {
@@ -259,6 +261,20 @@ export async function queryPluginItems(
   const qs = params.toString()
   return request<{ items: import("@/types/plugin").PluginItem[]; nextCursor?: string }>(
     `/plugins/${sourceId}/items${qs ? `?${qs}` : ""}`,
+  )
+}
+
+export async function queryPluginSubItems(
+  sourceId: string,
+  itemId: string,
+  filters: Record<string, string>,
+  cursor?: string
+) {
+  const params = new URLSearchParams(filters)
+  if (cursor) params.set("cursor", cursor)
+  const qs = params.toString()
+  return request<{ items: import("@/types/plugin").PluginItem[]; nextCursor?: string }>(
+    `/plugins/${sourceId}/items/${itemId}/subitems${qs ? `?${qs}` : ""}`,
   )
 }
 
