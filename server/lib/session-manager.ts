@@ -747,6 +747,32 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
 
     for (const line of lines) {
       const msg = JSON.parse(line)
+
+      // Detect plan file updates (Write/Edit to ~/.claude/plans/) and inject
+      // a synthetic plan message so the frontend can render the plan content.
+      const toolResult = msg.toolUseResult
+      if (
+        toolResult &&
+        typeof toolResult.filePath === "string" &&
+        toolResult.filePath.includes(".claude/plans/") &&
+        toolResult.content
+      ) {
+        messages.push({
+          id: sequence,
+          sessionId,
+          sequence,
+          type: "plan",
+          message: {
+            type: "plan",
+            filePath: toolResult.filePath,
+            content: toolResult.content,
+          },
+          createdAt: msg.timestamp || new Date().toISOString(),
+        })
+        sequence++
+        continue
+      }
+
       if (displayTypes.has(msg.type)) {
         messages.push({
           id: sequence,

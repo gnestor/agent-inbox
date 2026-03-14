@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -315,6 +315,25 @@ const TranscriptEntry = memo(function TranscriptEntry({
           <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} />
         ))}
       </div>
+    )
+  }
+
+  if (msg.type === "plan") {
+    if (!visibility.messages) return null
+    return (
+      <TranscriptAccordionEntry
+        value={`plan-${message.sequence}`}
+        icon={ClipboardList}
+        label="Plan"
+        color="text-chart-3"
+        defaultOpen
+      >
+        <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            {msg.content || ""}
+          </ReactMarkdown>
+        </div>
+      </TranscriptAccordionEntry>
     )
   }
 
