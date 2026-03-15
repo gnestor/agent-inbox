@@ -30,21 +30,18 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
           {integrationEmoji(integration.id)}
         </div>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{integration.name}</span>
-            {isWorkspace && (
-              <Badge variant="secondary" className="text-xs">
-                Managed by admin
-              </Badge>
-            )}
-          </div>
+          <span className="font-medium">{integration.name}</span>
           <p className={`text-xs ${integration.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
             {integration.connected ? "Connected" : "Not configured"}
           </p>
         </div>
       </div>
       <div>
-        {!isWorkspace && integration.connected && (
+        {isWorkspace ? (
+          <Badge variant="secondary" className="text-xs">
+            Managed by admin
+          </Badge>
+        ) : integration.connected ? (
           <Button
             variant="outline"
             size="sm"
@@ -53,8 +50,7 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
           >
             Disconnect
           </Button>
-        )}
-        {!isWorkspace && !integration.connected && (
+        ) : (
           <Button size="sm" onClick={handleConnect}>
             Connect
           </Button>
