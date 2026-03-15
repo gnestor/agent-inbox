@@ -191,6 +191,23 @@ sessionRoutes.get("/:id", async (c) => {
   })
 })
 
+sessionRoutes.patch("/:id", async (c) => {
+  const sessionId = c.req.param("id")
+  const { summary } = await c.req.json()
+
+  if (typeof summary !== "string") {
+    return c.json({ error: "summary must be a string" }, 400)
+  }
+
+  const session = sessions.getSessionRecord(sessionId)
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404)
+  }
+
+  sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
+  return c.json({ ok: true })
+})
+
 sessionRoutes.post("/:id/answer", async (c) => {
   const sessionId = c.req.param("id")
   const { answers } = await c.req.json()

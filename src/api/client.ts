@@ -195,6 +195,13 @@ export async function getSession(sessionId: string) {
   }>(`/sessions/${sessionId}`)
 }
 
+export async function updateSession(sessionId: string, body: { summary: string }) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+}
+
 export async function createSession(body: {
   prompt: string
   linkedEmailId?: string

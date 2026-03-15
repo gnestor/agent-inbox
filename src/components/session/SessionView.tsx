@@ -12,7 +12,7 @@ import {
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis } from "lucide-react"
-import { getSession, resumeSession, abortSession, answerSessionQuestion } from "@/api/client"
+import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
@@ -107,6 +107,40 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     onError: (err: any) => console.error("Failed to abort session:", err),
   })
 
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState("")
+
+  const renameMutation = useMutation({
+    mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    },
+  })
+
+  function handleStartEdit() {
+    setEditTitle(data?.session.summary || data?.session.prompt?.slice(0, 80) || displayTitle)
+    setIsEditing(true)
+  }
+
+  function handleFinishEdit() {
+    setIsEditing(false)
+    const trimmed = editTitle.trim()
+    if (trimmed && trimmed !== displayTitle) {
+      renameMutation.mutate(trimmed)
+    }
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleFinishEdit()
+    }
+    if (e.key === "Escape") {
+      setIsEditing(false)
+    }
+  }
+
   const status = statusOverride ?? data?.session.status
   const initialMessages = data?.messages ?? []
   const loading = isLoading
@@ -159,7 +193,25 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           ) : (
             <BackButton onClick={() => navigate(parentPath)} />
           )}
-          <h2 className="font-semibold text-sm truncate min-w-0">{displayTitle}</h2>
+          {isEditing ? (
+            <input
+              autoFocus
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onBlur={handleFinishEdit}
+              onKeyDown={handleEditKeyDown}
+              className="font-semibold text-sm bg-transparent border-b border-foreground/30 outline-none min-w-0 w-full"
+              maxLength={200}
+            />
+          ) : (
+            <h2
+              className="font-semibold text-sm truncate min-w-0 cursor-pointer hover:text-foreground/70"
+              onClick={handleStartEdit}
+              title="Click to rename"
+            >
+              {displayTitle}
+            </h2>
+          )}
         </>
       }
       right={
