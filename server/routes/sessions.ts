@@ -199,9 +199,16 @@ sessionRoutes.patch("/:id", async (c) => {
     return c.json({ error: "summary must be a string" }, 400)
   }
 
-  const session = sessions.getSessionRecord(sessionId)
+  let session = sessions.getSessionRecord(sessionId)
   if (!session) {
-    return c.json({ error: "Session not found" }, 404)
+    // Agent-only session (JSONL, not in DB) — import it so we can store the summary
+    const agentSession = await sessions.findAgentSession(sessionId)
+    if (!agentSession) {
+      return c.json({ error: "Session not found" }, 404)
+    }
+    await sessions.createSessionRecord(sessionId, agentSession.firstPrompt || "", {
+      triggerSource: "manual",
+    })
   }
 
   sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
