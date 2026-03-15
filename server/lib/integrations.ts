@@ -37,29 +37,37 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
   },
-  // Pinterest and QuickBooks: OAuth-capable but currently using workspace
-  // API keys. Move to user scope when per-user OAuth is configured.
   {
     id: "pinterest",
     name: "Pinterest",
     icon: "pin",
-    scope: "workspace",
-    authType: "api_key",
+    scope: "user",
+    authType: "oauth2",
     envVars: {
       credential: "PINTEREST_ACCESS_TOKEN",
       config: ["PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET", "PINTEREST_REFRESH_TOKEN"],
     },
+    authUrl: "https://www.pinterest.com/oauth/",
+    tokenUrl: "https://api.pinterest.com/v5/oauth/token",
+    scopes: ["boards:read", "pins:read"],
+    clientIdEnv: "PINTEREST_CLIENT_ID",
+    clientSecretEnv: "PINTEREST_CLIENT_SECRET",
   },
   {
     id: "quickbooks",
     name: "QuickBooks",
     icon: "receipt",
-    scope: "workspace",
-    authType: "api_key",
+    scope: "user",
+    authType: "oauth2",
     envVars: {
       credential: "QUICKBOOKS_REFRESH_TOKEN",
       config: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_ENVIRONMENT", "QUICKBOOKS_REALM_ID"],
     },
+    authUrl: "https://appcenter.intuit.com/connect/oauth2",
+    tokenUrl: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    scopes: ["com.intuit.quickbooks.accounting"],
+    clientIdEnv: "QUICKBOOKS_CLIENT_ID",
+    clientSecretEnv: "QUICKBOOKS_CLIENT_SECRET",
   },
 
   // --- Workspace-scoped (API keys, managed via CLI) ---
@@ -204,12 +212,15 @@ export function getOAuthIntegrations(): IntegrationConfig[] {
 
 /**
  * Build env var → integration mapping from the registry.
- * Used by migration script to auto-detect credentials.
+ * Only includes workspace-scoped integrations (user-scoped OAuth
+ * credentials are managed per-user, not migrated from .env).
  */
 export function buildEnvToIntegrationMap(): Record<string, string> {
   const map: Record<string, string> = {}
   for (const integration of INTEGRATIONS) {
-    map[integration.envVars.credential] = integration.id
+    if (integration.scope === "workspace") {
+      map[integration.envVars.credential] = integration.id
+    }
   }
   return map
 }
