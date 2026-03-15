@@ -54,12 +54,18 @@ sessionRoutes.get("/", async (c) => {
     return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
   })
 
-  const currentProject = sessions.projectLabel(sessions.getWorkspacePath())
+  // Match sessions from both the git repo name (e.g., "hammies-agent") and
+  // the directory basename (e.g., "agent") to handle workspace path changes
+  const workspaceName = sessions.getWorkspaceName()
+  const dirName = sessions.projectLabel(sessions.getWorkspacePath())
+  const currentProject = workspaceName || dirName
 
   // Merge: DB sessions take priority, add any agent sessions not in DB
   // Default to current workspace project; explicit project filter overrides
   const dbIds = new Set(dbSessions.map((s) => s.id))
-  const projectsFilter = project ? project.split(",") : [currentProject]
+  const defaultProjects = new Set([currentProject, dirName])
+  if (workspaceName) defaultProjects.add(workspaceName)
+  const projectsFilter = project ? project.split(",") : [...defaultProjects]
   let merged = [
     ...dbSessions.map((s) => ({
       id: s.id as string,
