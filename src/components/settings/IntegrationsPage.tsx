@@ -32,7 +32,7 @@ export function IntegrationsPage() {
   const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace") || []
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 p-6">
+    <div className="mx-auto max-w-2xl space-y-8 p-6 overflow-y-auto h-full">
       <div>
         <h1 className="text-2xl font-bold">Integrations</h1>
         <p className="text-muted-foreground mt-1">
@@ -54,7 +54,7 @@ export function IntegrationsPage() {
 
       {userIntegrations.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Your Accounts</h2>
+          <h2 className="text-lg font-semibold">User</h2>
           <p className="text-sm text-muted-foreground">
             Connect your personal accounts. Only you can access these credentials.
           </p>

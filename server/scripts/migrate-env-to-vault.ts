@@ -1,23 +1,50 @@
 // server/scripts/migrate-env-to-vault.ts
 //
-// One-time migration: reads existing workspace .env credentials and stores them
-// as workspace-scoped credentials in the vault.
+// Migrate workspace .env credentials into the encrypted vault.
 //
-// Usage: tsx server/scripts/migrate-env-to-vault.ts <workspace-path>
-// Example: tsx server/scripts/migrate-env-to-vault.ts ~/Github/hammies/hammies-agent
+// Usage:
+//   tsx server/scripts/migrate-env-to-vault.ts <workspace-path>
+//   tsx server/scripts/migrate-env-to-vault.ts <workspace-path> --air=AIR_API_KEY --custom=MY_TOKEN
+//
+// Without explicit mappings, auto-detects credentials from the integration
+// registry (envVars.credential for each integration).
+//
+// With explicit mappings (--integration=ENV_VAR), only those are migrated.
+// This lets you handle custom env var names without changing the registry.
 
 import { config } from "dotenv"
 import { resolve } from "path"
 import { homedir } from "os"
 import { initializeDatabase } from "../db/schema.js"
 import { storeWorkspaceCredential } from "../lib/vault.js"
+import { buildEnvToIntegrationMap } from "../lib/integrations.js"
 
 // Load inbox .env (for VAULT_SECRET)
 config({ path: resolve(import.meta.dirname, "../../.env") })
 
-const rawWorkspacePath = process.argv[2]
+// Parse args: first positional arg is workspace path, rest are --integration=ENV_VAR
+const args = process.argv.slice(2)
+const rawWorkspacePath = args.find((a) => !a.startsWith("--"))
+const explicitMappings = new Map<string, string>() // ENV_VAR → integration
+
+for (const arg of args) {
+  if (!arg.startsWith("--")) continue
+  const [key, value] = arg.slice(2).split("=")
+  if (key && value) {
+    // --air=AIR_API_KEY → integration "air" uses env var "AIR_API_KEY"
+    explicitMappings.set(value, key)
+  }
+}
+
 if (!rawWorkspacePath) {
-  console.error("Usage: tsx server/scripts/migrate-env-to-vault.ts <workspace-path>")
+  console.error(`Usage: tsx server/scripts/migrate-env-to-vault.ts <workspace-path> [--integration=ENV_VAR ...]
+
+Examples:
+  tsx server/scripts/migrate-env-to-vault.ts ~/Github/hammies/packages/agent
+  tsx server/scripts/migrate-env-to-vault.ts ./packages/agent --air=AIR_API_KEY --custom=MY_TOKEN
+
+Without --flags, auto-detects credentials from the integration registry.
+With --flags, only the specified mappings are migrated.`)
   process.exit(1)
 }
 
@@ -32,45 +59,20 @@ if (workspaceEnv.error) {
   console.error(`Failed to load .env from ${workspacePath}: ${workspaceEnv.error.message}`)
   process.exit(1)
 }
-const creds = workspaceEnv.parsed || {}
+const envVars = workspaceEnv.parsed || {}
 
 initializeDatabase()
 
-// Map known env vars to integration name (all workspace-scoped).
-// Multiple env vars can map to the same integration — each is stored
-// as a separate credential keyed by the env var name.
-const ENV_TO_INTEGRATION: Record<string, string> = {
-  // Core integrations
-  NOTION_API_TOKEN: "notion",
-  SLACK_BOT_TOKEN: "slack",
-  GITHUB_TOKEN: "github",
-  AIR_API_KEY: "air",
-  // Shopify
-  SHOPIFY_API_TOKEN: "shopify",
-  SHOPIFY_ACCESS_TOKEN: "shopify",
-  // Google (workspace-level refresh token for Gmail/Ads/etc.)
-  GOOGLE_REFRESH_TOKEN: "google",
-  // Gorgias
-  GORGIAS_API_TOKEN: "gorgias",
-  // E-commerce / Fulfillment
-  HAPPY_RETURNS_API_KEY: "happy-returns",
-  SHIPBOB_API_TOKEN: "shipbob",
-  SHIPPO_API_TOKEN: "shippo",
-  // Ads / Social
-  FACEBOOK_ACCESS_TOKEN: "facebook",
-  INSTAGRAM_ACCESS_TOKEN: "instagram",
-  META_ACCESS_TOKEN: "meta",
-  PINTEREST_ACCESS_TOKEN: "pinterest",
-  KLAVIYO_PRIVATE_KEY: "klaviyo",
-  // Analytics
-  OBSERVABLE_API_TOKEN: "observable",
-}
+// Build the mapping: ENV_VAR → integration name
+const envToIntegration: Map<string, string> = explicitMappings.size > 0
+  ? explicitMappings
+  : new Map(Object.entries(buildEnvToIntegrationMap()))
 
 const workspaceName = workspacePath.split("/").pop() || workspacePath
 
 let count = 0
-for (const [envKey, value] of Object.entries(creds)) {
-  const integration = ENV_TO_INTEGRATION[envKey]
+for (const [envKey, value] of Object.entries(envVars)) {
+  const integration = envToIntegration.get(envKey)
   if (!integration || !value) continue
 
   storeWorkspaceCredential(workspaceName, integration, value)
@@ -78,4 +80,11 @@ for (const [envKey, value] of Object.entries(creds)) {
   count++
 }
 
-console.log(`\nDone. Migrated ${count} credential${count === 1 ? "" : "s"}.`)
+if (count === 0) {
+  console.log("\nNo matching credentials found in .env")
+  if (explicitMappings.size === 0) {
+    console.log("Tip: use --integration=ENV_VAR to specify custom mappings")
+  }
+} else {
+  console.log(`\nDone. Migrated ${count} credential${count === 1 ? "" : "s"}.`)
+}
