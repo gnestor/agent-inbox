@@ -17,7 +17,7 @@ export const connectionRoutes = new Hono()
 // In-memory OAuth state store (short-lived, keyed by random state param)
 const oauthStates = new Map<
   string,
-  { userEmail: string; integration: string; expiresAt: number }
+  { userEmail: string; integration: string; origin: string; expiresAt: number }
 >()
 
 // Clean expired states periodically
@@ -86,16 +86,23 @@ connectionRoutes.get("/connect/:integration", (c) => {
     return c.json({ error: `${config.clientIdEnv} not configured` }, 500)
   }
 
+  // Derive the frontend origin (Vite proxy strips the Origin header,
+  // so the frontend passes it as a query param)
+  const origin = c.req.query("origin")
+    || c.req.header("origin")
+    || c.req.header("referer")?.replace(/\/[^/]*$/, "")
+    || new URL(c.req.url).origin
+
   // Generate state param for CSRF protection
   const state = randomBytes(24).toString("hex")
   oauthStates.set(state, {
     userEmail: user.email,
     integration: integrationId,
+    origin,
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 min
   })
+  const redirectUri = `${origin}/api/connections/connect/${integrationId}/callback`
 
-  // Build the redirect URL
-  const redirectUri = `${c.req.header("origin") || ""}/api/connections/connect/${integrationId}/callback`
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -107,9 +114,13 @@ connectionRoutes.get("/connect/:integration", (c) => {
     params.set("scope", config.scopes.join(" "))
   }
 
-  // Notion uses a slightly different param name
+  // Provider-specific params
   if (integrationId === "notion") {
     params.set("owner", "user")
+  }
+  if (integrationId === "google") {
+    params.set("access_type", "offline")
+    params.set("prompt", "consent")
   }
 
   return c.redirect(`${config.authUrl}?${params}`)
@@ -151,7 +162,8 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
 
   const clientId = process.env[config.clientIdEnv]!
   const clientSecret = process.env[config.clientSecretEnv]!
-  const redirectUri = `${c.req.header("origin") || ""}/api/connections/connect/${integrationId}/callback`
+  // Use the origin stored during the connect step (must match exactly)
+  const redirectUri = `${oauthState.origin}/api/connections/connect/${integrationId}/callback`
 
   // Exchange code for token
   let tokenBody: URLSearchParams | string

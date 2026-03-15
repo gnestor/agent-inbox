@@ -6,6 +6,8 @@ export function useConnections() {
     queryKey: ["connections"],
     queryFn: () => getConnections(),
     select: (data) => data.integrations,
+    staleTime: 0,        // Always refetch — connection status can change externally (OAuth in new tab)
+    refetchOnMount: true,
   })
 }
 

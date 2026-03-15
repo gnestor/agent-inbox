@@ -11,8 +11,9 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
   const disconnect = useDisconnectIntegration()
 
   function handleConnect() {
-    // Navigate to OAuth flow (full-page redirect)
-    window.location.href = getConnectUrl(integration.id)
+    // Pass the browser origin so the server builds the correct redirect_uri
+    const url = getConnectUrl(integration.id) + `?origin=${encodeURIComponent(window.location.origin)}`
+    window.open(url, "_blank", "noopener")
   }
 
   function handleDisconnect() {
