@@ -201,14 +201,12 @@ sessionRoutes.patch("/:id", async (c) => {
 
   let session = sessions.getSessionRecord(sessionId)
   if (!session) {
-    // Agent-only session (JSONL, not in DB) — import it so we can store the summary
+    // Agent-only session (JSONL, not in DB) — import a minimal completed record
     const agentSession = await sessions.findAgentSession(sessionId)
     if (!agentSession) {
       return c.json({ error: "Session not found" }, 404)
     }
-    await sessions.createSessionRecord(sessionId, agentSession.firstPrompt || "", {
-      triggerSource: "manual",
-    })
+    sessions.importAgentSession(sessionId, agentSession)
   }
 
   sessions.updateSessionSummary(sessionId, summary.slice(0, 200))

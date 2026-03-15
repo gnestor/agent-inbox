@@ -138,6 +138,26 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
   }
 }
 
+/** Import an agent-only session (JSONL) into the DB as a completed record. */
+export function importAgentSession(
+  sessionId: string,
+  agentSession: { firstPrompt?: string | null; summary?: string | null; lastModified: number }
+) {
+  const db = getDb()
+  const ts = new Date(agentSession.lastModified).toISOString()
+  db.prepare(
+    `INSERT OR IGNORE INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
+     VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')`
+  ).run(
+    sessionId,
+    agentSession.firstPrompt || "",
+    (agentSession.summary || agentSession.firstPrompt || "").slice(0, 200),
+    ts,
+    ts,
+    ts,
+  )
+}
+
 export function updateSessionSummary(sessionId: string, summary: string) {
   const db = getDb()
   db.prepare("UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?")
