@@ -126,3 +126,18 @@ export function listWorkspaceCredentials(workspace: string): Array<{ integration
   return (db.prepare("SELECT integration, updated_at FROM workspace_credentials WHERE workspace = ? ORDER BY integration").all(workspace) as Array<{ integration: string; updated_at: string }>)
     .map((row) => ({ integration: row.integration, updatedAt: row.updated_at }))
 }
+
+/**
+ * Resolve a credential for a given user + integration.
+ * Priority: user-scoped > workspace-scoped.
+ */
+export function resolveCredential(
+  userEmail: string,
+  workspace: string,
+  integration: string
+): string | null {
+  const userCred = getUserCredential(userEmail, integration)
+  if (userCred) return userCred.token
+
+  return getWorkspaceCredential(workspace, integration)
+}

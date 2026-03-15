@@ -1,5 +1,7 @@
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
+import { getCookie } from "hono/cookie"
+import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
 
 export const sessionRoutes = new Hono()
@@ -11,12 +13,15 @@ sessionRoutes.post("/", async (c) => {
     return c.json({ error: "prompt is required" }, 400)
   }
 
+  const userSessionToken = getCookie(c, SESSION_COOKIE)
+
   try {
     const sessionId = await sessions.startSession(prompt, {
       linkedEmailId,
       linkedEmailThreadId,
       linkedTaskId,
       triggerSource: "manual",
+      userSessionToken,
     })
     return c.json({ sessionId })
   } catch (err: any) {
@@ -236,7 +241,8 @@ sessionRoutes.post("/:id/resume", async (c) => {
     return c.json({ error: "prompt is required" }, 400)
   }
 
-  await sessions.resumeSessionQuery(sessionId, prompt)
+  const userSessionToken = getCookie(c, SESSION_COOKIE)
+  await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken)
   return c.json({ ok: true })
 })
 

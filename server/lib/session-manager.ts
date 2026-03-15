@@ -1,6 +1,13 @@
 import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
+import type { CredentialProxy } from "./credential-proxy.js"
+
+let credentialProxy: CredentialProxy | null = null
+
+export function setCredentialProxy(proxy: CredentialProxy) {
+  credentialProxy = proxy
+}
 
 // Store active SSE clients per session
 const sseClients = new Map<string, Set<(data: string) => void>>()
@@ -45,16 +52,33 @@ function makeCanUseTool(getSessionId: () => string | null) {
   }
 }
 
-// Build env for agent, excluding ANTHROPIC_API_KEY to use Claude subscription
-function buildAgentEnv(): Record<string, string> {
+// Build env for agent, excluding sensitive keys. When the credential proxy
+// is running, route traffic through it instead of passing raw API tokens.
+function buildAgentEnv(userSessionToken?: string): Record<string, string> {
   const env: Record<string, string> = {}
-  const excluded = new Set(["ANTHROPIC_API_KEY", "CLAUDECODE"])
+
+  // Base env: inherit process env minus sensitive keys
+  const excluded = new Set([
+    "ANTHROPIC_API_KEY", "CLAUDECODE",
+    // Exclude raw API tokens — the proxy injects these
+    "NOTION_API_TOKEN", "GOOGLE_REFRESH_TOKEN", "GOOGLE_CLIENT_SECRET",
+    "SLACK_BOT_TOKEN", "SHOPIFY_ACCESS_TOKEN", "GITHUB_TOKEN",
+    "VAULT_SECRET",
+  ])
   for (const [k, v] of Object.entries(process.env)) {
     if (!excluded.has(k) && v !== undefined) {
       env[k] = v
     }
   }
-  Object.assign(env, getAgentEnv())
+
+  // If the credential proxy is running, route traffic through it
+  if (credentialProxy && userSessionToken) {
+    Object.assign(env, credentialProxy.getProxyEnv(userSessionToken))
+  } else {
+    // Fallback: pass workspace credentials directly (pre-proxy migration)
+    Object.assign(env, getAgentEnv())
+  }
+
   return env
 }
 
@@ -291,6 +315,7 @@ export async function startSession(
     linkedEmailThreadId?: string
     linkedTaskId?: string
     triggerSource?: string
+    userSessionToken?: string
   },
 ): Promise<string> {
   // Dynamic import to avoid issues at startup
@@ -310,7 +335,7 @@ export async function startSession(
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
       abortController,
-      env: buildAgentEnv(),
+      env: buildAgentEnv(options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
     },
   })
@@ -378,7 +403,7 @@ export async function startSession(
   return sessionId
 }
 
-export async function resumeSessionQuery(sessionId: string, prompt: string): Promise<void> {
+export async function resumeSessionQuery(sessionId: string, prompt: string, userSessionToken?: string): Promise<void> {
   const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
@@ -407,7 +432,7 @@ export async function resumeSessionQuery(sessionId: string, prompt: string): Pro
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
       abortController,
-      env: buildAgentEnv(),
+      env: buildAgentEnv(userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
     },
   })

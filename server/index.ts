@@ -17,7 +17,9 @@ import { pluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
-import { setWorkspacePath } from "./lib/session-manager.js"
+import { setWorkspacePath, setCredentialProxy } from "./lib/session-manager.js"
+import { createCredentialProxy } from "./lib/credential-proxy.js"
+import { resolveCredential } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
 import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
@@ -50,6 +52,21 @@ setWorkspacePath(workspacePath)
 
 // Initialize database
 initializeDatabase()
+
+// Start credential proxy (non-blocking)
+createCredentialProxy({
+  resolveToken: async (sessionToken, integration) => {
+    // Look up the user from the session token, then resolve their credential
+    const session = getSession(sessionToken)
+    if (!session) return null
+    return resolveCredential(session.user.email, workspacePath, integration)
+  },
+})
+  .then((proxy) => {
+    setCredentialProxy(proxy)
+    console.log(`Credential proxy ready on port ${proxy.port}`)
+  })
+  .catch((err) => console.error("Failed to start credential proxy:", err))
 
 // Create app
 const app = new Hono()
