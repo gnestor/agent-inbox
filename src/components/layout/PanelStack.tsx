@@ -755,9 +755,11 @@ export function PanelStack() {
   // Compute a global index: tabs use TAB_ORDER position, recent sessions use state.index.
   // Tab routes can also carry state.index to override (e.g. "All Sessions" at the end).
   const stateIndex = (location.state as { index?: number } | null)?.index
-  const currentIndex = isRecentRoute
-    ? (stateIndex ?? TAB_ORDER.length)
-    : (stateIndex ?? TAB_ORDER.indexOf(activeTab))
+  const currentIndex = isSettingsRoute
+    ? -1 // settings is "before" all tabs so navigating to any tab slides in from below
+    : isRecentRoute
+      ? (stateIndex ?? TAB_ORDER.length)
+      : (stateIndex ?? TAB_ORDER.indexOf(activeTab))
 
   const prevAnimKeyRef = useRef(animKey)
   const prevIndexRef = useRef(currentIndex)

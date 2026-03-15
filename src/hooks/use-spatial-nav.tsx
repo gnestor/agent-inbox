@@ -127,6 +127,9 @@ export function SpatialNavProvider({
   // /recent/* routes are sidebar-originated — don't update persisted tab state for them,
   // and allow tab nav to navigate away even if the derived activeTab happens to match.
   const isRecentRoute = location.pathname.startsWith("/recent/")
+  const isNonTabRoute = isRecentRoute || location.pathname.startsWith("/settings/") || location.pathname.startsWith("/plugins/")
+  const isNonTabRouteRef = useRef(isNonTabRoute)
+  isNonTabRouteRef.current = isNonTabRoute
   const isRecentRouteRef = useRef(isRecentRoute)
   isRecentRouteRef.current = isRecentRoute
 
@@ -209,7 +212,7 @@ export function SpatialNavProvider({
     (tab: TabId, options?: { state?: Record<string, unknown> }) => {
       // When currently on a sidebar-originated view, always navigate — don't treat it
       // as "already on that tab".
-      if (tab === activeTab && !isRecentRouteRef.current) return
+      if (tab === activeTab && !isNonTabRouteRef.current) return
       const url = buildUrl(tab, persistedRef.current[tab])
       navigate(url, options?.state ? { state: options.state } : undefined)
     },
