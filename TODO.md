@@ -62,6 +62,7 @@
 ## Phase 3: Workflow App (current)
 
 - [x] Session improvements (auto-naming, inline rename, attach source to session)
+- [ ] Test auto-naming end-to-end (requires ANTHROPIC_API_KEY — create session, let it complete, verify Haiku generates title)
 - [x] Multi-user auth + credential proxy (AES-256-GCM vault, HTTPS MITM proxy, OAuth flows)
 - [x] Integrations settings UI (connect/disconnect, workspace/user scoping)
 - [x] Integration registry with env var declarations (future plugin migration)
