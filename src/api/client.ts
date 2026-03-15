@@ -234,6 +234,16 @@ export async function answerSessionQuestion(sessionId: string, answers: Record<s
   })
 }
 
+export async function attachToSession(
+  sessionId: string,
+  body: { type: string; id: string; title: string; content: string },
+) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}/attach`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
 export async function getLinkedSession(threadId?: string, taskId?: string) {
   const params = new URLSearchParams()
   if (threadId) params.set("threadId", threadId)

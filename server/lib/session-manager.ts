@@ -423,6 +423,33 @@ export async function resumeSessionQuery(sessionId: string, prompt: string): Pro
   })()
 }
 
+export function attachSourceToSession(
+  sessionId: string,
+  source: { type: string; id: string; title: string; content: string },
+) {
+  const messages = getSessionMessages(sessionId)
+  const nextSequence = messages.length
+
+  const contextMessage = {
+    type: "system",
+    subtype: "attached_context",
+    sourceType: source.type,
+    sourceId: source.id,
+    title: source.title,
+    content: source.content,
+  }
+
+  appendSessionMessage(sessionId, nextSequence, "system", contextMessage)
+  broadcastToSession(sessionId, { sequence: nextSequence, message: contextMessage })
+
+  // Update linked source columns (last attachment wins — the actual context
+  // is preserved in session_messages regardless, so multiple attachments work)
+  const db = getDb()
+  db.prepare(
+    "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, updated_at = ? WHERE id = ?",
+  ).run(source.id, source.type, new Date().toISOString(), sessionId)
+}
+
 export function abortRunningSession(sessionId: string): boolean {
   const controller = runningQueries.get(sessionId)
   if (controller) {

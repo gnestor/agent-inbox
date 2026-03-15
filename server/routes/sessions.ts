@@ -235,6 +235,29 @@ sessionRoutes.post("/:id/resume", async (c) => {
   return c.json({ ok: true })
 })
 
+sessionRoutes.post("/:id/attach", async (c) => {
+  const sessionId = c.req.param("id")
+  const { type, id, title, content } = await c.req.json()
+
+  if (!type || !id || !content) {
+    return c.json({ error: "type, id, and content are required" }, 400)
+  }
+
+  const session = sessions.getSessionRecord(sessionId)
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404)
+  }
+
+  sessions.attachSourceToSession(sessionId, {
+    type,
+    id,
+    title: title || `${type} ${id}`,
+    content,
+  })
+
+  return c.json({ ok: true })
+})
+
 sessionRoutes.get("/:id/stream", async (c) => {
   const sessionId = c.req.param("id")
 
