@@ -13,41 +13,28 @@ export interface IntegrationConfig {
 }
 
 export const INTEGRATIONS: IntegrationConfig[] = [
+  // Notion, Slack, GitHub: using workspace API keys for now.
+  // OAuth config preserved for when per-user OAuth is set up.
   {
     id: "notion",
     name: "Notion",
     icon: "book-open",
-    scope: "user",
-    authType: "oauth2",
-    authUrl: "https://api.notion.com/v1/oauth/authorize",
-    tokenUrl: "https://api.notion.com/v1/oauth/token",
-    scopes: [],
-    clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
-    clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
+    scope: "workspace",
+    authType: "api_key",
   },
   {
     id: "slack",
     name: "Slack",
     icon: "message-square",
-    scope: "user",
-    authType: "oauth2",
-    authUrl: "https://slack.com/oauth/v2/authorize",
-    tokenUrl: "https://slack.com/api/oauth.v2.access",
-    scopes: ["channels:read", "channels:history", "chat:write", "users:read"],
-    clientIdEnv: "SLACK_CLIENT_ID",
-    clientSecretEnv: "SLACK_CLIENT_SECRET",
+    scope: "workspace",
+    authType: "api_key",
   },
   {
     id: "github",
     name: "GitHub",
     icon: "github",
-    scope: "user",
-    authType: "oauth2",
-    authUrl: "https://github.com/login/oauth/authorize",
-    tokenUrl: "https://github.com/login/oauth/access_token",
-    scopes: ["repo", "read:org"],
-    clientIdEnv: "GITHUB_CLIENT_ID",
-    clientSecretEnv: "GITHUB_CLIENT_SECRET",
+    scope: "workspace",
+    authType: "api_key",
   },
   {
     id: "google",
