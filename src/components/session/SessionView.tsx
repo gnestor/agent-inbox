@@ -197,6 +197,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
             <input
               autoFocus
               value={editTitle}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleFinishEdit}
               onKeyDown={handleEditKeyDown}
