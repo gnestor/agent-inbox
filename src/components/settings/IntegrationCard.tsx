@@ -11,7 +11,6 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
   const disconnect = useDisconnectIntegration()
 
   function handleConnect() {
-    // Pass the browser origin so the server builds the correct redirect_uri
     const url = getConnectUrl(integration.id) + `?origin=${encodeURIComponent(window.location.origin)}`
     window.open(url, "_blank", "noopener")
   }
@@ -27,8 +26,8 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
   return (
     <div className="flex items-center justify-between rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-          <span className="text-lg">{integrationEmoji(integration.id)}</span>
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-lg">
+          {integrationEmoji(integration.id)}
         </div>
         <div>
           <div className="flex items-center gap-2">
@@ -39,32 +38,23 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {integration.connected ? "Connected" : "Not connected"}
+          <p className={`text-xs ${integration.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+            {integration.connected ? "Connected" : "Not configured"}
           </p>
         </div>
       </div>
       <div>
-        {integration.connected ? (
-          isWorkspace ? (
-            <Badge variant="outline" className="text-green-600">
-              Active
-            </Badge>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDisconnect}
-              disabled={disconnect.isPending}
-            >
-              Disconnect
-            </Button>
-          )
-        ) : isWorkspace ? (
-          <Badge variant="outline" className="text-muted-foreground">
-            Not configured
-          </Badge>
-        ) : (
+        {!isWorkspace && integration.connected && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDisconnect}
+            disabled={disconnect.isPending}
+          >
+            Disconnect
+          </Button>
+        )}
+        {!isWorkspace && !integration.connected && (
           <Button size="sm" onClick={handleConnect}>
             Connect
           </Button>
@@ -76,12 +66,23 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
 
 function integrationEmoji(id: string): string {
   const map: Record<string, string> = {
+    google: "📧",
+    pinterest: "📌",
+    quickbooks: "📒",
     notion: "📝",
     slack: "💬",
     github: "🐙",
     shopify: "🛍️",
     air: "🖼️",
-    google: "📧",
+    gorgias: "🎧",
+    meta: "📢",
+    facebook: "👤",
+    instagram: "📸",
+    klaviyo: "📩",
+    "google-ads": "📊",
+    shippo: "📦",
+    "happy-returns": "↩️",
+    observable: "📈",
   }
   return map[id] || "🔗"
 }

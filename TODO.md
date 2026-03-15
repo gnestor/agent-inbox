@@ -59,7 +59,20 @@
   - [ ] Date
   - [ ] Query?
 
-## Phase 3: Webhooks + Automation + Polish
+## Phase 3: Workflow App (current)
+
+- [x] Session improvements (auto-naming, inline rename, attach source to session)
+- [x] Multi-user auth + credential proxy (AES-256-GCM vault, HTTPS MITM proxy, OAuth flows)
+- [x] Integrations settings UI (connect/disconnect, workspace/user scoping)
+- [x] Integration registry with env var declarations (future plugin migration)
+- [x] Generic credential migration script (`npm run migrate:credentials`)
+- [ ] Collaboration + output sharing (presence tracking, session sharing, output snapshots)
+- [ ] Rich session outputs + React artifacts (render_output tool, OutputRenderer, panel stack)
+- [ ] Source plugins (SourcePlugin interface, Gmail/Notion refactor, Slack plugin)
+- [ ] Self-improving system + retrieval (workflow-plugin scope)
+- [ ] Migrate context, workflows, skills from hammies-agent to packages/agent
+
+## Phase 4: Webhooks + Automation + Polish
 
 - [ ] Notion webhooks (page.content_updated → trigger sessions on task status change)
 - [ ] Gmail push notifications (Pub/Sub setup, users.watch, auto-triage)
