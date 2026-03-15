@@ -23,7 +23,7 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { ChevronsUpDown, LogOut } from "lucide-react"
+import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { usePlugins } from "@/hooks/use-plugins"
 import { useNavigate } from "react-router-dom"
@@ -106,6 +106,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   </>
                 )}
                 <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => navigate("/settings/integrations")}>
+                    <Settings />
+                    Integrations
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => logout()}>
                     <LogOut />
                     Log out
