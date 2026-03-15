@@ -21,6 +21,7 @@ import { SessionList } from "@/components/session/SessionList"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import { RecentPane } from "@/components/session/RecentPane"
+import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
 import { useSessions } from "@/hooks/use-sessions"
 import { isRecentSession, getSessionUrl } from "@/components/session/SidebarRecentSessions"
 
@@ -720,6 +721,14 @@ function AnimatedTabPane({
   )
 }
 
+function SettingsPane() {
+  return (
+    <div className="h-full w-full pl-[var(--sidebar-width)] py-4 pr-4">
+      <IntegrationsPage />
+    </div>
+  )
+}
+
 export function PanelStack() {
   const { activeTab, navigateToTab } = useSpatialNav()
   const location = useLocation()
@@ -729,7 +738,8 @@ export function PanelStack() {
   // /recent/* routes use "recent" as the animKey; individual item transitions are handled
   // inside RecentPane. All direction is index-based: tabs are 0-3, recent sessions are 4+.
   const isRecentRoute = location.pathname.startsWith("/recent/")
-  const animKey = isRecentRoute ? "recent" : activeTab
+  const isSettingsRoute = location.pathname.startsWith("/settings/")
+  const animKey = isSettingsRoute ? "settings" : isRecentRoute ? "recent" : activeTab
 
   // Recent sessions for mobile swipe navigation (skip fetch on desktop)
   const { sessions } = useSessions(undefined, isMobile)
@@ -853,7 +863,9 @@ export function PanelStack() {
               entryDirection={direction}
               directionRef={directionRef}
             >
-              {isRecentRoute ? (
+              {isSettingsRoute ? (
+                <SettingsPane />
+              ) : isRecentRoute ? (
                 <RecentPane />
               ) : (
                 <TabPane
