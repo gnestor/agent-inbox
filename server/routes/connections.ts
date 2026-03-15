@@ -9,7 +9,7 @@ import {
   deleteUserCredential,
   listWorkspaceCredentials,
 } from "../lib/vault.js"
-import { getWorkspacePath } from "../lib/session-manager.js"
+import { getWorkspaceName } from "../lib/session-manager.js"
 import { randomBytes } from "crypto"
 
 export const connectionRoutes = new Hono()
@@ -43,8 +43,7 @@ connectionRoutes.get("/", (c) => {
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
   const userCreds = listUserCredentials(user.email)
-  const workspaceName = getWorkspacePath().split("/").pop() || getWorkspacePath()
-  const workspaceCreds = listWorkspaceCredentials(workspaceName)
+  const workspaceCreds = listWorkspaceCredentials(getWorkspaceName())
 
   const connectedUserIntegrations = new Set(userCreds.map((cr) => cr.integration))
   const connectedWorkspaceIntegrations = new Set(workspaceCreds.map((cr) => cr.integration))

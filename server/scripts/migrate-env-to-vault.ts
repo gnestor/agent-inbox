@@ -68,7 +68,15 @@ const envToIntegration: Map<string, string> = explicitMappings.size > 0
   ? explicitMappings
   : new Map(Object.entries(buildEnvToIntegrationMap()))
 
-const workspaceName = workspacePath.split("/").pop() || workspacePath
+// Derive workspace name from git remote (repo name), fallback to dir basename
+import { execFileSync } from "child_process"
+let workspaceName: string
+try {
+  const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], { cwd: workspacePath, encoding: "utf-8" }).trim()
+  workspaceName = remoteUrl.replace(/\.git$/, "").split("/").pop() || workspacePath.split("/").pop() || workspacePath
+} catch {
+  workspaceName = workspacePath.split("/").pop() || workspacePath
+}
 
 let count = 0
 for (const [envKey, value] of Object.entries(envVars)) {

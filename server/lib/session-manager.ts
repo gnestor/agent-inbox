@@ -1,3 +1,4 @@
+import { execFileSync } from "child_process"
 import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
@@ -83,13 +84,27 @@ function buildAgentEnv(userSessionToken?: string): Record<string, string> {
 }
 
 let workspacePath = ""
+let workspaceName = ""
 
 export function setWorkspacePath(path: string) {
   workspacePath = path
+  // Derive workspace name from git remote (repo name), fallback to dir basename
+  try {
+    const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], { cwd: path, encoding: "utf-8" }).trim()
+    // https://github.com/user/repo-name.git → repo-name
+    workspaceName = remoteUrl.replace(/\.git$/, "").split("/").pop() || path.split("/").pop() || path
+  } catch {
+    workspaceName = path.split("/").pop() || path
+  }
 }
 
 export function getWorkspacePath() {
   return workspacePath
+}
+
+/** Workspace name derived from git repo name (e.g., "hammies-agent") */
+export function getWorkspaceName() {
+  return workspaceName
 }
 
 export async function createSessionRecord(
