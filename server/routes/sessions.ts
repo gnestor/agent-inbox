@@ -139,7 +139,27 @@ sessionRoutes.get("/:id", async (c) => {
   const session = sessions.getSessionRecord(sessionId)
 
   if (session) {
-    const messages = sessions.getSessionMessages(sessionId)
+    const dbMessages = sessions.getSessionMessages(sessionId)
+
+    // If the session was imported (e.g., via rename) it has a DB record but no
+    // messages stored. Fall back to the JSONL transcript in that case.
+    let messages: Array<Record<string, unknown>>
+    if (dbMessages.length > 0) {
+      messages = dbMessages.map((m) => ({
+        id: m.id,
+        sessionId: m.session_id,
+        sequence: m.sequence,
+        type: m.type,
+        message: JSON.parse(m.message as string),
+        createdAt: m.created_at,
+      }))
+    } else {
+      const agentSession = await sessions.findAgentSession(sessionId)
+      messages = agentSession
+        ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+        : []
+    }
+
     return c.json({
       session: {
         id: session.id,
@@ -149,21 +169,14 @@ sessionRoutes.get("/:id", async (c) => {
         startedAt: session.started_at,
         updatedAt: session.updated_at,
         completedAt: session.completed_at,
-        messageCount: session.message_count,
+        messageCount: session.message_count || messages.length,
         linkedEmailId: session.linked_email_id,
         linkedEmailThreadId: session.linked_email_thread_id,
         linkedTaskId: session.linked_task_id,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(sessions.getWorkspacePath()),
       },
-      messages: messages.map((m) => ({
-        id: m.id,
-        sessionId: m.session_id,
-        sequence: m.sequence,
-        type: m.type,
-        message: JSON.parse(m.message as string),
-        createdAt: m.created_at,
-      })),
+      messages,
     })
   }
 
