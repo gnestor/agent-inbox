@@ -10,6 +10,7 @@ import { Sparkles, ExternalLink, SlidersHorizontal } from "lucide-react"
 import { getCalendarItem, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
 import { useCalendarMutation } from "@/hooks/use-calendar-mutation"
+import { AttachToSessionMenu } from "@/components/session/AttachToSessionMenu"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PropertySelect, PropertyMultiSelect, PropertyDate } from "@/components/shared/PropertyEditor"
@@ -55,6 +56,16 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
       }
       right={
         <>
+          {item && (
+            <AttachToSessionMenu
+              source={{
+                type: "calendar",
+                id: itemId,
+                title: item.title,
+                content: `Calendar item: ${item.title}\nDate: ${item.properties?.["Date"]?.date?.start || item.date || "unknown"}\nStatus: ${item.status || ""}`,
+              }}
+            />
+          )}
           {item && (
             <Popover>
               <PopoverTrigger

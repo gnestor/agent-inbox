@@ -21,6 +21,7 @@ import {
   Save,
 } from "lucide-react"
 import { toast } from "sonner"
+import { AttachToSessionMenu } from "@/components/session/AttachToSessionMenu"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { useEmailActions } from "@/hooks/use-email-actions"
 import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/formatters"
@@ -156,6 +157,16 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       }
       right={
         <>
+          {thread && (
+            <AttachToSessionMenu
+              source={{
+                type: "email",
+                id: threadId,
+                title: thread.subject,
+                content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,
+              }}
+            />
+          )}
           <button
             type="button"
             onClick={actions.archive}

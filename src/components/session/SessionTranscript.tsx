@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -210,6 +210,18 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
   if (msg.type === "system") {
     if (msg.subtype === "init") return null
+    if (msg.subtype === "attached_context") {
+      if (!visibility.messages) return null
+      return (
+        <div className="flex items-start gap-2 px-4 py-2 bg-muted/50 rounded-md mx-4 my-1">
+          <Paperclip className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <span className="font-medium">{msg.title}</span>
+            <span className="text-muted-foreground ml-1">attached</span>
+          </div>
+        </div>
+      )
+    }
     if (msg.subtype === "result" || "result" in msg) {
       if (!visibility.messages) return null
       return (

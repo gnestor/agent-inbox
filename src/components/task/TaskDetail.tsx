@@ -10,6 +10,7 @@ import { Sparkles, ExternalLink, SlidersHorizontal } from "lucide-react"
 import { getTask, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
 import { useTaskMutation } from "@/hooks/use-task-mutation"
+import { AttachToSessionMenu } from "@/components/session/AttachToSessionMenu"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
@@ -62,6 +63,16 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
       }
       right={
         <>
+          {task && (
+            <AttachToSessionMenu
+              source={{
+                type: "task",
+                id: taskId,
+                title: task.title,
+                content: `Notion task: ${task.title}\nStatus: ${task.status}\n\n${task.body || ""}`,
+              }}
+            />
+          )}
           {task && (
             <Popover>
               <PopoverTrigger
