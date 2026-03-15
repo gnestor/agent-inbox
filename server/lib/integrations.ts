@@ -62,6 +62,55 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     scope: "workspace",
     authType: "api_key",
   },
+  {
+    id: "gorgias",
+    name: "Gorgias",
+    icon: "headphones",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "meta",
+    name: "Meta Ads",
+    icon: "megaphone",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "klaviyo",
+    name: "Klaviyo",
+    icon: "mail",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "pinterest",
+    name: "Pinterest",
+    icon: "pin",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "shipbob",
+    name: "ShipBob",
+    icon: "package",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "shippo",
+    name: "Shippo",
+    icon: "truck",
+    scope: "workspace",
+    authType: "api_key",
+  },
+  {
+    id: "happy-returns",
+    name: "Happy Returns",
+    icon: "undo-2",
+    scope: "workspace",
+    authType: "api_key",
+  },
 ]
 
 export function getIntegration(id: string): IntegrationConfig | undefined {

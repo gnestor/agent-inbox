@@ -36,13 +36,34 @@ const creds = workspaceEnv.parsed || {}
 
 initializeDatabase()
 
-// Map known env vars to integration name (all workspace-scoped)
+// Map known env vars to integration name (all workspace-scoped).
+// Multiple env vars can map to the same integration — each is stored
+// as a separate credential keyed by the env var name.
 const ENV_TO_INTEGRATION: Record<string, string> = {
+  // Core integrations
   NOTION_API_TOKEN: "notion",
   SLACK_BOT_TOKEN: "slack",
-  SHOPIFY_ACCESS_TOKEN: "shopify",
   GITHUB_TOKEN: "github",
   AIR_API_KEY: "air",
+  // Shopify
+  SHOPIFY_API_TOKEN: "shopify",
+  SHOPIFY_ACCESS_TOKEN: "shopify",
+  // Google (workspace-level refresh token for Gmail/Ads/etc.)
+  GOOGLE_REFRESH_TOKEN: "google",
+  // Gorgias
+  GORGIAS_API_TOKEN: "gorgias",
+  // E-commerce / Fulfillment
+  HAPPY_RETURNS_API_KEY: "happy-returns",
+  SHIPBOB_API_TOKEN: "shipbob",
+  SHIPPO_API_TOKEN: "shippo",
+  // Ads / Social
+  FACEBOOK_ACCESS_TOKEN: "facebook",
+  INSTAGRAM_ACCESS_TOKEN: "instagram",
+  META_ACCESS_TOKEN: "meta",
+  PINTEREST_ACCESS_TOKEN: "pinterest",
+  KLAVIYO_PRIVATE_KEY: "klaviyo",
+  // Analytics
+  OBSERVABLE_API_TOKEN: "observable",
 }
 
 const workspaceName = workspacePath.split("/").pop() || workspacePath
