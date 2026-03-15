@@ -32,6 +32,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // Load inbox .env (OAuth config for sign-in)
 config({ path: resolve(__dirname, "../.env") })
 
+// Validate VAULT_SECRET
+if (!process.env.VAULT_SECRET || process.env.VAULT_SECRET.length < 64) {
+  console.warn(
+    "WARNING: VAULT_SECRET not set or too short. Credential vault will not work.\n" +
+    "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+  )
+}
+
 // Parse --workspace arg
 function getWorkspacePath(): string {
   const args = process.argv.slice(2)
