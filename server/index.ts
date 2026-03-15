@@ -15,6 +15,7 @@ import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
 import { pluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
+import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy } from "./lib/session-manager.js"
@@ -95,6 +96,7 @@ app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
 app.route("/api/plugins", pluginRoutes)
 app.route("/api/panels", panelRoutes)
+app.route("/api/connections", connectionRoutes)
 
 // Error handler
 app.onError((err, c) => {
