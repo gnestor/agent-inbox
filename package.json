@@ -15,7 +15,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\" --ignore-path .gitignore",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "migrate:credentials": "tsx server/scripts/migrate-env-to-vault.ts"
+    "migrate:credentials": "tsx server/scripts/migrate-env-to-vault.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
@@ -53,6 +54,7 @@
     "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.17",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
