@@ -1,5 +1,6 @@
 import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
+import { generateSessionTitle } from "./title-generator.js"
 
 // Store active SSE clients per session
 const sseClients = new Map<string, Set<(data: string) => void>>()
@@ -85,11 +86,12 @@ export async function createSessionRecord(
     : null
 
   db.prepare(
-    `INSERT INTO sessions (id, status, prompt, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, trigger_source, metadata)
-     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, trigger_source, metadata)
+     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     sessionId,
     prompt,
+    prompt.slice(0, 80),
     now,
     now,
     options?.linkedEmailId || null,
@@ -134,6 +136,12 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, sessionId)
   }
+}
+
+export function updateSessionSummary(sessionId: string, summary: string) {
+  const db = getDb()
+  db.prepare("UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?")
+    .run(summary, new Date().toISOString(), sessionId)
 }
 
 export function getSessionRecord(sessionId: string) {
@@ -239,6 +247,22 @@ export function broadcastToSession(sessionId: string, data: unknown) {
   }
 }
 
+async function autoNameSession(sessionId: string) {
+  try {
+    const messages = getSessionMessages(sessionId)
+    if (messages.length < 2) return // Skip trivial sessions (e.g. immediate errors)
+
+    const title = await generateSessionTitle(
+      messages.map((m) => ({ type: m.type as string, message: m.message as string }))
+    )
+    if (title) {
+      updateSessionSummary(sessionId, title)
+    }
+  } catch (err) {
+    console.error("Auto-naming failed for session", sessionId, err)
+  }
+}
+
 // Session execution using Agent SDK
 export async function startSession(
   prompt: string,
@@ -304,6 +328,7 @@ export async function startSession(
 
       if (sessionId) {
         updateSessionStatus(sessionId, "complete")
+        autoNameSession(sessionId).catch(() => {})
         runningQueries.delete(sessionId)
       }
     } catch (err: any) {
@@ -384,6 +409,7 @@ export async function resumeSessionQuery(sessionId: string, prompt: string): Pro
       }
 
       updateSessionStatus(sessionId, "complete")
+      autoNameSession(sessionId).catch(() => {})
       runningQueries.delete(sessionId)
     } catch (err: any) {
       console.error("Session resume error:", err)
