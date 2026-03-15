@@ -110,6 +110,27 @@ export function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_api_cache_expires
       ON api_cache(expires_at);
+
+    CREATE TABLE IF NOT EXISTS user_credentials (
+      user_email TEXT NOT NULL REFERENCES users(email),
+      integration TEXT NOT NULL,
+      encrypted_token TEXT NOT NULL,
+      refresh_token TEXT,
+      scopes TEXT,
+      expires_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_email, integration)
+    );
+
+    CREATE TABLE IF NOT EXISTS workspace_credentials (
+      workspace TEXT NOT NULL,
+      integration TEXT NOT NULL,
+      encrypted_token TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (workspace, integration)
+    );
   `)
 
   // Migrations for existing tables
