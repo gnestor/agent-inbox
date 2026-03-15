@@ -170,7 +170,7 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
   let tokenHeaders: Record<string, string> = {}
 
   if (integrationId === "notion") {
-    // Notion uses Basic auth for token exchange
+    // Notion uses Basic auth + JSON body
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
     tokenHeaders = {
       "Authorization": `Basic ${basicAuth}`,
@@ -181,6 +181,18 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
       code,
       redirect_uri: redirectUri,
     })
+  } else if (integrationId === "pinterest") {
+    // Pinterest uses Basic auth + form-encoded body
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+    tokenHeaders = {
+      "Authorization": `Basic ${basicAuth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    }
+    tokenBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    }).toString()
   } else {
     tokenHeaders = { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }
     tokenBody = new URLSearchParams({

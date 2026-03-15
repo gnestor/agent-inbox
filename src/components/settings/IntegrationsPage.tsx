@@ -48,7 +48,7 @@ export function IntegrationsPage() {
 
       {connected && (
         <div className="rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-400">
-          Successfully connected {connected}!
+          Successfully connected {integrations?.find((i) => i.id === connected)?.name || connected}!
         </div>
       )}
 
