@@ -43,7 +43,8 @@ connectionRoutes.get("/", (c) => {
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
   const userCreds = listUserCredentials(user.email)
-  const workspaceCreds = listWorkspaceCredentials(getWorkspacePath())
+  const workspaceName = getWorkspacePath().split("/").pop() || getWorkspacePath()
+  const workspaceCreds = listWorkspaceCredentials(workspaceName)
 
   const connectedUserIntegrations = new Set(userCreds.map((cr) => cr.integration))
   const connectedWorkspaceIntegrations = new Set(workspaceCreds.map((cr) => cr.integration))
