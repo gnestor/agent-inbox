@@ -69,8 +69,18 @@ createCredentialProxy({
   })
   .catch((err) => console.error("Failed to start credential proxy:", err))
 
+// Typed Hono app bindings — Phase 3+ routes use c.get("userEmail") etc.
+type AppBindings = {
+  Variables: {
+    user: { name: string; email: string; picture?: string }
+    userEmail: string
+    userName: string
+    sessionToken: string
+  }
+}
+
 // Create app
-const app = new Hono()
+const app = new Hono<AppBindings>()
 app.use("*", cors())
 app.use("*", logger())
 
@@ -79,12 +89,16 @@ app.route("/api/auth", authRoutes)
 
 app.get("/api/health", (c) => c.json({ status: "ok", workspace: workspacePath }))
 
-// Auth middleware — protect all other /api routes
+// Auth middleware — protect all other /api routes and set user context
 app.use("/api/*", async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE)
-  if (!token || !getSession(token)) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
+  if (!token) return c.json({ error: "Unauthorized" }, 401)
+  const session = getSession(token)
+  if (!session) return c.json({ error: "Unauthorized" }, 401)
+  c.set("user", session.user)
+  c.set("userEmail", session.user.email)
+  c.set("userName", session.user.name)
+  c.set("sessionToken", token)
   await next()
 })
 
