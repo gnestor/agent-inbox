@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useDeferredValue } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   DropdownMenu,
@@ -36,8 +36,10 @@ export function SessionActionMenu({
 }: SessionActionMenuProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const deferredSearch = useDeferredValue(search)
   const navigate = useNavigate()
-  const { sessions } = useSessions(undefined, open)
+  const filters = deferredSearch ? { q: deferredSearch } : undefined
+  const { sessions } = useSessions(filters, open)
   const attachMutation = useAttachToSession()
 
   if (hidden) return null
@@ -48,16 +50,7 @@ export function SessionActionMenu({
     setSearch("")
   }
 
-  const filteredSessions = useMemo(() => {
-    const q = search.toLowerCase()
-    const filtered = q
-      ? sessions.filter((s) => {
-          const title = s.summary || s.prompt || ""
-          return title.toLowerCase().includes(q)
-        })
-      : sessions
-    return filtered.slice(0, 10)
-  }, [sessions, search])
+  const recentSessions = sessions.slice(0, 10)
 
   return (
     <DropdownMenu
@@ -107,12 +100,12 @@ export function SessionActionMenu({
             </div>
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {filteredSessions.length === 0 && (
+            {recentSessions.length === 0 && (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
                 {search ? "No matching sessions" : "No sessions"}
               </div>
             )}
-            {filteredSessions.map((session) => (
+            {recentSessions.map((session) => (
               <DropdownMenuItem
                 key={session.id}
                 onSelect={() => handleAttach(session.id)}
