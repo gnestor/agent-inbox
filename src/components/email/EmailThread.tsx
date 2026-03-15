@@ -10,7 +10,6 @@ import {
   AccordionContent,
 } from "@hammies/frontend/components/ui"
 import {
-  Sparkles,
   ExternalLink,
   Archive,
   Trash2,
@@ -21,7 +20,7 @@ import {
   Save,
 } from "lucide-react"
 import { toast } from "sonner"
-import { AttachToSessionMenu } from "@/components/session/AttachToSessionMenu"
+import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { useEmailActions } from "@/hooks/use-email-actions"
 import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/formatters"
@@ -157,16 +156,6 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       }
       right={
         <>
-          {thread && (
-            <AttachToSessionMenu
-              source={{
-                type: "email",
-                id: threadId,
-                title: thread.subject,
-                content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,
-              }}
-            />
-          )}
           <button
             type="button"
             onClick={actions.archive}
@@ -208,21 +197,19 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           >
             <ExternalLink className="h-4 w-4" />
           </a>
-          {!sessionOpen && (
-            <button
-              type="button"
-              onClick={() =>
-                navigate(
-                  linkedSession
-                    ? `/emails/${threadId}/session/${linkedSession.id}`
-                    : `/emails/${threadId}/session/new`,
-                )
-              }
-              className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSession ? "text-chart-4" : "text-muted-foreground"}`}
-              title={linkedSession ? "Open Session" : "Start Session"}
-            >
-              <Sparkles className="h-4 w-4" />
-            </button>
+          {thread && (
+            <SessionActionMenu
+              source={{
+                type: "email",
+                id: threadId,
+                title: thread.subject,
+                content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,
+              }}
+              newSessionPath={`/emails/${threadId}/session/new`}
+              linkedSessionPath={linkedSession ? `/emails/${threadId}/session/${linkedSession.id}` : undefined}
+              hasLinkedSession={!!linkedSession}
+              hidden={sessionOpen}
+            />
           )}
         </>
       }

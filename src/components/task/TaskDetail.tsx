@@ -6,11 +6,11 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@hammies/frontend/components/ui"
-import { Sparkles, ExternalLink, SlidersHorizontal } from "lucide-react"
+import { ExternalLink, SlidersHorizontal } from "lucide-react"
 import { getTask, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
 import { useTaskMutation } from "@/hooks/use-task-mutation"
-import { AttachToSessionMenu } from "@/components/session/AttachToSessionMenu"
+import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
@@ -63,16 +63,6 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
       }
       right={
         <>
-          {task && (
-            <AttachToSessionMenu
-              source={{
-                type: "task",
-                id: taskId,
-                title: task.title,
-                content: `Notion task: ${task.title}\nStatus: ${task.status}\n\n${task.body || ""}`,
-              }}
-            />
-          )}
           {task && (
             <Popover>
               <PopoverTrigger
@@ -139,21 +129,19 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
-          {!sessionOpen && (
-            <button
-              type="button"
-              onClick={() =>
-                navigate(
-                  linkedSession
-                    ? `/tasks/${taskId}/session/${linkedSession.id}`
-                    : `/tasks/${taskId}/session/new`,
-                )
-              }
-              className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSession ? "text-chart-4" : "text-muted-foreground"}`}
-              title={linkedSession ? "Open Session" : "Start Session"}
-            >
-              <Sparkles className="h-4 w-4" />
-            </button>
+          {task && (
+            <SessionActionMenu
+              source={{
+                type: "task",
+                id: taskId,
+                title: task.title,
+                content: `Notion task: ${task.title}\nStatus: ${task.status}\n\n${task.body || ""}`,
+              }}
+              newSessionPath={`/tasks/${taskId}/session/new`}
+              linkedSessionPath={linkedSession ? `/tasks/${taskId}/session/${linkedSession.id}` : undefined}
+              hasLinkedSession={!!linkedSession}
+              hidden={sessionOpen}
+            />
           )}
         </>
       }

@@ -1,63 +1,133 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@hammies/frontend/components/ui"
-import { Plus } from "lucide-react"
+import { Sparkles, Search } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { useAttachToSession } from "@/hooks/use-session-mutation"
 import { truncate } from "@/lib/formatters"
 
-interface AttachToSessionMenuProps {
+interface SessionActionMenuProps {
+  /** Source context to attach when selecting an existing session */
   source: { type: string; id: string; title: string; content: string }
+  /** Path to navigate to when creating a new session */
+  newSessionPath: string
+  /** Path to navigate to when opening linked session */
+  linkedSessionPath?: string
+  /** Whether a linked session already exists */
+  hasLinkedSession?: boolean
+  /** Whether the session panel is already open (hides the button) */
+  hidden?: boolean
 }
 
-export function AttachToSessionMenu({ source }: AttachToSessionMenuProps) {
+export function SessionActionMenu({
+  source,
+  newSessionPath,
+  linkedSessionPath,
+  hasLinkedSession,
+  hidden,
+}: SessionActionMenuProps) {
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const navigate = useNavigate()
   const { sessions } = useSessions(undefined, open)
   const attachMutation = useAttachToSession()
 
-  function handleSelect(sessionId: string) {
+  if (hidden) return null
+
+  function handleAttach(sessionId: string) {
     attachMutation.mutate({ sessionId, source })
     setOpen(false)
+    setSearch("")
   }
 
-  const recentSessions = sessions.slice(0, 10)
+  const filteredSessions = useMemo(() => {
+    const q = search.toLowerCase()
+    const filtered = q
+      ? sessions.filter((s) => {
+          const title = s.summary || s.prompt || ""
+          return title.toLowerCase().includes(q)
+        })
+      : sessions
+    return filtered.slice(0, 10)
+  }, [sessions, search])
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v)
+        if (!v) setSearch("")
+      }}
+    >
       <DropdownMenuTrigger
         render={
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasLinkedSession ? "text-chart-4" : "text-muted-foreground"}`}
+            title="Session actions"
           />
         }
       >
-        <Plus className="h-3 w-3" />
-        Add to session
+        <Sparkles className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel>Add to session</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {recentSessions.length === 0 && (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">No sessions</div>
-        )}
-        {recentSessions.map((session) => (
+        <DropdownMenuGroup>
           <DropdownMenuItem
-            key={session.id}
-            onSelect={() => handleSelect(session.id)}
+            onSelect={() => {
+              setOpen(false)
+              navigate(linkedSessionPath || newSessionPath)
+            }}
           >
-            <span className="truncate">
-              {session.summary || truncate(session.prompt, 50)}
-            </span>
+            <Sparkles className="h-4 w-4 mr-2" />
+            {hasLinkedSession ? "Open session" : "New session"}
           </DropdownMenuItem>
-        ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Add to existing session</DropdownMenuLabel>
+          <div className="px-2 pb-1.5">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
+              <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search sessions..."
+                className="text-sm bg-transparent outline-none w-full placeholder:text-muted-foreground"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filteredSessions.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                {search ? "No matching sessions" : "No sessions"}
+              </div>
+            )}
+            {filteredSessions.map((session) => (
+              <DropdownMenuItem
+                key={session.id}
+                onSelect={() => handleAttach(session.id)}
+              >
+                <span className="truncate">
+                  {session.summary || truncate(session.prompt, 50)}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
+
+// Re-export for backwards compat
+export { SessionActionMenu as AttachToSessionMenu }
