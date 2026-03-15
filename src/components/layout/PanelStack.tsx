@@ -723,8 +723,10 @@ function AnimatedTabPane({
 
 function SettingsPane() {
   return (
-    <div className="h-full w-full pl-[var(--sidebar-width)] py-4 pr-4">
-      <IntegrationsPage />
+    <div className="flex h-full pl-[var(--sidebar-width)] py-4 pr-4">
+      <div className={PANEL_CARD}>
+        <IntegrationsPage />
+      </div>
     </div>
   )
 }
