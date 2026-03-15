@@ -311,6 +311,26 @@ export async function mutatePluginItem(
   })
 }
 
+// Connections
+
+export async function getConnections() {
+  return request<{ integrations: import("@/types").Integration[] }>(`/connections`)
+}
+
+export async function disconnectIntegration(integration: string) {
+  return request<{ ok: boolean }>(`/connections/${integration}`, {
+    method: "DELETE",
+  })
+}
+
+/**
+ * Get the OAuth connect URL for an integration.
+ * Returns the URL to redirect to (browser navigation, not fetch).
+ */
+export function getConnectUrl(integration: string): string {
+  return `${BASE}/connections/connect/${integration}`
+}
+
 // Preferences
 
 export async function getPreferences() {

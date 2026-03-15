@@ -193,6 +193,17 @@ export interface EmailTaskLink {
   createdAt: string
 }
 
+// Integration types
+
+export interface Integration {
+  id: string
+  name: string
+  icon: string
+  scope: "user" | "workspace"
+  authType: "oauth2" | "api_key"
+  connected: boolean
+}
+
 // Filter types
 
 export interface EmailFilters {
