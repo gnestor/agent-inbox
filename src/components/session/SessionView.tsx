@@ -15,7 +15,7 @@ import { Send, Square, Loader2, X, Ellipsis } from "lucide-react"
 import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
-import { useSpatialNav, buildUrl } from "@/hooks/use-spatial-nav"
+import { useNavigation } from "@/hooks/use-navigation"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
 import type { TranscriptVisibility } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
@@ -32,18 +32,17 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const qc = useQueryClient()
-  const { activeTab, persistedState } = useSpatialNav()
+  const { activeTab, getSelectedItemId } = useNavigation()
   // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
   const pathParts = location.pathname.split("/").filter(Boolean)
-  const parentFromUrl =
-    pathParts.length >= 4 && pathParts[2] === "session"
-      ? `/${pathParts[0]}/${decodeURIComponent(pathParts[1])}`
-      : null
+  const selectedId = getSelectedItemId()
   const parentPath =
     activeTab === "sessions"
       ? "/sessions"
-      : (parentFromUrl ?? buildUrl(activeTab, { selectedId: persistedState[activeTab].selectedId }))
+      : selectedId
+        ? `/${activeTab}/${encodeURIComponent(selectedId)}`
+        : `/${activeTab}`
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
