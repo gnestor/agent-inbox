@@ -95,11 +95,11 @@
   font-weight: 600;
 }
 .rich-text-bubble-menu button:hover {
-  background: var(--accent);
+  background: var(--secondary);
   color: var(--foreground);
 }
 .rich-text-bubble-menu button.is-active {
-  background: var(--accent);
+  background: var(--secondary);
   color: var(--foreground);
 }
 .rich-text-bubble-menu .separator {

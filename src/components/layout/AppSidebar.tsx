@@ -135,7 +135,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenuButton
                       isActive={isActive}
                       tooltip={item.title}
-                      className={cn(isActive && "bg-primary text-primary-foreground font-medium")}
+                      className={cn(
+                        isActive
+                          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
+                          : "hover:bg-secondary hover:text-foreground",
+                      )}
                       onClick={() => {
                         switchTab(item.tab)
                         if (isMobile) setOpenMobile(false)
@@ -162,7 +166,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={plugin.name}
-                        className={cn(isActive && "bg-primary text-primary-foreground font-medium")}
+                        className={cn(
+                          isActive
+                            ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
+                            : "hover:bg-secondary hover:text-foreground",
+                        )}
                         onClick={() => {
                           switchTab(`plugin:${plugin.id}`)
                           if (isMobile) setOpenMobile(false)

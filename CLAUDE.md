@@ -89,3 +89,16 @@ Run tests: `npm run test:run` (or `npm test` for watch mode).
 - No local `src/components/ui/` — use shared package
 - Server routes return JSON, errors use Hono's HTTPException
 - Session streaming uses SSE via `/api/sessions/:id/stream`
+
+### Text sizes
+
+Use these consistently across all UI:
+
+- **Panel headers**: `text-sm font-semibold` (e.g. "Emails", "Integrations")
+- **Section headings**: `text-sm font-semibold`
+- **List item primary text** (names, titles): `text-sm font-medium`
+- **Secondary/description text**: `text-xs text-muted-foreground`
+- **Status text**: `text-xs`
+- **Body content** (email bodies, session output): `text-sm`
+
+Never use `text-base` or `text-lg` in panel UI — keep everything compact with `text-sm`/`text-xs`.

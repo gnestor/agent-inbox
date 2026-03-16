@@ -110,9 +110,9 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
   const [prompt, setPrompt] = useState(savedDraft ?? "")
 
-  // If there's a saved draft, skip the "Loading..." state — show it immediately
+  // If there's a saved draft or no linked item, skip the "Loading..." state
   const hasSavedDraft = useRef(!!savedDraft)
-  const [ready, setReady] = useState(!!savedDraft)
+  const [ready, setReady] = useState(!!savedDraft || (!threadId && !taskId))
 
   // Persist draft on every change
   useEffect(() => {
@@ -193,7 +193,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
           !isMobile ? (
             <button
               type="button"
-              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
               onClick={handleClose}
             >
               <X className="h-4 w-4" />
@@ -216,14 +216,14 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
                   <button
                     type="button"
                     onClick={() => setPrompt(t.content)}
-                    className="flex-1 text-left text-sm px-2 py-1.5 rounded-md hover:bg-accent truncate"
+                    className="flex-1 text-left text-sm px-2 py-1.5 rounded-md hover:bg-secondary truncate"
                   >
                     {t.name}
                   </button>
                   <button
                     type="button"
                     onClick={() => setTemplates(templates.filter((_, j) => j !== i))}
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

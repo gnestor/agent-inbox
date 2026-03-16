@@ -126,7 +126,7 @@ export function SessionList({
                 render={
                   <button
                     type="button"
-                    className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+                    className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
                     title="Filters"
                   />
                 }
@@ -155,7 +155,7 @@ export function SessionList({
                 render={
                   <button
                     type="button"
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
                   />
                 }
               >

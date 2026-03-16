@@ -51,7 +51,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
       left={
         <>
           <BackButton onClick={() => deselectItem()} />
-          <h2 className="font-semibold text-sm truncate">{title}</h2>
+          <h2 className="font-semibold text-sm truncate">{title ?? item?.title}</h2>
         </>
       }
       right={
@@ -62,7 +62,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
                 render={
                   <button
                     type="button"
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
                     title="Properties"
                   />
                 }
@@ -109,7 +109,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
               title="Open in Notion"
             >
               <ExternalLink className="h-4 w-4" />

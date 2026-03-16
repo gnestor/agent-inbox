@@ -59,7 +59,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
       left={
         <>
           {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => deselectItem()} />}
-          <h2 className="font-semibold text-sm truncate">{title}</h2>
+          <h2 className="font-semibold text-sm truncate">{title ?? task?.title}</h2>
         </>
       }
       right={
@@ -70,7 +70,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                 render={
                   <button
                     type="button"
-                    className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
                     title="Properties"
                   />
                 }
@@ -124,7 +124,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
               href={task.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
               title="Open in Notion"
             >
               <ExternalLink className="h-4 w-4" />

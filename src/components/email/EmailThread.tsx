@@ -152,7 +152,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       left={
         <>
           {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => deselectItem()} />}
-          <h2 className="font-semibold text-sm truncate">{title}</h2>
+          <h2 className="font-semibold text-sm truncate">{title ?? thread?.subject}</h2>
         </>
       }
       right={
@@ -160,7 +160,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           <button
             type="button"
             onClick={actions.archive}
-            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
             title="Archive"
           >
             <Archive className="h-4 w-4" />
@@ -168,7 +168,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           <button
             type="button"
             onClick={actions.trash}
-            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
             title="Delete"
           >
             <Trash2 className="h-4 w-4" />
@@ -176,7 +176,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           <button
             type="button"
             onClick={actions.toggleStar}
-            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${actions.isStarred ? "text-yellow-500" : "text-muted-foreground"}`}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${actions.isStarred ? "text-yellow-500" : "text-muted-foreground"}`}
             title={actions.isStarred ? "Unstar" : "Star"}
           >
             <Star className="h-4 w-4" fill={actions.isStarred ? "currentColor" : "none"} />
@@ -184,7 +184,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           <button
             type="button"
             onClick={actions.toggleImportant}
-            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${actions.isImportant ? "text-yellow-500" : "text-muted-foreground"}`}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${actions.isImportant ? "text-yellow-500" : "text-muted-foreground"}`}
             title={actions.isImportant ? "Mark not important" : "Mark important"}
           >
             <Milestone className="h-4 w-4" fill={actions.isImportant ? "currentColor" : "none"} />
@@ -193,7 +193,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
             href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
             title="Open in Gmail"
           >
             <ExternalLink className="h-4 w-4" />
@@ -247,7 +247,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
             <div key={message.id} data-message-id={message.id} className="border-b">
               <Accordion defaultValue={isLast ? [`msg-${message.id}`] : []}>
                 <AccordionItem value={`msg-${message.id}`} className="border-0">
-                  <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50">
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-secondary">
                     <div className="flex items-center justify-between w-full gap-2 min-w-0">
                       <span className="text-sm font-medium truncate">
                         {formatEmailAddress(message.from)}
@@ -270,7 +270,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
         <div className="border-b">
           <Accordion key={threadId} defaultValue={draftBody || gmailDraft ? ["draft-reply"] : []}>
             <AccordionItem value="draft-reply" className="border-0">
-              <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50">
+              <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-secondary">
                 <div className="flex items-center gap-2 w-full min-w-0">
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground truncate">

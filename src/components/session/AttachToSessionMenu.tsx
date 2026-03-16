@@ -58,7 +58,7 @@ export function SessionActionMenu({
         render={
           <button
             type="button"
-            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSessionId ? "text-chart-4" : "text-muted-foreground"}`}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${linkedSessionId ? "text-chart-4" : "text-muted-foreground"}`}
             title="Session actions"
           />
         }

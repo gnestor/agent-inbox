@@ -62,7 +62,7 @@ export const SlashCommandMenu = forwardRef<
           key={item.title}
           type="button"
           className={`flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left transition-colors ${
-            i === selectedIndex ? "bg-accent text-foreground" : "text-foreground hover:bg-accent/50"
+            i === selectedIndex ? "bg-accent text-foreground" : "text-foreground hover:bg-secondary"
           }`}
           onMouseEnter={() => setSelectedIndex(i)}
           onClick={() => command(item)}

@@ -232,7 +232,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               render={
                 <button
                   type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
                 />
               }
             >
@@ -265,7 +265,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           {!isFromSidebar && (
             <button
               type="button"
-              className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
               onClick={handleBack}
             >
               <X className="h-4 w-4" />

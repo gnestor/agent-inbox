@@ -67,7 +67,7 @@ function MessageRow({ item }: { item: PluginItem }) {
   const data = item as Record<string, unknown>
   const replyCount = Number(data.replyCount ?? 0)
   return (
-    <div className="px-4 py-3 border-b last:border-0 hover:bg-accent/30">
+    <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
       <div className="flex items-baseline gap-2 mb-0.5">
         <span className="font-medium text-sm">
           {String(data.userName ?? data.userId ?? "Unknown")}

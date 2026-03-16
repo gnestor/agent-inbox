@@ -15,7 +15,7 @@ export function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
-      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
+      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-secondary text-muted-foreground"
       onClick={onClick}
     >
       <ChevronLeft className="h-5 w-5" />
@@ -30,7 +30,7 @@ export function SidebarButton() {
   return (
     <button
       type="button"
-      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-accent text-muted-foreground"
+      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-secondary text-muted-foreground"
       onClick={() => setOpenMobile(true)}
     >
       <PanelLeft className="h-5 w-5" />

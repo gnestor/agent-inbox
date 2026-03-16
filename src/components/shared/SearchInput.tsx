@@ -20,7 +20,7 @@ export function SearchInput({ value, onChange, placeholder = "Search..." }: Sear
           <button
             type="button"
             onClick={() => onChange("")}
-            className="shrink-0 p-1 rounded hover:bg-accent"
+            className="shrink-0 p-1 rounded hover:bg-secondary"
           >
             <X className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
