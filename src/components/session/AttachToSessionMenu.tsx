@@ -74,7 +74,7 @@ export function SessionActionMenu({
       <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuGroup>
           <DropdownMenuItem
-            onSelect={() => {
+            onClick={() => {
               setOpen(false)
               navigate(linkedSessionPath || newSessionPath)
             }}
