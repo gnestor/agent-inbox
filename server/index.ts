@@ -48,8 +48,8 @@ function getWorkspacePath(): string {
     const raw = args[wsIndex + 1]
     return raw.startsWith("~") ? raw.replace("~", homedir()) : resolve(raw)
   }
-  // Default workspace
-  return resolve(homedir(), "Github/hammies/hammies-agent")
+  // Default workspace: packages/agent in the monorepo
+  return resolve(import.meta.dirname, "../../agent")
 }
 
 const workspacePath = getWorkspacePath()

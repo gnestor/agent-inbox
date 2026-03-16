@@ -15,13 +15,13 @@ Always pass `--workspace` explicitly when starting the dev server:
 
 ```bash
 # From workspace root
-npm run inbox:dev -- --workspace ~/Github/hammies/hammies-agent
+npm run inbox:dev -- --workspace ../agent
 
 # Or directly
-cd packages/inbox && npm run dev -- --workspace ~/Github/hammies/hammies-agent
+cd packages/inbox && npm run dev -- --workspace ../agent
 ```
 
-The `--workspace` arg sets the agent's working directory for new sessions AND scopes which JSONL sessions are shown by default in the Sessions view. The server defaults to `~/Github/hammies/hammies-agent` if omitted, but always specify it explicitly to avoid confusion.
+The `--workspace` arg sets the agent's working directory for new sessions AND scopes which JSONL sessions are shown by default in the Sessions view. The server defaults to `../agent` if omitted, but always specify it explicitly to avoid confusion.
 
 Server runs on port 3002, client on port 5175. Vite proxies `/api` to the server.
 
