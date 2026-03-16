@@ -25,12 +25,8 @@ import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
 import { useSessions } from "@/hooks/use-sessions"
 import { isRecentSession, getSessionUrl } from "@/components/session/SidebarRecentSessions"
 
-export const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
-export const DURATION = 0.6
-
-const ITEM_GAP = 16 // px gap between panels during list item navigation
-
-export const PANEL_CARD = "shrink-0 h-full w-[600px] bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+import { EASE, DURATION, ITEM_GAP, PANEL_CARD } from "@/lib/navigation-constants"
+export { EASE, DURATION, PANEL_CARD } // re-export for existing consumers
 
 // Shared animated slot: both entering and exiting items occupy the same grid cell
 // so the container width never collapses mid-transition.
