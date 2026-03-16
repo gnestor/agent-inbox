@@ -1,6 +1,6 @@
 import { useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { Plug, SlidersHorizontal } from "lucide-react"
 import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
 import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
@@ -95,10 +95,11 @@ function PluginListInner({
   const items = data?.items ?? []
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const rowVirtualizer = useVirtualizer({
+  const rowVirtualizer = useVirtualizerSafe({
     count: items.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 72,
+    getItemKey: (index) => items[index]?.id ?? index,
     overscan: 5,
   })
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useDeferredValue } from "react"
 import { useNavigate } from "react-router-dom"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
   PopoverTrigger,
@@ -87,10 +87,11 @@ export function SessionList({
   }, [deferredSearch, statusFilter, projectFilter])
 
   const ROW_HEIGHT = 76
-  const virtualizer = useVirtualizer({
+  const virtualizer = useVirtualizerSafe({
     count: filteredSessions.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
+    getItemKey: (index) => filteredSessions[index]?.id ?? index,
     overscan: 5,
   })
 

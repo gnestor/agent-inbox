@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
   PopoverTrigger,
@@ -84,12 +84,12 @@ export function CalendarList({
   }, [items, search])
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const virtualizer = useVirtualizer({
+  const virtualizer = useVirtualizerSafe({
     count: filteredItems.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 66,
+    getItemKey: (index) => filteredItems[index]?.id ?? index,
     overscan: 5,
-    useAnimationFrameWithResizeObserver: true,
   })
 
   useVirtualInfiniteScroll(virtualizer, loadMore, hasMore, loading || loadingMore)
