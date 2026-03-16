@@ -106,7 +106,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   </>
                 )}
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => navigate("/settings/integrations")}>
+                  <DropdownMenuItem onClick={() => {
+                    navigate("/settings/integrations")
+                    if (isMobile) setOpenMobile(false)
+                  }}>
                     <Settings />
                     Integrations
                   </DropdownMenuItem>

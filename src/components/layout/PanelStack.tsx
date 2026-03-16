@@ -721,7 +721,15 @@ function AnimatedTabPane({
   )
 }
 
-function SettingsPane() {
+function SettingsPane({ isMobile }: { isMobile: boolean }) {
+  if (isMobile) {
+    return (
+      <div className="h-full w-full bg-card overflow-hidden">
+        <IntegrationsPage />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full pl-[var(--sidebar-width)] py-4 pr-4">
       <div className={PANEL_CARD}>
@@ -868,7 +876,7 @@ export function PanelStack() {
               directionRef={directionRef}
             >
               {isSettingsRoute ? (
-                <SettingsPane />
+                <SettingsPane isMobile={isMobile} />
               ) : isRecentRoute ? (
                 <RecentPane />
               ) : (
