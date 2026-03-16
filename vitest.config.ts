@@ -12,6 +12,11 @@ export default defineConfig({
   test: {
     globals: true,
     exclude: ["**/node_modules/**", "**/dist/**", "**/*-live.test.ts", "tests/e2e/**"],
+    environmentOptions: {
+      jsdom: {
+        url: "http://localhost/",
+      },
+    },
     environmentMatchGlobs: [
       ["src/**/*.test.{ts,tsx}", "jsdom"],
       ["server/**/*.test.ts", "node"],
