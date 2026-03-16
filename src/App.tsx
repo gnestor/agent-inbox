@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { PanelStack } from "@/components/layout/PanelStack"
 import { SpatialNavProvider, getSavedPathname } from "@/hooks/use-spatial-nav"
+import { NavigationProvider } from "@/components/navigation"
 import { LiquidGlassFilter } from "@/components/layout/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { PluginView } from "@/components/plugin/PluginView"
@@ -13,21 +14,23 @@ import { PluginView } from "@/components/plugin/PluginView"
 function AuthenticatedApp() {
   const isMobile = useIsMobile()
   return (
-    <SpatialNavProvider isMobile={isMobile}>
-      <SidebarProvider>
-        <LiquidGlassFilter />
-        <AppSidebar />
-        <SidebarInset className="max-h-svh overflow-hidden">
-          <div className="flex flex-1 h-full">
-            <Routes>
-              <Route path="/" element={<Navigate to={getSavedPathname()} replace />} />
-              <Route path="/plugins/:id/*" element={<PluginView />} />
-              <Route path="/*" element={<PanelStack />} />
-            </Routes>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </SpatialNavProvider>
+    <NavigationProvider>
+      <SpatialNavProvider isMobile={isMobile}>
+        <SidebarProvider>
+          <LiquidGlassFilter />
+          <AppSidebar />
+          <SidebarInset className="max-h-svh overflow-hidden">
+            <div className="flex flex-1 h-full">
+              <Routes>
+                <Route path="/" element={<Navigate to={getSavedPathname()} replace />} />
+                <Route path="/plugins/:id/*" element={<PluginView />} />
+                <Route path="/*" element={<PanelStack />} />
+              </Routes>
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
+      </SpatialNavProvider>
+    </NavigationProvider>
   )
 }
 
