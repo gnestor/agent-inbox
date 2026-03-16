@@ -81,13 +81,22 @@ function TabContainer() {
 
   const prevTabRef = useRef(activeTab)
   const directionRef = useRef(0)
+  const [settled, setSettled] = useState(false)
 
   if (activeTab !== prevTabRef.current) {
-    const prevIdx = getTabIndex(prevTabRef.current)
-    const nextIdx = getTabIndex(activeTab)
-    directionRef.current = nextIdx > prevIdx ? 1 : -1
+    if (settled) {
+      const prevIdx = getTabIndex(prevTabRef.current)
+      const nextIdx = getTabIndex(activeTab)
+      directionRef.current = nextIdx > prevIdx ? 1 : -1
+    }
     prevTabRef.current = activeTab
   }
+
+  // Mark as settled after initial render cycle (skip animation for restored state)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setSettled(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
 
   const direction = directionRef.current
 
@@ -109,6 +118,17 @@ function TabContainer() {
         if (activeTab.startsWith("plugin:")) return <PluginView />
         return <EmailTab />
     }
+  }
+
+  // Skip animation until state has settled (prevents slide-in on page load)
+  if (!settled) {
+    return (
+      <div className="h-full w-full overflow-clip relative">
+        <div className="absolute inset-0">
+          {renderTab()}
+        </div>
+      </div>
+    )
   }
 
   return (
