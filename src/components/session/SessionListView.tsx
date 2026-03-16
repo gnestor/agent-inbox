@@ -17,6 +17,7 @@ const sessionFieldSchema: FieldDef[] = [
     id: "project",
     label: "Project",
     type: "text",
+    listRole: "hidden",
     badge: { show: "if-set" },
     filter: { filterable: true },
   },

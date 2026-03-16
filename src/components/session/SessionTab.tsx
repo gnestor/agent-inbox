@@ -31,6 +31,8 @@ export function SessionTab() {
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "session" ? (
                 <SessionView sessionId={panel.props.sessionId} />
+              ) : panel.type === "detail" && "itemId" in panel.props ? (
+                <SessionView sessionId={panel.props.itemId as string} />
               ) : (
                 <PanelContent panel={panel} />
               )}
