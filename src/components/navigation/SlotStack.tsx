@@ -1,12 +1,16 @@
 /**
  * SlotStack — unified vertical transition container.
  *
+ * Desktop: CSS transform with transition (programmatic).
+ * Mobile: native scroll with scroll-snap (touch-driven).
+ *
  * Two modes:
  * - keepAll: all items stay mounted (tabs)
  * - keepPrevious: only active + previous mounted during transition,
  *   previous unmounted after transition completes (detail panels)
  */
-import { useRef, useEffect, useState, type ReactNode } from "react"
+import { useRef, useEffect, useState, useCallback, type ReactNode } from "react"
+import { useIsMobile } from "@hammies/frontend/hooks"
 import { DURATION } from "@/lib/navigation-constants"
 
 const GAP = 16
@@ -26,9 +30,119 @@ interface SlotStackProps {
   width?: number
   /** Additional className on the outer wrapper */
   className?: string
+  /** Called when user scrolls to a different item (mobile snap) */
+  onSnapChange?: (key: string) => void
 }
 
-export function SlotStack({
+export function SlotStack(props: SlotStackProps) {
+  const isMobile = useIsMobile()
+
+  // Mobile keepAll: use scroll-snap for direct touch scrolling
+  if (isMobile && props.mode === "keepAll" && props.keys) {
+    return <ScrollSnapStack {...props} keys={props.keys} />
+  }
+
+  // Desktop (all modes) + mobile keepPrevious: use CSS transform
+  return <TransformStack {...props} />
+}
+
+// --- Scroll-snap version (mobile, keepAll) ---
+
+function ScrollSnapStack({
+  activeKey,
+  keys,
+  renderItem,
+  className = "",
+  onSnapChange,
+}: SlotStackProps & { keys: string[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const isFirstRender = useRef(true)
+  const isProgrammatic = useRef(false)
+
+  const activeIndex = keys.indexOf(activeKey)
+  const safeIndex = activeIndex >= 0 ? activeIndex : 0
+
+  // Scroll to active item when it changes programmatically (e.g., sidebar tap)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const slot = el.children[safeIndex] as HTMLElement
+    if (!slot) return
+
+    isProgrammatic.current = true
+    slot.scrollIntoView({
+      behavior: isFirstRender.current ? "instant" : "smooth",
+      block: "start",
+    })
+    isFirstRender.current = false
+
+    // Reset programmatic flag after scroll completes
+    const timer = setTimeout(() => { isProgrammatic.current = false }, DURATION * 1000 + 100)
+    return () => clearTimeout(timer)
+  }, [safeIndex])
+
+  // Detect user-initiated scroll-snap and notify parent
+  const handleScroll = useCallback(() => {
+    if (isProgrammatic.current || !onSnapChange || !scrollRef.current) return
+
+    const el = scrollRef.current
+    const scrollTop = el.scrollTop
+    const slotHeight = el.clientHeight
+
+    // Find which slot is closest to the current scroll position
+    const snappedIndex = Math.round(scrollTop / (slotHeight + GAP))
+    const clampedIndex = Math.max(0, Math.min(snappedIndex, keys.length - 1))
+    const snappedKey = keys[clampedIndex]
+
+    if (snappedKey && snappedKey !== activeKey) {
+      onSnapChange(snappedKey)
+    }
+  }, [activeKey, keys, onSnapChange])
+
+  // Debounce scroll events to detect snap completion
+  const scrollTimer = useRef<ReturnType<typeof setTimeout>>()
+  const onScroll = useCallback(() => {
+    clearTimeout(scrollTimer.current)
+    scrollTimer.current = setTimeout(handleScroll, 100)
+  }, [handleScroll])
+
+  return (
+    <div
+      ref={scrollRef}
+      className={`${className}`}
+      onScroll={onScroll}
+      style={{
+        height: "100%",
+        overflowY: "scroll",
+        scrollSnapType: "y mandatory",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {/* Hide scrollbar for webkit */}
+      <style>{`.slot-stack-scroll::-webkit-scrollbar { display: none; }`}</style>
+      {keys.map((key) => (
+        <div
+          key={key}
+          style={{
+            height: "100%",
+            flexShrink: 0,
+            scrollSnapAlign: "start",
+            scrollSnapStop: "always",
+          }}
+        >
+          {renderItem(key)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// --- CSS transform version (desktop + mobile keepPrevious) ---
+
+function TransformStack({
   activeKey,
   keys,
   renderItem,
@@ -41,15 +155,12 @@ export function SlotStack({
   const [height, setHeight] = useState(0)
   const [settled, setSettled] = useState(false)
 
-  // For keepPrevious: track the items array and which index is active
   const prevKeyRef = useRef(activeKey)
   const [items, setItems] = useState<string[]>(() => {
     if (mode === "keepAll" && keys) return keys
     return [activeKey]
   })
-  // Track the active index explicitly to avoid jump when prev is removed
   const [activeIdx, setActiveIdx] = useState(0)
-  // Disable transition when cleaning up previous item
   const [transitionEnabled, setTransitionEnabled] = useState(true)
 
   // Measure container
@@ -83,22 +194,16 @@ export function SlotStack({
 
     const prev = prevKeyRef.current
     prevKeyRef.current = activeKey
-    setTransitionEnabled(false) // snap to starting position without animation
+    setTransitionEnabled(false)
 
-    // Order items based on direction.
-    // The trick: place items in visual order, start showing the OLD item,
-    // then transition to show the NEW item.
     if (direction >= 0) {
-      // Scrolling down: [prev, active]. Start at 0 (prev), animate to 1 (active).
       setItems([prev, activeKey])
-      // Start at prev's position (0), then animate to active (1) on next frame
       setActiveIdx(0)
       requestAnimationFrame(() => {
         setTransitionEnabled(true)
         setActiveIdx(1)
       })
     } else {
-      // Scrolling up: [active, prev]. Start at 1 (prev), animate to 0 (active).
       setItems([activeKey, prev])
       setActiveIdx(1)
       requestAnimationFrame(() => {
@@ -107,12 +212,10 @@ export function SlotStack({
       })
     }
 
-    // After transition: remove prev, snap to index 0 without animation
     const timer = setTimeout(() => {
-      setTransitionEnabled(false) // disable transition for the cleanup
+      setTransitionEnabled(false)
       setItems([activeKey])
       setActiveIdx(0)
-      // Re-enable transition on next frame
       requestAnimationFrame(() => setTransitionEnabled(true))
     }, DURATION * 1000 + 50)
 

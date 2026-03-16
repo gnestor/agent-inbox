@@ -41,7 +41,7 @@ function renderTab(tabId: string) {
 }
 
 function TabContainer() {
-  const { activeTab } = useNavigation()
+  const { activeTab, switchTab } = useNavigation()
 
   return (
     <SlotStack
@@ -50,6 +50,7 @@ function TabContainer() {
       renderItem={renderTab}
       mode="keepAll"
       className="h-full w-full"
+      onSnapChange={(key) => switchTab(key as TabId)}
     />
   )
 }

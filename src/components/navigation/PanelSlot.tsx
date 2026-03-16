@@ -6,6 +6,7 @@
  * is unmounted after the transition completes to avoid memory bloat.
  */
 import { useContext } from "react"
+import { useIsMobile } from "@hammies/frontend/hooks"
 import { SlotStack } from "./SlotStack"
 import { NavigationContext } from "./NavigationProvider"
 import { DEFAULT_PANEL_WIDTH } from "@/lib/navigation-constants"
@@ -19,6 +20,7 @@ interface PanelSlotProps {
 
 export function PanelSlot({ panelId, children }: PanelSlotProps) {
   const ctx = useContext(NavigationContext)
+  const isMobile = useIsMobile()
   const direction = ctx?.itemDirectionRef.current ?? 1
 
   return (
@@ -27,7 +29,8 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
       renderItem={() => children}
       mode="keepPrevious"
       direction={direction}
-      width={DEFAULT_PANEL_WIDTH}
+      width={isMobile ? undefined : DEFAULT_PANEL_WIDTH}
+      className={isMobile ? "w-full" : ""}
     />
   )
 }

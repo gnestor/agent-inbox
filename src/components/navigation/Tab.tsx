@@ -1,5 +1,6 @@
 // src/components/navigation/Tab.tsx
 import { useRef, useEffect } from "react"
+import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
 
@@ -10,6 +11,7 @@ interface TabProps {
 
 export function Tab({ id, children }: TabProps) {
   const { activeTab } = useNavigation()
+  const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const prevPanelCountRef = useRef(0)
@@ -39,23 +41,27 @@ export function Tab({ id, children }: TabProps) {
     const currentCount = el.children.length
 
     if (currentCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
-      // Scroll to rightmost panel
       const lastChild = el.lastElementChild
       if (lastChild) {
         if (isFirstRender.current) {
-          // First render — instant scroll (no animation)
           lastChild.scrollIntoView({ inline: "end", block: "nearest" })
         } else {
           lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
         }
+      }
+    } else if (currentCount < prevPanelCountRef.current) {
+      const lastChild = el.lastElementChild
+      if (lastChild) {
+        lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
       }
     }
     prevPanelCountRef.current = currentCount
     isFirstRender.current = false
   })
 
-  // Intercept horizontal wheel events on inner panels -> redirect to outer scroll
+  // Intercept horizontal wheel events on inner panels → redirect to outer scroll (desktop only)
   useEffect(() => {
+    if (isMobile) return // let browser handle touch scroll natively
     const el = scrollRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
@@ -66,12 +72,23 @@ export function Tab({ id, children }: TabProps) {
     }
     el.addEventListener("wheel", handler, { passive: false })
     return () => el.removeEventListener("wheel", handler)
-  }, [])
+  }, [isMobile])
 
   return (
     <div
       ref={scrollRef}
-      className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
+      className={
+        isMobile
+          // Mobile: full-screen panels, scroll-snap for touch swiping between panels
+          ? "flex flex-row h-full shrink-0 overflow-y-hidden overflow-x-auto"
+          // Desktop: panels with gap, sidebar offset, padding
+          : "flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
+      }
+      style={isMobile ? {
+        scrollSnapType: "x mandatory",
+        scrollbarWidth: "none",
+        WebkitOverflowScrolling: "touch",
+      } : undefined}
     >
       {children}
     </div>
