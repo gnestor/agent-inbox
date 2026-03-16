@@ -39,7 +39,7 @@ export function IntegrationsPage() {
       {isLoading ? (
         <PanelSkeleton />
       ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 max-w-2xl">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl">
           {error && (
             <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
               Connection failed: {error}
@@ -54,8 +54,8 @@ export function IntegrationsPage() {
 
           {userIntegrations.length > 0 && (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold">User</h2>
-              <p className="text-sm text-muted-foreground">
+              <h2 className="text-sm font-semibold">User</h2>
+              <p className="text-xs text-muted-foreground">
                 Connect your personal accounts. Only you can access these credentials.
               </p>
               <div className="space-y-2">
@@ -68,8 +68,8 @@ export function IntegrationsPage() {
 
           {workspaceIntegrations.length > 0 && (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold">Workspace</h2>
-              <p className="text-sm text-muted-foreground">
+              <h2 className="text-sm font-semibold">Workspace</h2>
+              <p className="text-xs text-muted-foreground">
                 Shared service accounts managed by the workspace admin via CLI.
               </p>
               <div className="space-y-2">

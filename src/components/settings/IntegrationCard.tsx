@@ -25,14 +25,14 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
   const isWorkspace = integration.scope === "workspace"
 
   return (
-    <div className="flex items-center justify-between rounded-lg border p-4">
+    <div className="flex items-center justify-between rounded-lg border p-3">
       <div className="flex items-center gap-3">
         <IntegrationIcon
           integrationId={integration.id}
-          className="flex h-10 w-10 items-center justify-center rounded-md bg-muted"
+          className="flex h-8 w-8 items-center justify-center rounded-md bg-muted"
         />
         <div>
-          <span className="font-medium">{integration.name}</span>
+          <span className="text-sm font-medium">{integration.name}</span>
           <p className={`text-xs ${integration.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
             {integration.connected ? "Connected" : "Not configured"}
           </p>
