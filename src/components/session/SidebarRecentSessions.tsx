@@ -13,7 +13,8 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
-import { TAB_ORDER, type TabId } from "@/hooks/use-spatial-nav"
+import { TAB_ORDER } from "@/hooks/use-spatial-nav"
+import type { TabId } from "@/types/navigation"
 import type { Session } from "@/types"
 
 const ONE_DAY_MS = 86_400_000
@@ -78,10 +79,10 @@ export function markSessionRead(sessionId: string): void {
 }
 
 interface SidebarRecentSessionsProps {
-  navigateToTab: (tab: TabId, options?: { state?: Record<string, unknown> }) => void
+  switchTab: (tabId: TabId) => void
 }
 
-export function SidebarRecentSessions({ navigateToTab }: SidebarRecentSessionsProps) {
+export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
@@ -190,7 +191,7 @@ export function SidebarRecentSessions({ navigateToTab }: SidebarRecentSessionsPr
               tooltip="All Sessions"
               className={cn(!isSessionsTab && "text-muted-foreground")}
               onClick={() => {
-                navigateToTab("sessions", { state: { index: TAB_ORDER.length + recent.length } })
+                switchTab("sessions")
                 if (isMobile) setOpenMobile(false)
               }}
             >

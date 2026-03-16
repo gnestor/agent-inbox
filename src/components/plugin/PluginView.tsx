@@ -1,7 +1,7 @@
 import { useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { PANEL_CARD, EASE, DURATION } from "@/components/layout/PanelStack"
+import { PANEL_CARD, EASE, DURATION } from "@/lib/navigation-constants"
 import { PluginList } from "@/components/plugin/PluginList"
 import { PluginDetail } from "@/components/plugin/PluginDetail"
 

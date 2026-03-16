@@ -26,8 +26,8 @@ import { cn } from "@hammies/frontend/lib/utils"
 import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { usePlugins } from "@/hooks/use-plugins"
-import { useNavigate } from "react-router-dom"
-import { useSpatialNav, type TabId } from "@/hooks/use-spatial-nav"
+import { useNavigation } from "@/hooks/use-navigation"
+import type { TabId } from "@/types/navigation"
 
 const navItems: { title: string; emoji: string; tab: TabId }[] = [
   { title: "Emails", emoji: "✉️", tab: "emails" },
@@ -48,8 +48,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useUser()
-  const { navigateToTab } = useSpatialNav()
-  const navigate = useNavigate()
+  const { switchTab } = useNavigation()
   const { data: plugins } = usePlugins()
   const isRecentRoute = location.pathname.startsWith("/recent/")
 
@@ -107,7 +106,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 )}
                 <DropdownMenuGroup>
                   <DropdownMenuItem onClick={() => {
-                    navigate("/settings/integrations")
+                    switchTab("settings")
                     if (isMobile) setOpenMobile(false)
                   }}>
                     <Settings />
@@ -138,7 +137,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       tooltip={item.title}
                       className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
                       onClick={() => {
-                        navigateToTab(item.tab)
+                        switchTab(item.tab)
                         if (isMobile) setOpenMobile(false)
                       }}
                     >
@@ -165,7 +164,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         tooltip={plugin.name}
                         className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
                         onClick={() => {
-                          navigate(`/plugins/${plugin.id}`)
+                          switchTab(`plugin:${plugin.id}`)
                           if (isMobile) setOpenMobile(false)
                         }}
                       >
@@ -179,7 +178,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        <SidebarRecentSessions navigateToTab={navigateToTab} />
+        <SidebarRecentSessions switchTab={switchTab} />
       </SidebarContent>
     </Sidebar>
   )
