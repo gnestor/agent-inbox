@@ -78,7 +78,7 @@ describe("useNavigation", () => {
     act(() => result.current.openSession("sess123"))
     const panels = result.current.getPanels()
     expect(panels).toHaveLength(3)
-    expect(panels[2]).toEqual({ id: "session:sess123", type: "session", props: { sessionId: "sess123" } })
+    expect(panels[2]).toEqual({ id: "session:sess123", type: "session", props: { sessionId: "sess123", linkedItemId: "abc" } })
   })
 
   it("openSession with undefined creates new session", () => {
@@ -86,7 +86,7 @@ describe("useNavigation", () => {
     act(() => result.current.selectItem("abc"))
     act(() => result.current.openSession())
     const panels = result.current.getPanels()
-    expect(panels[2].props).toEqual({ sessionId: "new" })
+    expect(panels[2].props).toEqual({ sessionId: "new", linkedItemId: "abc" })
   })
 
   it("switchTab changes activeTab", () => {

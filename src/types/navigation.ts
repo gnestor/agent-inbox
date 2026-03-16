@@ -13,7 +13,7 @@ export const STATIC_TAB_ORDER: TabId[] = ["emails", "tasks", "calendar", "sessio
 export type PanelState =
   | { id: string; type: "list"; props: Record<string, never> }
   | { id: string; type: "detail"; props: { itemId: string } }
-  | { id: string; type: "session"; props: { sessionId: string } }
+  | { id: string; type: "session"; props: { sessionId: string; linkedItemId?: string } }
   | { id: string; type: "artifact"; props: { sessionId: string; sequence: number; outputType: string } }
   | { id: string; type: "compose"; props: { threadId: string; draftBody?: string } }
   | { id: string; type: "settings"; props: Record<string, never> }

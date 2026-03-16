@@ -1,17 +1,21 @@
 // src/hooks/use-navigation.ts
 import { useContext, useCallback, useRef } from "react"
-import { NavigationContext } from "@/components/navigation/NavigationProvider"
+import { NavigationContext, buildUrl } from "@/components/navigation/NavigationProvider"
 import type { PanelState, TabId } from "@/types/navigation"
 
 export function useNavigation() {
   const ctx = useContext(NavigationContext)
   if (!ctx) throw new Error("useNavigation must be used within NavigationProvider")
 
-  const { state, dispatch, itemDirectionRef } = ctx
+  const { state, dispatch, navigateAction, itemDirectionRef } = ctx
 
   const switchTab = useCallback(
-    (tabId: TabId) => dispatch({ type: "SWITCH_TAB", tabId }),
-    [dispatch],
+    (tabId: TabId) => {
+      dispatch({ type: "SWITCH_TAB", tabId })
+      const selectedId = state.tabs[tabId]?.selectedItemId
+      navigateAction(buildUrl(tabId, selectedId))
+    },
+    [dispatch, navigateAction, state.tabs],
   )
 
   // Track previous list index to compute direction
@@ -24,13 +28,17 @@ export function useNavigation() {
         prevListIndexRef.current = listIndex
       }
       dispatch({ type: "SELECT_ITEM", itemId, listIndex })
+      navigateAction(buildUrl(state.activeTab, itemId))
     },
-    [dispatch, itemDirectionRef],
+    [dispatch, navigateAction, state.activeTab, itemDirectionRef],
   )
 
   const deselectItem = useCallback(
-    () => dispatch({ type: "DESELECT_ITEM" }),
-    [dispatch],
+    () => {
+      dispatch({ type: "DESELECT_ITEM" })
+      navigateAction(buildUrl(state.activeTab))
+    },
+    [dispatch, navigateAction, state.activeTab],
   )
 
   const pushPanel = useCallback(

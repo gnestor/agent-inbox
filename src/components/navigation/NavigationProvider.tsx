@@ -1,9 +1,19 @@
 // src/components/navigation/NavigationProvider.tsx
-import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
+import { createContext, useCallback, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
+
+// --- URL helper ---
+
+export function buildUrl(activeTab: TabId, selectedItemId?: string): string {
+  if (activeTab === "settings") return "/settings/integrations"
+  if (activeTab.startsWith("plugin:")) return `/plugins/${activeTab.replace("plugin:", "")}`
+  return selectedItemId
+    ? `/${activeTab}/${encodeURIComponent(selectedItemId)}`
+    : `/${activeTab}`
+}
 
 // --- Actions ---
 
@@ -73,6 +83,10 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       if (idx >= 0) {
         // Truncate from this panel's position — removes it and everything after it
         tab.panels = tab.panels.slice(0, idx)
+        // If the truncation removed the detail panel, clear selectedItemId
+        if (!tab.panels.some((p) => p.type === "detail")) {
+          tab.selectedItemId = undefined
+        }
       }
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
@@ -89,7 +103,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       const sessionPanel: PanelState = {
         id: `session:${sessionId}`,
         type: "session",
-        props: { sessionId },
+        props: { sessionId, linkedItemId: tab.selectedItemId },
       }
       // Replace existing session panel or push
       const existingIdx = tab.panels.findIndex((p) => p.type === "session")
@@ -124,6 +138,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 export interface NavigationContextValue {
   state: NavigationState
   dispatch: React.Dispatch<NavAction>
+  navigateAction: (url: string) => void
   itemDirectionRef: React.RefObject<number>
 }
 
@@ -139,6 +154,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const itemDirectionRef = useRef(1)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
+  // Tracks the last URL we programmatically navigated to, so the URL→state
+  // effect can distinguish user-action navigations from browser back/forward.
+  const lastNavigatedUrl = useRef(location.pathname)
+
+  // Wrapper: sets the ref BEFORE calling navigate so the URL→state effect skips it.
+  const navigateAction = useCallback((url: string) => {
+    lastNavigatedUrl.current = url
+    navigate(url)
+  }, [navigate])
+
   // Load state from storage on mount
   useEffect(() => {
     if (initialized.current) return
@@ -151,12 +176,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }
       if (loaded) {
         dispatch({ type: "SET_STATE", state: loaded })
-        // Navigate to the restored state's active tab
         const tab = loaded.tabs[loaded.activeTab]
         const selectedId = tab?.selectedItemId
-        const url = selectedId
-          ? `/${loaded.activeTab}/${encodeURIComponent(selectedId)}`
-          : `/${loaded.activeTab}`
+        const url = buildUrl(loaded.activeTab, selectedId)
+        lastNavigatedUrl.current = url
         navigate(url, { replace: true })
       }
     })()
@@ -172,15 +195,17 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(saveTimer.current)
   }, [state])
 
-  // Sync URL → state (browser back/forward)
-  const lastSyncedUrl = useRef(location.pathname)
-  const urlDrivenChange = useRef(false) // true when state change was triggered by URL→state sync
+  // URL → state sync (browser back/forward ONLY)
+  // When the URL changes due to a user action (selectItem, deselectItem, switchTab),
+  // lastNavigatedUrl matches the new URL, so this effect skips.
+  // When the URL changes due to browser back/forward, lastNavigatedUrl won't match,
+  // so we parse the URL and dispatch the appropriate state changes.
+  // This effect NEVER calls navigate() — the browser already changed the URL.
   useEffect(() => {
     if (!initialized.current) return
-    if (location.pathname === lastSyncedUrl.current) return
-    lastSyncedUrl.current = location.pathname
+    if (location.pathname === lastNavigatedUrl.current) return
+    lastNavigatedUrl.current = location.pathname
 
-    // Derive tab and selectedId from URL
     const parts = location.pathname.split("/").filter(Boolean)
     let tabId: TabId = "emails"
     let selectedId: string | undefined
@@ -192,7 +217,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       if (parts[1]) selectedId = decodeURIComponent(parts[1])
     }
 
-    urlDrivenChange.current = true
     if (tabId !== state.activeTab) {
       dispatch({ type: "SWITCH_TAB", tabId })
     }
@@ -203,35 +227,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "DESELECT_ITEM" })
     }
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Only re-run when URL changes, NOT when state changes (that would cause a loop)
-
-  // Sync URL on activeTab / selectedItemId changes
-  useEffect(() => {
-    if (!initialized.current) return
-    const tab = state.tabs[state.activeTab]
-    const selectedId = tab?.selectedItemId
-    let targetUrl: string
-    if (state.activeTab === "settings") {
-      targetUrl = "/settings/integrations"
-    } else if (state.activeTab.startsWith("plugin:")) {
-      targetUrl = `/plugins/${state.activeTab.replace("plugin:", "")}`
-    } else {
-      targetUrl = selectedId
-        ? `/${state.activeTab}/${encodeURIComponent(selectedId)}`
-        : `/${state.activeTab}`
-    }
-    if (location.pathname !== targetUrl) {
-      lastSyncedUrl.current = targetUrl
-      // Replace for URL-driven changes (browser back/forward) to avoid loop;
-      // push for user-initiated actions (switchTab, selectItem, etc.)
-      const replace = urlDrivenChange.current
-      urlDrivenChange.current = false
-      navigate(targetUrl, { replace })
-    }
-  }, [state.activeTab, state.tabs[state.activeTab]?.selectedItemId, navigate, location.pathname])
+  // Only re-run when URL changes, NOT when state changes
 
   return (
-    <NavigationContext.Provider value={{ state, dispatch, itemDirectionRef }}>
+    <NavigationContext.Provider value={{ state, dispatch, navigateAction, itemDirectionRef }}>
       {children}
     </NavigationContext.Provider>
   )
