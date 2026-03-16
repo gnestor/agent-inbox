@@ -41,18 +41,25 @@ export function Tab({ id, children }: TabProps) {
     const currentCount = el.children.length
 
     if (currentCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
-      // Scroll to show the new (rightmost) panel
-      if (isFirstRender.current) {
-        el.scrollLeft = el.scrollWidth - el.clientWidth
-      } else {
-        el.scrollTo({ left: el.scrollWidth - el.clientWidth, behavior: "smooth" })
-      }
+      // Defer to next frame so the new panel is laid out before measuring
+      requestAnimationFrame(() => {
+        if (!scrollRef.current) return
+        const target = scrollRef.current.scrollWidth - scrollRef.current.clientWidth
+        if (isFirstRender.current) {
+          scrollRef.current.scrollLeft = target
+        } else {
+          scrollRef.current.scrollTo({ left: target, behavior: "smooth" })
+        }
+      })
     } else if (currentCount < prevPanelCountRef.current) {
-      // Scroll back when panels are removed
-      const lastChild = el.lastElementChild as HTMLElement
-      if (lastChild) {
-        el.scrollTo({ left: lastChild.offsetLeft, behavior: "smooth" })
-      }
+      requestAnimationFrame(() => {
+        const el2 = scrollRef.current
+        if (!el2) return
+        const lastChild = el2.lastElementChild as HTMLElement
+        if (lastChild) {
+          el2.scrollTo({ left: lastChild.offsetLeft, behavior: "smooth" })
+        }
+      })
     }
     prevPanelCountRef.current = currentCount
     isFirstRender.current = false
@@ -84,7 +91,6 @@ export function Tab({ id, children }: TabProps) {
           : "flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
       }
       style={isMobile ? {
-        scrollSnapType: "x mandatory",
         scrollbarWidth: "none",
         WebkitOverflowScrolling: "touch",
       } : undefined}
