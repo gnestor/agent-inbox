@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Input } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
+import { useNavigation } from "@/hooks/use-navigation"
 import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { usePreference } from "@/hooks/use-preferences"
@@ -40,10 +40,8 @@ export function NewSessionPanel({ threadId, taskId, sessionId, autoStart }: NewS
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
 
 function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
-  const navigate = useNavigate()
-  const location = useLocation()
+  const { openSession } = useNavigation()
   const qc = useQueryClient()
-  const taskTab = location.pathname.startsWith("/calendar") ? "calendar" : "tasks"
   const fired = useRef(false)
 
   const { thread } = useEmailThread(threadId)
@@ -63,8 +61,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
       }),
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
-      else if (taskId) navigate(`/${taskTab}/${taskId}/session/${sessionId}`)
+      openSession(sessionId)
     },
   })
 
@@ -92,11 +89,9 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 // ── Compose panel ────────────────────────────────────────────────────────────
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
-  const navigate = useNavigate()
-  const location = useLocation()
+  const { openSession, popPanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
-  const taskTab = location.pathname.startsWith("/calendar") ? "calendar" : "tasks"
   const [savingName, setSavingName] = useState("")
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
@@ -166,16 +161,13 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
-      if (threadId) navigate(`/emails/${threadId}/session/${sessionId}`)
-      else if (taskId) navigate(`/${taskTab}/${taskId}/session/${sessionId}`)
+      openSession(sessionId)
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })
 
-  function parentPath() {
-    if (threadId) return `/emails/${threadId}`
-    if (taskId) return `/${taskTab}/${taskId}`
-    return "/"
+  function handleClose() {
+    popPanel("session:new")
   }
 
   function handleSaveTemplate() {
@@ -193,7 +185,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       <PanelHeader
         left={
           <>
-            {isMobile && <BackButton onClick={() => navigate(parentPath())} />}
+            {isMobile && <BackButton onClick={handleClose} />}
             <h2 className="font-semibold text-sm">New Session</h2>
           </>
         }
@@ -202,7 +194,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
             <button
               type="button"
               className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-              onClick={() => navigate(parentPath())}
+              onClick={handleClose}
             >
               <X className="h-4 w-4" />
             </button>

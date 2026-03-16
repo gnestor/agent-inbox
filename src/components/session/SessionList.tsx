@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useDeferredValue } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
@@ -75,7 +75,7 @@ export function SessionList({
     Object.keys(filters).length > 0 ? filters : undefined,
     enabled,
   )
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
 
   const filteredSessions = sessions
 
@@ -218,7 +218,7 @@ export function SessionList({
                     timestamp={formatRelativeDate(session.updatedAt)}
                     badges={badges}
                     isSelected={selectedSessionId === session.id}
-                    onClick={() => navigate(`/sessions/${session.id}`)}
+                    onClick={() => selectItem(session.id, virtualRow.index)}
                   />
                 </div>
               )

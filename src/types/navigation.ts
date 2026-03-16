@@ -61,11 +61,14 @@ export function createDefaultNavigationState(): NavigationState {
   }
 }
 
-/** Get the index of a tab for animation direction. Plugin tabs come after static tabs. */
+/**
+ * Get the index of a tab for animation direction.
+ * Order: settings (0) → emails (1) → tasks (2) → calendar (3) → sessions (4) → plugins (5+)
+ */
 export function getTabIndex(tabId: TabId): number {
+  if (tabId === "settings") return 0
   const staticIdx = STATIC_TAB_ORDER.indexOf(tabId)
-  if (staticIdx >= 0) return staticIdx
-  if (tabId === "settings") return STATIC_TAB_ORDER.length
-  // Plugin tabs: hash the id to get a stable position after settings
+  if (staticIdx >= 0) return staticIdx + 1 // offset by 1 since settings is 0
+  // Plugin tabs come after all static tabs
   return STATIC_TAB_ORDER.length + 1
 }

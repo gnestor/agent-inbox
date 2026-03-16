@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import {
   Accordion,
   AccordionItem,
@@ -22,7 +22,7 @@ const ENTITY_ICONS = {
 }
 
 export function ContextPanel({ data }: ContextPanelProps) {
-  const navigate = useNavigate()
+  const { switchTab, selectItem } = useNavigation()
   const { entity, source, contextPages, relatedThreads, relatedTasks, summary } = data
   const EntityIcon = ENTITY_ICONS[entity.type] ?? User
 
@@ -48,7 +48,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
         {source.type === "email" && source.threadId && (
           <button
             type="button"
-            onClick={() => navigate(`/emails/${source.threadId}`)}
+            onClick={() => { switchTab("emails"); selectItem(source.threadId!) }}
             className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
@@ -58,7 +58,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
         {source.type === "task" && source.id && (
           <button
             type="button"
-            onClick={() => navigate(`/tasks/${source.id}`)}
+            onClick={() => { switchTab("tasks"); selectItem(source.id!) }}
             className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
@@ -118,7 +118,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={thread.threadId}
                       type="button"
-                      onClick={() => navigate(`/emails/${thread.threadId}`)}
+                      onClick={() => { switchTab("emails"); selectItem(thread.threadId) }}
                       className={cn(
                         "w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors",
                       )}
@@ -152,7 +152,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={task.id}
                       type="button"
-                      onClick={() => navigate(`/tasks/${task.id}`)}
+                      onClick={() => { switchTab("tasks"); selectItem(task.id) }}
                       className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center gap-2"
                     >
                       <span className="text-xs flex-1 truncate">{task.title}</span>

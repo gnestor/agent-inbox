@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   ScrollArea,
@@ -11,6 +11,7 @@ import { getTask, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
 import { useTaskMutation } from "@/hooks/use-task-mutation"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
+import { useNavigation } from "@/hooks/use-navigation"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
@@ -23,7 +24,7 @@ interface TaskDetailProps {
 }
 
 export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
-  const navigate = useNavigate()
+  const { deselectItem } = useNavigation()
   const location = useLocation()
   const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: task, isLoading: loading, error: queryError } = useQuery({
@@ -57,7 +58,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
     <PanelHeader
       left={
         <>
-          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => navigate("/tasks")} />}
+          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => deselectItem()} />}
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }
@@ -137,9 +138,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                 title: task.title,
                 content: `Notion task: ${task.title}\nStatus: ${task.status}\n\n${task.body || ""}`,
               }}
-              newSessionPath={`/tasks/${taskId}/session/new`}
-              linkedSessionPath={linkedSession ? `/tasks/${taskId}/session/${linkedSession.id}` : undefined}
-              hasLinkedSession={!!linkedSession}
+              linkedSessionId={linkedSession?.id}
               hidden={sessionOpen}
             />
           )}

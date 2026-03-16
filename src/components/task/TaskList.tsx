@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
@@ -85,7 +85,7 @@ export function TaskList({
     Object.keys(filters).length > 0 ? filters : undefined,
     enabled,
   )
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
   const filteredTasks = useMemo(() => {
     if (!search) return tasks
     const q = search.toLowerCase()
@@ -244,7 +244,7 @@ export function TaskList({
                     timestamp={formatRelativeDate(task.updatedAt)}
                     badges={badges}
                     isSelected={selectedTaskId === task.id}
-                    onClick={() => navigate(`/tasks/${task.id}`)}
+                    onClick={() => selectItem(task.id, virtualRow.index)}
                   />
                 </div>
               )

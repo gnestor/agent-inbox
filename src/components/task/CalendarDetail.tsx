@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
   ScrollArea,
@@ -23,7 +23,7 @@ interface CalendarDetailProps {
 }
 
 export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailProps) {
-  const navigate = useNavigate()
+  const { deselectItem } = useNavigation()
   const { data: item, isLoading: loading, error: queryError } = useQuery({
     queryKey: ["calendar-item", itemId],
     queryFn: () => getCalendarItem(itemId),
@@ -50,7 +50,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
     <PanelHeader
       left={
         <>
-          <BackButton onClick={() => navigate("/calendar")} />
+          <BackButton onClick={() => deselectItem()} />
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }
@@ -123,9 +123,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
                 title: item.title,
                 content: `Calendar item: ${item.title}\nDate: ${item.properties?.["Date"]?.date?.start || item.date || "unknown"}\nStatus: ${item.status || ""}`,
               }}
-              newSessionPath={`/calendar/${itemId}/session/new`}
-              linkedSessionPath={linkedSession ? `/calendar/${itemId}/session/${linkedSession.id}` : undefined}
-              hasLinkedSession={!!linkedSession}
+              linkedSessionId={linkedSession?.id}
               hidden={sessionOpen}
             />
           )}

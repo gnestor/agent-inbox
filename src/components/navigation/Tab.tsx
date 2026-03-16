@@ -68,8 +68,6 @@ export function Tab({ id, children }: TabProps) {
     return () => el.removeEventListener("wheel", handler)
   }, [])
 
-  if (!isActive) return null
-
   return (
     <div
       ref={scrollRef}

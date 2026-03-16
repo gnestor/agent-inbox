@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
@@ -96,7 +96,7 @@ export function EmailList({
   }, [filters, selectedLabels, debouncedSearch])
 
   const { messages, loading, loadingMore, error, loadMore, hasMore } = useEmails(query, enabled)
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const threads = useMemo(() => {
@@ -270,7 +270,7 @@ export function EmailList({
                     timestamp={formatRelativeDate(msg.date)}
                     badges={badges}
                     isSelected={selectedThreadId === msg.threadId}
-                    onClick={() => navigate(`/emails/${msg.threadId}`)}
+                    onClick={() => selectItem(msg.threadId, virtualRow.index)}
                   />
                 </div>
               )

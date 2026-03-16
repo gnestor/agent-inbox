@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import {
   Popover,
@@ -76,7 +76,7 @@ export function CalendarList({
     Object.keys(filters).length > 0 ? filters : undefined,
     enabled,
   )
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
   const filteredItems = useMemo(() => {
     if (!search) return items
     const q = search.toLowerCase()
@@ -221,7 +221,7 @@ export function CalendarList({
                     timestamp={item.date ? formatRelativeDate(item.date) : ""}
                     badges={badges}
                     isSelected={selectedItemId === item.id}
-                    onClick={() => navigate(`/calendar/${item.id}`)}
+                    onClick={() => selectItem(item.id, virtualRow.index)}
                   />
                 </div>
               )

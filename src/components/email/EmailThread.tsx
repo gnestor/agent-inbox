@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getLinkedSession, sendEmail, createDraft } from "@/api/client"
 import {
@@ -27,6 +27,7 @@ import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/fo
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
+import { useNavigation } from "@/hooks/use-navigation"
 import type { GmailMessage } from "@/types"
 
 interface EmailThreadProps {
@@ -37,7 +38,7 @@ interface EmailThreadProps {
 
 export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) {
   const { thread, loading, error } = useEmailThread(threadId)
-  const navigate = useNavigate()
+  const { deselectItem } = useNavigation()
   const location = useLocation()
   const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: linkedData } = useQuery({
@@ -47,7 +48,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const linkedSession = linkedData?.session
   const scrollRef = useRef<HTMLDivElement>(null)
   const actions = useEmailActions(threadId, thread, {
-    onRemove: () => navigate("/emails"),
+    onRemove: () => deselectItem(),
   })
   const queryClient = useQueryClient()
   const draftKey = `inbox:reply-draft:${threadId}`
@@ -150,7 +151,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     <PanelHeader
       left={
         <>
-          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => navigate("/emails")} />}
+          {isFromSidebar ? <SidebarButton /> : <BackButton onClick={() => deselectItem()} />}
           <h2 className="font-semibold text-sm truncate">{title}</h2>
         </>
       }
@@ -205,9 +206,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                 title: thread.subject,
                 content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,
               }}
-              newSessionPath={`/emails/${threadId}/session/new`}
-              linkedSessionPath={linkedSession ? `/emails/${threadId}/session/${linkedSession.id}` : undefined}
-              hasLinkedSession={!!linkedSession}
+              linkedSessionId={linkedSession?.id}
               hidden={sessionOpen}
             />
           )}

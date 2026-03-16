@@ -1,5 +1,5 @@
 // src/hooks/use-navigation.ts
-import { useContext, useCallback } from "react"
+import { useContext, useCallback, useRef } from "react"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import type { PanelState, TabId } from "@/types/navigation"
 
@@ -14,10 +14,14 @@ export function useNavigation() {
     [dispatch],
   )
 
+  // Track previous list index to compute direction
+  const prevListIndexRef = useRef(0)
+
   const selectItem = useCallback(
     (itemId: string, listIndex?: number) => {
       if (listIndex !== undefined) {
-        itemDirectionRef.current = listIndex
+        itemDirectionRef.current = listIndex > prevListIndexRef.current ? 1 : listIndex < prevListIndexRef.current ? -1 : 1
+        prevListIndexRef.current = listIndex
       }
       dispatch({ type: "SELECT_ITEM", itemId, listIndex })
     },

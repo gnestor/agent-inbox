@@ -69,7 +69,11 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "POP_PANEL": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
-      tab.panels = tab.panels.filter((p) => p.id !== action.panelId)
+      const idx = tab.panels.findIndex((p) => p.id === action.panelId)
+      if (idx >= 0) {
+        // Truncate from this panel's position — removes it and everything after it
+        tab.panels = tab.panels.slice(0, idx)
+      }
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -168,6 +172,39 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(saveTimer.current)
   }, [state])
 
+  // Sync URL → state (browser back/forward)
+  const lastSyncedUrl = useRef(location.pathname)
+  const urlDrivenChange = useRef(false) // true when state change was triggered by URL→state sync
+  useEffect(() => {
+    if (!initialized.current) return
+    if (location.pathname === lastSyncedUrl.current) return
+    lastSyncedUrl.current = location.pathname
+
+    // Derive tab and selectedId from URL
+    const parts = location.pathname.split("/").filter(Boolean)
+    let tabId: TabId = "emails"
+    let selectedId: string | undefined
+
+    if (parts[0] === "settings") tabId = "settings"
+    else if (parts[0] === "plugins" && parts[1]) tabId = `plugin:${parts[1]}` as TabId
+    else if (["emails", "tasks", "calendar", "sessions"].includes(parts[0])) {
+      tabId = parts[0] as TabId
+      if (parts[1]) selectedId = decodeURIComponent(parts[1])
+    }
+
+    urlDrivenChange.current = true
+    if (tabId !== state.activeTab) {
+      dispatch({ type: "SWITCH_TAB", tabId })
+    }
+    const currentSelectedId = state.tabs[state.activeTab]?.selectedItemId
+    if (selectedId && selectedId !== currentSelectedId) {
+      dispatch({ type: "SELECT_ITEM", itemId: selectedId })
+    } else if (!selectedId && currentSelectedId) {
+      dispatch({ type: "DESELECT_ITEM" })
+    }
+  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Only re-run when URL changes, NOT when state changes (that would cause a loop)
+
   // Sync URL on activeTab / selectedItemId changes
   useEffect(() => {
     if (!initialized.current) return
@@ -184,7 +221,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         : `/${state.activeTab}`
     }
     if (location.pathname !== targetUrl) {
-      navigate(targetUrl, { replace: true })
+      lastSyncedUrl.current = targetUrl
+      // Replace for URL-driven changes (browser back/forward) to avoid loop;
+      // push for user-initiated actions (switchTab, selectItem, etc.)
+      const replace = urlDrivenChange.current
+      urlDrivenChange.current = false
+      navigate(targetUrl, { replace })
     }
   }, [state.activeTab, state.tabs[state.activeTab]?.selectedItemId, navigate, location.pathname])
 

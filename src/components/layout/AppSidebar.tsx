@@ -135,7 +135,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenuButton
                       isActive={isActive}
                       tooltip={item.title}
-                      className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
+                      className={cn(isActive && "bg-primary text-primary-foreground font-medium")}
                       onClick={() => {
                         switchTab(item.tab)
                         if (isMobile) setOpenMobile(false)
@@ -162,7 +162,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={plugin.name}
-                        className={cn(isActive && "bg-accent text-accent-foreground font-medium")}
+                        className={cn(isActive && "bg-primary text-primary-foreground font-medium")}
                         onClick={() => {
                           switchTab(`plugin:${plugin.id}`)
                           if (isMobile) setOpenMobile(false)

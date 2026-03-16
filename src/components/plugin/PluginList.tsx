@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { Plug, SlidersHorizontal } from "lucide-react"
 import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
@@ -11,6 +11,7 @@ import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { usePreference } from "@/hooks/use-preferences"
+import { useNavigation } from "@/hooks/use-navigation"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem, FieldDef } from "@/types/plugin"
 
@@ -73,7 +74,7 @@ function PluginListInner({
   onSelectedIndexChange,
   onSelectedTitleChange,
 }: PluginListInnerProps) {
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
 
   // Persist filter state per plugin via user preferences
   const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
@@ -183,7 +184,7 @@ function PluginListInner({
                     onClick={() => {
                       if (onSelectedIndexChange) onSelectedIndexChange(virtualRow.index)
                       if (onSelectedTitleChange) onSelectedTitleChange(title)
-                      navigate(`/plugins/${plugin.id}/${item.id}`)
+                      selectItem(item.id, virtualRow.index)
                     }}
                   />
                 </div>

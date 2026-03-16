@@ -72,6 +72,7 @@ export function EmailListView() {
       getItemId={(t) => t.threadId}
       selectedId={getSelectedItemId()}
       onSelect={selectItem}
+      itemHeight={100}
       activeFilters={activeFilters}
       onFilterChange={setFilter}
       hasMore={hasMore}

@@ -8,6 +8,7 @@ import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { TaskListView } from "./TaskListView"
 import { TaskDetailView } from "./TaskDetailView"
 import { SessionView } from "@/components/session/SessionView"
+import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
 export function TaskTab() {
   const { getPanels } = useNavigation()
@@ -30,8 +31,10 @@ export function TaskTab() {
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <TaskDetailView itemId={panel.props.itemId} />
-              ) : panel.type === "session" ? (
+              ) : panel.type === "session" && panel.props.sessionId !== "new" ? (
                 <SessionView sessionId={panel.props.sessionId} />
+              ) : panel.type === "session" && panel.props.sessionId === "new" ? (
+                <NewSessionPanel />
               ) : (
                 <PanelContent panel={panel} />
               )}

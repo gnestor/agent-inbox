@@ -8,6 +8,7 @@ import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { EmailListView } from "./EmailListView"
 import { EmailDetailView } from "./EmailDetailView"
 import { SessionView } from "@/components/session/SessionView"
+import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
 export function EmailTab() {
   const { getPanels } = useNavigation()
@@ -30,8 +31,10 @@ export function EmailTab() {
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <EmailDetailView itemId={panel.props.itemId} />
-              ) : panel.type === "session" ? (
+              ) : panel.type === "session" && panel.props.sessionId !== "new" ? (
                 <SessionView sessionId={panel.props.sessionId} />
+              ) : panel.type === "session" && panel.props.sessionId === "new" ? (
+                <NewSessionPanel />
               ) : (
                 <PanelContent panel={panel} />
               )}

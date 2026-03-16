@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
@@ -13,7 +13,8 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
-import { STATIC_TAB_ORDER, type TabId } from "@/types/navigation"
+import type { TabId } from "@/types/navigation"
+import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
 
 const ONE_DAY_MS = 86_400_000
@@ -83,7 +84,7 @@ interface SidebarRecentSessionsProps {
 
 export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps) {
   const location = useLocation()
-  const navigate = useNavigate()
+  const { selectItem } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
   const { sessions, refresh } = useSessions()
 
@@ -159,7 +160,6 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
             const color = getIndicatorColor(session, isRead)
             const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
             const title = linkedTitle || getSessionTitle(session)
-            const url = getSessionUrl(session)
             const isActive = isRecentRoute && session.id === activeSessionId
 
             return (
@@ -169,7 +169,8 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    navigate(url, { state: { index: STATIC_TAB_ORDER.length + i } })
+                    switchTab("sessions")
+                    selectItem(session.id, i)
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn("gap-2", isActive && "bg-accent text-accent-foreground font-medium")}

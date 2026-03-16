@@ -1,16 +1,14 @@
-import { useRef, useState, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
-import { useIsMobile } from "@hammies/frontend/hooks"
-import { motion, AnimatePresence, usePresence } from "motion/react"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { LoginPage } from "@/components/layout/LoginPage"
 import { LiquidGlassFilter } from "@/components/layout/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
 import { useNavigation } from "@/hooks/use-navigation"
-import { getTabIndex } from "@/types/navigation"
-import { EASE, DURATION } from "@/lib/navigation-constants"
+import type { TabId } from "@/types/navigation"
+import { DURATION } from "@/lib/navigation-constants"
 import { EmailTab } from "@/components/email/EmailTab"
 import { TaskTab } from "@/components/task/TaskTab"
 import { CalendarTab } from "@/components/task/CalendarTab"
@@ -20,128 +18,81 @@ import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
 
-// --- Tab transition animation (same as old PanelStack AnimatedTabPane) ---
-
+// Tab order (matches getTabIndex in navigation.ts)
+const TAB_SLOTS: TabId[] = ["settings", "emails", "tasks", "calendar", "sessions"]
 const GAP = 16
 
-const tabVariants = {
-  enter: (d: number) => ({
-    y: d >= 0 ? `calc(100% + ${GAP}px)` : `calc(-100% - ${GAP}px)`,
-    opacity: 1,
-  }),
-  center: { y: 0 as number | string, opacity: 1 },
-}
-
-function computeTabExit(d: number) {
-  return {
-    y: d >= 0 ? `calc(-100% - ${GAP}px)` : `calc(100% + ${GAP}px)`,
-    opacity: 1 as const,
+function renderTab(tabId: TabId) {
+  switch (tabId) {
+    case "emails": return <EmailTab />
+    case "tasks": return <TaskTab />
+    case "calendar": return <CalendarTab />
+    case "sessions": return <SessionTab />
+    case "settings":
+      return (
+        <Tab id="settings">
+          <Panel id="settings" variant="settings">
+            <IntegrationsPage />
+          </Panel>
+        </Tab>
+      )
+    default:
+      if (tabId.startsWith("plugin:")) return <PluginView />
+      return null
   }
 }
 
-function AnimatedTab({
-  children,
-  entryDirection,
-  directionRef,
-}: {
-  children: React.ReactNode
-  entryDirection: number
-  directionRef: React.RefObject<number>
-}) {
-  const [isPresent, safeToRemove] = usePresence()
-  const safeRef = useRef(safeToRemove)
-  safeRef.current = safeToRemove
-
-  const [target, setTarget] = useState(tabVariants.center)
-
-  useEffect(() => {
-    if (!isPresent) {
-      setTarget(computeTabExit(directionRef.current))
-      const timer = setTimeout(() => safeRef.current?.(), DURATION * 1000 + 50)
-      return () => clearTimeout(timer)
-    }
-  }, [isPresent, directionRef])
-
-  return (
-    <motion.div
-      initial={tabVariants.enter(entryDirection)}
-      animate={target}
-      transition={{ duration: DURATION, ease: EASE }}
-      className="absolute inset-0"
-    >
-      {children}
-    </motion.div>
-  )
-}
-
-// --- Tab container: renders active tab with vertical transition ---
-
+/**
+ * TabContainer: All tabs rendered in a vertical column.
+ * The column is translated via CSS transform to bring the active tab into view.
+ * All tabs stay mounted (preserving state). overflow-hidden on the parent
+ * (SidebarInset) clips content outside the viewport.
+ */
 function TabContainer() {
   const { activeTab } = useNavigation()
-
-  const prevTabRef = useRef(activeTab)
-  const directionRef = useRef(0)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
   const [settled, setSettled] = useState(false)
 
-  if (activeTab !== prevTabRef.current) {
-    if (settled) {
-      const prevIdx = getTabIndex(prevTabRef.current)
-      const nextIdx = getTabIndex(activeTab)
-      directionRef.current = nextIdx > prevIdx ? 1 : -1
-    }
-    prevTabRef.current = activeTab
-  }
+  const activeIndex = TAB_SLOTS.indexOf(activeTab as TabId)
+  const safeIndex = activeIndex >= 0 ? activeIndex : 1
 
-  // Mark as settled after initial render cycle (skip animation for restored state)
+  // Measure container height
   useEffect(() => {
-    const id = requestAnimationFrame(() => setSettled(true))
-    return () => cancelAnimationFrame(id)
+    const el = wrapperRef.current
+    if (!el) return
+    setHeight(el.clientHeight)
+    const ro = new ResizeObserver(([entry]) => setHeight(entry.contentRect.height))
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
-  const direction = directionRef.current
+  // Enable CSS transition after first paint
+  useEffect(() => {
+    requestAnimationFrame(() => setSettled(true))
+  }, [])
 
-  function renderTab() {
-    switch (activeTab) {
-      case "emails": return <EmailTab />
-      case "tasks": return <TaskTab />
-      case "calendar": return <CalendarTab />
-      case "sessions": return <SessionTab />
-      case "settings":
-        return (
-          <Tab id="settings">
-            <Panel id="settings" variant="settings">
-              <IntegrationsPage />
-            </Panel>
-          </Tab>
-        )
-      default:
-        if (activeTab.startsWith("plugin:")) return <PluginView />
-        return <EmailTab />
-    }
-  }
-
-  // Skip animation until state has settled (prevents slide-in on page load)
-  if (!settled) {
-    return (
-      <div className="h-full w-full overflow-clip relative">
-        <div className="absolute inset-0">
-          {renderTab()}
-        </div>
-      </div>
-    )
-  }
+  const offset = height > 0 ? -(safeIndex * (height + GAP)) : 0
 
   return (
-    <div className="h-full w-full overflow-clip relative">
-      <AnimatePresence initial={false}>
-        <AnimatedTab
-          key={activeTab}
-          entryDirection={direction}
-          directionRef={directionRef}
-        >
-          {renderTab()}
-        </AnimatedTab>
-      </AnimatePresence>
+    <div ref={wrapperRef} className="h-full w-full overflow-hidden">
+      <div
+        style={{
+          transform: `translateY(${offset}px)`,
+          transition: settled && height > 0
+            ? `transform ${DURATION}s cubic-bezier(0.32, 0.72, 0, 1)`
+            : "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: GAP,
+        }}
+      >
+        {TAB_SLOTS.map((tabId) => (
+          <div key={tabId} style={{ height, flexShrink: 0 }}>
+            {renderTab(tabId)}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

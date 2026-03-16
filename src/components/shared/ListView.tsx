@@ -48,7 +48,7 @@ export function ListView<T extends Record<string, unknown>>({
   getItemId,
   selectedId,
   onSelect,
-  itemHeight = 76,
+  itemHeight = 88,
   searchPlaceholder,
   onSearch,
   localSearch,

@@ -8,6 +8,7 @@ import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { CalendarListView } from "./CalendarListView"
 import { CalendarDetailView } from "./CalendarDetailView"
 import { SessionView } from "@/components/session/SessionView"
+import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
 export function CalendarTab() {
   const { getPanels } = useNavigation()
@@ -30,8 +31,10 @@ export function CalendarTab() {
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <CalendarDetailView itemId={panel.props.itemId} />
-              ) : panel.type === "session" ? (
+              ) : panel.type === "session" && panel.props.sessionId !== "new" ? (
                 <SessionView sessionId={panel.props.sessionId} />
+              ) : panel.type === "session" && panel.props.sessionId === "new" ? (
+                <NewSessionPanel />
               ) : (
                 <PanelContent panel={panel} />
               )}

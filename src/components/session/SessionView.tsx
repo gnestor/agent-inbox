@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Button,
@@ -29,20 +29,20 @@ interface SessionViewProps {
 }
 
 export function SessionView({ sessionId, title }: SessionViewProps) {
-  const navigate = useNavigate()
   const location = useLocation()
   const qc = useQueryClient()
-  const { activeTab, getSelectedItemId } = useNavigation()
+  const { activeTab, popPanel, deselectItem } = useNavigation()
   // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
-  const pathParts = location.pathname.split("/").filter(Boolean)
-  const selectedId = getSelectedItemId()
-  const parentPath =
-    activeTab === "sessions"
-      ? "/sessions"
-      : selectedId
-        ? `/${activeTab}/${encodeURIComponent(selectedId)}`
-        : `/${activeTab}`
+  const sessionPanelId = `session:${sessionId}`
+
+  function handleBack() {
+    if (activeTab === "sessions") {
+      deselectItem()
+    } else {
+      popPanel(sessionPanelId)
+    }
+  }
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -190,7 +190,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           {isFromSidebar ? (
             <SidebarButton />
           ) : (
-            <BackButton onClick={() => navigate(parentPath)} />
+            <BackButton onClick={handleBack} />
           )}
           {isEditing ? (
             <input
@@ -266,7 +266,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
             <button
               type="button"
               className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-              onClick={() => navigate(parentPath)}
+              onClick={handleBack}
             >
               <X className="h-4 w-4" />
             </button>

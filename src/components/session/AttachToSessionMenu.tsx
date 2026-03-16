@@ -1,5 +1,5 @@
 import { useState, useDeferredValue } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigation } from "@/hooks/use-navigation"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -17,27 +17,21 @@ import { truncate } from "@/lib/formatters"
 interface SessionActionMenuProps {
   /** Source context to attach when selecting an existing session */
   source: { type: string; id: string; title: string; content: string }
-  /** Path to navigate to when creating a new session */
-  newSessionPath: string
-  /** Path to navigate to when opening linked session */
-  linkedSessionPath?: string
-  /** Whether a linked session already exists */
-  hasLinkedSession?: boolean
+  /** Session ID of linked session (if one exists) */
+  linkedSessionId?: string
   /** Whether the session panel is already open (hides the button) */
   hidden?: boolean
 }
 
 export function SessionActionMenu({
   source,
-  newSessionPath,
-  linkedSessionPath,
-  hasLinkedSession,
+  linkedSessionId,
   hidden,
 }: SessionActionMenuProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
-  const navigate = useNavigate()
+  const { openSession } = useNavigation()
   const filters = deferredSearch ? { q: deferredSearch } : undefined
   const { sessions } = useSessions(filters, open)
   const attachMutation = useAttachToSession()
@@ -64,7 +58,7 @@ export function SessionActionMenu({
         render={
           <button
             type="button"
-            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${hasLinkedSession ? "text-chart-4" : "text-muted-foreground"}`}
+            className={`shrink-0 p-1.5 rounded-md hover:bg-accent ${linkedSessionId ? "text-chart-4" : "text-muted-foreground"}`}
             title="Session actions"
           />
         }
@@ -76,11 +70,11 @@ export function SessionActionMenu({
           <DropdownMenuItem
             onClick={() => {
               setOpen(false)
-              navigate(linkedSessionPath || newSessionPath)
+              openSession(linkedSessionId)
             }}
           >
             <Sparkles className="h-4 w-4 mr-2" />
-            {hasLinkedSession ? "Open session" : "New session"}
+            {linkedSessionId ? "Open session" : "New session"}
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
