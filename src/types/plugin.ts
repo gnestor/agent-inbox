@@ -86,6 +86,13 @@ export interface FieldDef {
    * Only needed to override the default or to add widget-specific options.
    */
   detailWidget?: import("./panels").WidgetDef
+
+  /**
+   * Role in the list view. If omitted, inferred from type:
+   * first text → title, second text → subtitle, first date → timestamp.
+   * Use "hidden" to exclude from list rendering.
+   */
+  listRole?: "title" | "subtitle" | "timestamp" | "hidden"
 }
 
 // ---------------------------------------------------------------------------
