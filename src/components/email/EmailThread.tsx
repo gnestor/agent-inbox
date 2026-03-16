@@ -53,24 +53,38 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const queryClient = useQueryClient()
   const draftKey = `inbox:reply-draft:${threadId}`
   const [draftBody, setDraftBody] = useState(() => {
-    try { return localStorage.getItem(draftKey) ?? "" } catch { return "" }
+    // One-time cleanup of stale draft entries (bug: old code saved drafts under wrong keys)
+    if (!localStorage.getItem("inbox:reply-draft-cleanup-v1")) {
+      try {
+        const keys = Object.keys(localStorage).filter((k) => k.startsWith("inbox:reply-draft:"))
+        keys.forEach((k) => localStorage.removeItem(k))
+        localStorage.setItem("inbox:reply-draft-cleanup-v1", "1")
+      } catch {}
+    }
+    try {
+      const saved = localStorage.getItem(draftKey)
+      return saved?.trim() ? saved : ""
+    } catch { return "" }
   })
-  const draftKeyRef = useRef(draftKey)
 
-  // Reset draft state when switching threads
+  // Reset draft state when switching threads (safety net — key={itemId} should remount)
+  const prevDraftKeyRef = useRef(draftKey)
   useEffect(() => {
-    draftKeyRef.current = draftKey
+    if (prevDraftKeyRef.current === draftKey) return
+    prevDraftKeyRef.current = draftKey
     try { setDraftBody(localStorage.getItem(draftKey) ?? "") } catch { setDraftBody("") }
   }, [draftKey])
 
-  // Persist draft to localStorage (only for the current thread)
+  // Persist draft to localStorage — only save real user content, skip on thread change
   useEffect(() => {
-    if (draftKey !== draftKeyRef.current) return
+    // Skip the initial mount effect and thread changes — only persist user edits
+    if (draftKey !== prevDraftKeyRef.current) return
     try {
-      if (draftBody) localStorage.setItem(draftKey, draftBody)
+      if (draftBody.trim()) localStorage.setItem(draftKey, draftBody)
       else localStorage.removeItem(draftKey)
     } catch {}
-  }, [draftKey, draftBody])
+  }, [draftBody]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Intentionally omit draftKey — we never want to persist when the key changes
 
   // Ref for stable mutation access to current draft body
   const draftBodyRef = useRef(draftBody)
@@ -247,7 +261,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
             <div key={message.id} data-message-id={message.id} className="border-b">
               <Accordion defaultValue={isLast ? [`msg-${message.id}`] : []}>
                 <AccordionItem value={`msg-${message.id}`} className="border-0">
-                  <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-secondary">
+                  <AccordionTrigger className="px-[15px] py-3 mx-px hover:no-underline hover:bg-secondary">
                     <div className="flex items-center justify-between w-full gap-2 min-w-0">
                       <span className="text-sm font-medium truncate">
                         {formatEmailAddress(message.from)}
@@ -270,7 +284,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
         <div className="border-b">
           <Accordion key={threadId} defaultValue={draftBody || gmailDraft ? ["draft-reply"] : []}>
             <AccordionItem value="draft-reply" className="border-0">
-              <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-secondary">
+              <AccordionTrigger className="px-[15px] py-3 mx-px hover:no-underline hover:bg-secondary">
                 <div className="flex items-center gap-2 w-full min-w-0">
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground truncate">
@@ -284,6 +298,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                     To: {formatEmailAddress(replyTo)}
                   </div>
                   <RichTextEditor
+                    key={threadId}
                     value={draftBody}
                     onChange={setDraftBody}
                     placeholder="Write your reply..."
