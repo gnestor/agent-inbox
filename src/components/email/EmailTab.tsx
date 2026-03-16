@@ -34,7 +34,7 @@ export function EmailTab() {
               ) : panel.type === "session" && panel.props.sessionId !== "new" ? (
                 <SessionView sessionId={panel.props.sessionId} />
               ) : panel.type === "session" && panel.props.sessionId === "new" ? (
-                <NewSessionPanel />
+                <NewSessionPanel threadId={panel.props.linkedItemId} />
               ) : (
                 <PanelContent panel={panel} />
               )}

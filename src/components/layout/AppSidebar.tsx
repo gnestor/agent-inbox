@@ -133,12 +133,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 return (
                   <SidebarMenuItem key={item.tab}>
                     <SidebarMenuButton
-                      isActive={isActive}
                       tooltip={item.title}
                       className={cn(
                         isActive
-                          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
-                          : "hover:bg-secondary hover:text-foreground",
+                          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
+                          : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
                       )}
                       onClick={() => {
                         switchTab(item.tab)
@@ -164,12 +163,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   return (
                     <SidebarMenuItem key={plugin.id}>
                       <SidebarMenuButton
-                        isActive={isActive}
                         tooltip={plugin.name}
                         className={cn(
                           isActive
-                            ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
-                            : "hover:bg-secondary hover:text-foreground",
+                            ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
+                            : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
                         )}
                         onClick={() => {
                           switchTab(`plugin:${plugin.id}`)

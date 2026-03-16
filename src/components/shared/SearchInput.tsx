@@ -1,4 +1,4 @@
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
 
 interface SearchInputProps {
   value: string
@@ -9,9 +9,10 @@ interface SearchInputProps {
 export function SearchInput({ value, onChange, placeholder = "Search..." }: SearchInputProps) {
   return (
     <div className="px-2 py-2 border-b">
-      <div className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
+        <Search className="h-3 w-3 text-muted-foreground shrink-0" />
         <input
-          className="min-h-8 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          className="flex-1 text-sm bg-transparent outline-none w-full placeholder:text-muted-foreground"
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -20,9 +21,9 @@ export function SearchInput({ value, onChange, placeholder = "Search..." }: Sear
           <button
             type="button"
             onClick={() => onChange("")}
-            className="shrink-0 p-1 rounded hover:bg-secondary"
+            className="shrink-0 p-0.5 rounded hover:bg-secondary"
           >
-            <X className="h-3.5 w-3.5 text-muted-foreground" />
+            <X className="h-3 w-3 text-muted-foreground" />
           </button>
         )}
       </div>

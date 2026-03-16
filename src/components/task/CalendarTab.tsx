@@ -34,7 +34,7 @@ export function CalendarTab() {
               ) : panel.type === "session" && panel.props.sessionId !== "new" ? (
                 <SessionView sessionId={panel.props.sessionId} />
               ) : panel.type === "session" && panel.props.sessionId === "new" ? (
-                <NewSessionPanel />
+                <NewSessionPanel taskId={panel.props.linkedItemId} />
               ) : (
                 <PanelContent panel={panel} />
               )}

@@ -13,6 +13,21 @@
   content: none;
 }
 
+/* Code blocks: let hljs theme control background for both pre and code */
+.prose :where(pre) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.prose :where(pre code) {
+  background: transparent;
+}
+
+.prose-sm {
+  :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    font-size: 1em;
+  }
+}
+
 /* Bold headings in prose (markdown) and Notion content */
 .prose :where(h1, h2, h3, h4, h5, h6) {
   font-weight: 700;

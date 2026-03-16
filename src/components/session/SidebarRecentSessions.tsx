@@ -165,7 +165,6 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
             return (
               <SidebarMenuItem key={session.id}>
                 <SidebarMenuButton
-                  isActive={isActive}
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
@@ -173,7 +172,12 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
                     selectItem(session.id, i)
                     if (isMobile) setOpenMobile(false)
                   }}
-                  className={cn("gap-2", isActive && "bg-accent text-accent-foreground font-medium")}
+                  className={cn(
+                    "gap-2",
+                    isActive
+                      ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
+                      : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
+                  )}
                 >
                   <span
                     className="size-2 shrink-0 rounded-full"
@@ -187,9 +191,12 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
           })}
           <SidebarMenuItem>
             <SidebarMenuButton
-              isActive={isSessionsTab}
               tooltip="All Sessions"
-              className={cn(!isSessionsTab && "text-muted-foreground")}
+              className={cn(
+                isSessionsTab
+                  ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
+              )}
               onClick={() => {
                 switchTab("sessions")
                 if (isMobile) setOpenMobile(false)
