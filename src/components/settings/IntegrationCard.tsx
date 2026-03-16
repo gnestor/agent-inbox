@@ -1,6 +1,7 @@
 import { Button, Badge } from "@hammies/frontend/components/ui"
 import { getConnectUrl } from "@/api/client"
 import { useDisconnectIntegration } from "@/hooks/use-connections"
+import { IntegrationIcon } from "./IntegrationIcon"
 import type { Integration } from "@/types"
 
 interface IntegrationCardProps {
@@ -26,9 +27,10 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
   return (
     <div className="flex items-center justify-between rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-lg">
-          {integrationEmoji(integration.id)}
-        </div>
+        <IntegrationIcon
+          integrationId={integration.id}
+          className="flex h-10 w-10 items-center justify-center rounded-md bg-muted"
+        />
         <div>
           <span className="font-medium">{integration.name}</span>
           <p className={`text-xs ${integration.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
@@ -58,27 +60,4 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
       </div>
     </div>
   )
-}
-
-function integrationEmoji(id: string): string {
-  const map: Record<string, string> = {
-    google: "📧",
-    pinterest: "📌",
-    quickbooks: "📒",
-    notion: "📝",
-    slack: "💬",
-    github: "🐙",
-    shopify: "🛍️",
-    air: "🖼️",
-    gorgias: "🎧",
-    meta: "📢",
-    facebook: "👤",
-    instagram: "📸",
-    klaviyo: "📩",
-    "google-ads": "📊",
-    shippo: "📦",
-    "happy-returns": "↩️",
-    observable: "📈",
-  }
-  return map[id] || "🔗"
 }
