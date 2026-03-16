@@ -36,18 +36,19 @@ export function getAgentEnv(): Record<string, string> {
 }
 
 /**
- * Returns a Google OAuth access token, refreshing if needed.
+ * Refresh a Google OAuth access token from a given refresh token.
+ * Caches per refresh-token so multiple calls reuse the same access token.
  */
-let cachedAccessToken: { token: string; expiry: number } | null = null
+const tokenCache = new Map<string, { token: string; expiry: number }>()
 
-export async function getGoogleAccessToken(): Promise<string> {
-  if (cachedAccessToken && Date.now() < cachedAccessToken.expiry - 60_000) {
-    return cachedAccessToken.token
+export async function refreshGoogleToken(refreshToken: string): Promise<string> {
+  const cached = tokenCache.get(refreshToken)
+  if (cached && Date.now() < cached.expiry - 60_000) {
+    return cached.token
   }
 
   const clientId = getCredential("GOOGLE_CLIENT_ID")
   const clientSecret = getCredential("GOOGLE_CLIENT_SECRET")
-  const refreshToken = getCredential("GOOGLE_REFRESH_TOKEN")
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -66,11 +67,20 @@ export async function getGoogleAccessToken(): Promise<string> {
   }
 
   const data = await res.json()
-  cachedAccessToken = {
+  const entry = {
     token: data.access_token,
     expiry: Date.now() + (data.expires_in || 3600) * 1000,
   }
-  return cachedAccessToken.token
+  tokenCache.set(refreshToken, entry)
+  return entry.token
+}
+
+/**
+ * Returns a Google OAuth access token using the workspace-level refresh token.
+ */
+export async function getGoogleAccessToken(): Promise<string> {
+  const refreshToken = getCredential("GOOGLE_REFRESH_TOKEN")
+  return refreshGoogleToken(refreshToken)
 }
 
 /**

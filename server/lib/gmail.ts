@@ -1,14 +1,12 @@
-import { getGoogleAccessToken } from "./credentials.js"
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
-async function gmailRequest(path: string, options?: RequestInit) {
-  const token = await getGoogleAccessToken()
+async function gmailRequest(accessToken: string, path: string, options?: RequestInit) {
   const res = await fetch(`${GMAIL_BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       ...options?.headers,
     },
@@ -213,7 +211,7 @@ function parseThreadSummary(thread: any) {
   }
 }
 
-export async function getThreadSummary(threadId: string) {
+export async function getThreadSummary(accessToken: string, threadId: string) {
   const params = new URLSearchParams([
     ["format", "metadata"],
     ["metadataHeaders", "From"],
@@ -221,20 +219,20 @@ export async function getThreadSummary(threadId: string) {
     ["metadataHeaders", "Subject"],
     ["metadataHeaders", "Date"],
   ])
-  const thread = await gmailRequest(`/threads/${threadId}?${params}`)
+  const thread = await gmailRequest(accessToken, `/threads/${threadId}?${params}`)
   return parseThreadSummary(thread)
 }
 
-export async function searchThreads(query: string, maxResults = 20, pageToken?: string) {
+export async function searchThreads(accessToken: string, query: string, maxResults = 20, pageToken?: string) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult = await gmailRequest(`/threads?${params}`)
+  const listResult = await gmailRequest(accessToken, `/threads?${params}`)
 
   if (!listResult.threads?.length) {
     return { threads: [], nextPageToken: null, historyId: listResult.historyId || null }
   }
 
-  const threads = await fetchBatched(listResult.threads, (t: any) => getThreadSummary(t.id))
+  const threads = await fetchBatched(listResult.threads, (t: any) => getThreadSummary(accessToken, t.id))
 
   return {
     threads,
@@ -243,42 +241,42 @@ export async function searchThreads(query: string, maxResults = 20, pageToken?: 
   }
 }
 
-export async function getHistory(startHistoryId: string) {
+export async function getHistory(accessToken: string, startHistoryId: string) {
   const params = new URLSearchParams({
     startHistoryId,
     historyTypes: "messageAdded,messageDeleted,labelAdded,labelRemoved",
     maxResults: "100",
   })
-  return gmailRequest(`/history?${params}`)
+  return gmailRequest(accessToken, `/history?${params}`)
 }
 
-export async function searchMessages(query: string, maxResults = 50, pageToken?: string) {
+export async function searchMessages(accessToken: string, query: string, maxResults = 50, pageToken?: string) {
   const params = new URLSearchParams({
     q: query,
     maxResults: String(maxResults),
   })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult = await gmailRequest(`/messages?${params}`)
+  const listResult = await gmailRequest(accessToken, `/messages?${params}`)
 
   if (!listResult.messages?.length) {
     return { messages: [], nextPageToken: null }
   }
 
   const messages = await fetchBatched(listResult.messages, async (m: any) => {
-    const full = await gmailRequest(`/messages/${m.id}?format=full`)
+    const full = await gmailRequest(accessToken, `/messages/${m.id}?format=full`)
     return parseMessage(full)
   })
 
   return { messages, nextPageToken: listResult.nextPageToken || null }
 }
 
-export async function getMessage(messageId: string) {
-  const full = await gmailRequest(`/messages/${messageId}?format=full`)
+export async function getMessage(accessToken: string, messageId: string) {
+  const full = await gmailRequest(accessToken, `/messages/${messageId}?format=full`)
   return parseMessage(full, { keepSignature: true })
 }
 
-export async function getThread(threadId: string) {
-  const thread = await gmailRequest(`/threads/${threadId}?format=full`)
+export async function getThread(accessToken: string, threadId: string) {
+  const thread = await gmailRequest(accessToken, `/threads/${threadId}?format=full`)
   const rawMessages = thread.messages || []
   const messages = rawMessages.map((msg: any, i: number) =>
     parseMessage(msg, { keepSignature: i === rawMessages.length - 1 }),
@@ -298,8 +296,8 @@ export async function getThread(threadId: string) {
   }
 }
 
-export async function getLabels() {
-  const result = await gmailRequest("/labels")
+export async function getLabels(accessToken: string) {
+  const result = await gmailRequest(accessToken, "/labels")
   return {
     labels: (result.labels || []).map((l: any) => ({
       id: l.id,
@@ -312,32 +310,35 @@ export async function getLabels() {
 }
 
 export async function modifyLabels(
+  accessToken: string,
   messageId: string,
   addLabelIds: string[],
   removeLabelIds: string[],
 ) {
-  return gmailRequest(`/messages/${messageId}/modify`, {
+  return gmailRequest(accessToken, `/messages/${messageId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   })
 }
 
-export async function trashThread(threadId: string) {
-  return gmailRequest(`/threads/${threadId}/trash`, { method: "POST" })
+export async function trashThread(accessToken: string, threadId: string) {
+  return gmailRequest(accessToken, `/threads/${threadId}/trash`, { method: "POST" })
 }
 
 export async function modifyThreadLabels(
+  accessToken: string,
   threadId: string,
   addLabelIds: string[],
   removeLabelIds: string[],
 ) {
-  return gmailRequest(`/threads/${threadId}/modify`, {
+  return gmailRequest(accessToken, `/threads/${threadId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   })
 }
 
 export async function sendMessage(
+  accessToken: string,
   to: string,
   subject: string,
   body: string,
@@ -364,19 +365,20 @@ export async function sendMessage(
   const message: any = { raw: encodedMessage }
   if (threadId) message.threadId = threadId
 
-  return gmailRequest("/messages/send", {
+  return gmailRequest(accessToken, "/messages/send", {
     method: "POST",
     body: JSON.stringify(message),
   })
 }
 
-export async function getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
-  const data = await gmailRequest(`/messages/${messageId}/attachments/${attachmentId}`)
+export async function getAttachment(accessToken: string, messageId: string, attachmentId: string): Promise<Buffer> {
+  const data = await gmailRequest(accessToken, `/messages/${messageId}/attachments/${attachmentId}`)
   const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/")
   return Buffer.from(base64, "base64")
 }
 
 export async function createDraft(
+  accessToken: string,
   to: string,
   subject: string,
   body: string,
@@ -407,7 +409,7 @@ export async function createDraft(
     draft.message.threadId = threadId
   }
 
-  return gmailRequest("/drafts", {
+  return gmailRequest(accessToken, "/drafts", {
     method: "POST",
     body: JSON.stringify(draft),
   })

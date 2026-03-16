@@ -1,6 +1,8 @@
 import { Hono } from "hono"
 import * as gmail from "../lib/gmail.js"
 import { get as getCached, set as setCached, invalidate } from "../lib/cache.js"
+import { getUserCredential } from "../lib/vault.js"
+import { refreshGoogleToken } from "../lib/credentials.js"
 
 const SYNC_TTL = 86_400_000 // 24h for historyId + thread list
 
@@ -15,22 +17,50 @@ type ListResult = {
   nextPageToken: string | null
 }
 
+/**
+ * Resolve the current user's Google access token from the vault.
+ * Returns null if the user hasn't connected Google.
+ */
+async function getUserGoogleToken(c: any): Promise<string | null> {
+  const userEmail = c.get("userEmail")
+  if (!userEmail) return null
+  const cred = getUserCredential(userEmail, "google")
+  if (!cred?.refreshToken) return null
+  return refreshGoogleToken(cred.refreshToken)
+}
 
 export const gmailRoutes = new Hono()
 
+// Middleware: require per-user Google credential on all gmail routes
+gmailRoutes.use("*", async (c, next) => {
+  const token = await getUserGoogleToken(c)
+  if (!token) {
+    return c.json(
+      { error: "Google account not connected. Go to Settings → Integrations to connect Google." },
+      403,
+    )
+  }
+  c.set("googleAccessToken" as any, token)
+  await next()
+})
+
 gmailRoutes.get("/messages", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const query = c.req.query("q") || "in:inbox"
   const max = parseInt(c.req.query("max") || "20", 10)
   const pageToken = c.req.query("pageToken")
 
+  const userEmail = c.get("userEmail" as any) as string
+
   // Incremental sync (first page only — paginated pages always do full fetch)
+  // Scope cache key per user so different users don't share cached email lists
   if (!pageToken) {
-    const syncKey = `gmail:sync:${query}:${max}`
+    const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
     const syncState = getCached<SyncState>(syncKey)
 
     if (syncState?.historyId) {
       try {
-        const history = await gmail.getHistory(syncState.historyId)
+        const history = await gmail.getHistory(accessToken, syncState.historyId)
 
         const changedThreadIds = new Set<string>()
         for (const h of history.history || []) {
@@ -53,7 +83,7 @@ gmailRoutes.get("/messages", async (c) => {
         }
 
         // Fetch updated thread summaries (batched)
-        const updatedThreads = await gmail.fetchBatched([...changedThreadIds], (id) => gmail.getThreadSummary(id))
+        const updatedThreads = await gmail.fetchBatched([...changedThreadIds], (id) => gmail.getThreadSummary(accessToken, id))
 
         // Invalidate full thread caches so next thread open gets fresh data
         for (const id of changedThreadIds) invalidate(`gmail:thread:${id}`)
@@ -86,17 +116,17 @@ gmailRoutes.get("/messages", async (c) => {
       } catch (e: any) {
         // 410 Gone = historyId too old; other errors → fall through to full sync
         console.warn("Incremental sync failed, falling back to full sync:", e.message)
-        invalidate(`gmail:sync:${query}:${max}`)
+        invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
       }
     }
   }
 
   // Full sync
-  const result = await gmail.searchThreads(query, max, pageToken || undefined)
+  const result = await gmail.searchThreads(accessToken, query, max, pageToken || undefined)
   const response: ListResult = { messages: result.threads, nextPageToken: result.nextPageToken }
 
   if (!pageToken && result.historyId) {
-    const syncKey = `gmail:sync:${query}:${max}`
+    const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
     setCached(
       syncKey,
       { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken },
@@ -108,26 +138,30 @@ gmailRoutes.get("/messages", async (c) => {
 })
 
 gmailRoutes.get("/messages/:id", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const id = c.req.param("id")
-  const message = await gmail.getMessage(id)
+  const message = await gmail.getMessage(accessToken, id)
   return c.json(message)
 })
 
 gmailRoutes.get("/threads/:id", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const id = c.req.param("id")
-  const thread = await gmail.getThread(id)
+  const thread = await gmail.getThread(accessToken, id)
   return c.json(thread)
 })
 
 gmailRoutes.get("/labels", async (c) => {
-  const result = await gmail.getLabels()
+  const accessToken = c.get("googleAccessToken" as any) as string
+  const result = await gmail.getLabels(accessToken)
   return c.json(result)
 })
 
 gmailRoutes.get("/messages/:id/attachments/:attachmentId", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const messageId = c.req.param("id")
   const attachmentId = c.req.param("attachmentId")
-  const data = await gmail.getAttachment(messageId, attachmentId)
+  const data = await gmail.getAttachment(accessToken, messageId, attachmentId)
   const filename = c.req.query("filename")
   const mime = filename ? mimeFromFilename(filename) : sniffMimeType(data)
   c.header("Cache-Control", "public, max-age=31536000, immutable")
@@ -171,38 +205,43 @@ function sniffMimeType(buf: Buffer): string {
 }
 
 gmailRoutes.post("/send", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-  const result = await gmail.sendMessage(to, subject, body, threadId, inReplyTo)
+  const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo)
   invalidate("gmail:sync:")
   if (threadId) invalidate(`gmail:thread:${threadId}`)
   return c.json(result)
 })
 
 gmailRoutes.post("/threads/:id/trash", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const id = c.req.param("id")
-  await gmail.trashThread(id)
+  await gmail.trashThread(accessToken, id)
   invalidate("gmail:sync:")
   invalidate(`gmail:thread:${id}`)
   return c.json({ ok: true })
 })
 
 gmailRoutes.patch("/threads/:id/labels", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const id = c.req.param("id")
   const { addLabelIds, removeLabelIds } = await c.req.json()
-  await gmail.modifyThreadLabels(id, addLabelIds || [], removeLabelIds || [])
+  await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
   invalidate("gmail:sync:")
   invalidate(`gmail:thread:${id}`)
   return c.json({ ok: true })
 })
 
 gmailRoutes.patch("/messages/:id/labels", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const { addLabelIds, removeLabelIds } = await c.req.json()
-  await gmail.modifyLabels(c.req.param("id"), addLabelIds || [], removeLabelIds || [])
+  await gmail.modifyLabels(accessToken, c.req.param("id"), addLabelIds || [], removeLabelIds || [])
   return c.json({ ok: true })
 })
 
 gmailRoutes.post("/drafts", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
   const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-  const result = await gmail.createDraft(to, subject, body, threadId, inReplyTo)
+  const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo)
   return c.json(result)
 })

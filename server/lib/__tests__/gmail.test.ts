@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("../credentials.js", () => ({
-  getGoogleAccessToken: () => Promise.resolve("test-token"),
-}))
-
 vi.mock("../email-sanitizer.js", () => ({
   sanitizeHtmlEmail: (html: string) => html,
   sanitizePlainText: (text: string) => text,
@@ -215,7 +211,7 @@ describe("Gmail API functions", () => {
       mockFetch
         .mockReturnValueOnce(okJson({ threads: null, historyId: "123" }))
 
-      const result = await searchThreads("in:inbox")
+      const result = await searchThreads("test-token", "in:inbox")
       expect(result.threads).toEqual([])
       expect(result.nextPageToken).toBeNull()
       expect(result.historyId).toBe("123")
@@ -224,7 +220,7 @@ describe("Gmail API functions", () => {
     it("passes query params correctly", async () => {
       mockFetch.mockReturnValueOnce(okJson({ threads: null }))
 
-      await searchThreads("label:important", 10, "page2")
+      await searchThreads("test-token", "label:important", 10, "page2")
 
       const [url] = mockFetch.mock.calls[0]
       expect(url).toContain("q=label%3Aimportant")
@@ -242,7 +238,7 @@ describe("Gmail API functions", () => {
         }),
       )
 
-      const result = await getThread("t1")
+      const result = await getThread("test-token", "t1")
       expect(result.id).toBe("t1")
       expect(result.messages).toHaveLength(2)
       expect(result.subject).toBe("Test subject")
@@ -252,7 +248,7 @@ describe("Gmail API functions", () => {
     it("handles thread with no messages", async () => {
       mockFetch.mockReturnValueOnce(okJson({ id: "t1" }))
 
-      const result = await getThread("t1")
+      const result = await getThread("test-token", "t1")
       expect(result.messages).toEqual([])
       expect(result.messageCount).toBe(0)
     })
@@ -262,7 +258,7 @@ describe("Gmail API functions", () => {
     it("sends base64url-encoded message", async () => {
       mockFetch.mockReturnValueOnce(okJson({ id: "sent1" }))
 
-      await sendMessage("bob@test.com", "Hi", "Body text")
+      await sendMessage("test-token", "bob@test.com", "Hi", "Body text")
 
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toContain("/messages/send")
@@ -280,7 +276,7 @@ describe("Gmail API functions", () => {
     it("includes In-Reply-To and References headers", async () => {
       mockFetch.mockReturnValueOnce(okJson({ id: "sent2" }))
 
-      await sendMessage("bob@test.com", "Re: Hi", "Reply", "t1", "<orig@id>")
+      await sendMessage("test-token", "bob@test.com", "Re: Hi", "Reply", "t1", "<orig@id>")
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
       expect(body.threadId).toBe("t1")
@@ -294,7 +290,7 @@ describe("Gmail API functions", () => {
     it("sends correct modify request", async () => {
       mockFetch.mockReturnValueOnce(okJson({}))
 
-      await modifyLabels("msg1", ["STARRED"], ["UNREAD"])
+      await modifyLabels("test-token", "msg1", ["STARRED"], ["UNREAD"])
 
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toContain("/messages/msg1/modify")
@@ -308,7 +304,7 @@ describe("Gmail API functions", () => {
     it("sends trash request to correct endpoint", async () => {
       mockFetch.mockReturnValueOnce(okJson({}))
 
-      await trashThread("t1")
+      await trashThread("test-token", "t1")
 
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toContain("/threads/t1/trash")
@@ -326,7 +322,7 @@ describe("Gmail API functions", () => {
         }),
       )
 
-      const result = await getLabels()
+      const result = await getLabels("test-token")
       expect(result.labels).toEqual([
         { id: "INBOX", name: "INBOX", type: "system", messagesTotal: 100, messagesUnread: 5 },
       ])
@@ -335,7 +331,7 @@ describe("Gmail API functions", () => {
     it("handles empty labels", async () => {
       mockFetch.mockReturnValueOnce(okJson({}))
 
-      const result = await getLabels()
+      const result = await getLabels("test-token")
       expect(result.labels).toEqual([])
     })
   })
@@ -344,7 +340,7 @@ describe("Gmail API functions", () => {
     it("fetches and parses a single message", async () => {
       mockFetch.mockReturnValueOnce(okJson(makeMessage()))
 
-      const result = await getMessage("msg1")
+      const result = await getMessage("test-token", "msg1")
       expect(result.id).toBe("msg1")
       expect(result.from).toBe("alice@example.com")
       expect(result.body).toBe("Hello plain text")
@@ -357,7 +353,7 @@ describe("Gmail API functions", () => {
       const encoded = Buffer.from(content).toString("base64url")
       mockFetch.mockReturnValueOnce(okJson({ data: encoded }))
 
-      const result = await getAttachment("msg1", "att1")
+      const result = await getAttachment("test-token", "msg1", "att1")
       expect(result.toString()).toBe(content)
     })
   })
@@ -445,6 +441,6 @@ describe("Gmail API functions", () => {
       Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve("Unauthorized") }),
     )
 
-    await expect(getLabels()).rejects.toThrow("Gmail API 401: Unauthorized")
+    await expect(getLabels("test-token")).rejects.toThrow("Gmail API 401: Unauthorized")
   })
 })
