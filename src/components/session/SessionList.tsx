@@ -86,20 +86,13 @@ export function SessionList({
     scrollRef.current?.scrollTo({ top: 0 })
   }, [deferredSearch, statusFilter, projectFilter])
 
+  const ROW_HEIGHT = 76
   const virtualizer = useVirtualizer({
     count: filteredSessions.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 76,
+    estimateSize: () => ROW_HEIGHT,
     overscan: 5,
-    useAnimationFrameWithResizeObserver: true,
   })
-
-  // Reset cached measurements when the session list changes (e.g. search results arrive).
-  // Without this, stale heights from the previous list are reused for new items at the
-  // same indices, causing rows to overlap until ResizeObserver corrects them.
-  useEffect(() => {
-    virtualizer.measure()
-  }, [filteredSessions])
 
   // Report index synchronously during render (only updates refs, no state)
   const selectedIdx = selectedSessionId
@@ -210,18 +203,17 @@ export function SessionList({
               return (
                 <div
                   key={session.id}
-                  data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
+                    height: `${ROW_HEIGHT}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
                   <ListItem
-                    title={session.summary || truncate(session.prompt, 60)}
+                    title={session.summary || truncate(session.prompt, 60) || "Untitled session"}
                     timestamp={formatRelativeDate(session.updatedAt)}
                     badges={badges}
                     isSelected={selectedSessionId === session.id}
