@@ -62,8 +62,20 @@ function ScrollSnapStack({
   const activeIndex = keys.indexOf(activeKey)
   const safeIndex = activeIndex >= 0 ? activeIndex : 0
 
+  // Set initial scroll position synchronously via ref callback
+  const setScrollRef = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el
+    if (el && isFirstRender.current) {
+      // Instant scroll to active tab before first paint
+      const targetTop = safeIndex * el.clientHeight
+      el.scrollTop = targetTop
+      isFirstRender.current = false
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Scroll to active item when it changes programmatically (e.g., sidebar tap)
   useEffect(() => {
+    if (isFirstRender.current) return // handled by ref callback above
     const el = scrollRef.current
     if (!el) return
 
@@ -71,11 +83,7 @@ function ScrollSnapStack({
     if (!slot) return
 
     isProgrammatic.current = true
-    slot.scrollIntoView({
-      behavior: isFirstRender.current ? "instant" : "smooth",
-      block: "start",
-    })
-    isFirstRender.current = false
+    slot.scrollIntoView({ behavior: "smooth", block: "start" })
 
     // Reset programmatic flag after scroll completes
     const timer = setTimeout(() => { isProgrammatic.current = false }, DURATION * 1000 + 100)
@@ -109,7 +117,7 @@ function ScrollSnapStack({
 
   return (
     <div
-      ref={scrollRef}
+      ref={setScrollRef}
       className={`${className}`}
       onScroll={onScroll}
       style={{
