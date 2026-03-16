@@ -3,6 +3,7 @@ dist
 data/*.db-shm
 data/*.db-wal
 .env
+.superpowers
 tsconfig.tsbuildinfo
 tests/e2e/.auth/
 test-results/
