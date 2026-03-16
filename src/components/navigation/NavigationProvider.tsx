@@ -133,7 +133,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const initialized = useRef(false)
   const itemDirectionRef = useRef(1)
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>()
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Load state from storage on mount
   useEffect(() => {

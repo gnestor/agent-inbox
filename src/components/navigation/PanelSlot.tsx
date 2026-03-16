@@ -37,7 +37,7 @@ function AnimatedSlot({
   const safeRef = useRef(safeToRemove)
   safeRef.current = safeToRemove
 
-  const [target, setTarget] = useState(slotVariants.center)
+  const [target, setTarget] = useState<{ y: number | string; opacity: number }>(slotVariants.center)
 
   useEffect(() => {
     if (!isPresent) {

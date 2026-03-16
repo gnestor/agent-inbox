@@ -1,6 +1,6 @@
 // src/lib/navigation-storage.ts
 import { get, set } from "idb-keyval"
-import type { NavigationState, TabState } from "@/types/navigation"
+import type { NavigationState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState } from "@/types/navigation"
 
 const STORAGE_KEY = "INBOX_NAV_STATE"
