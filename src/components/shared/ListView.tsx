@@ -40,7 +40,7 @@ interface ListViewProps<T extends Record<string, unknown>> {
 
 export function ListView<T extends Record<string, unknown>>({
   title,
-  icon,
+  icon: _icon,
   items,
   loading,
   error,
@@ -52,8 +52,8 @@ export function ListView<T extends Record<string, unknown>>({
   searchPlaceholder,
   onSearch,
   localSearch,
-  hasMore,
-  loadMore,
+  hasMore: _hasMore,
+  loadMore: _loadMore,
   headerRight,
   activeFilters = {},
   onFilterChange,
