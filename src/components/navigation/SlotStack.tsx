@@ -84,7 +84,7 @@ function ScrollSnapStack({
 
   // Detect user-initiated scroll-snap and notify parent
   const handleScroll = useCallback(() => {
-    if (isProgrammatic.current || !onSnapChange || !scrollRef.current) return
+    if (isProgrammatic.current || isFirstRender.current || !onSnapChange || !scrollRef.current) return
 
     const el = scrollRef.current
     const scrollTop = el.scrollTop
