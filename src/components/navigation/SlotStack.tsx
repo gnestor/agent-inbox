@@ -35,14 +35,8 @@ interface SlotStackProps {
 }
 
 export function SlotStack(props: SlotStackProps) {
-  const isMobile = useIsMobile()
-
-  // Mobile keepAll: use scroll-snap for direct touch scrolling
-  if (isMobile && props.mode === "keepAll" && props.keys) {
-    return <ScrollSnapStack {...props} keys={props.keys} />
-  }
-
-  // Desktop (all modes) + mobile keepPrevious: use CSS transform
+  // Always use CSS transform for vertical transitions (tabs + detail panels).
+  // Scroll-snap only used for horizontal panel scrolling within Tab component.
   return <TransformStack {...props} />
 }
 
