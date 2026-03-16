@@ -41,18 +41,17 @@ export function Tab({ id, children }: TabProps) {
     const currentCount = el.children.length
 
     if (currentCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
-      const lastChild = el.lastElementChild
-      if (lastChild) {
-        if (isFirstRender.current) {
-          lastChild.scrollIntoView({ inline: "end", block: "nearest" })
-        } else {
-          lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
-        }
+      // Scroll to show the new (rightmost) panel
+      if (isFirstRender.current) {
+        el.scrollLeft = el.scrollWidth - el.clientWidth
+      } else {
+        el.scrollTo({ left: el.scrollWidth - el.clientWidth, behavior: "smooth" })
       }
     } else if (currentCount < prevPanelCountRef.current) {
-      const lastChild = el.lastElementChild
+      // Scroll back when panels are removed
+      const lastChild = el.lastElementChild as HTMLElement
       if (lastChild) {
-        lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
+        el.scrollTo({ left: lastChild.offsetLeft, behavior: "smooth" })
       }
     }
     prevPanelCountRef.current = currentCount
