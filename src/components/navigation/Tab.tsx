@@ -38,14 +38,20 @@ export function Tab({ id, children }: TabProps) {
     const el = scrollRef.current
     const currentCount = el.children.length
 
-    if (currentCount > prevPanelCountRef.current && !isFirstRender.current) {
+    if (currentCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
       // Scroll to rightmost panel
       const lastChild = el.lastElementChild
       if (lastChild) {
-        lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
+        if (isFirstRender.current) {
+          // First render — instant scroll (no animation)
+          lastChild.scrollIntoView({ inline: "end", block: "nearest" })
+        } else {
+          lastChild.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
+        }
       }
     }
     prevPanelCountRef.current = currentCount
+    isFirstRender.current = false
   })
 
   // Intercept horizontal wheel events on inner panels -> redirect to outer scroll

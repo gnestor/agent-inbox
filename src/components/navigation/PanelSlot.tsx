@@ -69,7 +69,7 @@ export function PanelSlot({ panelId, directionRef, children }: PanelSlotProps) {
   }
 
   return (
-    <div className="relative h-full overflow-clip" style={{ contain: "strict" }}>
+    <div className="relative h-full shrink-0 overflow-clip" style={{ contain: "strict", width: 600 }}>
       <AnimatePresence initial={false}>
         <AnimatedSlot
           key={panelId}
