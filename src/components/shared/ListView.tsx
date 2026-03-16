@@ -97,6 +97,19 @@ export function ListView<T extends Record<string, unknown>>({
       if (field.badge?.show === "if-set" && !value) continue
       if (value === undefined || value === null) continue
 
+      // Boolean fields: show the field label (e.g., "Unread"), not "true"
+      if (field.type === "boolean") {
+        if (value) {
+          const className = field.badge?.colorFn?.(field.label)
+          badges.push({
+            label: field.label,
+            variant: field.badge?.variant ?? "secondary",
+            className,
+          })
+        }
+        continue
+      }
+
       const values = Array.isArray(value) ? value : [value]
       for (const v of values) {
         const label = String(v)
