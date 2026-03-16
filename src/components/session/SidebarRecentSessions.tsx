@@ -13,8 +13,7 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
-import { TAB_ORDER } from "@/hooks/use-spatial-nav"
-import type { TabId } from "@/types/navigation"
+import { STATIC_TAB_ORDER, type TabId } from "@/types/navigation"
 import type { Session } from "@/types"
 
 const ONE_DAY_MS = 86_400_000
@@ -170,7 +169,7 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    navigate(url, { state: { index: TAB_ORDER.length + i } })
+                    navigate(url, { state: { index: STATIC_TAB_ORDER.length + i } })
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn("gap-2", isActive && "bg-accent text-accent-foreground font-medium")}
