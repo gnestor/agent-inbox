@@ -46,6 +46,7 @@ export function SessionListView() {
       getItemId={(s) => s.id}
       selectedId={getSelectedItemId()}
       onSelect={selectItem}
+      itemHeight={74}
       activeFilters={activeFilters}
       onFilterChange={setFilter}
       onSearch={(q) => setFilter("q", q)}

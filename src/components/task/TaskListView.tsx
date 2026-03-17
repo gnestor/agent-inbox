@@ -53,6 +53,7 @@ export function TaskListView() {
       getItemId={(t) => t.id as string}
       selectedId={getSelectedItemId()}
       onSelect={selectItem}
+      itemHeight={74}
       activeFilters={activeFilters}
       onFilterChange={setFilter}
       hasMore={hasMore}

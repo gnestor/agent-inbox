@@ -199,7 +199,7 @@ export function TaskList({
       />
       <SearchInput value={search} onChange={setSearch} placeholder="Search tasks..." />
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
-        {loading && <ListSkeleton itemHeight={66} />}
+        {loading && <ListSkeleton itemHeight={74} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
         {!loading && filteredTasks.length > 0 && (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

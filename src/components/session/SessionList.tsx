@@ -30,6 +30,7 @@ const STATUS_ITEMS = [
   { value: "complete", label: "Complete" },
   { value: "needs_attention", label: "Needs Attention" },
   { value: "errored", label: "Errored" },
+  { value: "archived", label: "Archived" },
 ]
 
 const STATUS_LABEL_MAP: Record<string, string> = Object.fromEntries(
@@ -178,7 +179,7 @@ export function SessionList({
       />
       <SearchInput value={search} onChange={setSearch} placeholder="Search sessions..." />
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
-        {loading && <ListSkeleton itemHeight={80} />}
+        {loading && <ListSkeleton itemHeight={74} />}
         {error && <div className="p-3 text-sm text-destructive">{error}</div>}
         {!loading && filteredSessions.length > 0 && (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
