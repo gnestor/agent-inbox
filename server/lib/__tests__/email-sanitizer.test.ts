@@ -268,6 +268,31 @@ describe("sanitizeHtmlEmail", () => {
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
+  // ── Background color removal ───────────────────────────────────────────────
+
+  it("strips background-color from inline styles", () => {
+    const html = '<td style="background-color: #1a73e8; padding: 10px;">text</td>'
+    const result = sanitizeHtmlEmail(html)
+    expect(result).not.toMatch(/background-color/i)
+    expect(result).toContain("padding: 10px")
+    expect(result).toContain("text")
+  })
+
+  it("strips bgcolor attribute from table elements", () => {
+    const html = '<table><tr><td bgcolor="#ffffff">text</td></tr></table>'
+    const result = sanitizeHtmlEmail(html)
+    expect(result).not.toMatch(/bgcolor/i)
+    expect(result).toContain("text")
+  })
+
+  it("strips background-color from <style> blocks", () => {
+    const html = '<style>.btn { background-color: #1a73e8 !important; color: #fff; }</style><p>hi</p>'
+    const result = sanitizeHtmlEmail(html)
+    expect(result).not.toMatch(/background-color/i)
+    expect(result).toContain("color: #fff")
+    expect(result).toContain("hi")
+  })
+
   // ── Trailing blank blocks ──────────────────────────────────────────────────
 
   it("removes trailing blank <p> elements (Outlook nbsp padding)", () => {
@@ -478,6 +503,16 @@ describe("sanitizeHtmlEmail — real Gmail fixtures", () => {
     expect(result).not.toContain("hubspot.net")
     expect(result).not.toContain("mailtrack.io")
     expect(result.length).toBeLessThan(raw.length * 0.4)
+  })
+
+  it("19cf977c2a39cfec: strips background-color from Google Calendar notification", () => {
+    const raw = fixture("19cf977c2a39cfec.html")
+    const result = sanitizeHtmlEmail(raw)
+
+    expect(result).not.toMatch(/background-color\s*:/i)
+    expect(result).not.toMatch(/\bbgcolor\s*=/i)
+    // Content is preserved
+    expect(result).toContain("Hammies Meetings")
   })
 
   it("19cdd7499dd94a09: keeps Gmail signature with keepSignature option (last message)", () => {

@@ -196,6 +196,13 @@ export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string 
     result = result.slice(0, cutAt)
   }
 
+  // ── Background color removal ───────────────────────────────────────────────
+  // Strip background-color from inline styles and bgcolor attributes.
+  // HTML emails (e.g. calendar notifications) embed hard-coded colors that
+  // clash with the inbox's own background in both light and dark mode.
+  result = result.replace(/background-color\s*:[^;}"]+;?/gi, "")
+  result = result.replace(/\s*bgcolor\s*=\s*(?:"[^"]*"|'[^']*')/gi, "")
+
   // ── Signature line cleanup ─────────────────────────────────────────────────
 
   result = result.replace(/<[a-z][a-z0-9]*[^>]*>\s*Sent (?:with|via) [^<]+<\/[a-z][a-z0-9]*>/gi, "")
