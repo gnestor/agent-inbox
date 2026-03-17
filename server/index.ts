@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server"
+import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
@@ -7,6 +8,7 @@ import { config } from "dotenv"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { homedir } from "os"
+import { existsSync } from "fs"
 import { gmailRoutes } from "./routes/gmail.js"
 import { notionRoutes } from "./routes/notion.js"
 import { sessionRoutes } from "./routes/sessions.js"
@@ -125,6 +127,14 @@ app.onError((err, c) => {
   console.error("Server error:", err)
   return c.json({ error: err.message }, 500)
 })
+
+// Serve production build if dist/ exists
+const distPath = resolve(__dirname, "../dist")
+if (existsSync(distPath)) {
+  app.use("/*", serveStatic({ root: "./dist" }))
+  // SPA fallback — serve index.html for all non-API routes
+  app.get("/*", serveStatic({ path: "./dist/index.html" }))
+}
 
 const port = parseInt(process.env.PORT || "3002", 10)
 
