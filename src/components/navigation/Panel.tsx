@@ -24,7 +24,7 @@ export function Panel({ id, variant, width = DEFAULT_PANEL_WIDTH, children }: Pa
           // Desktop: fixed width card
           : "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
       }
-      style={isMobile ? undefined : { width }}
+      style={isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : { width }}
     >
       {children}
     </div>

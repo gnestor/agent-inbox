@@ -30,6 +30,8 @@ interface SlotStackProps {
   width?: number
   /** Additional className on the outer wrapper */
   className?: string
+  /** Additional inline styles on the outer wrapper */
+  style?: React.CSSProperties
   /** Called when user scrolls to a different item (mobile snap) */
   onSnapChange?: (key: string) => void
 }
@@ -152,6 +154,7 @@ function TransformStack({
   direction = 1,
   width,
   className = "",
+  style: outerStyle,
 }: SlotStackProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [height, setHeight] = useState(0)
@@ -233,7 +236,8 @@ function TransformStack({
       style={{
         height: "100%",
         width,
-        flexShrink: width ? 0 : undefined,
+        flexShrink: 0,
+        ...outerStyle,
       }}
     >
       <div

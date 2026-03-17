@@ -23,14 +23,28 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
   const isMobile = useIsMobile()
   const direction = ctx?.itemDirectionRef.current ?? 1
 
+  if (isMobile) {
+    // On mobile, MobileTab uses horizontal scroll-snap.
+    // PanelSlot needs: fullscreen width, shrink-0 (via SlotStack), and snap alignment.
+    return (
+      <SlotStack
+        activeKey={panelId}
+        renderItem={() => children}
+        mode="keepPrevious"
+        direction={direction}
+        className="w-full h-full"
+        style={{ scrollSnapAlign: "start", scrollSnapStop: "always" }}
+      />
+    )
+  }
+
   return (
     <SlotStack
       activeKey={panelId}
       renderItem={() => children}
       mode="keepPrevious"
       direction={direction}
-      width={isMobile ? undefined : DEFAULT_PANEL_WIDTH}
-      className={isMobile ? "w-full" : ""}
+      width={DEFAULT_PANEL_WIDTH}
     />
   )
 }
