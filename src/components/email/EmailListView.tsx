@@ -3,6 +3,7 @@ import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
 import { useEmails } from "@/hooks/use-emails"
 import { formatEmailAddress } from "@/lib/formatters"
+import { Mail } from "lucide-react"
 import type { FieldDef } from "@/types/plugin"
 
 export const emailFieldSchema: FieldDef[] = [
@@ -38,11 +39,53 @@ export const emailFieldSchema: FieldDef[] = [
     },
   },
   { id: "body", label: "Body", type: "html", listRole: "hidden" },
+  {
+    id: "flags",
+    label: "Filter",
+    type: "text",
+    listRole: "hidden",
+    filter: {
+      filterable: true,
+      filterOptions: ["important", "starred", "unread", "snoozed"],
+    },
+  },
 ]
 
 export function EmailListView() {
-  const { selectItem, getSelectedItemId, activeFilters, setFilter } = useNavigation()
-  const { messages, loading, error, hasMore, loadMore } = useEmails()
+  const { selectItem, getSelectedItemId, activeFilters, setFilter, switchTab } = useNavigation()
+
+  const query = useMemo(() => {
+    const flags = (activeFilters.flags || "").split(",").filter(Boolean)
+    const parts: string[] = ["in:inbox"]
+    if (flags.length === 0) {
+      parts.push("is:important OR is:starred")
+    } else if (flags.length === 1) {
+      parts.push(`is:${flags[0]}`)
+    } else {
+      parts.push(`(${flags.map((f) => `is:${f}`).join(" OR ")})`)
+    }
+    const q = activeFilters.q
+    if (q) parts.push(q)
+    return parts.join(" ")
+  }, [activeFilters.flags, activeFilters.q])
+
+  const { messages, loading, error, hasMore, loadMore } = useEmails(query)
+
+  const isConnectionError = error?.includes("Google account not connected")
+
+  const connectionErrorContent = isConnectionError ? (
+    <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+      <Mail className="h-8 w-8 mb-2" />
+      <p className="text-sm font-medium mb-1">Google account not connected</p>
+      <p className="text-xs text-center mb-3">Connect your Google account to see your emails.</p>
+      <button
+        onClick={() => switchTab("settings")}
+        className="text-xs text-primary hover:underline cursor-pointer"
+      >
+        Go to Integrations
+      </button>
+    </div>
+  ) : undefined
 
   // Deduplicate messages by threadId (keep first occurrence per thread)
   // and add derived fields for the schema
@@ -68,9 +111,10 @@ export function EmailListView() {
       items={threads}
       loading={loading}
       error={error}
+      errorContent={connectionErrorContent}
       fieldSchema={emailFieldSchema}
       getItemId={(t) => t.threadId}
-      selectedId={getSelectedItemId()}
+      selectedId={getSelectedItemId("emails")}
       onSelect={selectItem}
       itemHeight={100}
       activeFilters={activeFilters}

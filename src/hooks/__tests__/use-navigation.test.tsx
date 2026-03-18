@@ -94,4 +94,25 @@ describe("useNavigation", () => {
     act(() => result.current.switchTab("tasks"))
     expect(result.current.activeTab).toBe("tasks")
   })
+
+  it("getSelectedItemId with tab arg persists across tab switch", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.selectItem("email123"))
+    expect(result.current.getSelectedItemId("emails")).toBe("email123")
+
+    act(() => result.current.switchTab("tasks"))
+    // Tab-scoped: emails selection still available
+    expect(result.current.getSelectedItemId("emails")).toBe("email123")
+    // Default (active tab) returns tasks selection (undefined)
+    expect(result.current.getSelectedItemId()).toBeUndefined()
+  })
+
+  it("selectItem with listIndex computes direction in state", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.selectItem("item1", 3))
+    expect(result.current.getItemDirection()).toBe(1) // 3 > 0 (default prev)
+
+    act(() => result.current.selectItem("item2", 1))
+    expect(result.current.getItemDirection()).toBe(-1) // 1 < 3
+  })
 })

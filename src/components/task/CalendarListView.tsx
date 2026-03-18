@@ -43,7 +43,7 @@ export function CalendarListView() {
       error={error}
       fieldSchema={calendarFieldSchema}
       getItemId={(item) => item.id as string}
-      selectedId={getSelectedItemId()}
+      selectedId={getSelectedItemId("calendar")}
       onSelect={selectItem}
       activeFilters={activeFilters}
       onFilterChange={setFilter}

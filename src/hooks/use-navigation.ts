@@ -1,44 +1,29 @@
 // src/hooks/use-navigation.ts
-import { useContext, useCallback, useRef } from "react"
-import { NavigationContext, buildUrl } from "@/components/navigation/NavigationProvider"
+import { useContext, useCallback } from "react"
+import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import type { PanelState, TabId } from "@/types/navigation"
 
 export function useNavigation() {
   const ctx = useContext(NavigationContext)
   if (!ctx) throw new Error("useNavigation must be used within NavigationProvider")
 
-  const { state, dispatch, navigateAction, itemDirectionRef } = ctx
+  const { state, dispatch } = ctx
 
   const switchTab = useCallback(
-    (tabId: TabId) => {
-      dispatch({ type: "SWITCH_TAB", tabId })
-      const selectedId = state.tabs[tabId]?.selectedItemId
-      navigateAction(buildUrl(tabId, selectedId))
-    },
-    [dispatch, navigateAction, state.tabs],
+    (tabId: TabId) => dispatch({ type: "SWITCH_TAB", tabId }),
+    [dispatch],
   )
-
-  // Track previous list index to compute direction
-  const prevListIndexRef = useRef(0)
 
   const selectItem = useCallback(
     (itemId: string, listIndex?: number) => {
-      if (listIndex !== undefined) {
-        itemDirectionRef.current = listIndex > prevListIndexRef.current ? 1 : listIndex < prevListIndexRef.current ? -1 : 1
-        prevListIndexRef.current = listIndex
-      }
       dispatch({ type: "SELECT_ITEM", itemId, listIndex })
-      navigateAction(buildUrl(state.activeTab, itemId))
     },
-    [dispatch, navigateAction, state.activeTab, itemDirectionRef],
+    [dispatch],
   )
 
   const deselectItem = useCallback(
-    () => {
-      dispatch({ type: "DESELECT_ITEM" })
-      navigateAction(buildUrl(state.activeTab))
-    },
-    [dispatch, navigateAction, state.activeTab],
+    () => dispatch({ type: "DESELECT_ITEM" }),
+    [dispatch],
   )
 
   const pushPanel = useCallback(
@@ -77,6 +62,14 @@ export function useNavigation() {
     [state],
   )
 
+  const getItemDirection = useCallback(
+    (tab?: TabId) => {
+      const tabId = tab ?? state.activeTab
+      return state.tabs[tabId]?.itemDirection ?? 1
+    },
+    [state],
+  )
+
   const setFilter = useCallback(
     (key: string, value: string) => dispatch({ type: "SET_FILTER", key, value }),
     [dispatch],
@@ -98,6 +91,7 @@ export function useNavigation() {
     openSession,
     getPanels,
     getSelectedItemId,
+    getItemDirection,
     activeFilters: state.tabs[state.activeTab]?.activeFilters ?? {},
     setFilter,
     clearFilters,

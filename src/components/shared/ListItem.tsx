@@ -44,7 +44,7 @@ function ListItemInner({
   return (
     <button
       className={cn(
-        "w-full h-full text-left px-4 py-3 border-b transition-colors overflow-hidden",
+        "w-full h-full text-left px-4 py-3 border-b overflow-hidden",
         isSelected ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
       )}
       onClick={onClick}
@@ -66,7 +66,7 @@ function ListItemInner({
                   key={i}
                   variant={badge.variant ?? "secondary"}
                   className={cn(
-                    "text-[10px] px-1.5 py-0 border-0",
+                    "text-[10px] px-1.5 py-0 border-0 transition-none",
                     isSelected && "!bg-primary-foreground/20 !text-primary-foreground",
                     badge.className,
                   )}

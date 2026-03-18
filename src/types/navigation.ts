@@ -27,6 +27,10 @@ export interface TabState {
   panelScrollOffset: number
   panels: PanelState[]
   activeFilters?: Record<string, string>
+  /** Direction of the last item selection: 1 = down, -1 = up */
+  itemDirection?: number
+  /** List index of the last selected item (for computing direction) */
+  prevListIndex?: number
 }
 
 // --- Full navigation state ---

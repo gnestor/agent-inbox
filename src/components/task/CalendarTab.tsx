@@ -1,10 +1,8 @@
-import { useContext } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PanelSlot } from "@/components/navigation/PanelSlot"
 import { PanelContent } from "@/components/navigation/PanelContent"
-import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { CalendarListView } from "./CalendarListView"
 import { CalendarDetailView } from "./CalendarDetailView"
 import { SessionView } from "@/components/session/SessionView"
@@ -12,7 +10,6 @@ import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 
 export function CalendarTab() {
   const { getPanels } = useNavigation()
-  const ctx = useContext(NavigationContext)
   const panels = getPanels("calendar")
 
   return (
@@ -27,7 +24,7 @@ export function CalendarTab() {
         }
 
         return (
-          <PanelSlot key={index} panelId={panel.id} directionRef={ctx!.itemDirectionRef}>
+          <PanelSlot key={index} panelId={panel.id}>
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <CalendarDetailView itemId={panel.props.itemId} />

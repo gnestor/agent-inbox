@@ -44,7 +44,7 @@ export function SessionListView() {
       error={error}
       fieldSchema={sessionFieldSchema}
       getItemId={(s) => s.id}
-      selectedId={getSelectedItemId()}
+      selectedId={getSelectedItemId("sessions")}
       onSelect={selectItem}
       itemHeight={74}
       activeFilters={activeFilters}

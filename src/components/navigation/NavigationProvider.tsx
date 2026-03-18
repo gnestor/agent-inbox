@@ -1,5 +1,5 @@
 // src/components/navigation/NavigationProvider.tsx
-import { createContext, useCallback, useEffect, useRef, useReducer, type ReactNode } from "react"
+import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState } from "@/types/navigation"
@@ -44,6 +44,13 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
     case "SELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       tab.selectedItemId = action.itemId
+
+      // Compute direction from list index
+      if (action.listIndex !== undefined) {
+        const prev = tab.prevListIndex ?? 0
+        tab.itemDirection = action.listIndex > prev ? 1 : action.listIndex < prev ? -1 : 1
+        tab.prevListIndex = action.listIndex
+      }
 
       // If panels[1] is a detail panel, replace it and remove panels after
       if (tab.panels.length > 1 && tab.panels[1].type === "detail") {
@@ -138,8 +145,6 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 export interface NavigationContextValue {
   state: NavigationState
   dispatch: React.Dispatch<NavAction>
-  navigateAction: (url: string) => void
-  itemDirectionRef: React.RefObject<number>
 }
 
 export const NavigationContext = createContext<NavigationContextValue | null>(null)
@@ -151,18 +156,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const initialized = useRef(false)
-  const itemDirectionRef = useRef(1)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Tracks the last URL we programmatically navigated to, so the URL→state
-  // effect can distinguish user-action navigations from browser back/forward.
+  // effect can distinguish our navigations from browser back/forward.
   const lastNavigatedUrl = useRef(location.pathname)
-
-  // Wrapper: sets the ref BEFORE calling navigate so the URL→state effect skips it.
-  const navigateAction = useCallback((url: string) => {
-    lastNavigatedUrl.current = url
-    navigate(url)
-  }, [navigate])
 
   // Load state from storage on mount
   useEffect(() => {
@@ -195,12 +193,22 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(saveTimer.current)
   }, [state])
 
+  // Declarative state → URL sync
+  // Derives URL from state and navigates when it differs from the current URL.
+  const activeSelectedId = state.tabs[state.activeTab]?.selectedItemId
+  useEffect(() => {
+    if (!initialized.current) return
+    const url = buildUrl(state.activeTab, activeSelectedId)
+    if (url !== lastNavigatedUrl.current) {
+      lastNavigatedUrl.current = url
+      navigate(url)
+    }
+  }, [state.activeTab, activeSelectedId, navigate])
+
   // URL → state sync (browser back/forward ONLY)
-  // When the URL changes due to a user action (selectItem, deselectItem, switchTab),
-  // lastNavigatedUrl matches the new URL, so this effect skips.
-  // When the URL changes due to browser back/forward, lastNavigatedUrl won't match,
-  // so we parse the URL and dispatch the appropriate state changes.
-  // This effect NEVER calls navigate() — the browser already changed the URL.
+  // When the URL changes due to our state→URL effect, lastNavigatedUrl matches,
+  // so this effect skips. When it changes due to browser back/forward,
+  // lastNavigatedUrl won't match, so we parse the URL and dispatch.
   useEffect(() => {
     if (!initialized.current) return
     if (location.pathname === lastNavigatedUrl.current) return
@@ -227,10 +235,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "DESELECT_ITEM" })
     }
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Only re-run when URL changes, NOT when state changes
 
   return (
-    <NavigationContext.Provider value={{ state, dispatch, navigateAction, itemDirectionRef }}>
+    <NavigationContext.Provider value={{ state, dispatch }}>
       {children}
     </NavigationContext.Provider>
   )

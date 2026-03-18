@@ -51,7 +51,7 @@ export function TaskListView() {
       error={error}
       fieldSchema={taskFieldSchema}
       getItemId={(t) => t.id as string}
-      selectedId={getSelectedItemId()}
+      selectedId={getSelectedItemId("tasks")}
       onSelect={selectItem}
       itemHeight={74}
       activeFilters={activeFilters}
