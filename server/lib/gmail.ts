@@ -337,14 +337,47 @@ export async function modifyThreadLabels(
   })
 }
 
-export async function sendMessage(
-  accessToken: string,
+export async function getSignature(accessToken: string): Promise<string> {
+  const data = await gmailRequest(accessToken, "/settings/sendAs")
+  const primary = data.sendAs?.find((s: any) => s.isPrimary)
+  return primary?.signature || ""
+}
+
+function buildRawEmail(
   to: string,
   subject: string,
   body: string,
-  threadId?: string,
+  signature: string,
   inReplyTo?: string,
-) {
+): string {
+  if (signature) {
+    // Send as multipart HTML so the signature renders correctly
+    const htmlBody = `<div>${body.replace(/\n/g, "<br>")}</div><br><div class="gmail_signature">${signature}</div>`
+    const boundary = `boundary_${Date.now()}`
+    const headers: string[] = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    ]
+    if (inReplyTo) {
+      headers.push(`In-Reply-To: ${inReplyTo}`)
+      headers.push(`References: ${inReplyTo}`)
+    }
+    const parts = [
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      body,
+      `--${boundary}`,
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      htmlBody,
+      `--${boundary}--`,
+    ]
+    return [...headers, "", ...parts].join("\r\n")
+  }
+
+  // Plain text (no signature)
   const headers: string[] = [
     `To: ${to}`,
     `Subject: ${subject}`,
@@ -354,15 +387,28 @@ export async function sendMessage(
     headers.push(`In-Reply-To: ${inReplyTo}`)
     headers.push(`References: ${inReplyTo}`)
   }
+  return [...headers, "", body].join("\r\n")
+}
 
-  const rawMessage = [...headers, "", body].join("\r\n")
-  const encodedMessage = Buffer.from(rawMessage)
+function encodeRaw(raw: string): string {
+  return Buffer.from(raw)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "")
+}
 
-  const message: any = { raw: encodedMessage }
+export async function sendMessage(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string,
+  inReplyTo?: string,
+  signature?: string,
+) {
+  const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
+  const message: any = { raw: encodeRaw(rawMessage) }
   if (threadId) message.threadId = threadId
 
   return gmailRequest(accessToken, "/messages/send", {
@@ -384,26 +430,11 @@ export async function createDraft(
   body: string,
   threadId?: string,
   inReplyTo?: string,
+  signature?: string,
 ) {
-  const headers: string[] = [
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    "Content-Type: text/plain; charset=utf-8",
-  ]
-  if (inReplyTo) {
-    headers.push(`In-Reply-To: ${inReplyTo}`)
-    headers.push(`References: ${inReplyTo}`)
-  }
-
-  const rawMessage = [...headers, "", body].join("\r\n")
-  const encodedMessage = Buffer.from(rawMessage)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "")
-
+  const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
   const draft: any = {
-    message: { raw: encodedMessage },
+    message: { raw: encodeRaw(rawMessage) },
   }
   if (threadId) {
     draft.message.threadId = threadId

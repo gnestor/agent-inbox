@@ -6,7 +6,7 @@ import Placeholder from "@tiptap/extension-placeholder"
 import { TaskList } from "@tiptap/extension-task-list"
 import { TaskItem } from "@tiptap/extension-task-item"
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight"
-import { Extension } from "@tiptap/core"
+import { Extension, generateJSON } from "@tiptap/core"
 import Suggestion from "@tiptap/suggestion"
 import { Markdown } from "tiptap-markdown"
 import { common, createLowlight } from "lowlight"
@@ -141,9 +141,17 @@ export function RichTextEditor({
     [],
   )
 
+  // If the initial value looks like HTML (e.g. Gmail draft), parse it as HTML
+  // so TipTap builds a proper ProseMirror doc instead of treating tags as text
+  const initialContent = useMemo(
+    () => (value.trimStart().startsWith("<") ? generateJSON(value, extensions) : value),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
   const editor = useEditor({
     extensions,
-    content: value,
+    content: initialContent,
     editable: !disabled,
     autofocus: autofocus ? "end" : false,
     editorProps: {
@@ -157,6 +165,14 @@ export function RichTextEditor({
         class: "prose prose-sm max-w-none dark:prose-invert",
       },
     },
+    onCreate: ({ editor }) => {
+      // If initial content was HTML, sync the parent with the markdown version
+      if (typeof initialContent !== "string") {
+        const md = (editor.storage as any).markdown.getMarkdown() as string
+        lastEmittedRef.current = md
+        onChange(md)
+      }
+    },
     onUpdate: ({ editor }) => {
       const md = (editor.storage as any).markdown.getMarkdown() as string
       lastEmittedRef.current = md
@@ -164,12 +180,24 @@ export function RichTextEditor({
     },
   })
 
-  // Sync external value changes (e.g. loading a template)
+  // Sync external value changes (e.g. loading a template or Gmail draft)
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (value === lastEmittedRef.current) return
-    lastEmittedRef.current = value
-    editor.commands.setContent(value, { emitUpdate: false })
+
+    // Gmail drafts arrive as HTML — detect and parse natively (bypassing
+    // the tiptap-markdown extension which would treat it as literal markdown)
+    if (value.trimStart().startsWith("<")) {
+      const json = generateJSON(value, extensions)
+      editor.commands.setContent(json, { emitUpdate: false })
+      // Re-export as markdown so parent state stays in sync
+      const md = (editor.storage as any).markdown.getMarkdown() as string
+      lastEmittedRef.current = md
+      onChange(md)
+    } else {
+      lastEmittedRef.current = value
+      editor.commands.setContent(value, { emitUpdate: false })
+    }
   }, [editor, value])
 
   // Sync disabled

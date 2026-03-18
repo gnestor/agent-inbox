@@ -204,10 +204,17 @@ function sniffMimeType(buf: Buffer): string {
   return "application/octet-stream"
 }
 
+gmailRoutes.get("/signature", async (c) => {
+  const accessToken = c.get("googleAccessToken" as any) as string
+  const signature = await gmail.getSignature(accessToken)
+  return c.json({ signature })
+})
+
 gmailRoutes.post("/send", async (c) => {
   const accessToken = c.get("googleAccessToken" as any) as string
   const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-  const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo)
+  const signature = await gmail.getSignature(accessToken)
+  const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
   invalidate("gmail:sync:")
   if (threadId) invalidate(`gmail:thread:${threadId}`)
   return c.json(result)
@@ -242,6 +249,7 @@ gmailRoutes.patch("/messages/:id/labels", async (c) => {
 gmailRoutes.post("/drafts", async (c) => {
   const accessToken = c.get("googleAccessToken" as any) as string
   const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-  const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo)
+  const signature = await gmail.getSignature(accessToken)
+  const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, signature)
   return c.json(result)
 })
