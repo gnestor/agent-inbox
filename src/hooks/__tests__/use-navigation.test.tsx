@@ -115,4 +115,17 @@ describe("useNavigation", () => {
     act(() => result.current.selectItem("item2", 1))
     expect(result.current.getItemDirection()).toBe(-1) // 1 < 3
   })
+
+  it("switchTab + selectItem in same act puts item on correct tab", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    // Start on emails, switch to sessions and select an item in one batch
+    act(() => {
+      result.current.switchTab("sessions")
+      result.current.selectItem("session-uuid")
+    })
+    expect(result.current.activeTab).toBe("sessions")
+    expect(result.current.getSelectedItemId("sessions")).toBe("session-uuid")
+    // The item should NOT appear on the emails tab
+    expect(result.current.getSelectedItemId("emails")).toBeUndefined()
+  })
 })

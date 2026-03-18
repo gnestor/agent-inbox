@@ -158,6 +158,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
+  // Keep a ref to the latest state so the URL→state effect (which intentionally
+  // omits `state` from its deps) can read fresh values instead of stale closures.
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   // Tracks the last URL we programmatically navigated to, so the URL→state
   // effect can distinguish our navigations from browser back/forward.
   const lastNavigatedUrl = useRef(location.pathname)
@@ -209,6 +214,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // When the URL changes due to our state→URL effect, lastNavigatedUrl matches,
   // so this effect skips. When it changes due to browser back/forward,
   // lastNavigatedUrl won't match, so we parse the URL and dispatch.
+  // Uses stateRef to read the latest state without adding `state` as a dependency.
   useEffect(() => {
     if (!initialized.current) return
     if (location.pathname === lastNavigatedUrl.current) return
@@ -225,10 +231,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       if (parts[1]) selectedId = decodeURIComponent(parts[1])
     }
 
-    if (tabId !== state.activeTab) {
+    const currentState = stateRef.current
+    if (tabId !== currentState.activeTab) {
       dispatch({ type: "SWITCH_TAB", tabId })
     }
-    const currentSelectedId = state.tabs[state.activeTab]?.selectedItemId
+    const currentSelectedId = currentState.tabs[currentState.activeTab]?.selectedItemId
     if (selectedId && selectedId !== currentSelectedId) {
       dispatch({ type: "SELECT_ITEM", itemId: selectedId })
     } else if (!selectedId && currentSelectedId) {
