@@ -13,6 +13,7 @@ vi.mock("../../db/schema.js", () => ({
 // Mock session-manager to provide a workspace path
 vi.mock("../session-manager.js", () => ({
   getWorkspacePath: () => "/test/workspace",
+  getWorkspaceName: () => "test-workspace",
 }))
 
 // Mock auth — provide a controllable session lookup
@@ -115,21 +116,21 @@ describe("connection routes", () => {
     })
 
     it("shows user integrations as connected when credentials exist", async () => {
-      storeUserCredential(testEmail, "notion", { token: "test-token" })
+      storeUserCredential(testEmail, "google", { token: "test-token" })
 
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections")
       const data = await res.json()
 
-      const notion = data.integrations.find((i: any) => i.id === "notion")
-      expect(notion.connected).toBe(true)
+      const google = data.integrations.find((i: any) => i.id === "google")
+      expect(google.connected).toBe(true)
 
-      const slack = data.integrations.find((i: any) => i.id === "slack")
-      expect(slack.connected).toBe(false)
+      const pinterest = data.integrations.find((i: any) => i.id === "pinterest")
+      expect(pinterest.connected).toBe(false)
     })
 
     it("shows workspace integrations as connected when credentials exist", async () => {
-      storeWorkspaceCredential("/test/workspace", "shopify", "shop-token")
+      storeWorkspaceCredential("test-workspace", "shopify", "shop-token")
 
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections")
@@ -163,26 +164,27 @@ describe("connection routes", () => {
 
     it("returns 500 when client ID env is not set", async () => {
       // Ensure env var is not set
-      delete process.env.NOTION_OAUTH_CLIENT_ID
+      delete process.env.GOOGLE_CLIENT_ID
       const app = createTestApp()
-      const res = await makeRequest(app, "http://localhost/api/connections/connect/notion")
+      const res = await makeRequest(app, "http://localhost/api/connections/connect/google")
       expect(res.status).toBe(500)
     })
 
     it("redirects to OAuth provider when configured", async () => {
-      process.env.GITHUB_CLIENT_ID = "test-github-client-id"
+      process.env.GOOGLE_CLIENT_ID = "test-google-client-id"
+      process.env.GOOGLE_CLIENT_SECRET = "test-google-secret"
       const app = createTestApp()
-      const res = await makeRequest(app, "http://localhost/api/connections/connect/github", {
+      const res = await makeRequest(app, "http://localhost/api/connections/connect/google", {
         redirect: "manual",
       })
       expect(res.status).toBe(302)
       const location = res.headers.get("Location")
-      expect(location).toContain("https://github.com/login/oauth/authorize")
-      expect(location).toContain("client_id=test-github-client-id")
+      expect(location).toContain("https://accounts.google.com/o/oauth2/v2/auth")
+      expect(location).toContain("client_id=test-google-client-id")
       expect(location).toContain("state=")
-      expect(location).toContain("scope=repo+read%3Aorg")
       // Clean up
-      delete process.env.GITHUB_CLIENT_ID
+      delete process.env.GOOGLE_CLIENT_ID
+      delete process.env.GOOGLE_CLIENT_SECRET
     })
 
     it("returns 401 when not authenticated", async () => {
@@ -225,10 +227,10 @@ describe("connection routes", () => {
 
   describe("DELETE /api/connections/:integration", () => {
     it("disconnects a user integration", async () => {
-      storeUserCredential(testEmail, "notion", { token: "test-token" })
+      storeUserCredential(testEmail, "google", { token: "test-token" })
 
       const app = createTestApp()
-      const res = await makeRequest(app, "http://localhost/api/connections/notion", {
+      const res = await makeRequest(app, "http://localhost/api/connections/google", {
         method: "DELETE",
       })
       expect(res.status).toBe(200)
@@ -238,8 +240,8 @@ describe("connection routes", () => {
       // Verify it's disconnected
       const listRes = await makeRequest(app, "http://localhost/api/connections")
       const listData = await listRes.json()
-      const notion = listData.integrations.find((i: any) => i.id === "notion")
-      expect(notion.connected).toBe(false)
+      const google = listData.integrations.find((i: any) => i.id === "google")
+      expect(google.connected).toBe(false)
     })
 
     it("returns 404 for unknown integration", async () => {

@@ -47,7 +47,7 @@ describe("integration registry", () => {
       const notion = getIntegration("notion")
       expect(notion).toBeDefined()
       expect(notion!.name).toBe("Notion")
-      expect(notion!.authType).toBe("oauth2")
+      expect(notion!.authType).toBe("api_key")
     })
 
     it("returns undefined for an unknown id", () => {
@@ -59,11 +59,13 @@ describe("integration registry", () => {
     it("returns only OAuth integrations", () => {
       const oauth = getOAuthIntegrations()
       expect(oauth.every((i) => i.authType === "oauth2")).toBe(true)
-      expect(oauth.map((i) => i.id)).toContain("notion")
-      expect(oauth.map((i) => i.id)).toContain("slack")
-      expect(oauth.map((i) => i.id)).toContain("github")
-      expect(oauth.map((i) => i.id)).not.toContain("shopify")
-      expect(oauth.map((i) => i.id)).not.toContain("air")
+      expect(oauth.map((i) => i.id)).toContain("google")
+      expect(oauth.map((i) => i.id)).toContain("pinterest")
+      expect(oauth.map((i) => i.id)).toContain("quickbooks")
+      // Notion, Slack, GitHub are now api_key
+      expect(oauth.map((i) => i.id)).not.toContain("notion")
+      expect(oauth.map((i) => i.id)).not.toContain("slack")
+      expect(oauth.map((i) => i.id)).not.toContain("github")
     })
   })
 })

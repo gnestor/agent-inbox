@@ -229,6 +229,17 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
 }))
 
+vi.mock("@/hooks/use-navigation", () => ({
+  useNavigation: () => ({
+    switchTab: vi.fn(),
+    selectItem: vi.fn(),
+    pushPanel: vi.fn(),
+    popPanel: vi.fn(),
+    replacePanel: vi.fn(),
+    state: { activeTab: "sessions", tabs: {} },
+  }),
+}))
+
 function makeContextData(overrides: Partial<Parameters<typeof ContextPanel>[0]["data"]> = {}) {
   return {
     entity: {

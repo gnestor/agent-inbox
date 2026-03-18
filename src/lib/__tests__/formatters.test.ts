@@ -123,10 +123,10 @@ describe("sessionStatusColor", () => {
 
 describe("sessionStatusBadgeClass", () => {
   it.each([
-    ["running", "bg-chart-3/20 text-chart-3 border-chart-3/30"],
-    ["complete", "bg-chart-1/20 text-chart-1 border-chart-1/30"],
-    ["needs_attention", "bg-chart-2/20 text-chart-2 border-chart-2/30"],
-    ["errored", "bg-destructive/20 text-destructive border-destructive/30"],
+    ["running", "bg-chart-3/20 text-chart-3"],
+    ["complete", "bg-chart-1/20 text-chart-1"],
+    ["needs_attention", "bg-chart-2/20 text-chart-2"],
+    ["errored", "bg-destructive/20 text-destructive"],
   ])("maps '%s' correctly", (input, expected) => {
     expect(sessionStatusBadgeClass(input)).toBe(expected)
   })
@@ -138,13 +138,13 @@ describe("sessionStatusBadgeClass", () => {
 
 describe("taskStatusBadgeClass", () => {
   it.each([
-    ["Not started", "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30"],
-    ["Next Up", "bg-chart-2/20 text-chart-2 border-chart-2/30"],
-    ["In Progress", "bg-chart-3/20 text-chart-3 border-chart-3/30"],
-    ["In progress", "bg-chart-3/20 text-chart-3 border-chart-3/30"],
-    ["Completed", "bg-chart-1/20 text-chart-1 border-chart-1/30"],
-    ["Done", "bg-chart-1/20 text-chart-1 border-chart-1/30"],
-    ["Archive", "bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30"],
+    ["Not started", "bg-foreground/10 text-muted-foreground"],
+    ["Archive", "bg-foreground/10 text-muted-foreground"],
+    ["Next Up", "bg-chart-2/20 text-chart-2"],
+    ["In Progress", "bg-chart-3/20 text-chart-3"],
+    ["In progress", "bg-chart-3/20 text-chart-3"],
+    ["Completed", "bg-chart-1/20 text-chart-1"],
+    ["Done", "bg-chart-1/20 text-chart-1"],
   ])("maps '%s' correctly", (input, expected) => {
     expect(taskStatusBadgeClass(input)).toBe(expected)
   })
