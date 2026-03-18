@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query"
+import { useInfiniteQuery, useIsRestoring } from "@tanstack/react-query"
 import { getTasks } from "@/api/client"
 
 interface TaskFilters {
@@ -9,6 +9,7 @@ interface TaskFilters {
 }
 
 export function useTasks(filters?: TaskFilters, enabled = true) {
+  const isRestoring = useIsRestoring()
   const result = useInfiniteQuery({
     queryKey: ["tasks", filters],
     queryFn: ({ pageParam }) => getTasks({ ...filters, cursor: pageParam as string | undefined }),
@@ -20,7 +21,7 @@ export function useTasks(filters?: TaskFilters, enabled = true) {
   const tasks = result.data?.pages.flatMap((p) => p.tasks) ?? []
   return {
     tasks,
-    loading: result.isLoading,
+    loading: result.isLoading || isRestoring,
     loadingMore: result.isFetchingNextPage,
     error: result.error?.message ?? null,
     refresh: () => result.refetch(),

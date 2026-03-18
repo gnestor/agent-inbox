@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useIsRestoring } from "@tanstack/react-query"
 import { getSessions } from "@/api/client"
 
 interface SessionFilters {
@@ -9,6 +9,7 @@ interface SessionFilters {
 }
 
 export function useSessions(filters?: SessionFilters, enabled = true) {
+  const isRestoring = useIsRestoring()
   const result = useQuery({
     queryKey: ["sessions", filters],
     queryFn: () => getSessions(filters).then((r) => r.sessions),
@@ -17,7 +18,7 @@ export function useSessions(filters?: SessionFilters, enabled = true) {
   })
   return {
     sessions: result.data ?? [],
-    loading: result.isLoading,
+    loading: result.isLoading || isRestoring,
     error: result.error?.message ?? null,
     refresh: () => result.refetch(),
   }

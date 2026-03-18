@@ -1,4 +1,5 @@
 import { useRef } from "react"
+import { useIsRestoring } from "@tanstack/react-query"
 import { useParams } from "react-router-dom"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { Plug, SlidersHorizontal } from "lucide-react"
@@ -92,7 +93,9 @@ function PluginListInner({
 
   const hasActiveFilters = Object.values(filterState).some((v) => v.length > 0)
 
-  const { data, isLoading } = usePluginItems(plugin.id, queryFilters)
+  const isRestoring = useIsRestoring()
+  const { data, isLoading: queryLoading } = usePluginItems(plugin.id, queryFilters)
+  const isLoading = queryLoading || isRestoring
   const items = data?.items ?? []
 
   const containerRef = useRef<HTMLDivElement>(null)

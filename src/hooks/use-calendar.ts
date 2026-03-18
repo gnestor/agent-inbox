@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query"
+import { useInfiniteQuery, useIsRestoring } from "@tanstack/react-query"
 import { getCalendarItems } from "@/api/client"
 
 interface CalendarFilters {
@@ -8,6 +8,7 @@ interface CalendarFilters {
 }
 
 export function useCalendar(filters?: CalendarFilters, enabled = true) {
+  const isRestoring = useIsRestoring()
   const result = useInfiniteQuery({
     queryKey: ["calendar", filters],
     queryFn: ({ pageParam }) => getCalendarItems({ ...filters, cursor: pageParam as string | undefined }),
@@ -19,7 +20,7 @@ export function useCalendar(filters?: CalendarFilters, enabled = true) {
   const items = result.data?.pages.flatMap((p) => p.items) ?? []
   return {
     items,
-    loading: result.isLoading,
+    loading: result.isLoading || isRestoring,
     loadingMore: result.isFetchingNextPage,
     error: result.error?.message ?? null,
     refresh: () => result.refetch(),

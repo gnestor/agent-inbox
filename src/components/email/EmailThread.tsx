@@ -239,10 +239,18 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   }
 
   if (error) {
+    const isConnectionError = error.includes("Google account not connected")
     return (
       <div className="flex flex-col h-full">
         {header}
-        <div className="p-6 text-destructive">Error loading thread: {error}</div>
+        {isConnectionError ? (
+          <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
+            <p className="text-sm font-medium mb-1">Google account not connected</p>
+            <p className="text-xs">Connect your Google account in Integrations to view this thread.</p>
+          </div>
+        ) : (
+          <div className="p-6 text-destructive text-sm">Error loading thread: {error}</div>
+        )}
       </div>
     )
   }

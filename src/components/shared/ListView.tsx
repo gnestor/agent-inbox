@@ -23,6 +23,7 @@ interface ListViewProps<T extends Record<string, unknown>> {
   items: T[]
   loading?: boolean
   error?: string | null
+  errorContent?: React.ReactNode
   fieldSchema: FieldDef[]
   getItemId: (item: T) => string
   selectedId?: string
@@ -44,6 +45,7 @@ export function ListView<T extends Record<string, unknown>>({
   items,
   loading,
   error,
+  errorContent,
   fieldSchema,
   getItemId,
   selectedId,
@@ -153,7 +155,7 @@ export function ListView<T extends Record<string, unknown>>({
       />
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
         {loading && <ListSkeleton itemHeight={itemHeight} />}
-        {error && <div className="p-3 text-sm text-destructive">{error}</div>}
+        {error && (errorContent || <div className="p-3 text-sm text-destructive">{error}</div>)}
         {!loading && filteredItems.length > 0 && (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
