@@ -308,14 +308,17 @@ export function listSessionRecords(filters?: {
 const sessionPresence = new Map<string, Map<string, { name: string; email: string; picture?: string }>>()
 
 export function addPresenceUser(sessionId: string, user: { name: string; email: string; picture?: string }) {
-  if (!sessionPresence.has(sessionId)) sessionPresence.set(sessionId, new Map())
-  sessionPresence.get(sessionId)!.set(user.email, user)
+  let users = sessionPresence.get(sessionId)
+  if (!users) { users = new Map(); sessionPresence.set(sessionId, users) }
+  users.set(user.email, user)
   broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
 }
 
 export function removePresenceUser(sessionId: string, email: string) {
-  sessionPresence.get(sessionId)?.delete(email)
-  if (sessionPresence.get(sessionId)?.size === 0) sessionPresence.delete(sessionId)
+  const users = sessionPresence.get(sessionId)
+  if (!users) return
+  users.delete(email)
+  if (users.size === 0) sessionPresence.delete(sessionId)
   broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
 }
 

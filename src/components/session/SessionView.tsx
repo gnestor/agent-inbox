@@ -26,10 +26,7 @@ import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { usePreference } from "@/hooks/use-preferences"
-
-function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-}
+import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
   sessionId: string
