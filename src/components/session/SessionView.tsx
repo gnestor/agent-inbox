@@ -116,6 +116,12 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const archiveMutation = useMutation({
     mutationFn: () => archiveSession(sessionId),
     onSuccess: () => {
+      // Optimistically update all cached sessions lists so the status badge
+      // updates immediately without waiting for a background refetch.
+      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
+        if (!Array.isArray(old)) return old
+        return old.map((s) => (s.id === sessionId ? { ...s, status: "archived" } : s))
+      })
       handleBack()
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["session", sessionId] })

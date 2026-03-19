@@ -30,8 +30,6 @@ function validateState(state: NavigationState): NavigationState {
     state.tabs[tabId] = {
       ...tabState,
       panels: tabState.panels.filter((p) => validTypes.has(p.type)),
-      // Don't persist filters across sessions — they can leak stale values
-      activeFilters: undefined,
     }
     // Ensure at least a list panel for source tabs
     if (["emails", "tasks", "calendar", "sessions"].includes(tabId)) {
