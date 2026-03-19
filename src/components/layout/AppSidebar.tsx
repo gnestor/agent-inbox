@@ -27,6 +27,7 @@ import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { usePlugins } from "@/hooks/use-plugins"
 import { useNavigation } from "@/hooks/use-navigation"
+import { getInitials } from "@/lib/formatters"
 import type { TabId } from "@/types/navigation"
 
 const navItems: { title: string; emoji: string; tab: TabId }[] = [
@@ -34,15 +35,6 @@ const navItems: { title: string; emoji: string; tab: TabId }[] = [
   { title: "Tasks", emoji: "✅", tab: "tasks" },
   { title: "Calendar", emoji: "📅", tab: "calendar" },
 ]
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-}
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()

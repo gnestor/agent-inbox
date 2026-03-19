@@ -304,6 +304,28 @@ export function listSessionRecords(filters?: {
   return db.prepare(sql).all(...params) as Array<Record<string, unknown>>
 }
 
+// In-memory presence map: sessionId → Map<email, user>
+const sessionPresence = new Map<string, Map<string, { name: string; email: string; picture?: string }>>()
+
+export function addPresenceUser(sessionId: string, user: { name: string; email: string; picture?: string }) {
+  let users = sessionPresence.get(sessionId)
+  if (!users) { users = new Map(); sessionPresence.set(sessionId, users) }
+  users.set(user.email, user)
+  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+}
+
+export function removePresenceUser(sessionId: string, email: string) {
+  const users = sessionPresence.get(sessionId)
+  if (!users) return
+  users.delete(email)
+  if (users.size === 0) sessionPresence.delete(sessionId)
+  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+}
+
+export function getPresenceUsers(sessionId: string) {
+  return Array.from(sessionPresence.get(sessionId)?.values() ?? [])
+}
+
 // SSE client management
 export function addSseClient(sessionId: string, send: (data: string) => void) {
   if (!sseClients.has(sessionId)) {
@@ -440,7 +462,12 @@ export async function startSession(
   return sessionId
 }
 
-export async function resumeSessionQuery(sessionId: string, prompt: string, userSessionToken?: string): Promise<void> {
+export async function resumeSessionQuery(
+  sessionId: string,
+  prompt: string,
+  userSessionToken?: string,
+  userProfile?: { name: string; email: string; picture?: string },
+): Promise<void> {
   const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
@@ -452,7 +479,15 @@ export async function resumeSessionQuery(sessionId: string, prompt: string, user
   let sequence = existingMessages.length
 
   // Save and broadcast the user's prompt as a message so it appears in the transcript
-  const userMessage = { type: "user", content: prompt }
+  const userMessage = {
+    type: "user",
+    content: prompt,
+    ...(userProfile && {
+      authorEmail: userProfile.email,
+      authorName: userProfile.name,
+      authorPicture: userProfile.picture,
+    }),
+  }
   appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
