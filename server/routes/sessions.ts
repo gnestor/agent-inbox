@@ -344,3 +344,18 @@ sessionRoutes.post("/:id/abort", async (c) => {
   const aborted = sessions.abortRunningSession(sessionId)
   return c.json({ ok: aborted })
 })
+
+sessionRoutes.post("/:id/archive", async (c) => {
+  const sessionId = c.req.param("id")
+  let session = sessions.getSessionRecord(sessionId)
+  if (!session) {
+    // Agent-only session (JSONL, not in DB) — import a minimal record first
+    const agentSession = await sessions.findAgentSession(sessionId)
+    if (!agentSession) {
+      return c.json({ error: "Session not found" }, 404)
+    }
+    sessions.importAgentSession(sessionId, agentSession)
+  }
+  const archived = sessions.archiveSession(sessionId)
+  return c.json({ ok: archived })
+})

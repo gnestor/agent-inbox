@@ -13,6 +13,7 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   complete: "Complete",
   needs_attention: "Needs Attention",
   errored: "Errored",
+  archived: "Archived",
 }
 
 const sessionFieldSchema: FieldDef[] = [
@@ -27,7 +28,7 @@ const sessionFieldSchema: FieldDef[] = [
       variant: "outline",
       colorFn: (val) => sessionStatusBadgeClass(val),
     },
-    filter: { filterable: true, filterOptions: ["running", "complete", "errored"] },
+    filter: { filterable: true, filterOptions: ["running", "complete", "errored", "archived"] },
   },
   {
     id: "project",

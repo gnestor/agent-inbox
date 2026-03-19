@@ -167,6 +167,12 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
   const now = new Date().toISOString()
 
   if (status === "complete" || status === "errored") {
+    // Don't overwrite archived status with terminal stream states (race condition guard)
+    const current = db.prepare("SELECT status FROM sessions WHERE id = ?").get(sessionId) as
+      | { status: string }
+      | undefined
+    if (current?.status === "archived") return
+
     db.prepare(
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), completed_at = ?, updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, now, sessionId)
@@ -175,6 +181,22 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, sessionId)
   }
+}
+
+export function archiveSession(sessionId: string): boolean {
+  const session = getSessionRecord(sessionId)
+  if (!session) return false
+
+  // Abort if running (without calling abortRunningSession which would set status to "complete")
+  const controller = runningQueries.get(sessionId)
+  if (controller) {
+    controller.abort()
+    runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
+  }
+
+  updateSessionStatus(sessionId, "archived")
+  return true
 }
 
 /** Import an agent-only session (JSONL) into the DB as a completed record. */

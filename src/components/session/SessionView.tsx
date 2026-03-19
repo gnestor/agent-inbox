@@ -11,8 +11,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
 } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, X, Ellipsis } from "lucide-react"
-import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession } from "@/api/client"
+import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
+import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession, archiveSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useNavigation } from "@/hooks/use-navigation"
@@ -104,6 +104,16 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
     },
     onError: (err: any) => console.error("Failed to abort session:", err),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveSession(sessionId),
+    onSuccess: () => {
+      handleBack()
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    },
+    onError: (err: any) => console.error("Failed to archive session:", err),
   })
 
   const [isEditing, setIsEditing] = useState(false)
@@ -227,6 +237,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               Stop
             </Button>
           )}
+          <button
+            type="button"
+            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+            onClick={() => archiveMutation.mutate()}
+            disabled={archiveMutation.isPending}
+            title="Archive session"
+          >
+            <Archive className="h-4 w-4" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
