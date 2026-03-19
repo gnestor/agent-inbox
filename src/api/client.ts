@@ -250,6 +250,24 @@ export async function attachToSession(
   })
 }
 
+export async function uploadSessionFile(sessionId: string, file: File) {
+  const form = new FormData()
+  form.append("file", file)
+  const res = await fetch(`${BASE}/sessions/${sessionId}/files`, {
+    method: "POST",
+    body: form,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`API ${res.status}: ${text}`)
+  }
+  return res.json() as Promise<{ name: string; path: string; size: number; mimeType: string }>
+}
+
+export function getSessionFileUrl(sessionId: string, filename: string): string {
+  return `${BASE}/sessions/${sessionId}/files/${encodeURIComponent(filename)}`
+}
+
 export async function getLinkedSession(threadId?: string, taskId?: string) {
   const params = new URLSearchParams()
   if (threadId) params.set("threadId", threadId)

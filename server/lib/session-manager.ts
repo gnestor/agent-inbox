@@ -3,6 +3,7 @@ import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
+import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -396,6 +397,9 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      mcpServers: {
+        render_output: buildRenderOutputMcpServer(),
+      },
     },
   })
   let sequence = 0
@@ -506,6 +510,9 @@ export async function resumeSessionQuery(
       abortController,
       env: buildAgentEnv(userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      mcpServers: {
+        render_output: buildRenderOutputMcpServer(),
+      },
     },
   })
 

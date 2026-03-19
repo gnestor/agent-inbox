@@ -1,0 +1,49 @@
+import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
+import { z } from "zod"
+
+/**
+ * Builds an in-process MCP server that registers the `render_output` tool.
+ *
+ * When the agent calls `render_output`, the tool handler returns a brief
+ * acknowledgment. The frontend detects `block.name === "render_output"` in
+ * the session transcript and renders the appropriate component.
+ */
+export function buildRenderOutputMcpServer() {
+  const renderOutputTool = tool(
+    "render_output",
+    `Render a structured output in the inbox UI. The output appears inline in the session transcript. Use panel: true to open it as a side panel.`,
+    {
+      type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]),
+      data: z.any().describe(
+        "Output content. Format depends on type: " +
+        "markdown/html = string, " +
+        "table = { columns: string[], rows: any[][] }, " +
+        "json = any, " +
+        "chart = Vega-Lite spec object, " +
+        "file = { name: string, path: string, mimeType?: string }, " +
+        "conversation = { messages: [{role, content}] }, " +
+        "react = { code: string, title?: string }"
+      ),
+      title: z.string().optional().describe("Optional panel title"),
+      panel: z.boolean().optional().default(false).describe(
+        "Open as a new side panel instead of inline"
+      ),
+    },
+    async (args) => {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Output rendered: ${args.title || args.type}`,
+          },
+        ],
+      }
+    }
+  )
+
+  return createSdkMcpServer({
+    name: "render_output",
+    version: "1.0.0",
+    tools: [renderOutputTool],
+  })
+}

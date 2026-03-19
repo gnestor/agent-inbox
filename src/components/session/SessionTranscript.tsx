@@ -12,6 +12,8 @@ import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
+import { OutputRenderer } from "./OutputRenderer"
+import type { OutputSpec } from "./OutputRenderer"
 
 hljs.registerLanguage("json", json)
 
@@ -56,6 +58,7 @@ interface SessionTranscriptProps {
   visibility?: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
 }
 
 export function SessionTranscript({
@@ -64,6 +67,7 @@ export function SessionTranscript({
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
+  onOpenPanel,
 }: SessionTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -136,7 +140,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} />
+                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} />
               </div>
             ))}
           </div>
@@ -210,11 +214,13 @@ const TranscriptEntry = memo(function TranscriptEntry({
   visibility,
   sessionId,
   currentUserEmail,
+  onOpenPanel,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
 }) {
   const msg = message.message as any
 
@@ -339,7 +345,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <div className="space-y-1">
         {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} />
+          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} />
         ))}
       </div>
     )
@@ -389,12 +395,14 @@ function ContentBlock({
   index,
   visibility,
   sessionId,
+  onOpenPanel,
 }: {
   block: any
   sequence: number
   index: number
   visibility: TranscriptVisibility
   sessionId?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
 }) {
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
@@ -459,6 +467,18 @@ function ContentBlock({
   }
 
   if (block.type === "tool_use") {
+    // render_output tool — renders structured output inline (or triggers panel)
+    if (block.name === "render_output" && block.input && sessionId) {
+      return (
+        <OutputRenderer
+          spec={block.input as OutputSpec}
+          sessionId={sessionId}
+          sequence={sequence}
+          onOpenPanel={onOpenPanel}
+        />
+      )
+    }
+
     if (!visibility.toolCalls) return null
     const summary = toolUseSummary(block.name, block.input)
     return (

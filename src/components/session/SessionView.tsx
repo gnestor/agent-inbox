@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -18,6 +18,8 @@ import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
 import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession, archiveSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
+import type { OutputSpec } from "./OutputRenderer"
+import { setArtifactSpec } from "@/lib/artifact-store"
 import { useNavigation } from "@/hooks/use-navigation"
 import { useUser } from "@/hooks/use-user"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
@@ -36,7 +38,7 @@ interface SessionViewProps {
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const location = useLocation()
   const qc = useQueryClient()
-  const { activeTab, popPanel, deselectItem } = useNavigation()
+  const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const { user } = useUser()
   // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
@@ -49,6 +51,16 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       popPanel(sessionPanelId)
     }
   }
+
+  const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
+    setArtifactSpec(sessionId, sequence, spec)
+    pushPanel({
+      id: `artifact:${sessionId}:${sequence}`,
+      type: "artifact",
+      props: { sessionId, sequence, outputType: spec.type },
+    })
+  }, [sessionId, pushPanel])
+
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -351,6 +363,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
+          onOpenPanel={handleOpenPanel}
         />
       </div>
 

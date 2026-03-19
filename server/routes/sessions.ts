@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming"
 import { getCookie } from "hono/cookie"
 import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
+import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/session-files.js"
 
 type UserProfile = { name: string; email: string; picture?: string }
 
@@ -372,3 +373,56 @@ sessionRoutes.post("/:id/archive", async (c) => {
   const archived = sessions.archiveSession(sessionId)
   return c.json({ ok: archived })
 })
+
+// --- File upload / download ---
+
+sessionRoutes.post("/:id/files", async (c) => {
+  const sessionId = c.req.param("id")
+  const body = await c.req.parseBody()
+  const file = body["file"]
+  if (!file || typeof file === "string") {
+    return c.json({ error: "file field is required" }, 400)
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const result = await saveSessionFile(sessionId, file.name, buffer, file.type)
+  return c.json(result)
+})
+
+sessionRoutes.get("/:id/files/:filename", async (c) => {
+  const sessionId = c.req.param("id")
+  const filename = decodeURIComponent(c.req.param("filename"))
+  const filePath = await getSessionFilePath(sessionId, filename)
+  if (!filePath) {
+    return c.json({ error: "File not found" }, 404)
+  }
+  const fs = await import("fs")
+  if (!fs.existsSync(filePath)) {
+    return c.json({ error: "File not found" }, 404)
+  }
+  const data = fs.readFileSync(filePath)
+  // Use a basic mime-type lookup
+  const mimeType = guessMimeType(filename)
+  c.header("Content-Type", mimeType)
+  c.header("Content-Disposition", `attachment; filename="${filename}"`)
+  return c.body(data)
+})
+
+function guessMimeType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? ""
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    json: "application/json",
+    csv: "text/csv",
+    txt: "text/plain",
+    md: "text/markdown",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    html: "text/html",
+    zip: "application/zip",
+  }
+  return map[ext] ?? "application/octet-stream"
+}

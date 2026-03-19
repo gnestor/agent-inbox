@@ -10,7 +10,6 @@ import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
-import { NEW_SESSION_PANEL } from "@/types/navigation"
 import type { NotionTaskDetail } from "@/types"
 
 
@@ -90,7 +89,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 // ── Compose panel ────────────────────────────────────────────────────────────
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
-  const { popPanel, replacePanel } = useNavigation()
+  const { openSession, popPanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
   const [savingName, setSavingName] = useState("")
@@ -162,17 +161,16 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
-      replacePanel(NEW_SESSION_PANEL.id, {
-        id: `session:${sessionId}`,
-        type: "session",
-        props: { sessionId },
-      })
+      openSession(sessionId)
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })
 
   function handleClose() {
-    popPanel(NEW_SESSION_PANEL.id)
+    // "new_session" is the panel ID used when opened standalone from SessionListView;
+    // "session:new" was a legacy ID — pop whichever is present.
+    popPanel("new_session")
+    popPanel("session:new")
   }
 
   function handleSaveTemplate() {

@@ -8,6 +8,7 @@ import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import type { FieldDef } from "@/types/plugin"
 import { Plus } from "lucide-react"
+import { Button } from "@hammies/frontend/components/ui"
 
 const STATUS_LABEL_MAP: Record<string, string> = {
   running: "Running",
@@ -61,7 +62,7 @@ const sessionOptionsFetcher: Record<string, () => Promise<string[]>> = {
 }
 
 export function SessionListView() {
-  const { selectItem, getSelectedItemId, getFilters, setFilter, openNewSession } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter, pushPanel } = useNavigation()
   const filters = getFilters("sessions")
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -104,18 +105,23 @@ export function SessionListView() {
       hiddenBadgeFields={hiddenBadgeFields}
       headerRight={
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              pushPanel({ id: "new_session", type: "new_session", props: {} })
+            }
+            className="gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
           <BadgeToggleMenu
             items={[
               { label: "Status", checked: showStatus, onChange: setShowStatus },
               { label: "Project", checked: showProject, onChange: setShowProject },
             ]}
           />
-          <button
-            onClick={openNewSession}
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
         </div>
       }
     />
