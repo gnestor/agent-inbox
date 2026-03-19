@@ -8,3 +8,4 @@ tsconfig.tsbuildinfo
 tests/e2e/.auth/
 test-results/
 playwright-report/
+.DS_Store
