@@ -55,6 +55,7 @@ interface SessionTranscriptProps {
   isLive?: boolean
   visibility?: TranscriptVisibility
   sessionId?: string
+  currentUserEmail?: string
 }
 
 export function SessionTranscript({
@@ -62,6 +63,7 @@ export function SessionTranscript({
   isStreaming,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
+  currentUserEmail,
 }: SessionTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -134,7 +136,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} />
+                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} />
               </div>
             ))}
           </div>
@@ -163,6 +165,7 @@ export function SessionTranscript({
 function TranscriptAccordionEntry({
   value: _,
   icon: Icon,
+  picture,
   label,
   color,
   defaultOpen = false,
@@ -171,6 +174,7 @@ function TranscriptAccordionEntry({
 }: {
   value: string
   icon: ElementType
+  picture?: string
   label: string
   color: string
   defaultOpen?: boolean
@@ -185,7 +189,11 @@ function TranscriptAccordionEntry({
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 py-2 w-full text-left"
       >
-        <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
+        {picture ? (
+          <img src={picture} alt={label} className="h-3.5 w-3.5 rounded-full object-cover shrink-0" />
+        ) : (
+          <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
+        )}
         <span className={`text-xs font-medium ${color}`}>{label}</span>
         {extra}
         <ChevronDown
@@ -201,10 +209,12 @@ const TranscriptEntry = memo(function TranscriptEntry({
   message,
   visibility,
   sessionId,
+  currentUserEmail,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
+  currentUserEmail?: string
 }) {
   const msg = message.message as any
 
@@ -267,12 +277,17 @@ const TranscriptEntry = memo(function TranscriptEntry({
     const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
+    const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
+    const authorLabel = isCurrentUser ? "You" : (msg.authorName || "User")
+    const authorPicture = isCurrentUser ? undefined : (msg.authorPicture as string | undefined)
+    const authorColor = isCurrentUser ? "text-chart-2" : "text-chart-3"
     return (
       <TranscriptAccordionEntry
         value={`user-${message.sequence}`}
         icon={User}
-        label="You"
-        color="text-chart-2"
+        picture={authorPicture}
+        label={authorLabel}
+        color={authorColor}
         defaultOpen
       >
         <div className="pl-5.5 space-y-1.5">

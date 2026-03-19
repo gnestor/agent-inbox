@@ -6,6 +6,12 @@ export interface UserProfile {
   picture?: string
 }
 
+export interface PresenceUser {
+  email: string
+  name: string
+  picture?: string
+}
+
 // Gmail types
 
 export interface GmailAttachment {
@@ -96,7 +102,7 @@ export interface NotionCalendarItemDetail extends NotionCalendarItem {
 
 // Session types
 
-export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input"
+export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input" | "archived"
 
 export interface AskUserQuestionOption {
   label: string

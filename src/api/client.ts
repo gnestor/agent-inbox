@@ -227,6 +227,12 @@ export async function abortSession(sessionId: string) {
   })
 }
 
+export async function archiveSession(sessionId: string) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}/archive`, {
+    method: "POST",
+  })
+}
+
 export async function answerSessionQuestion(sessionId: string, answers: Record<string, string>) {
   return request<{ ok: boolean }>(`/sessions/${sessionId}/answer`, {
     method: "POST",

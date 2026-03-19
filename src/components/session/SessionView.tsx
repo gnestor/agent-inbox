@@ -10,18 +10,26 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
 } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, X, Ellipsis } from "lucide-react"
-import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession } from "@/api/client"
+import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
+import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession, archiveSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import { useNavigation } from "@/hooks/use-navigation"
+import { useUser } from "@/hooks/use-user"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
 import type { TranscriptVisibility } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { usePreference } from "@/hooks/use-preferences"
+
+function getInitials(name: string) {
+  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+}
 
 interface SessionViewProps {
   sessionId: string
@@ -32,6 +40,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const location = useLocation()
   const qc = useQueryClient()
   const { activeTab, popPanel, deselectItem } = useNavigation()
+  const { user } = useUser()
   // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
   const sessionPanelId = `session:${sessionId}`
@@ -73,6 +82,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
 
   // Stream for live updates
   const stream = useSessionStream(sessionId)
+  const { presenceUsers } = stream
 
   // Reset local overrides when navigating to a different session
   useEffect(() => {
@@ -104,6 +114,16 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
     },
     onError: (err: any) => console.error("Failed to abort session:", err),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveSession(sessionId),
+    onSuccess: () => {
+      handleBack()
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    },
+    onError: (err: any) => console.error("Failed to archive session:", err),
   })
 
   const [isEditing, setIsEditing] = useState(false)
@@ -192,6 +212,16 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           ) : (
             <BackButton onClick={handleBack} />
           )}
+          {presenceUsers.length > 1 && (
+            <div className="flex -space-x-1.5 shrink-0">
+              {presenceUsers.map((u) => (
+                <Avatar key={u.email} size="sm" className="border-2 border-background">
+                  {u.picture && <AvatarImage src={u.picture} alt={u.name} />}
+                  <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+          )}
           {isEditing ? (
             <input
               autoFocus
@@ -227,6 +257,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               Stop
             </Button>
           )}
+          <button
+            type="button"
+            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+            onClick={() => archiveMutation.mutate()}
+            disabled={archiveMutation.isPending}
+            title="Archive session"
+          >
+            <Archive className="h-4 w-4" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -308,6 +347,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           isLive={stream.connected}
           visibility={visibility}
           sessionId={sessionId}
+          currentUserEmail={user?.email}
         />
       </div>
 

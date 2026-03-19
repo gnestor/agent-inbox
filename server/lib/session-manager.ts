@@ -167,6 +167,12 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
   const now = new Date().toISOString()
 
   if (status === "complete" || status === "errored") {
+    // Don't overwrite archived status with terminal stream states (race condition guard)
+    const current = db.prepare("SELECT status FROM sessions WHERE id = ?").get(sessionId) as
+      | { status: string }
+      | undefined
+    if (current?.status === "archived") return
+
     db.prepare(
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), completed_at = ?, updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, now, sessionId)
@@ -175,6 +181,22 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, sessionId)
   }
+}
+
+export function archiveSession(sessionId: string): boolean {
+  const session = getSessionRecord(sessionId)
+  if (!session) return false
+
+  // Abort if running (without calling abortRunningSession which would set status to "complete")
+  const controller = runningQueries.get(sessionId)
+  if (controller) {
+    controller.abort()
+    runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
+  }
+
+  updateSessionStatus(sessionId, "archived")
+  return true
 }
 
 /** Import an agent-only session (JSONL) into the DB as a completed record. */
@@ -280,6 +302,25 @@ export function listSessionRecords(filters?: {
   sql += " ORDER BY s.updated_at DESC"
 
   return db.prepare(sql).all(...params) as Array<Record<string, unknown>>
+}
+
+// In-memory presence map: sessionId → Map<email, user>
+const sessionPresence = new Map<string, Map<string, { name: string; email: string; picture?: string }>>()
+
+export function addPresenceUser(sessionId: string, user: { name: string; email: string; picture?: string }) {
+  if (!sessionPresence.has(sessionId)) sessionPresence.set(sessionId, new Map())
+  sessionPresence.get(sessionId)!.set(user.email, user)
+  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+}
+
+export function removePresenceUser(sessionId: string, email: string) {
+  sessionPresence.get(sessionId)?.delete(email)
+  if (sessionPresence.get(sessionId)?.size === 0) sessionPresence.delete(sessionId)
+  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+}
+
+export function getPresenceUsers(sessionId: string) {
+  return Array.from(sessionPresence.get(sessionId)?.values() ?? [])
 }
 
 // SSE client management
@@ -418,7 +459,12 @@ export async function startSession(
   return sessionId
 }
 
-export async function resumeSessionQuery(sessionId: string, prompt: string, userSessionToken?: string): Promise<void> {
+export async function resumeSessionQuery(
+  sessionId: string,
+  prompt: string,
+  userSessionToken?: string,
+  userProfile?: { name: string; email: string; picture?: string },
+): Promise<void> {
   const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
@@ -430,7 +476,15 @@ export async function resumeSessionQuery(sessionId: string, prompt: string, user
   let sequence = existingMessages.length
 
   // Save and broadcast the user's prompt as a message so it appears in the transcript
-  const userMessage = { type: "user", content: prompt }
+  const userMessage = {
+    type: "user",
+    content: prompt,
+    ...(userProfile && {
+      authorEmail: userProfile.email,
+      authorName: userProfile.name,
+      authorPicture: userProfile.picture,
+    }),
+  }
   appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
