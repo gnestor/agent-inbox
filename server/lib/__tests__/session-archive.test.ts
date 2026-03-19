@@ -203,14 +203,40 @@ describe("POST /sessions/:id/archive", () => {
     expect(row!.status).toBe("archived")
   })
 
-  it("returns { ok: false } for unknown session", async () => {
+  it("returns 404 for a session not in DB and not found by agent SDK", async () => {
+    mockFindAgentSession.mockResolvedValue(null)
+
     const app = createTestApp()
     const res = await app.request("http://localhost/api/sessions/nonexistent/archive", {
       method: "POST",
     })
 
+    expect(res.status).toBe(404)
+  })
+
+  it("imports and archives an agent-only session (not in DB)", async () => {
+    const agentSession = {
+      sessionId: "agent-only-session",
+      firstPrompt: "Do something",
+      summary: "Did something",
+      lastModified: Date.now(),
+      cwd: "/some/path",
+      project: "test-workspace",
+    }
+    mockFindAgentSession.mockResolvedValue(agentSession)
+
+    const app = createTestApp()
+    const res = await app.request(
+      "http://localhost/api/sessions/agent-only-session/archive",
+      { method: "POST" },
+    )
+
     expect(res.status).toBe(200)
     const data = await res.json()
-    expect(data.ok).toBe(false)
+    expect(data.ok).toBe(true)
+
+    const row = getSessionRecord("agent-only-session")
+    expect(row).toBeDefined()
+    expect(row!.status).toBe("archived")
   })
 })
