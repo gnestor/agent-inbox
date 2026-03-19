@@ -11,7 +11,7 @@ function makeVirtualizer(endIndex: number, count: number, hasRange = true) {
 }
 
 describe("useVirtualInfiniteScroll", () => {
-  let loadMore: ReturnType<typeof vi.fn>
+  let loadMore: () => void
 
   beforeEach(() => {
     loadMore = vi.fn()
