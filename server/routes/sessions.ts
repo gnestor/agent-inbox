@@ -62,7 +62,14 @@ sessionRoutes.get("/", async (c) => {
 
   // Merge: DB sessions take priority, add any agent sessions not in DB
   // Default to current workspace project; explicit project filter overrides
-  const dbIds = new Set(dbSessions.map((s) => s.id))
+  //
+  // IMPORTANT: build dbIds from ALL DB sessions (ignoring the status filter) so
+  // that agent SDK sessions don't "resurrect" as "complete" when their DB
+  // counterpart is filtered out by status (e.g. filtering out "archived").
+  const allDbIds = status
+    ? new Set(sessions.listSessionRecords({ q: q || undefined }).map((s) => s.id as string))
+    : new Set(dbSessions.map((s) => s.id as string))
+  const dbIds = allDbIds
   const defaultProjects = new Set([currentProject, dirName])
   if (workspaceName) defaultProjects.add(workspaceName)
   const projectsFilter = project ? project.split(",") : [...defaultProjects]
@@ -343,4 +350,19 @@ sessionRoutes.post("/:id/abort", async (c) => {
   const sessionId = c.req.param("id")
   const aborted = sessions.abortRunningSession(sessionId)
   return c.json({ ok: aborted })
+})
+
+sessionRoutes.post("/:id/archive", async (c) => {
+  const sessionId = c.req.param("id")
+  let session = sessions.getSessionRecord(sessionId)
+  if (!session) {
+    // Agent-only session (JSONL, not in DB) — import a minimal record first
+    const agentSession = await sessions.findAgentSession(sessionId)
+    if (!agentSession) {
+      return c.json({ error: "Session not found" }, 404)
+    }
+    sessions.importAgentSession(sessionId, agentSession)
+  }
+  const archived = sessions.archiveSession(sessionId)
+  return c.json({ ok: archived })
 })
