@@ -34,11 +34,10 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
 
   const mutations = useSessionMutations({ sessionId, onResume, onArchive })
 
-  // Derive whether to stream from query cache status
   const queryStatus = data?.session.status as string | undefined
-  const shouldStream = queryStatus === "running" || queryStatus === "awaiting_user_input"
-
-  const stream = useSessionStream(sessionId, shouldStream)
+  // Always connect SSE when viewing a session (for presence).
+  // Message streaming is a bonus when the session is running.
+  const stream = useSessionStream(sessionId, !isLoading && !queryError)
 
   // Invalidate sessions list when stream detects a status change
   // so sidebar and list view update immediately (not on next poll).

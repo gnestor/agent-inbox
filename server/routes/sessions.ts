@@ -5,6 +5,8 @@ import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
 import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/session-files.js"
 
+type UserProfile = { name: string; email: string; picture?: string }
+
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
@@ -276,7 +278,8 @@ sessionRoutes.post("/:id/resume", async (c) => {
   }
 
   const userSessionToken = getCookie(c, SESSION_COOKIE)
-  await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken)
+  const user = c.get("user") as UserProfile | undefined
+  await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken, user)
   return c.json({ ok: true })
 })
 
@@ -310,6 +313,7 @@ sessionRoutes.post("/:id/attach", async (c) => {
 
 sessionRoutes.get("/:id/stream", async (c) => {
   const sessionId = c.req.param("id")
+  const user = c.get("user") as UserProfile | undefined
 
   return streamSSE(c, async (stream) => {
     const send = (data: string) => {
@@ -317,6 +321,7 @@ sessionRoutes.get("/:id/stream", async (c) => {
     }
 
     sessions.addSseClient(sessionId, send)
+    if (user) sessions.addPresenceUser(sessionId, user)
 
     // Keep connection alive
     const keepAlive = setInterval(() => {
@@ -331,6 +336,7 @@ sessionRoutes.get("/:id/stream", async (c) => {
     } finally {
       clearInterval(keepAlive)
       sessions.removeSseClient(sessionId, send)
+      if (user) sessions.removePresenceUser(sessionId, user.email)
     }
   })
 })

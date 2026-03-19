@@ -6,6 +6,12 @@ export interface UserProfile {
   picture?: string
 }
 
+export interface PresenceUser {
+  email: string
+  name: string
+  picture?: string
+}
+
 // Gmail types
 
 export interface GmailAttachment {
