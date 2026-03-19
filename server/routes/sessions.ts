@@ -344,3 +344,9 @@ sessionRoutes.post("/:id/abort", async (c) => {
   const aborted = sessions.abortRunningSession(sessionId)
   return c.json({ ok: aborted })
 })
+
+sessionRoutes.post("/:id/archive", async (c) => {
+  const sessionId = c.req.param("id")
+  const archived = sessions.archiveSession(sessionId)
+  return c.json({ ok: archived })
+})

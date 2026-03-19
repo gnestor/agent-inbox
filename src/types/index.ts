@@ -96,7 +96,7 @@ export interface NotionCalendarItemDetail extends NotionCalendarItem {
 
 // Session types
 
-export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input"
+export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input" | "archived"
 
 export interface AskUserQuestionOption {
   label: string

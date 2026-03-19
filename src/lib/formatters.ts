@@ -63,6 +63,8 @@ export function sessionStatusBadgeClass(status: string): string {
       return "bg-chart-2/20 text-chart-2"
     case "errored":
       return "bg-destructive/20 text-destructive"
+    case "archived":
+      return "bg-foreground/10 text-muted-foreground"
     default:
       return ""
   }
