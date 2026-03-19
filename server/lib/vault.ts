@@ -141,3 +141,29 @@ export function resolveCredential(
 
   return getWorkspaceCredential(workspace, integration)
 }
+
+/**
+ * Auto-seed workspace credentials from the workspace .env file.
+ * Only inserts credentials that don't already exist in the vault.
+ */
+export function seedWorkspaceCredentials(
+  workspaceName: string,
+  envVars: Record<string, string>,
+  envToIntegration: Record<string, string>,
+) {
+  const existing = new Set(listWorkspaceCredentials(workspaceName).map((c) => c.integration))
+
+  let count = 0
+  for (const [envKey, value] of Object.entries(envVars)) {
+    const integration = envToIntegration[envKey]
+    if (!integration || !value || existing.has(integration)) continue
+
+    storeWorkspaceCredential(workspaceName, integration, value)
+    console.log(`Seeded ${envKey} → workspace_credentials[${workspaceName}, ${integration}]`)
+    count++
+  }
+
+  if (count > 0) {
+    console.log(`Seeded ${count} workspace credential${count === 1 ? "" : "s"} from .env`)
+  }
+}

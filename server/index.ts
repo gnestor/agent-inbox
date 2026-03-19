@@ -22,7 +22,7 @@ import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy } from "./lib/session-manager.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
-import { resolveCredential } from "./lib/vault.js"
+import { resolveCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
 import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
@@ -58,11 +58,14 @@ const workspacePath = getWorkspacePath()
 console.log(`Workspace: ${workspacePath}`)
 
 // Load workspace credentials (.env) for Gmail/Notion API access
-loadCredentials(workspacePath)
+const workspaceEnv = loadCredentials(workspacePath)
 setWorkspacePath(workspacePath)
 
-// Initialize database
+// Initialize database and seed any missing workspace credentials from .env
 initializeDatabase()
+import { getWorkspaceName } from "./lib/session-manager.js"
+import { buildEnvToIntegrationMap } from "./lib/integrations.js"
+seedWorkspaceCredentials(getWorkspaceName(), workspaceEnv, buildEnvToIntegrationMap())
 
 // Start credential proxy (non-blocking)
 createCredentialProxy({

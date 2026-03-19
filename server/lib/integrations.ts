@@ -200,6 +200,33 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     authType: "api_key",
     envVars: { credential: "OBSERVABLE_API_TOKEN" },
   },
+  {
+    id: "gemini",
+    name: "Gemini",
+    icon: "sparkles",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: { credential: "GEMINI_API_KEY" },
+  },
+  {
+    id: "slack-user",
+    name: "Slack (User)",
+    icon: "message-square",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: { credential: "SLACK_USER_TOKEN" },
+  },
+  {
+    id: "postgres",
+    name: "PostgreSQL",
+    icon: "database",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "POSTGRES_PASSWORD",
+      config: ["POSTGRES_USER", "POSTGRES_HOST", "POSTGRES_DATABASE"],
+    },
+  },
 ]
 
 export function getIntegration(id: string): IntegrationConfig | undefined {
