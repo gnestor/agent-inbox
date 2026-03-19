@@ -25,9 +25,10 @@ const sessionFieldSchema: FieldDef[] = [
 ]
 
 export function SessionListView() {
-  const { selectItem, getSelectedItemId, activeFilters, setFilter } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
+  const filters = getFilters("sessions")
   const { sessions, loading, error } = useSessions(
-    Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
+    Object.keys(filters).length > 0 ? filters : undefined,
   )
 
   // Fallback: use prompt as title if summary is empty
@@ -47,7 +48,7 @@ export function SessionListView() {
       selectedId={getSelectedItemId("sessions")}
       onSelect={selectItem}
       itemHeight={74}
-      activeFilters={activeFilters}
+      activeFilters={filters}
       onFilterChange={setFilter}
       onSearch={(q) => setFilter("q", q)}
       searchPlaceholder="Search sessions..."

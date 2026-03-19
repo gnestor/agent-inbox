@@ -38,9 +38,10 @@ export const taskFieldSchema: FieldDef[] = [
 ]
 
 export function TaskListView() {
-  const { selectItem, getSelectedItemId, activeFilters, setFilter } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
+  const filters = getFilters("tasks")
   const { tasks, loading, error, hasMore, loadMore } = useTasks(
-    Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
+    Object.keys(filters).length > 0 ? filters : undefined,
   )
 
   return (
@@ -54,7 +55,7 @@ export function TaskListView() {
       selectedId={getSelectedItemId("tasks")}
       onSelect={selectItem}
       itemHeight={74}
-      activeFilters={activeFilters}
+      activeFilters={filters}
       onFilterChange={setFilter}
       hasMore={hasMore}
       loadMore={loadMore}

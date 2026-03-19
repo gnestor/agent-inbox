@@ -505,9 +505,19 @@ export function attachSourceToSession(
   // Update linked source columns (last attachment wins — the actual context
   // is preserved in session_messages regardless, so multiple attachments work)
   const db = getDb()
+  const now = new Date().toISOString()
   db.prepare(
     "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, updated_at = ? WHERE id = ?",
-  ).run(source.id, source.type, new Date().toISOString(), sessionId)
+  ).run(source.id, source.type, now, sessionId)
+
+  // Also set type-specific columns so getLinkedSession() can find the link
+  if (source.type === "email") {
+    db.prepare("UPDATE sessions SET linked_email_thread_id = ?, updated_at = ? WHERE id = ?")
+      .run(source.id, now, sessionId)
+  } else if (source.type === "task") {
+    db.prepare("UPDATE sessions SET linked_task_id = ?, updated_at = ? WHERE id = ?")
+      .run(source.id, now, sessionId)
+  }
 }
 
 export function abortRunningSession(sessionId: string): boolean {

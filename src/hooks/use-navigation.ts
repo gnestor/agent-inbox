@@ -80,6 +80,14 @@ export function useNavigation() {
     [dispatch],
   )
 
+  const getFilters = useCallback(
+    (tab?: TabId) => {
+      const tabId = tab ?? state.activeTab
+      return state.tabs[tabId]?.activeFilters ?? {}
+    },
+    [state],
+  )
+
   return {
     activeTab: state.activeTab,
     switchTab,
@@ -93,6 +101,7 @@ export function useNavigation() {
     getSelectedItemId,
     getItemDirection,
     activeFilters: state.tabs[state.activeTab]?.activeFilters ?? {},
+    getFilters,
     setFilter,
     clearFilters,
   }

@@ -52,10 +52,11 @@ export const emailFieldSchema: FieldDef[] = [
 ]
 
 export function EmailListView() {
-  const { selectItem, getSelectedItemId, activeFilters, setFilter, switchTab } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter, switchTab } = useNavigation()
+  const filters = getFilters("emails")
 
   const query = useMemo(() => {
-    const flags = (activeFilters.flags || "").split(",").filter(Boolean)
+    const flags = (filters.flags || "").split(",").filter(Boolean)
     const parts: string[] = ["in:inbox"]
     if (flags.length === 0) {
       parts.push("is:important OR is:starred")
@@ -64,10 +65,10 @@ export function EmailListView() {
     } else {
       parts.push(`(${flags.map((f) => `is:${f}`).join(" OR ")})`)
     }
-    const q = activeFilters.q
+    const q = filters.q
     if (q) parts.push(q)
     return parts.join(" ")
-  }, [activeFilters.flags, activeFilters.q])
+  }, [filters.flags, filters.q])
 
   const { messages, loading, error, hasMore, loadMore } = useEmails(query)
 
@@ -117,7 +118,7 @@ export function EmailListView() {
       selectedId={getSelectedItemId("emails")}
       onSelect={selectItem}
       itemHeight={100}
-      activeFilters={activeFilters}
+      activeFilters={filters}
       onFilterChange={setFilter}
       hasMore={hasMore}
       loadMore={loadMore}

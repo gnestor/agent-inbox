@@ -22,9 +22,15 @@ export function useAttachToSession() {
       sessionId: string
       source: { type: string; id: string; title: string; content: string }
     }) => attachToSession(sessionId, source),
-    onSuccess: (_, { sessionId }) => {
+    onSuccess: (_, { sessionId, source }) => {
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
       qc.invalidateQueries({ queryKey: ["sessions"] })
+      // Invalidate the linked-session query so the sparkles icon updates
+      if (source.type === "email") {
+        qc.invalidateQueries({ queryKey: ["linked-session", "thread", source.id] })
+      } else if (source.type === "task") {
+        qc.invalidateQueries({ queryKey: ["linked-session", "task", source.id] })
+      }
     },
   })
 }

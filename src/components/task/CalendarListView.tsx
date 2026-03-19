@@ -30,9 +30,10 @@ export const calendarFieldSchema: FieldDef[] = [
 ]
 
 export function CalendarListView() {
-  const { selectItem, getSelectedItemId, activeFilters, setFilter } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
+  const filters = getFilters("calendar")
   const { items, loading, error, hasMore, loadMore } = useCalendar(
-    Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
+    Object.keys(filters).length > 0 ? filters : undefined,
   )
 
   return (
@@ -45,7 +46,7 @@ export function CalendarListView() {
       getItemId={(item) => item.id as string}
       selectedId={getSelectedItemId("calendar")}
       onSelect={selectItem}
-      activeFilters={activeFilters}
+      activeFilters={filters}
       onFilterChange={setFilter}
       hasMore={hasMore}
       loadMore={loadMore}

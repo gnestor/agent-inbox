@@ -1,4 +1,4 @@
-import { useState, useDeferredValue } from "react"
+import { useState, useDeferredValue, useRef, useEffect } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import {
   DropdownMenu,
@@ -35,6 +35,15 @@ export function SessionActionMenu({
   const filters = deferredSearch ? { q: deferredSearch } : undefined
   const { sessions } = useSessions(filters, open)
   const attachMutation = useAttachToSession()
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      // Delay to let Base UI finish its focus management
+      const timer = setTimeout(() => searchInputRef.current?.focus(), 0)
+      return () => clearTimeout(timer)
+    }
+  }, [open])
 
   if (hidden) return null
 
@@ -42,6 +51,7 @@ export function SessionActionMenu({
     attachMutation.mutate({ sessionId, source })
     setOpen(false)
     setSearch("")
+    openSession(sessionId)
   }
 
   const recentSessions = sessions.slice(0, 10)
@@ -84,6 +94,7 @@ export function SessionActionMenu({
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
               <Search className="h-3 w-3 text-muted-foreground shrink-0" />
               <input
+                ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search sessions..."
@@ -102,7 +113,7 @@ export function SessionActionMenu({
             {recentSessions.map((session) => (
               <DropdownMenuItem
                 key={session.id}
-                onSelect={() => handleAttach(session.id)}
+                onClick={() => handleAttach(session.id)}
               >
                 <span className="truncate">
                   {session.summary || truncate(session.prompt, 50)}

@@ -1,10 +1,16 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 const mockGet = vi.fn()
+const mockRun = vi.fn()
+const mockAll = vi.fn(() => [])
 
 vi.mock("../../db/schema.js", () => ({
   getDb: () => ({
-    prepare: () => ({ get: mockGet, run: vi.fn(), all: vi.fn(() => []) }),
+    prepare: (sql: string) => ({
+      get: mockGet,
+      run: (...args: unknown[]) => mockRun(sql, ...args),
+      all: mockAll,
+    }),
   }),
 }))
 
@@ -52,5 +58,62 @@ describe("getLinkedSession", () => {
     const { getLinkedSession } = await import("../session-manager.js")
     const result = getLinkedSession("thread-1", "task-1")
     expect(result?.linked_email_thread_id).toBe("thread-1")
+  })
+})
+
+describe("attachSourceToSession", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    mockRun.mockClear()
+    mockAll.mockReturnValue([])
+  })
+
+  it("sets linked_email_thread_id when attaching an email source", async () => {
+    const { attachSourceToSession } = await import("../session-manager.js")
+    attachSourceToSession("sess-1", {
+      type: "email",
+      id: "thread-123",
+      title: "Test email",
+      content: "Email content",
+    })
+
+    const emailUpdate = mockRun.mock.calls.find(
+      ([sql]: [string]) => typeof sql === "string" && sql.includes("linked_email_thread_id"),
+    )
+    expect(emailUpdate).toBeDefined()
+    expect(emailUpdate![1]).toBe("thread-123")
+  })
+
+  it("sets linked_task_id when attaching a task source", async () => {
+    const { attachSourceToSession } = await import("../session-manager.js")
+    attachSourceToSession("sess-1", {
+      type: "task",
+      id: "task-456",
+      title: "Test task",
+      content: "Task content",
+    })
+
+    const taskUpdate = mockRun.mock.calls.find(
+      ([sql]: [string]) => typeof sql === "string" && sql.includes("linked_task_id"),
+    )
+    expect(taskUpdate).toBeDefined()
+    expect(taskUpdate![1]).toBe("task-456")
+  })
+
+  it("does not set type-specific columns for other source types", async () => {
+    const { attachSourceToSession } = await import("../session-manager.js")
+    attachSourceToSession("sess-1", {
+      type: "calendar",
+      id: "cal-789",
+      title: "Test event",
+      content: "Event content",
+    })
+
+    const typeSpecificUpdate = mockRun.mock.calls.find(
+      ([sql]: [string]) =>
+        typeof sql === "string" &&
+        (sql.includes("linked_email_thread_id") || sql.includes("linked_task_id")),
+    )
+    expect(typeSpecificUpdate).toBeUndefined()
   })
 })

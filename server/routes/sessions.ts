@@ -147,23 +147,30 @@ sessionRoutes.get("/:id", async (c) => {
   if (session) {
     const dbMessages = sessions.getSessionMessages(sessionId)
 
-    // If the session was imported (e.g., via rename) it has a DB record but no
-    // messages stored. Fall back to the JSONL transcript in that case.
+    // If the session was imported (e.g., via attach or rename) it may only have
+    // system messages (attached_context) in the DB. Fall back to the JSONL
+    // transcript for the actual conversation, prepending any DB-only messages.
+    const parsedDbMessages = dbMessages.map((m) => ({
+      id: m.id,
+      sessionId: m.session_id,
+      sequence: m.sequence,
+      type: m.type,
+      message: JSON.parse(m.message as string),
+      createdAt: m.created_at,
+    }))
+    const hasConversation = parsedDbMessages.some(
+      (m) => m.type !== "system" || m.message?.subtype !== "attached_context",
+    )
     let messages: Array<Record<string, unknown>>
-    if (dbMessages.length > 0) {
-      messages = dbMessages.map((m) => ({
-        id: m.id,
-        sessionId: m.session_id,
-        sequence: m.sequence,
-        type: m.type,
-        message: JSON.parse(m.message as string),
-        createdAt: m.created_at,
-      }))
+    if (hasConversation) {
+      messages = parsedDbMessages
     } else {
       const agentSession = await sessions.findAgentSession(sessionId)
-      messages = agentSession
+      const transcript = agentSession
         ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
         : []
+      // Prepend any attached context messages before the transcript
+      messages = [...parsedDbMessages, ...transcript]
     }
 
     return c.json({
@@ -273,9 +280,14 @@ sessionRoutes.post("/:id/attach", async (c) => {
     return c.json({ error: "type, id, and content are required" }, 400)
   }
 
-  const session = sessions.getSessionRecord(sessionId)
+  let session = sessions.getSessionRecord(sessionId)
   if (!session) {
-    return c.json({ error: "Session not found" }, 404)
+    // Agent-only session (JSONL, not in DB) — import a minimal record first
+    const agentSession = await sessions.findAgentSession(sessionId)
+    if (!agentSession) {
+      return c.json({ error: "Session not found" }, 404)
+    }
+    sessions.importAgentSession(sessionId, agentSession)
   }
 
   sessions.attachSourceToSession(sessionId, {
