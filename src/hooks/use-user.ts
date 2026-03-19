@@ -21,14 +21,25 @@ export function useUserProvider() {
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
-    try {
-      const { user } = await getAuthSession()
-      setUser(user)
-    } catch {
-      setUser(null)
-    } finally {
-      setLoading(false)
+    let attempts = 0
+    while (attempts < 3) {
+      try {
+        const { user } = await getAuthSession()
+        setUser(user)
+        setLoading(false)
+        return
+      } catch (err) {
+        // Network error (server restarting) — retry with backoff
+        if (err instanceof TypeError && attempts < 2) {
+          attempts++
+          await new Promise((r) => setTimeout(r, 1500 * attempts))
+          continue
+        }
+        break
+      }
     }
+    setUser(null)
+    setLoading(false)
   }, [])
 
   const logout = useCallback(async () => {
