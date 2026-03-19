@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
 import { SlidersHorizontal } from "lucide-react"
 import { FilterCombobox } from "./FilterCombobox"
@@ -8,9 +9,11 @@ interface FilterPopoverProps {
   fieldSchema: FieldDef[]
   activeFilters: Record<string, string>
   onFilterChange: (key: string, value: string) => void
+  /** Optional async fetchers for filter options, keyed by field ID */
+  optionsFetcher?: Record<string, () => Promise<string[]>>
 }
 
-export function FilterPopover({ fieldSchema, activeFilters, onFilterChange }: FilterPopoverProps) {
+export function FilterPopover({ fieldSchema, activeFilters, onFilterChange, optionsFetcher }: FilterPopoverProps) {
   const filterFields = getFilterFields(fieldSchema)
   if (filterFields.length === 0) return null
 
@@ -30,22 +33,50 @@ export function FilterPopover({ fieldSchema, activeFilters, onFilterChange }: Fi
         <SlidersHorizontal className="h-4 w-4" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
-        {filterFields.map((field) => {
-          const options = Array.isArray(field.filter?.filterOptions)
-            ? field.filter.filterOptions.map((o) => (typeof o === "string" ? { value: o, label: o } : o))
-            : []
-
-          return (
-            <FilterCombobox
-              key={field.id}
-              value={(activeFilters[field.id] || "").split(",").filter(Boolean)}
-              onValueChange={(vals) => onFilterChange(field.id, vals.join(","))}
-              items={options}
-              placeholder={`${field.label}...`}
-            />
-          )
-        })}
+        {filterFields.map((field) => (
+          <FilterField
+            key={field.id}
+            field={field}
+            value={(activeFilters[field.id] || "").split(",").filter(Boolean)}
+            onChange={(vals) => onFilterChange(field.id, vals.join(","))}
+            fetcher={optionsFetcher?.[field.id]}
+          />
+        ))}
       </PopoverContent>
     </Popover>
+  )
+}
+
+function FilterField({
+  field,
+  value,
+  onChange,
+  fetcher,
+}: {
+  field: FieldDef
+  value: string[]
+  onChange: (vals: string[]) => void
+  fetcher?: () => Promise<string[]>
+}) {
+  const staticOptions = Array.isArray(field.filter?.filterOptions)
+    ? field.filter.filterOptions.map((o) => (typeof o === "string" ? { value: o, label: o } : o))
+    : []
+
+  const [asyncOptions, setAsyncOptions] = useState<{ value: string; label: string }[] | null>(null)
+
+  useEffect(() => {
+    if (!fetcher || staticOptions.length > 0) return
+    fetcher().then((opts) => setAsyncOptions(opts.map((o) => ({ value: o, label: o })))).catch(() => {})
+  }, [fetcher]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const options = staticOptions.length > 0 ? staticOptions : asyncOptions ?? []
+
+  return (
+    <FilterCombobox
+      value={value}
+      onValueChange={onChange}
+      items={options}
+      placeholder={`${field.label}...`}
+    />
   )
 }

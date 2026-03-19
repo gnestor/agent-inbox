@@ -1,12 +1,13 @@
 import { useRef, useMemo, useState, useDeferredValue } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
+import { useVirtualInfiniteScroll } from "@/hooks/use-infinite-scroll"
 import { ListItem, type ListItemBadge } from "./ListItem"
 import { PanelHeader, SidebarButton } from "./PanelHeader"
 import { SearchInput } from "./SearchInput"
 import { FilterPopover } from "./FilterPopover"
 import { ListSkeleton } from "./ListSkeleton"
 import { EmptyState } from "./EmptyState"
-import { Bot } from "lucide-react"
+import { Bot, Loader2 } from "lucide-react"
 import type { FieldDef } from "@/types/plugin"
 import {
   getTitleField,
@@ -37,6 +38,8 @@ interface ListViewProps<T extends Record<string, unknown>> {
   headerRight?: React.ReactNode
   activeFilters?: Record<string, string>
   onFilterChange?: (key: string, value: string) => void
+  hiddenBadgeFields?: Set<string>
+  optionsFetcher?: Record<string, () => Promise<string[]>>
 }
 
 export function ListView<T extends Record<string, unknown>>({
@@ -54,11 +57,13 @@ export function ListView<T extends Record<string, unknown>>({
   searchPlaceholder,
   onSearch,
   localSearch,
-  hasMore: _hasMore,
-  loadMore: _loadMore,
+  hasMore,
+  loadMore,
   headerRight,
   activeFilters = {},
   onFilterChange,
+  hiddenBadgeFields,
+  optionsFetcher,
 }: ListViewProps<T>) {
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
@@ -91,10 +96,13 @@ export function ListView<T extends Record<string, unknown>>({
     overscan: 5,
   })
 
+  useVirtualInfiniteScroll(virtualizer, loadMore ?? (() => {}), hasMore ?? false, !!loading)
+
   // Build badges for an item from schema
   function buildBadges(item: T): ListItemBadge[] {
     const badges: ListItemBadge[] = []
     for (const field of badgeFields) {
+      if (hiddenBadgeFields?.has(field.id)) continue
       const value = extractFieldValue(item, field.id)
       if (field.badge?.show === "if-set" && !value) continue
       if (value === undefined || value === null) continue
@@ -142,6 +150,7 @@ export function ListView<T extends Record<string, unknown>>({
                 fieldSchema={fieldSchema}
                 activeFilters={activeFilters}
                 onFilterChange={onFilterChange}
+                optionsFetcher={optionsFetcher}
               />
             )}
             {headerRight}
@@ -195,6 +204,11 @@ export function ListView<T extends Record<string, unknown>>({
                 </div>
               )
             })}
+          </div>
+        )}
+        {hasMore && !loading && (
+          <div className="flex justify-center p-3">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           </div>
         )}
         {!loading && filteredItems.length === 0 && !error && (

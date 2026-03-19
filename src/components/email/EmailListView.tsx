@@ -2,7 +2,10 @@ import { useMemo } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
 import { useEmails } from "@/hooks/use-emails"
+import { getEmailLabels } from "@/api/client"
 import { formatEmailAddress } from "@/lib/formatters"
+import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
+import { usePreference } from "@/hooks/use-preferences"
 import { Mail } from "lucide-react"
 import type { FieldDef } from "@/types/plugin"
 
@@ -49,7 +52,24 @@ export const emailFieldSchema: FieldDef[] = [
       filterOptions: ["important", "starred", "unread", "snoozed"],
     },
   },
+  {
+    id: "labels",
+    label: "Labels",
+    type: "text",
+    listRole: "hidden",
+    filter: { filterable: true },
+  },
 ]
+
+const emailOptionsFetcher: Record<string, () => Promise<string[]>> = {
+  labels: () =>
+    getEmailLabels().then((r) =>
+      r.labels
+        .filter((l) => l.type === "user")
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((l) => l.name),
+    ),
+}
 
 export function EmailListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter, switchTab } = useNavigation()
@@ -65,10 +85,15 @@ export function EmailListView() {
     } else {
       parts.push(`(${flags.map((f) => `is:${f}`).join(" OR ")})`)
     }
+    // Gmail label filters
+    const labelValues = (filters.labels || "").split(",").filter(Boolean)
+    for (const l of labelValues) {
+      parts.push(`label:${l.replace(/\s+/g, "-")}`)
+    }
     const q = filters.q
     if (q) parts.push(q)
     return parts.join(" ")
-  }, [filters.flags, filters.q])
+  }, [filters.flags, filters.labels, filters.q])
 
   const { messages, loading, error, hasMore, loadMore } = useEmails(query)
 
@@ -87,6 +112,18 @@ export function EmailListView() {
       </button>
     </div>
   ) : undefined
+
+  const [showReadStatus, setShowReadStatus] = usePreference("emails.showReadStatus", true)
+  const [showImportant, setShowImportant] = usePreference("emails.showImportant", true)
+  const [showStarred, setShowStarred] = usePreference("emails.showStarred", true)
+
+  const hiddenBadgeFields = useMemo(() => {
+    const hidden = new Set<string>()
+    if (!showReadStatus) hidden.add("isUnread")
+    if (!showImportant) hidden.add("isImportant")
+    if (!showStarred) hidden.add("isStarred")
+    return hidden
+  }, [showReadStatus, showImportant, showStarred])
 
   // Deduplicate messages by threadId (keep first occurrence per thread)
   // and add derived fields for the schema
@@ -124,6 +161,17 @@ export function EmailListView() {
       loadMore={loadMore}
       searchPlaceholder="Search emails..."
       onSearch={(q) => setFilter("q", q)}
+      optionsFetcher={emailOptionsFetcher}
+      hiddenBadgeFields={hiddenBadgeFields}
+      headerRight={
+        <BadgeToggleMenu
+          items={[
+            { label: "Read status", checked: showReadStatus, onChange: setShowReadStatus },
+            { label: "Important", checked: showImportant, onChange: setShowImportant },
+            { label: "Starred", checked: showStarred, onChange: setShowStarred },
+          ]}
+        />
+      }
     />
   )
 }
