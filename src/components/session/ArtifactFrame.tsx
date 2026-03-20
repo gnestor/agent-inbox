@@ -7,6 +7,9 @@ interface ArtifactFrameProps {
   title?: string
   sessionId: string
   sequence: number
+  className?: string
+  /** Remove body padding/dark background so the artifact fills edge-to-edge */
+  panelMode?: boolean
 }
 
 /**
@@ -21,12 +24,32 @@ interface ArtifactFrameProps {
  * - Artifact UI state is stored in user_preferences under artifact:{sessionId}:{sequence}
  * - On remount, the saved state is pushed back to the iframe via postMessage
  */
-export function ArtifactFrame({ code, title, sessionId, sequence }: ArtifactFrameProps) {
+// CSS variable names to forward from the app theme into the iframe
+const THEME_VARS = [
+  "background", "foreground", "card", "card-foreground",
+  "primary", "primary-foreground", "secondary", "secondary-foreground",
+  "muted", "muted-foreground", "border", "input", "ring",
+  "destructive", "destructive-foreground",
+] as const
+
+function resolveThemeVars(): Record<string, string> {
+  if (typeof document === "undefined") return {}
+  const style = getComputedStyle(document.documentElement)
+  const vars: Record<string, string> = {}
+  for (const name of THEME_VARS) {
+    const val = style.getPropertyValue(`--${name}`).trim()
+    if (val) vars[name] = val
+  }
+  return vars
+}
+
+export function ArtifactFrame({ code, title, sessionId, sequence, className, panelMode }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
+  const themeVars = useMemo(() => resolveThemeVars(), [])
 
-  const srcDoc = useMemo(() => buildArtifactHtml(code, title), [code, title])
+  const srcDoc = useMemo(() => buildArtifactHtml(code, title, panelMode, themeVars), [code, title, panelMode, themeVars])
 
   // Restore saved state when iframe loads
   const handleLoad = useCallback(() => {
@@ -63,8 +86,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence }: ArtifactFram
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-scripts"
-      className="w-full border-0 rounded-md bg-background"
-      style={{ height: "400px" }}
+      className={className ?? "w-full border-0 rounded-md bg-background h-[400px]"}
       title={title || "React Artifact"}
       onLoad={handleLoad}
     />
@@ -77,12 +99,15 @@ export function ArtifactFrame({ code, title, sessionId, sequence }: ArtifactFram
  * The artifact code is embedded as a JSON-encoded data attribute so no unsafe
  * string concatenation occurs inside a script block.
  */
-export function buildArtifactHtml(code: string, title?: string): string {
+export function buildArtifactHtml(code: string | undefined, title?: string, panelMode?: boolean, themeVars?: Record<string, string>): string {
+  if (!code) return `<!DOCTYPE html><html><body style="background:#09090b;color:#fafafa;font-family:sans-serif;padding:2rem"><p>No artifact code provided.</p></body></html>`
+  // Resolve a theme variable with fallback
+  const t = (name: string, fallback: string) => themeVars?.[name] || fallback
   const safeTitle = (title ?? "Artifact").replace(/[<>&"]/g, (c) =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] ?? c)
   )
-  // Encode code as JSON for safe embedding in a data attribute
-  const codeAttr = JSON.stringify(code).replace(/"/g, "&quot;")
+  // Encode code as base64 for safe embedding in a data attribute
+  const codeAttr = btoa(unescape(encodeURIComponent(code)))
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -93,24 +118,47 @@ export function buildArtifactHtml(code: string, title?: string): string {
 <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        background: 'var(--card)',
+        foreground: 'var(--foreground)',
+        card: { DEFAULT: 'var(--card)', foreground: 'var(--card-foreground)' },
+        primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
+        secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
+        muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        destructive: { DEFAULT: 'var(--destructive)', foreground: 'var(--destructive-foreground)' },
+      },
+      borderColor: { DEFAULT: 'var(--border)' },
+    }
+  }
+}
+</script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #09090b; color: #fafafa; padding: 16px; min-height: 100vh; }
-.btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 14px; font-weight: 500; padding: 8px 16px; cursor: pointer; border: none; transition: opacity 0.15s; }
-.btn:hover { opacity: 0.9; }
-.btn-primary { background: #fafafa; color: #09090b; }
-.btn-secondary { background: #27272a; color: #fafafa; }
-.btn-destructive { background: #ef4444; color: #fafafa; }
-.card { border-radius: 8px; border: 1px solid #27272a; background: #18181b; padding: 16px; }
-.badge { display: inline-flex; align-items: center; border-radius: 9999px; font-size: 12px; padding: 2px 10px; font-weight: 500; }
-input, textarea, select { background: #18181b; border: 1px solid #27272a; border-radius: 6px; color: #fafafa; padding: 8px 12px; font-size: 14px; outline: none; width: 100%; }
-input:focus, textarea:focus { border-color: #71717a; }
-.error-box { background: #450a0a; border: 1px solid #ef4444; border-radius: 6px; padding: 12px; color: #fca5a5; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+:root {
+  --background: ${t("background", "#0d1117")}; --foreground: ${t("foreground", "#e6edf3")};
+  --card: ${t("card", "#161b22")}; --card-foreground: ${t("card-foreground", "#e6edf3")};
+  --primary: ${t("primary", "#4493f8")}; --primary-foreground: ${t("primary-foreground", "#fff")};
+  --secondary: ${t("secondary", "#30363d")}; --secondary-foreground: ${t("secondary-foreground", "#e6edf3")};
+  --muted: ${t("muted", "#161b22")}; --muted-foreground: ${t("muted-foreground", "#8b949e")};
+  --border: ${t("border", "#30363d")}; --input: ${t("input", "#30363d")};
+  --destructive: ${t("destructive", "#f85149")}; --destructive-foreground: ${t("destructive-foreground", "#fff")};
+  --ring: ${t("ring", "#4493f8")};
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--card); color: var(--foreground); padding: ${panelMode ? "0" : "16px"}; min-height: 100vh; }
+.error-box { background: #3c1111; border: 1px solid var(--destructive); border-radius: 6px; padding: 12px; color: #fca5a5; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <div id="root"></div>
-<div id="artifact-code" data-code=${codeAttr} style="display:none"></div>
+<div id="artifact-code" data-code="${codeAttr}" style="display:none"></div>
 <script>
 // postMessage bridge helpers
 window.__sendAction = function(intent) {
@@ -127,28 +175,90 @@ window.addEventListener('message', function(e) {
 
 (function bootstrap() {
   var codeEl = document.getElementById('artifact-code');
-  var userCode = codeEl ? codeEl.getAttribute('data-code') : '';
-  if (!userCode) { return; }
+  var raw = codeEl ? codeEl.getAttribute('data-code') : '';
+  if (!raw) { return; }
+  var userCode = decodeURIComponent(escape(atob(raw)));
+
+  // Strip import/export statements — React & hooks are already global.
+  // Only match lines that START with import/export keywords (anchored to line start)
+  // to avoid mangling regex literals or strings that contain these words.
+  var lines = userCode.split('\\n');
+  var exportedName = null;
+  var cleaned = [];
+  for (var i = 0; i < lines.length; i++) {
+    var trimmed = lines[i].trimStart();
+    if (/^import\\s/.test(trimmed) && /from\\s+['\"]/.test(trimmed)) {
+      continue; // import ... from '...'
+    }
+    if (/^import\\s+['\"]/.test(trimmed)) {
+      continue; // import '...' (side-effect)
+    }
+    if (/^export\\s+default\\s+function\\s+(\\w+)/.test(trimmed)) {
+      exportedName = trimmed.match(/^export\\s+default\\s+function\\s+(\\w+)/)[1];
+      cleaned.push(trimmed.replace(/^export\\s+default\\s+/, ''));
+    } else if (/^export\\s+default\\s+/.test(trimmed)) {
+      exportedName = trimmed.replace(/^export\\s+default\\s+/, '').replace(/;\\s*$/, '').trim();
+      continue; // standalone "export default ComponentName;"
+    } else if (/^export\\s+/.test(trimmed)) {
+      cleaned.push(trimmed.replace(/^export\\s+/, ''));
+    } else {
+      cleaned.push(lines[i]);
+    }
+  }
+  userCode = cleaned.join('\\n');
+
+  // Fix common LLM mistake: regex with literal newline (/\\n/g split across lines).
+  // Replace /⏎/g patterns with /\\n/g so Babel can parse them.
+  userCode = userCode.replace(/\\/\\n\\/([gimsuy]*)/g, '/\\\\n/$1');
 
   var stubs = [
-    'const { useState, useEffect, useRef, useCallback, useMemo } = React;',
-    'function Button({ children, onClick, variant, className, disabled, ...p }) {',
-    '  return React.createElement("button", Object.assign({ className: "btn btn-" + (variant||"primary") + " " + (className||""), onClick: onClick, disabled: !!disabled }, p), children);',
+    'const { useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext } = React;',
+    'function Button({ children, onClick, variant, className, disabled, size, ...p }) {',
+    '  var base = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";',
+    '  var sizes = { sm: "h-8 px-3 text-xs", md: "h-9 px-4 py-2", lg: "h-10 px-6 text-base", icon: "h-9 w-9" };',
+    '  var variants = {',
+    '    primary: "bg-primary text-primary-foreground hover:bg-primary/90",',
+    '    secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",',
+    '    destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",',
+    '    outline: "border border-border bg-transparent hover:bg-secondary hover:text-secondary-foreground",',
+    '    ghost: "hover:bg-secondary hover:text-secondary-foreground",',
+    '  };',
+    '  var cls = base + " " + (sizes[size||"md"]||sizes.md) + " " + (variants[variant||"primary"]||variants.primary) + " " + (className||"");',
+    '  return React.createElement("button", Object.assign({ className: cls, onClick: onClick, disabled: !!disabled }, p), children);',
     '}',
-    'function Card({ children, className }) { return React.createElement("div", { className: "card " + (className||"") }, children); }',
-    'function Badge({ children, className }) { return React.createElement("span", { className: "badge " + (className||"") }, children); }',
+    'function Card({ children, className }) { return React.createElement("div", { className: "rounded-lg border bg-card text-card-foreground p-4 " + (className||"") }, children); }',
+    'function Badge({ children, className, variant }) {',
+    '  var v = { default: "bg-primary text-primary-foreground", secondary: "bg-secondary text-secondary-foreground", outline: "border border-border text-foreground" };',
+    '  return React.createElement("span", { className: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium " + (v[variant||"default"]||v.default) + " " + (className||"") }, children);',
+    '}',
+    'function Input(p) { return React.createElement("input", Object.assign({ className: "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring " + (p.className||"") }, p)); }',
+    'function Separator({ className }) { return React.createElement("div", { className: "shrink-0 bg-border h-[1px] w-full " + (className||"") }); }',
   ].join('\\n');
 
   try {
     var transpiled = Babel.transform(stubs + '\\n' + userCode, {
-      presets: ['react', ['env', { targets: { chrome: 80 } }]]
+      presets: ['react']
     }).code;
 
     // indirect eval so the transpiled code runs in the iframe's scope
     (0, eval)(transpiled);
 
-    if (typeof App !== 'undefined') {
-      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    // Find the component to render: use exported name, or detect any PascalCase function
+    var RootComponent = null;
+    if (exportedName && typeof eval(exportedName) !== 'undefined') {
+      RootComponent = eval(exportedName);
+    } else if (typeof App !== 'undefined') {
+      RootComponent = App;
+    } else {
+      // Scan for any PascalCase component defined in the code
+      var componentMatch = userCode.match(/function\\s+([A-Z]\\w*)\\s*\\(/);
+      if (componentMatch && typeof eval(componentMatch[1]) !== 'undefined') {
+        RootComponent = eval(componentMatch[1]);
+      }
+    }
+
+    if (RootComponent) {
+      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(RootComponent));
     } else {
       var fallback = document.createElement('div');
       fallback.style.color = '#71717a';

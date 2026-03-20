@@ -24,6 +24,7 @@ export type NavAction =
   | { type: "DESELECT_ITEM" }
   | { type: "PUSH_PANEL"; panel: PanelState }
   | { type: "POP_PANEL"; panelId: string }
+  | { type: "REMOVE_PANEL"; panelId: string }
   | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState }
   | { type: "OPEN_SESSION"; sessionId?: string }
   | { type: "OPEN_NEW_SESSION" }
@@ -95,6 +96,15 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
         if (!tab.panels.some((p) => p.type === "detail")) {
           tab.selectedItemId = undefined
         }
+      }
+      return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
+    }
+
+    case "REMOVE_PANEL": {
+      const tab = { ...getOrCreateTab(state, state.activeTab) }
+      tab.panels = tab.panels.filter((p) => p.id !== action.panelId)
+      if (!tab.panels.some((p) => p.type === "detail")) {
+        tab.selectedItemId = undefined
       }
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }

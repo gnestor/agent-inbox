@@ -468,7 +468,7 @@ function ContentBlock({
 
   if (block.type === "tool_use") {
     // render_output tool — renders structured output inline (or triggers panel)
-    if (block.name === "render_output" && block.input && sessionId) {
+    if ((block.name === "render_output" || block.name === "mcp__render_output__render_output") && block.input && sessionId) {
       return (
         <OutputRenderer
           spec={block.input as OutputSpec}

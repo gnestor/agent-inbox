@@ -18,7 +18,7 @@ const IntegrationsPage = lazy(() =>
 )
 
 function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) {
-  const { popPanel } = useNavigation()
+  const { removePanel } = useNavigation()
   const spec = getArtifactSpec(panel.props.sessionId, panel.props.sequence)
 
   if (!spec) {
@@ -36,7 +36,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
         <button
           type="button"
           className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-          onClick={() => popPanel(panel.id)}
+          onClick={() => removePanel(panel.id)}
           aria-label="Close panel"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -45,11 +45,12 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
           </svg>
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-3">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <OutputRenderer
           spec={{ ...spec, panel: false }}
           sessionId={panel.props.sessionId}
           sequence={panel.props.sequence}
+          fillPanel
         />
       </div>
     </div>

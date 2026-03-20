@@ -11,7 +11,15 @@ import { z } from "zod"
 export function buildRenderOutputMcpServer() {
   const renderOutputTool = tool(
     "render_output",
-    `Render a structured output in the inbox UI. The output appears inline in the session transcript. Use panel: true to open it as a side panel.`,
+    `Render a structured output in the inbox UI. The output appears inline in the session transcript. Use panel: true to open it as a side panel.
+
+For type "react": the sandbox includes Tailwind CSS and a shadcn/ui-compatible dark theme. Use Tailwind utility classes for all styling (e.g. bg-card, text-foreground, border, rounded-lg, p-4, flex, gap-2).
+
+Theme colors available as Tailwind classes: background, foreground, card, card-foreground, primary, primary-foreground, secondary, secondary-foreground, muted, muted-foreground, border, input, ring, destructive, destructive-foreground. Example: className="bg-card text-card-foreground rounded-lg border p-4".
+
+Pre-built components: Button (props: variant="primary"|"secondary"|"destructive"|"outline"|"ghost", size="sm"|"md"|"lg"|"icon"), Card, Badge (variant="default"|"secondary"|"outline"), Input, Separator.
+
+React 18 and hooks (useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext) are available as globals — do NOT import them. Export your root component as default or name it App.`,
     {
       type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]),
       data: z.any().describe(

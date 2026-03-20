@@ -58,9 +58,11 @@ interface OutputRendererProps {
   sequence: number
   /** Called when spec.panel is true — parent should open the output as a PanelStack panel */
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  /** When true, react artifacts fill the parent container instead of using a fixed height */
+  fillPanel?: boolean
 }
 
-export function OutputRenderer({ spec, sessionId, sequence, onOpenPanel }: OutputRendererProps) {
+export function OutputRenderer({ spec, sessionId, sequence, onOpenPanel, fillPanel }: OutputRendererProps) {
   // If panel mode is requested, notify the parent on mount and render nothing inline
   useEffect(() => {
     if (spec.panel && onOpenPanel) {
@@ -80,6 +82,10 @@ export function OutputRenderer({ spec, sessionId, sequence, onOpenPanel }: Outpu
     )
   }
 
+  if (fillPanel) {
+    return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} fillPanel />
+  }
+
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       {spec.title && (
@@ -96,10 +102,12 @@ function OutputContent({
   spec,
   sessionId,
   sequence,
+  fillPanel,
 }: {
   spec: OutputSpec
   sessionId: string
   sequence: number
+  fillPanel?: boolean
 }) {
   switch (spec.type) {
     case "markdown":
@@ -116,15 +124,20 @@ function OutputContent({
       return <FileOutput data={spec.data} sessionId={sessionId} />
     case "conversation":
       return <ConversationOutput data={spec.data} />
-    case "react":
+    case "react": {
+      // Model may send data as a string (just code) or { code, title }
+      const reactData = typeof spec.data === "string" ? { code: spec.data } : spec.data
       return (
         <ArtifactFrame
-          code={spec.data.code}
-          title={spec.data.title}
+          code={reactData.code}
+          title={reactData.title}
           sessionId={sessionId}
           sequence={sequence}
+          className={fillPanel ? "w-full h-full border-0" : undefined}
+          panelMode={fillPanel}
         />
       )
+    }
     default:
       return (
         <div className="p-3 text-xs text-muted-foreground">
