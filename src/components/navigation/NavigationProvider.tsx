@@ -35,6 +35,18 @@ function getOrCreateTab(state: NavigationState, tabId: TabId): TabState {
   return state.tabs[tabId] ?? createDefaultTabState()
 }
 
+/** Save extra panels (position 2+) for the current item, or clear stale entries */
+function saveExtraPanels(tab: TabState) {
+  const id = tab.selectedItemId
+  if (!id) return
+  if (tab.panels.length > 2) {
+    tab.savedPanels = { ...tab.savedPanels, [id]: tab.panels.slice(2) }
+  } else if (tab.savedPanels?.[id]) {
+    const { [id]: _, ...rest } = tab.savedPanels
+    tab.savedPanels = Object.keys(rest).length > 0 ? rest : undefined
+  }
+}
+
 function navReducer(state: NavigationState, action: NavAction): NavigationState {
   switch (action.type) {
     case "SET_STATE":
@@ -45,16 +57,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "SELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
-
-      // Save extra panels (position 2+) for the current item before switching
-      const prevId = tab.selectedItemId
-      if (prevId && tab.panels.length > 2) {
-        tab.savedPanels = { ...tab.savedPanels, [prevId]: tab.panels.slice(2) }
-      } else if (prevId && tab.savedPanels?.[prevId]) {
-        // No extra panels open — clear any saved ones
-        const { [prevId]: _, ...rest } = tab.savedPanels
-        tab.savedPanels = Object.keys(rest).length > 0 ? rest : undefined
-      }
+      saveExtraPanels(tab)
 
       tab.selectedItemId = action.itemId
 
@@ -78,11 +81,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "DESELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
-      // Save extra panels for the current item before deselecting
-      const prevId = tab.selectedItemId
-      if (prevId && tab.panels.length > 2) {
-        tab.savedPanels = { ...tab.savedPanels, [prevId]: tab.panels.slice(2) }
-      }
+      saveExtraPanels(tab)
       tab.selectedItemId = undefined
       tab.panels = tab.panels.slice(0, 1) // keep only list
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }

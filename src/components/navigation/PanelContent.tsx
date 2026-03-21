@@ -1,5 +1,6 @@
 // src/components/navigation/PanelContent.tsx
 import { lazy, Suspense } from "react"
+import { X } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { OutputRenderer } from "@/components/session/OutputRenderer"
@@ -30,10 +31,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
           onClick={() => removePanel(panel.id)}
           aria-label="Close panel"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <X className="h-4 w-4" />
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">

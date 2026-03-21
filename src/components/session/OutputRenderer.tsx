@@ -12,6 +12,7 @@ import {
 } from "@hammies/frontend/components/ui"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot } from "lucide-react"
 import { cn } from "@hammies/frontend/lib/utils"
+import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
 
 // --- Spec types ---
@@ -61,11 +62,7 @@ interface OutputRendererProps {
 }
 
 export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputRendererProps) {
-  if (fillPanel) {
-    return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} fillPanel />
-  }
-
-  return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} />
+  return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} fillPanel={fillPanel} />
 }
 
 function OutputContent({
@@ -313,7 +310,7 @@ function ChartOutput({ data }: { data: VegaSpec }) {
 // --- File card ---
 
 function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) {
-  const downloadUrl = `/api/sessions/${sessionId}/files/${encodeURIComponent(data.name)}`
+  const downloadUrl = getSessionFileUrl(sessionId, data.name)
 
   return (
     <div className="flex items-center gap-3 p-3">

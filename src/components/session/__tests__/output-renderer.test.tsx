@@ -10,6 +10,7 @@ vi.mock("@/hooks/use-preferences", () => ({
 
 vi.mock("@/api/client", () => ({
   resumeSession: vi.fn(),
+  getSessionFileUrl: (sid: string, name: string) => `/api/sessions/${sid}/files/${encodeURIComponent(name)}`,
 }))
 
 describe("OutputRenderer", () => {

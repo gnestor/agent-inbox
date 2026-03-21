@@ -30,7 +30,10 @@ const THEME_VARS = [
   "destructive", "destructive-foreground",
 ] as const
 
-function resolveThemeVars(): Record<string, string> {
+// Resolved once at module level — shared across all ArtifactFrame instances
+let _themeVars: Record<string, string> | undefined
+function getThemeVars(): Record<string, string> {
+  if (_themeVars) return _themeVars
   if (typeof document === "undefined") return {}
   const style = getComputedStyle(document.documentElement)
   const vars: Record<string, string> = {}
@@ -38,6 +41,7 @@ function resolveThemeVars(): Record<string, string> {
     const val = style.getPropertyValue(`--${name}`).trim()
     if (val) vars[name] = val
   }
+  _themeVars = vars
   return vars
 }
 
@@ -45,7 +49,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className }: A
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
-  const themeVars = useMemo(() => resolveThemeVars(), [])
+  const themeVars = getThemeVars()
 
   const srcDoc = useMemo(() => buildArtifactHtml(code, title, themeVars), [code, title, themeVars])
 

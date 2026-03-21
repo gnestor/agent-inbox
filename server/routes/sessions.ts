@@ -396,11 +396,9 @@ sessionRoutes.get("/:id/files/:filename", async (c) => {
   if (!filePath) {
     return c.json({ error: "File not found" }, 404)
   }
-  const fs = await import("fs")
-  if (!fs.existsSync(filePath)) {
-    return c.json({ error: "File not found" }, 404)
-  }
-  const data = fs.readFileSync(filePath)
+  // getSessionFilePath already verified existence; read directly
+  const { readFileSync } = await import("fs")
+  const data = readFileSync(filePath)
   // Use a basic mime-type lookup
   const mimeType = guessMimeType(filename)
   c.header("Content-Type", mimeType)
