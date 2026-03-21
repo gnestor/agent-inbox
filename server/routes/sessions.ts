@@ -323,18 +323,6 @@ sessionRoutes.get("/:id/stream", async (c) => {
     sessions.addSseClient(sessionId, send)
     if (user) sessions.addPresenceUser(sessionId, user)
 
-    // Send existing messages first for catch-up
-    const existing = sessions.getSessionMessages(sessionId)
-    for (const msg of existing) {
-      await stream.writeSSE({
-        data: JSON.stringify({
-          sequence: msg.sequence,
-          message: JSON.parse(msg.message as string),
-        }),
-        event: "message",
-      })
-    }
-
     // Keep connection alive
     const keepAlive = setInterval(() => {
       stream.writeSSE({ data: "", event: "ping" })

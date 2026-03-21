@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -87,8 +87,14 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }, [prompt])
 
-  // Stream for live updates
-  const stream = useSessionStream(sessionId)
+  const shouldStream =
+    statusOverride === "running" ||
+    statusOverride === "awaiting_user_input" ||
+    data?.session.status === "running" ||
+    data?.session.status === "awaiting_user_input"
+
+  // Stream only for live sessions. Completed transcripts come from the query response.
+  const stream = useSessionStream(sessionId, shouldStream)
   const { presenceUsers } = stream
 
   // Reset local overrides when navigating to a different session
@@ -181,8 +187,14 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // Prefer the linked item title (email subject / task title) over whatever title was passed in
   const displayTitle = data?.session.linkedItemTitle || title || "Session"
 
-  // Merge initial messages with streamed ones
-  const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
+  // Merge initial messages with streamed ones so live sessions append smoothly
+  // instead of replacing the already-loaded transcript with incremental SSE replay.
+  const allMessages = useMemo(() => {
+    const merged = new Map<number, typeof initialMessages[number]>()
+    for (const message of initialMessages) merged.set(message.sequence, message)
+    for (const message of stream.messages) merged.set(message.sequence, message)
+    return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
+  }, [initialMessages, stream.messages])
 
   const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
     "sessions.transcript.visibility",
