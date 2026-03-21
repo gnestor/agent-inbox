@@ -76,11 +76,15 @@ export function SessionTranscript({
   const hasInitialScroll = useRef(false)
   const previousMessageCount = useRef(0)
   const scrollRaf = useRef<number | null>(null)
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => shouldRenderMessage(message, visibility)),
+    [messages, visibility],
+  )
 
   const virtualizer = useVirtualizerSafe({
-    count: messages.length,
+    count: visibleMessages.length,
     getScrollElement: () => scrollRef.current,
-    getItemKey: (index) => messages[index]?.sequence ?? index,
+    getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
     // estimateSize must be <= the minimum actual item height (accordion trigger
     // ~44px). When items are taller than the estimate, measuring them increases
     // total size → items only EXIT the virtual window, never enter → no new
@@ -107,15 +111,15 @@ export function SessionTranscript({
   }, [sessionId])
 
   useEffect(() => {
-    if (messages.length === 0) {
+    if (visibleMessages.length === 0) {
       previousMessageCount.current = 0
       return
     }
 
-    const lastIndex = messages.length - 1
+    const lastIndex = visibleMessages.length - 1
     const hadMessages = previousMessageCount.current > 0
-    const didAppend = messages.length > previousMessageCount.current
-    previousMessageCount.current = messages.length
+    const didAppend = visibleMessages.length > previousMessageCount.current
+    previousMessageCount.current = visibleMessages.length
 
     const shouldScrollToBottom =
       !hasInitialScroll.current || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
@@ -133,7 +137,7 @@ export function SessionTranscript({
         scrollRaf.current = null
       })
     })
-  }, [isStreaming, messages.length, virtualizer])
+  }, [isStreaming, visibleMessages.length, virtualizer])
 
   useEffect(() => {
     return () => {
@@ -157,7 +161,7 @@ export function SessionTranscript({
       onScroll={handleScroll}
     >
       <div className="p-4 min-w-0">
-        {messages.length > 0 ? (
+        {visibleMessages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
               <div
@@ -169,11 +173,11 @@ export function SessionTranscript({
                   top: 0,
                   left: 0,
                   width: "100%",
-                  paddingBottom: virtualRow.index === messages.length - 1 ? 0 : 16,
+                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 16,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} />
               </div>
             ))}
           </div>
@@ -641,6 +645,58 @@ function toolUseSummary(name: string, input: any): string {
     default:
       return ""
   }
+}
+
+function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisibility): boolean {
+  const msg = message.message as any
+
+  if (msg.type === "system") {
+    if (msg.subtype === "init") return false
+    if (msg.subtype === "attached_context") return visibility.messages
+    if (msg.subtype === "result" || "result" in msg) return visibility.messages
+    return false
+  }
+
+  if (msg.type === "user" || msg.role === "user") {
+    if (extractSkillBlock(msg)) return true
+    if (!visibility.messages) return false
+    return !!extractText(msg) || parseIdeContext(msg).length > 0
+  }
+
+  if (msg.type === "assistant" || msg.role === "assistant") {
+    const contentBlocks = msg.content || msg.message?.content || []
+    if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+      return visibility.messages && !!extractText(msg)
+    }
+    return contentBlocks.some((block: any) => shouldRenderContentBlock(block, visibility, !!message.sessionId))
+  }
+
+  if (msg.type === "plan") return visibility.messages && !!msg.content
+  if (msg.type === "tool_result") return false
+  return false
+}
+
+function shouldRenderContentBlock(
+  block: any,
+  visibility: TranscriptVisibility,
+  hasSessionId: boolean,
+): boolean {
+  if (block.type === "text") {
+    return visibility.messages && !!block.text
+  }
+
+  if (block.type === "tool_use") {
+    if (block.name === "render_output" || block.name === "mcp__render_output__render_output") {
+      return visibility.artifacts && !!block.input && hasSessionId
+    }
+    return visibility.toolCalls
+  }
+
+  if (block.type === "thinking") {
+    return visibility.thinking && !!block.thinking
+  }
+
+  return false
 }
 
 function isIdeContextBlock(block: any): boolean {
