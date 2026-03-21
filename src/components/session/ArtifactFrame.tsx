@@ -146,7 +146,6 @@ export function buildArtifactHtml(
     "react": "${origin}/@hammies/react.mjs",
     "react-dom": "${origin}/@hammies/react-dom.mjs",
     "react-dom/client": "${origin}/@hammies/react-dom.mjs",
-    "react/jsx-runtime": "${origin}/@hammies/react-jsx.mjs",
     "@hammies/frontend/components/ui": "${origin}/@hammies/artifact.mjs",
     "@hammies/frontend/lib/utils": "${origin}/@hammies/artifact.mjs"
   }

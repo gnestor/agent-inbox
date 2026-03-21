@@ -51,7 +51,6 @@ describe("buildArtifactHtml", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("/@hammies/react.mjs")
     expect(html).toContain("/@hammies/react-dom.mjs")
-    expect(html).toContain("/@hammies/react-jsx.mjs")
   })
 
   it("loads @tailwindcss/browser from server", () => {
@@ -72,7 +71,6 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain('<script type="importmap">')
     expect(html).toContain('"react"')
     expect(html).toContain('"react-dom"')
-    expect(html).toContain('"react/jsx-runtime"')
     expect(html).toContain("@hammies/frontend/components/ui")
     expect(html).toContain("@hammies/frontend/lib/utils")
   })
