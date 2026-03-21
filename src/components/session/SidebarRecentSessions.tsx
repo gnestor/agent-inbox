@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
@@ -13,8 +13,6 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
-import type { TabId } from "@/types/navigation"
-import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
 
 const ONE_DAY_MS = 86_400_000
@@ -78,13 +76,9 @@ export function markSessionRead(sessionId: string): void {
   }
 }
 
-interface SidebarRecentSessionsProps {
-  switchTab: (tabId: TabId) => void
-}
-
-export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps) {
+export function SidebarRecentSessions() {
   const location = useLocation()
-  const { selectItem } = useNavigation()
+  const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
@@ -147,7 +141,7 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
       <SidebarGroupLabel>Sessions</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {recent.map((session, i) => {
+          {recent.map((session) => {
             const isRead = readSet.has(session.id)
             const color = getIndicatorColor(session, isRead)
             const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
@@ -160,8 +154,7 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    switchTab("sessions")
-                    selectItem(session.id, i)
+                    navigate(getSessionUrl(session))
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn(
@@ -190,7 +183,7 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
               )}
               onClick={() => {
-                switchTab("sessions")
+                navigate("/sessions")
                 if (isMobile) setOpenMobile(false)
               }}
             >

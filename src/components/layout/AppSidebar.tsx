@@ -176,7 +176,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        <SidebarRecentSessions switchTab={switchTab} />
+        <SidebarRecentSessions />
       </SidebarContent>
     </Sidebar>
   )
