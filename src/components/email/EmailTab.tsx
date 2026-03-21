@@ -24,7 +24,7 @@ export function EmailTab() {
         }
 
         return (
-          <PanelSlot key={index} panelId={panel.id}>
+          <PanelSlot key={panel.id} panelId={panel.id}>
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <EmailDetailView itemId={panel.props.itemId} />

@@ -80,6 +80,14 @@ export function useNavigation() {
     [state],
   )
 
+  const getPanelTransition = useCallback(
+    (tab?: TabId) => {
+      const tabId = tab ?? state.activeTab
+      return state.tabs[tabId]?.panelTransition ?? "none"
+    },
+    [state],
+  )
+
   const setFilter = useCallback(
     (key: string, value: string) => dispatch({ type: "SET_FILTER", key, value }),
     [dispatch],
@@ -112,6 +120,7 @@ export function useNavigation() {
     getPanels,
     getSelectedItemId,
     getItemDirection,
+    getPanelTransition,
     activeFilters: state.tabs[state.activeTab]?.activeFilters ?? {},
     getFilters,
     setFilter,

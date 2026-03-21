@@ -24,7 +24,7 @@ export function SessionTab() {
 
         // Other slots get PanelSlot for item-change animation
         return (
-          <PanelSlot key={index} panelId={panel.id}>
+          <PanelSlot key={panel.id} panelId={panel.id}>
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "session" ? (
                 <SessionView sessionId={panel.props.sessionId} />

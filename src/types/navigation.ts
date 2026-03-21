@@ -39,6 +39,8 @@ export interface TabState {
   prevListIndex?: number
   /** Extra panels (position 2+) saved per item, restored on re-selection */
   savedPanels?: Record<string, PanelState[]>
+  /** Animation hint: "item" for item selection transitions, "none" for panel push/pop */
+  panelTransition?: "item" | "none"
 }
 
 // --- Full navigation state ---

@@ -5,7 +5,7 @@ import type { NavigationState, PanelState, TabId, TabState } from "@/types/navig
 import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
-// --- URL helper ---
+// --- URL helpers ---
 
 export function buildUrl(activeTab: TabId, selectedItemId?: string): string {
   if (activeTab === "settings") return "/settings/integrations"
@@ -13,6 +13,27 @@ export function buildUrl(activeTab: TabId, selectedItemId?: string): string {
   return selectedItemId
     ? `/${activeTab}/${encodeURIComponent(selectedItemId)}`
     : `/${activeTab}`
+}
+
+/** Parse a URL pathname into navigation intent. Pure function, no side effects. */
+export function parseUrl(pathname: string): { tabId: TabId; selectedId?: string; sessionId?: string } {
+  const parts = pathname.split("/").filter(Boolean)
+  if (parts[0] === "recent") {
+    // /recent/sessions/{sessionId}
+    if (parts[1] === "sessions" && parts[2])
+      return { tabId: "sessions", selectedId: decodeURIComponent(parts[2]) }
+    // /recent/emails/{id}/session/{sessionId} or /recent/tasks/{id}/session/{sessionId}
+    if (["emails", "tasks"].includes(parts[1]) && parts[2]) {
+      const sessionId = parts[3] === "session" && parts[4] ? decodeURIComponent(parts[4]) : undefined
+      return { tabId: parts[1] as TabId, selectedId: decodeURIComponent(parts[2]), sessionId }
+    }
+    return { tabId: "sessions" }
+  }
+  if (parts[0] === "settings") return { tabId: "settings" }
+  if (parts[0] === "plugins" && parts[1]) return { tabId: `plugin:${parts[1]}` as TabId }
+  if (["emails", "tasks", "calendar", "sessions"].includes(parts[0]))
+    return { tabId: parts[0] as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
+  return { tabId: "emails" }
 }
 
 // --- Actions ---
@@ -60,6 +81,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       saveExtraPanels(tab)
 
       tab.selectedItemId = action.itemId
+      tab.panelTransition = "item"
 
       // Compute direction from list index
       if (action.listIndex !== undefined) {
@@ -92,6 +114,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       // Don't push duplicates
       if (tab.panels.some((p) => p.id === action.panel.id)) return state
       tab.panels = [...tab.panels, action.panel]
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -99,13 +122,12 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       const idx = tab.panels.findIndex((p) => p.id === action.panelId)
       if (idx >= 0) {
-        // Truncate from this panel's position — removes it and everything after it
         tab.panels = tab.panels.slice(0, idx)
-        // If the truncation removed the detail panel, clear selectedItemId
         if (!tab.panels.some((p) => p.type === "detail")) {
           tab.selectedItemId = undefined
         }
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -115,12 +137,14 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       if (!tab.panels.some((p) => p.type === "detail")) {
         tab.selectedItemId = undefined
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
     case "REPLACE_PANEL": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       tab.panels = tab.panels.map((p) => (p.id === action.panelId ? action.newPanel : p))
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -132,7 +156,6 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
         type: "session",
         props: { sessionId, linkedItemId: tab.selectedItemId },
       }
-      // Replace existing session panel or push
       const existingIdx = tab.panels.findIndex((p) => p.type === "session")
       if (existingIdx >= 0) {
         tab.panels = [...tab.panels]
@@ -140,6 +163,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       } else {
         tab.panels = [...tab.panels, sessionPanel]
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -183,6 +207,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(navReducer, createDefaultNavigationState())
   const navigate = useNavigate()
   const location = useLocation()
+  const mountStarted = useRef(false)
   const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -195,26 +220,53 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // effect can distinguish our navigations from browser back/forward.
   const lastNavigatedUrl = useRef(location.pathname)
 
-  // Load state from storage on mount
+  // Load persisted state on mount, merging with URL (URL is source of truth).
+  // mountStarted prevents double-mount; initialized gates other effects until
+  // the async load completes (so the state→URL effect can't fire with default state).
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
+    if (mountStarted.current) return
+    mountStarted.current = true
 
     ;(async () => {
-      let loaded = await loadNavigationState()
-      if (!loaded) {
-        loaded = await migrateFromLocalStorage()
+      // 1. URL is the source of truth on refresh
+      const { tabId, selectedId, sessionId } = parseUrl(location.pathname)
+
+      // 2. Persisted state supplements (panel stacks, filters, scroll, savedPanels)
+      let base = await loadNavigationState()
+      if (!base) base = await migrateFromLocalStorage()
+      if (!base) base = createDefaultNavigationState()
+
+      // 3. Override activeTab and selectedItemId from URL
+      base.activeTab = tabId
+      const tab = base.tabs[tabId] ?? createDefaultTabState()
+      if (selectedId) {
+        tab.selectedItemId = selectedId
+        const saved = tab.savedPanels?.[selectedId] ?? []
+        tab.panels = [
+          tab.panels[0] ?? { id: "list", type: "list", props: {} },
+          { id: `detail:${selectedId}`, type: "detail", props: { itemId: selectedId } },
+          ...saved,
+        ]
+        if (sessionId) {
+          tab.panels = tab.panels.filter((p) => p.type !== "session")
+          tab.panels.push({
+            id: `session:${sessionId}`,
+            type: "session",
+            props: { sessionId, linkedItemId: selectedId },
+          })
+        }
+      } else {
+        tab.selectedItemId = undefined
+        tab.panels = [tab.panels[0] ?? { id: "list", type: "list", props: {} }]
       }
-      if (loaded) {
-        dispatch({ type: "SET_STATE", state: loaded })
-        const tab = loaded.tabs[loaded.activeTab]
-        const selectedId = tab?.selectedItemId
-        const url = buildUrl(loaded.activeTab, selectedId)
-        lastNavigatedUrl.current = url
-        navigate(url, { replace: true })
-      }
+      base.tabs[tabId] = tab
+
+      // 4. Dispatch merged state; URL already correct, no navigate() needed
+      dispatch({ type: "SET_STATE", state: base })
+      lastNavigatedUrl.current = location.pathname
+      initialized.current = true
     })()
-  }, [navigate])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced persistence
   useEffect(() => {
@@ -227,37 +279,25 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   // Declarative state → URL sync
-  // Derives URL from state and navigates when it differs from the current URL.
+  // Don't override /recent/ routes — they are managed by sidebar links.
   const activeSelectedId = state.tabs[state.activeTab]?.selectedItemId
   useEffect(() => {
     if (!initialized.current) return
+    if (location.pathname.startsWith("/recent/")) return
     const url = buildUrl(state.activeTab, activeSelectedId)
     if (url !== lastNavigatedUrl.current) {
       lastNavigatedUrl.current = url
       navigate(url)
     }
-  }, [state.activeTab, activeSelectedId, navigate])
+  }, [state.activeTab, activeSelectedId, navigate, location.pathname])
 
-  // URL → state sync (browser back/forward ONLY)
-  // When the URL changes due to our state→URL effect, lastNavigatedUrl matches,
-  // so this effect skips. When it changes due to browser back/forward,
-  // lastNavigatedUrl won't match, so we parse the URL and dispatch.
-  // Uses stateRef to read the latest state without adding `state` as a dependency.
+  // URL → state sync (browser back/forward and sidebar links)
   useEffect(() => {
     if (!initialized.current) return
     if (location.pathname === lastNavigatedUrl.current) return
     lastNavigatedUrl.current = location.pathname
 
-    const parts = location.pathname.split("/").filter(Boolean)
-    let tabId: TabId = "emails"
-    let selectedId: string | undefined
-
-    if (parts[0] === "settings") tabId = "settings"
-    else if (parts[0] === "plugins" && parts[1]) tabId = `plugin:${parts[1]}` as TabId
-    else if (["emails", "tasks", "calendar", "sessions"].includes(parts[0])) {
-      tabId = parts[0] as TabId
-      if (parts[1]) selectedId = decodeURIComponent(parts[1])
-    }
+    const { tabId, selectedId, sessionId } = parseUrl(location.pathname)
 
     const currentState = stateRef.current
     if (tabId !== currentState.activeTab) {
@@ -268,6 +308,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "SELECT_ITEM", itemId: selectedId })
     } else if (!selectedId && currentSelectedId) {
       dispatch({ type: "DESELECT_ITEM" })
+    }
+    if (sessionId) {
+      dispatch({ type: "OPEN_SESSION", sessionId })
     }
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
