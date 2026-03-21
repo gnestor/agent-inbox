@@ -34,7 +34,8 @@ const THEME_VARS = [
   "radius", "font-sans", "font-mono",
 ] as const
 
-// Resolved once at module level — shared across all ArtifactFrame instances
+// Resolved once at module level — shared across all ArtifactFrame instances.
+// TODO: invalidate on theme change if runtime theme switching is added.
 let _themeVars: Record<string, string> | undefined
 function getThemeVars(): Record<string, string> {
   if (_themeVars) return _themeVars

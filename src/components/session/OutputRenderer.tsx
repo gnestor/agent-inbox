@@ -18,14 +18,14 @@ import { ArtifactFrame } from "./ArtifactFrame"
 // --- Spec types ---
 
 export type OutputSpec =
-  | { type: "markdown"; data: string; title?: string; panel?: boolean }
-  | { type: "html"; data: string; title?: string; panel?: boolean }
-  | { type: "table"; data: TableData; title?: string; panel?: boolean }
-  | { type: "json"; data: unknown; title?: string; panel?: boolean }
-  | { type: "chart"; data: VegaSpec; title?: string; panel?: boolean }
-  | { type: "file"; data: FileData; title?: string; panel?: boolean }
-  | { type: "conversation"; data: ConversationData; title?: string; panel?: boolean }
-  | { type: "react"; data: ReactArtifactData; title?: string; panel?: boolean }
+  | { type: "markdown"; data: string; title?: string }
+  | { type: "html"; data: string; title?: string }
+  | { type: "table"; data: TableData; title?: string }
+  | { type: "json"; data: unknown; title?: string }
+  | { type: "chart"; data: VegaSpec; title?: string }
+  | { type: "file"; data: FileData; title?: string }
+  | { type: "conversation"; data: ConversationData; title?: string }
+  | { type: "react"; data: ReactArtifactData; title?: string }
 
 export interface TableData {
   columns: string[]
@@ -62,20 +62,6 @@ interface OutputRendererProps {
 }
 
 export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputRendererProps) {
-  return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} fillPanel={fillPanel} />
-}
-
-function OutputContent({
-  spec,
-  sessionId,
-  sequence,
-  fillPanel,
-}: {
-  spec: OutputSpec
-  sessionId: string
-  sequence: number
-  fillPanel?: boolean
-}) {
   switch (spec.type) {
     case "markdown":
       return <MarkdownOutput data={spec.data} />

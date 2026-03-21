@@ -45,9 +45,6 @@ React 18 + hooks (useState, useEffect, useRef, useCallback, useMemo, useReducer,
         "react = { code: string, title?: string }"
       ),
       title: z.string().optional().describe("Optional title shown above the output"),
-      panel: z.boolean().optional().default(false).describe(
-        "Unused — outputs always render inline. Users can maximize to a panel via the UI."
-      ),
     },
     async (args) => {
       return {

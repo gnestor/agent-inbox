@@ -385,14 +385,14 @@ sessionRoutes.post("/:id/files", async (c) => {
   }
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
-  const result = await saveSessionFile(sessionId, file.name, buffer, file.type)
+  const result = saveSessionFile(sessionId, file.name, buffer, file.type)
   return c.json(result)
 })
 
 sessionRoutes.get("/:id/files/:filename", async (c) => {
   const sessionId = c.req.param("id")
   const filename = decodeURIComponent(c.req.param("filename"))
-  const filePath = await getSessionFilePath(sessionId, filename)
+  const filePath = getSessionFilePath(sessionId, filename)
   if (!filePath) {
     return c.json({ error: "File not found" }, 404)
   }

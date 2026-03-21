@@ -37,7 +37,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
       <div className="flex-1 min-h-0 overflow-hidden">
         {spec ? (
           <OutputRenderer
-            spec={{ ...spec, panel: false }}
+            spec={spec}
             sessionId={panel.props.sessionId}
             sequence={panel.props.sequence}
             fillPanel

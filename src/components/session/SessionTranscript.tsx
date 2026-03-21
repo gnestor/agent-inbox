@@ -212,13 +212,11 @@ function TranscriptAccordionEntry({
 }
 
 function OutputAccordion({
-  id,
   spec,
   sessionId,
   sequence,
   onOpenPanel,
 }: {
-  id: string
   spec: OutputSpec
   sessionId: string
   sequence: number
@@ -527,7 +525,6 @@ function ContentBlock({
       const outputSpec = block.input as OutputSpec
       return (
         <OutputAccordion
-          id={id}
           spec={outputSpec}
           sessionId={sessionId}
           sequence={sequence}

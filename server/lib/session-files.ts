@@ -11,12 +11,25 @@ import { getWorkspacePath } from "./session-manager.js"
  * - output/ — files written by the agent (referenced in render_output file specs)
  */
 
+const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/
+
+function validateSessionId(sessionId: string): void {
+  if (!SESSION_ID_RE.test(sessionId)) {
+    throw new Error(`Invalid session ID: ${sessionId}`)
+  }
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._\- ]/g, "_")
+}
+
 function getSessionsRoot(): string {
   const workspace = getWorkspacePath() || process.cwd()
   return join(workspace, "sessions")
 }
 
 export function getSessionFilesDir(sessionId: string, subfolder: "input" | "output" = "input"): string {
+  validateSessionId(sessionId)
   const dir = join(getSessionsRoot(), sessionId, subfolder)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
@@ -24,27 +37,25 @@ export function getSessionFilesDir(sessionId: string, subfolder: "input" | "outp
   return dir
 }
 
-export async function saveSessionFile(
+export function saveSessionFile(
   sessionId: string,
   filename: string,
   data: Buffer,
   mimeType = "application/octet-stream",
-): Promise<{ name: string; path: string; size: number; mimeType: string }> {
+): { name: string; path: string; size: number; mimeType: string } {
   const dir = getSessionFilesDir(sessionId, "input")
-  // Sanitize filename — strip path traversal attempts
-  const safe = filename.replace(/[^a-zA-Z0-9._\- ]/g, "_")
+  const safe = sanitizeFilename(filename)
   const filePath = join(dir, safe)
   writeFileSync(filePath, data)
   return { name: safe, path: filePath, size: data.length, mimeType }
 }
 
-export async function getSessionFilePath(
+export function getSessionFilePath(
   sessionId: string,
   filename: string,
-): Promise<string | null> {
-  // Sanitize before lookup
-  const safe = filename.replace(/[^a-zA-Z0-9._\- ]/g, "_")
-  // Check input/ first, then output/
+): string | null {
+  validateSessionId(sessionId)
+  const safe = sanitizeFilename(filename)
   for (const subfolder of ["input", "output"] as const) {
     const dir = join(getSessionsRoot(), sessionId, subfolder)
     const filePath = join(dir, safe)
@@ -57,6 +68,7 @@ export async function getSessionFilePath(
 
 /** List all files in a session (both input and output) */
 export function listSessionFiles(sessionId: string): Array<{ name: string; size: number; subfolder: string }> {
+  validateSessionId(sessionId)
   const result: Array<{ name: string; size: number; subfolder: string }> = []
   for (const subfolder of ["input", "output"] as const) {
     const dir = join(getSessionsRoot(), sessionId, subfolder)
