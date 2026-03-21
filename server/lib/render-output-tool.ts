@@ -11,26 +11,27 @@ import { z } from "zod"
 export function buildRenderOutputMcpServer() {
   const renderOutputTool = tool(
     "render_output",
-    `Render a structured output in the inbox UI. The output appears inline in the session transcript. Use panel: true to open it as a side panel.
+    `Render a structured output in the inbox UI. The output appears inline in the session transcript.
 
-For type "react": the sandbox includes Tailwind CSS and a shadcn/ui-compatible dark theme. Use Tailwind utility classes for all styling (e.g. bg-card, text-foreground, border, rounded-lg, p-4, flex, gap-2).
+For type "react": the sandbox includes Tailwind CSS and a shadcn/ui dark theme. Use Tailwind classes for ALL styling — never use inline styles.
 
-Theme colors available as Tailwind classes: background, foreground, card, card-foreground, primary, primary-foreground, secondary, secondary-foreground, muted, muted-foreground, border, input, ring, destructive, destructive-foreground. Example: className="bg-card text-card-foreground rounded-lg border p-4".
+COMPONENTS (use instead of raw HTML elements):
+Button (variant: primary|secondary|destructive|outline|ghost, size: sm|md|lg|icon), Card, Badge (variant: default|secondary|outline), Input, Textarea, Select, Label, Switch (checked, onCheckedChange), Separator (orientation: horizontal|vertical).
 
-Pre-built shadcn/ui components (use these instead of native HTML elements):
-- Button: variant="primary"|"secondary"|"destructive"|"outline"|"ghost", size="sm"|"md"|"lg"|"icon"
-- Card: rounded-lg border container
-- Badge: variant="default"|"secondary"|"outline"
-- Input: styled text input (use instead of raw <input>)
-- Textarea: styled multiline input (use instead of raw <textarea>)
-- Select: styled select dropdown (use instead of raw <select>)
-- Label: form label with proper styling
-- Switch: toggle switch (checked, onCheckedChange)
-- Separator: horizontal/vertical divider (orientation="horizontal"|"vertical")
+DESIGN RULES — follow these patterns to match the app:
+- Colors: bg-background (base), bg-card (containers), text-foreground (primary text), text-muted-foreground (secondary text), hover:bg-secondary (hover states), bg-primary text-primary-foreground (selected/active), bg-accent text-accent-foreground (highlights/links)
+- Chart colors: text-chart-1 through text-chart-5 (or bg-chart-*) for data visualization — 5 distinct hues
+- Font: font-sans (default), font-mono (code/data)
+- Typography: text-sm font-semibold (headings), text-sm font-medium (primary content), text-xs text-muted-foreground (secondary/metadata). Never use text-base or text-lg.
+- Spacing: p-4 or px-4 py-3 (content areas), gap-2 (default flex gap), gap-4 (section separation)
+- Borders: border border-border rounded-lg (containers), border-b (list separators), rounded-md (buttons/inputs)
+- Layout: flex flex-col (vertical stacks), flex items-center justify-between (rows), flex-1 min-w-0 (shrinkable flex items), shrink-0 (icons/buttons)
+- Icon buttons: p-1.5 rounded-md hover:bg-secondary text-muted-foreground
+- Lists: px-4 py-3 border-b per item, flex items-center gap-2
+- Forms: grid or flex-col with gap-2, Label above Input/Textarea/Select. Inputs inside bordered containers should use border-none to avoid double borders.
+- Empty states: flex flex-col items-center justify-center p-8 text-muted-foreground
 
-IMPORTANT: Always use these components instead of native HTML form elements. Native elements will have basic styling but the components match the app's design system.
-
-React 18 and hooks (useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext) are available as globals — do NOT import them. Export your root component as default or name it App.`,
+React 18 + hooks (useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext) are globals — do NOT import them. Export your root component as default or name it App.`,
     {
       type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]),
       data: z.any().describe(

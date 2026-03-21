@@ -28,6 +28,10 @@ const THEME_VARS = [
   "primary", "primary-foreground", "secondary", "secondary-foreground",
   "muted", "muted-foreground", "border", "input", "ring",
   "destructive", "destructive-foreground",
+  "accent", "accent-foreground",
+  "popover", "popover-foreground",
+  "chart-1", "chart-2", "chart-3", "chart-4", "chart-5",
+  "radius", "font-sans", "font-mono",
 ] as const
 
 // Resolved once at module level — shared across all ArtifactFrame instances
@@ -133,12 +137,17 @@ tailwind.config = {
         primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
         secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
         muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
+        accent: { DEFAULT: 'var(--accent)', foreground: 'var(--accent-foreground)' },
+        popover: { DEFAULT: 'var(--popover)', foreground: 'var(--popover-foreground)' },
         border: 'var(--border)',
         input: 'var(--input)',
         ring: 'var(--ring)',
         destructive: { DEFAULT: 'var(--destructive)', foreground: 'var(--destructive-foreground)' },
+        chart: { 1: 'var(--chart-1)', 2: 'var(--chart-2)', 3: 'var(--chart-3)', 4: 'var(--chart-4)', 5: 'var(--chart-5)' },
       },
       borderColor: { DEFAULT: 'var(--border)' },
+      borderRadius: { sm: 'calc(var(--radius) - 4px)', md: 'calc(var(--radius) - 2px)', lg: 'var(--radius)', xl: 'calc(var(--radius) + 4px)' },
+      fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
     }
   }
 }
@@ -150,18 +159,25 @@ tailwind.config = {
   --primary: ${t("primary", "#4493f8")}; --primary-foreground: ${t("primary-foreground", "#fff")};
   --secondary: ${t("secondary", "#30363d")}; --secondary-foreground: ${t("secondary-foreground", "#e6edf3")};
   --muted: ${t("muted", "#161b22")}; --muted-foreground: ${t("muted-foreground", "#8b949e")};
+  --accent: ${t("accent", "#388bfd")}; --accent-foreground: ${t("accent-foreground", "#c9d1d9")};
+  --popover: ${t("popover", "#161b22")}; --popover-foreground: ${t("popover-foreground", "#e6edf3")};
   --border: ${t("border", "#30363d")}; --input: ${t("input", "#30363d")};
   --destructive: ${t("destructive", "#f85149")}; --destructive-foreground: ${t("destructive-foreground", "#fff")};
   --ring: ${t("ring", "#4493f8")};
+  --chart-1: ${t("chart-1", "#4493f8")}; --chart-2: ${t("chart-2", "#3fb950")}; --chart-3: ${t("chart-3", "#a371f7")};
+  --chart-4: ${t("chart-4", "#d29922")}; --chart-5: ${t("chart-5", "#f778ba")};
+  --radius: ${t("radius", "0.375rem")};
+  --font-sans: ${t("font-sans", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif")};
+  --font-mono: ${t("font-mono", "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace")};
 }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--card); color: var(--foreground); min-height: 100vh; }
+body { font-family: var(--font-sans); font-size: 14px; background: var(--card); color: var(--foreground); min-height: 100vh; }
 /* Style native form elements to match shadcn */
-input, textarea, select { display: flex; width: 100%; border-radius: 0.375rem; border: 1px solid var(--input); background: var(--background); padding: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--foreground); outline: none; font-family: inherit; }
+input, textarea, select { display: flex; width: 100%; border-radius: var(--radius); border: 1px solid var(--input); background: var(--background); padding: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--foreground); outline: none; font-family: inherit; }
 input:focus, textarea:focus, select:focus { border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring); }
 input::placeholder, textarea::placeholder { color: var(--muted-foreground); }
 textarea { min-height: 5rem; resize: vertical; }
 label { font-size: 0.875rem; font-weight: 500; line-height: 1; }
-.error-box { background: #3c1111; border: 1px solid var(--destructive); border-radius: 6px; padding: 12px; color: #fca5a5; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+.error-box { background: color-mix(in srgb, var(--destructive) 15%, transparent); border: 1px solid var(--destructive); border-radius: var(--radius); padding: 12px; color: var(--destructive); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -277,7 +293,7 @@ window.addEventListener('message', function(e) {
       ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(RootComponent));
     } else {
       var fallback = document.createElement('div');
-      fallback.style.color = '#71717a';
+      fallback.style.color = 'var(--muted-foreground)';
       fallback.textContent = 'No App component found';
       document.getElementById('root').appendChild(fallback);
     }
