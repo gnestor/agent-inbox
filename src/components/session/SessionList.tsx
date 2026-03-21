@@ -74,7 +74,7 @@ export function SessionList({
 
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
-    enabled,
+    { enabled },
   )
   const { selectItem } = useNavigation()
 

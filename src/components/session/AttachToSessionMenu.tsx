@@ -33,7 +33,7 @@ export function SessionActionMenu({
   const deferredSearch = useDeferredValue(search)
   const { openSession } = useNavigation()
   const filters = deferredSearch ? { q: deferredSearch } : undefined
-  const { sessions } = useSessions(filters, open)
+  const { sessions } = useSessions(filters, { enabled: open })
   const attachMutation = useAttachToSession()
   const searchInputRef = useRef<HTMLInputElement>(null)
 

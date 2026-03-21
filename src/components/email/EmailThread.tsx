@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
+import { useLocalDraft } from "@/hooks/use-local-draft"
 import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getLinkedSession, sendEmail, createDraft } from "@/api/client"
@@ -52,39 +53,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   })
   const queryClient = useQueryClient()
   const draftKey = `inbox:reply-draft:${threadId}`
-  const [draftBody, setDraftBody] = useState(() => {
-    // One-time cleanup of stale draft entries (bug: old code saved drafts under wrong keys)
-    if (!localStorage.getItem("inbox:reply-draft-cleanup-v1")) {
-      try {
-        const keys = Object.keys(localStorage).filter((k) => k.startsWith("inbox:reply-draft:"))
-        keys.forEach((k) => localStorage.removeItem(k))
-        localStorage.setItem("inbox:reply-draft-cleanup-v1", "1")
-      } catch {}
-    }
-    try {
-      const saved = localStorage.getItem(draftKey)
-      return saved?.trim() ? saved : ""
-    } catch { return "" }
-  })
-
-  // Reset draft state when switching threads (safety net — key={itemId} should remount)
-  const prevDraftKeyRef = useRef(draftKey)
-  useEffect(() => {
-    if (prevDraftKeyRef.current === draftKey) return
-    prevDraftKeyRef.current = draftKey
-    try { setDraftBody(localStorage.getItem(draftKey) ?? "") } catch { setDraftBody("") }
-  }, [draftKey])
-
-  // Persist draft to localStorage — only save real user content, skip on thread change
-  useEffect(() => {
-    // Skip the initial mount effect and thread changes — only persist user edits
-    if (draftKey !== prevDraftKeyRef.current) return
-    try {
-      if (draftBody.trim()) localStorage.setItem(draftKey, draftBody)
-      else localStorage.removeItem(draftKey)
-    } catch {}
-  }, [draftBody]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Intentionally omit draftKey — we never want to persist when the key changes
+  const [draftBody, setDraftBody] = useLocalDraft(draftKey)
 
   // Ref for stable mutation access to current draft body
   const draftBodyRef = useRef(draftBody)
@@ -123,34 +92,26 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 
   const isPending = sendMutation.isPending || draftMutation.isPending
 
+  // Scroll to bottom when thread loads, and keep scrolling as iframes resize
   useEffect(() => {
     if (!thread || !scrollRef.current) return
     const container = scrollRef.current
 
-    function scrollToLast() {
+    // Initial scroll (after first layout)
+    requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight
-    }
-
-    const initial = setTimeout(scrollToLast, 650)
-
-    let timer: ReturnType<typeof setTimeout>
-    const deadline = Date.now() + 2650
-    const observer = new MutationObserver(() => {
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        scrollToLast()
-        if (Date.now() >= deadline) observer.disconnect()
-      }, 50)
     })
-    observer.observe(container, { attributes: true, subtree: true, attributeFilter: ["style"] })
 
-    const cleanup = setTimeout(() => observer.disconnect(), 2650)
-    return () => {
-      clearTimeout(initial)
-      clearTimeout(timer)
-      clearTimeout(cleanup)
-      observer.disconnect()
+    // Re-scroll when content resizes (e.g. iframe height changes)
+    const ro = new ResizeObserver(() => {
+      container.scrollTop = container.scrollHeight
+    })
+    // Observe all message elements for size changes
+    for (const child of container.children) {
+      ro.observe(child)
     }
+
+    return () => ro.disconnect()
   }, [thread?.id])
 
   // Seed editor from Gmail draft if no local draft exists

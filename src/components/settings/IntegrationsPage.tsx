@@ -1,7 +1,6 @@
 import { useConnections } from "@/hooks/use-connections"
 import { IntegrationCard } from "./IntegrationCard"
 import { useSearchParams } from "react-router-dom"
-import { useEffect } from "react"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 
@@ -12,15 +11,10 @@ export function IntegrationsPage() {
   const error = searchParams.get("error")
   const connected = searchParams.get("connected")
 
-  // Clear URL params after showing status
-  useEffect(() => {
-    if (error || connected) {
-      const timeout = setTimeout(() => {
-        setSearchParams({})
-      }, 5000)
-      return () => clearTimeout(timeout)
-    }
-  }, [error, connected, setSearchParams])
+  // Clear URL params after the status banner fades out
+  function handleStatusDismiss() {
+    setSearchParams({})
+  }
 
   const userIntegrations = integrations?.filter((i) => i.scope === "user") || []
   const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace") || []
@@ -41,13 +35,19 @@ export function IntegrationsPage() {
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl">
           {error && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            <div
+              className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive animate-[fade-out_0.5s_4.5s_forwards]"
+              onAnimationEnd={handleStatusDismiss}
+            >
               Connection failed: {error}
             </div>
           )}
 
           {connected && (
-            <div className="rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-400">
+            <div
+              className="rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-400 animate-[fade-out_0.5s_4.5s_forwards]"
+              onAnimationEnd={handleStatusDismiss}
+            >
               Successfully connected {integrations?.find((i) => i.id === connected)?.name || connected}!
             </div>
           )}

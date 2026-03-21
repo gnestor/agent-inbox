@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
@@ -86,12 +86,9 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
   const location = useLocation()
   const { selectItem } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
-  const { sessions, refresh } = useSessions()
+  const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
   const recent = sessions.filter(isRecentSession).slice(0, 10)
-  const hasActive = recent.some(
-    (s) => s.status === "running" || s.status === "awaiting_user_input",
-  )
 
   // Collect linked IDs that need title lookups (no linkedItemTitle yet)
   const linkedEmailIds = useMemo(
@@ -137,12 +134,7 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedEmailIds, linkedTaskIds, emailSubjects.join("\0"), taskTitles.join("\0")])
 
-  // Poll every 5s while there are active sessions
-  useEffect(() => {
-    if (!hasActive) return
-    const id = setInterval(refresh, 5_000)
-    return () => clearInterval(id)
-  }, [hasActive, refresh])
+
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const readSet = useMemo(() => loadReadSet(), [recent])

@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useRef, useCallback, useMemo } from "react"
+import { useLocalDraft } from "@/hooks/use-local-draft"
 import { useLocation } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Button,
   Textarea,
@@ -15,8 +16,7 @@ import {
   AvatarFallback,
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
-import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession, archiveSession } from "@/api/client"
-import type { SessionStatus } from "@/types"
+import { getSession, answerSessionQuestion } from "@/api/client"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import type { OutputSpec } from "./OutputRenderer"
 import { useNavigation } from "@/hooks/use-navigation"
@@ -27,6 +27,7 @@ import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { usePreference } from "@/hooks/use-preferences"
+import { useSessionMutations } from "@/hooks/use-session-mutations"
 import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
@@ -39,7 +40,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const qc = useQueryClient()
   const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const { user } = useUser()
-  // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
   const sessionPanelId = `session:${sessionId}`
 
@@ -62,99 +62,36 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
-    refetchOnMount: true, // refetch when stale (e.g. session completed while panel was not open)
+    refetchOnMount: true,
   })
-  // Track status overrides from SSE stream and mutations independently of query data.
-  // This avoids the useState(data?.session.status) bug where the initial value is
-  // undefined because the query hasn't resolved yet on first render.
-  const [statusOverride, setStatusOverride] = useState<SessionStatus | undefined>()
+
   const resumeKey = `inbox:resume:${sessionId}`
-  const [prompt, setPrompt] = useState(() => {
-    try { return localStorage.getItem(resumeKey) ?? "" } catch { return "" }
-  })
+  const [prompt, setPrompt] = useLocalDraft(resumeKey)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Persist resume draft on every change
-  useEffect(() => {
-    try { localStorage.setItem(resumeKey, prompt) } catch {}
-  }, [resumeKey, prompt])
+  const { resume: resumeMutation, abort: abortMutation, archive: archiveMutation, rename: renameMutation } =
+    useSessionMutations({
+      sessionId,
+      onResume: () => setPrompt(""),
+      onArchive: handleBack,
+    })
 
-  // Auto-grow textarea
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
-  }, [prompt])
-
+  // Derive status from query cache (optimistically updated by mutations) + stream
+  const status = (data?.session.status as string) ?? undefined
   const shouldStream =
-    statusOverride === "running" ||
-    statusOverride === "awaiting_user_input" ||
-    data?.session.status === "running" ||
-    data?.session.status === "awaiting_user_input"
+    status === "running" ||
+    status === "awaiting_user_input"
 
-  // Stream only for live sessions. Completed transcripts come from the query response.
   const stream = useSessionStream(sessionId, shouldStream)
   const { presenceUsers } = stream
 
-  // Reset local overrides when navigating to a different session
-  useEffect(() => {
-    setStatusOverride(undefined)
-    try { setPrompt(localStorage.getItem(resumeKey) ?? "") } catch { setPrompt("") }
-  }, [sessionId])
-
-  // Update status override from stream
-  useEffect(() => {
-    if (stream.sessionStatus) setStatusOverride(stream.sessionStatus as SessionStatus)
-  }, [stream.sessionStatus])
-
-  const resumeMutation = useMutation({
-    mutationFn: (p: string) => resumeSession(sessionId, p),
-    onSuccess: () => {
-      try { localStorage.removeItem(resumeKey) } catch {}
-      setPrompt("")
-      setStatusOverride("running")
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-    },
-    onError: (err: any) => console.error("Failed to resume session:", err),
-  })
-
-  const abortMutation = useMutation({
-    mutationFn: () => abortSession(sessionId),
-    onSuccess: () => {
-      setStatusOverride("complete")
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
-    },
-    onError: (err: any) => console.error("Failed to abort session:", err),
-  })
-
-  const archiveMutation = useMutation({
-    mutationFn: () => archiveSession(sessionId),
-    onSuccess: () => {
-      // Optimistically update all cached sessions lists so the status badge
-      // updates immediately without waiting for a background refetch.
-      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
-        if (!Array.isArray(old)) return old
-        return old.map((s) => (s.id === sessionId ? { ...s, status: "archived" } : s))
-      })
-      handleBack()
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
-    },
-    onError: (err: any) => console.error("Failed to archive session:", err),
-  })
+  // Stream status takes priority when connected (real-time updates)
+  const effectiveStatus = stream.sessionStatus ?? status
 
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState("")
 
-  const renameMutation = useMutation({
-    mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-    },
-  })
+  const displayTitle = data?.session.linkedItemTitle || title || "Session"
 
   function handleStartEdit() {
     setEditTitle(data?.session.summary || data?.session.prompt?.slice(0, 80) || displayTitle)
@@ -179,16 +116,10 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     }
   }
 
-  const status = statusOverride ?? data?.session.status
   const initialMessages = data?.messages ?? []
   const loading = isLoading
   const error = queryError?.message ?? null
 
-  // Prefer the linked item title (email subject / task title) over whatever title was passed in
-  const displayTitle = data?.session.linkedItemTitle || title || "Session"
-
-  // Merge initial messages with streamed ones so live sessions append smoothly
-  // instead of replacing the already-loaded transcript with incremental SSE replay.
   const allMessages = useMemo(() => {
     const merged = new Map<number, typeof initialMessages[number]>()
     for (const message of initialMessages) merged.set(message.sequence, message)
@@ -205,14 +136,13 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     setVisibility({ ...visibility, [key]: !visibility[key] })
   }
 
-  const isRunning = status === "running"
-  const isAwaitingInput = status === "awaiting_user_input" || !!stream.pendingQuestion
+  const isRunning = effectiveStatus === "running"
+  const isAwaitingInput = effectiveStatus === "awaiting_user_input" || !!stream.pendingQuestion
   const sending = resumeMutation.isPending
 
   async function handleAnswer(answers: Record<string, string>) {
     await answerSessionQuestion(sessionId, answers)
     stream.clearPendingQuestion()
-    setStatusOverride("running")
     qc.invalidateQueries({ queryKey: ["sessions"] })
   }
 
@@ -374,7 +304,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           key={sessionId}
           messages={allMessages}
           isStreaming={isRunning}
-          status={status}
+          status={effectiveStatus}
           messageCount={data.session.messageCount}
           isLive={stream.connected}
           visibility={visibility}
@@ -398,7 +328,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               onKeyDown={handleKeyDown}
               placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
               disabled={isRunning || sending}
-              className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:normal]"
+              className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
               rows={1}
             />
             <Button

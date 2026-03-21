@@ -92,7 +92,6 @@ function MobileTab({ id, children }: TabProps) {
           if (exitChildren) clearExit()
         }
         el.addEventListener("scrollend", onDone, { once: true })
-        setTimeout(onDone, 800)
       } else {
         el.scrollLeft = target
         requestAnimationFrame(() => {
@@ -232,13 +231,21 @@ function DesktopTab({ id, children }: TabProps) {
     exitingPanel.style.overflow = "hidden"
     exitingPanel.style.transition = `width ${DURATION}s ${EASE_CSS}, opacity ${DURATION * 0.6}s`
 
+    // Clean up when the width transition finishes (longest of the two)
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName === "width") {
+        exitingPanel.removeEventListener("transitionend", onEnd)
+        clearExit()
+      }
+    }
+    exitingPanel.addEventListener("transitionend", onEnd)
+
     requestAnimationFrame(() => {
       exitingPanel.style.width = "0px"
       exitingPanel.style.opacity = "0"
     })
 
-    const timer = setTimeout(clearExit, DURATION * 1000 + 50)
-    return () => clearTimeout(timer)
+    return () => exitingPanel.removeEventListener("transitionend", onEnd)
   }, [renderedChildren, children, clearExit])
 
   // Intercept horizontal wheel → redirect to outer scroll
