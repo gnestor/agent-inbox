@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2 } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -41,12 +41,14 @@ export interface TranscriptVisibility {
   messages: boolean
   toolCalls: boolean
   thinking: boolean
+  artifacts: boolean
 }
 
 export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
   messages: true,
   toolCalls: true,
   thinking: true,
+  artifacts: true,
 }
 
 interface SessionTranscriptProps {
@@ -205,6 +207,58 @@ function TranscriptAccordionEntry({
         />
       </button>
       {open && <div>{children}</div>}
+    </div>
+  )
+}
+
+function OutputAccordion({
+  id,
+  spec,
+  sessionId,
+  sequence,
+  onOpenPanel,
+}: {
+  id: string
+  spec: OutputSpec
+  sessionId: string
+  sequence: number
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+}) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 py-2 w-full">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          <AppWindow className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-xs font-medium text-primary truncate">{spec.title || spec.type}</span>
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+        {onOpenPanel && (
+          <button
+            type="button"
+            className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0"
+            onClick={() => onOpenPanel(spec, sequence)}
+            title="Open in panel"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="pl-5.5">
+          <OutputRenderer
+            spec={spec}
+            sessionId={sessionId}
+            sequence={sequence}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -467,11 +521,14 @@ function ContentBlock({
   }
 
   if (block.type === "tool_use") {
-    // render_output tool — renders structured output inline (or triggers panel)
+    // render_output tool — renders structured output in an accordion
     if ((block.name === "render_output" || block.name === "mcp__render_output__render_output") && block.input && sessionId) {
+      if (!visibility.artifacts) return null
+      const outputSpec = block.input as OutputSpec
       return (
-        <OutputRenderer
-          spec={block.input as OutputSpec}
+        <OutputAccordion
+          id={id}
+          spec={outputSpec}
           sessionId={sessionId}
           sequence={sequence}
           onOpenPanel={onOpenPanel}

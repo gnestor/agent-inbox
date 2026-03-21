@@ -19,7 +19,6 @@ import { getSession, resumeSession, abortSession, answerSessionQuestion, updateS
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
 import type { OutputSpec } from "./OutputRenderer"
-import { setArtifactSpec } from "@/lib/artifact-store"
 import { useNavigation } from "@/hooks/use-navigation"
 import { useUser } from "@/hooks/use-user"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
@@ -53,11 +52,10 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   }
 
   const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
-    setArtifactSpec(sessionId, sequence, spec)
     pushPanel({
       id: `artifact:${sessionId}:${sequence}`,
       type: "artifact",
-      props: { sessionId, sequence, outputType: spec.type },
+      props: { sessionId, sequence, outputType: spec.type, spec },
     })
   }, [sessionId, pushPanel])
 
@@ -312,6 +310,12 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
                   onCheckedChange={() => toggleVisibility("thinking")}
                 >
                   Thinking
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={visibility.artifacts}
+                  onCheckedChange={() => toggleVisibility("artifacts")}
+                >
+                  Artifacts
                 </DropdownMenuCheckboxItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>

@@ -115,17 +115,18 @@ describe("OutputRenderer", () => {
     expect(iframe?.getAttribute("sandbox") ?? "").not.toContain("allow-same-origin")
   })
 
-  it("calls onOpenPanel when panel prop is true", () => {
-    const onOpenPanel = vi.fn()
-    render(
+  it("renders content directly without card wrapper when fillPanel is true", () => {
+    const { container } = render(
       <OutputRenderer
-        spec={{ type: "markdown", data: "# Panel output", panel: true }}
+        spec={{ type: "markdown", data: "# Panel content" }}
         sessionId="test-session"
         sequence={1}
-        onOpenPanel={onOpenPanel}
+        fillPanel
       />
     )
-    // Panel mode should call onOpenPanel immediately on mount
-    expect(onOpenPanel).toHaveBeenCalled()
+    // Should not have the border card wrapper
+    expect(container.querySelector(".border")).toBeNull()
+    // Should still render the content
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Panel content")
   })
 })

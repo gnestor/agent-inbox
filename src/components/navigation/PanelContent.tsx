@@ -3,7 +3,6 @@ import { lazy, Suspense } from "react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { OutputRenderer } from "@/components/session/OutputRenderer"
-import { getArtifactSpec } from "@/lib/artifact-store"
 import { useNavigation } from "@/hooks/use-navigation"
 
 // Lazy-load tab-specific components to avoid circular imports
@@ -19,20 +18,12 @@ const IntegrationsPage = lazy(() =>
 
 function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) {
   const { removePanel } = useNavigation()
-  const spec = getArtifactSpec(panel.props.sessionId, panel.props.sequence)
-
-  if (!spec) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        <p>Output not found</p>
-      </div>
-    )
-  }
+  const spec = panel.props.spec
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-        <span className="text-sm font-semibold">{spec.title || spec.type}</span>
+        <span className="text-sm font-semibold">{spec?.title || spec?.type || "Artifact"}</span>
         <button
           type="button"
           className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
@@ -46,12 +37,18 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        <OutputRenderer
-          spec={{ ...spec, panel: false }}
-          sessionId={panel.props.sessionId}
-          sequence={panel.props.sequence}
-          fillPanel
-        />
+        {spec ? (
+          <OutputRenderer
+            spec={{ ...spec, panel: false }}
+            sessionId={panel.props.sessionId}
+            sequence={panel.props.sequence}
+            fillPanel
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            <p>Output not found</p>
+          </div>
+        )}
       </div>
     </div>
   )

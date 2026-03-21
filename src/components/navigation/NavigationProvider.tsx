@@ -45,6 +45,17 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "SELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
+
+      // Save extra panels (position 2+) for the current item before switching
+      const prevId = tab.selectedItemId
+      if (prevId && tab.panels.length > 2) {
+        tab.savedPanels = { ...tab.savedPanels, [prevId]: tab.panels.slice(2) }
+      } else if (prevId && tab.savedPanels?.[prevId]) {
+        // No extra panels open — clear any saved ones
+        const { [prevId]: _, ...rest } = tab.savedPanels
+        tab.savedPanels = Object.keys(rest).length > 0 ? rest : undefined
+      }
+
       tab.selectedItemId = action.itemId
 
       // Compute direction from list index
@@ -54,25 +65,24 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
         tab.prevListIndex = action.listIndex
       }
 
-      // If panels[1] is a detail panel, replace it and remove panels after
-      if (tab.panels.length > 1 && tab.panels[1].type === "detail") {
-        tab.panels = [
-          tab.panels[0],
-          { id: `detail:${action.itemId}`, type: "detail", props: { itemId: action.itemId } },
-        ]
-      } else {
-        // Push detail at position 1
-        tab.panels = [
-          ...tab.panels.slice(0, 1),
-          { id: `detail:${action.itemId}`, type: "detail", props: { itemId: action.itemId } },
-        ]
-      }
+      // Build new panels: list + detail + any saved extra panels for this item
+      const saved = tab.savedPanels?.[action.itemId] ?? []
+      tab.panels = [
+        tab.panels[0],
+        { id: `detail:${action.itemId}`, type: "detail", props: { itemId: action.itemId } },
+        ...saved,
+      ]
 
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
     case "DESELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
+      // Save extra panels for the current item before deselecting
+      const prevId = tab.selectedItemId
+      if (prevId && tab.panels.length > 2) {
+        tab.savedPanels = { ...tab.savedPanels, [prevId]: tab.panels.slice(2) }
+      }
       tab.selectedItemId = undefined
       tab.panels = tab.panels.slice(0, 1) // keep only list
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }

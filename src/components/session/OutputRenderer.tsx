@@ -56,46 +56,16 @@ interface OutputRendererProps {
   spec: OutputSpec
   sessionId: string
   sequence: number
-  /** Called when spec.panel is true — parent should open the output as a PanelStack panel */
-  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   /** When true, react artifacts fill the parent container instead of using a fixed height */
   fillPanel?: boolean
 }
 
-export function OutputRenderer({ spec, sessionId, sequence, onOpenPanel, fillPanel }: OutputRendererProps) {
-  // If panel mode is requested, notify the parent on mount and render nothing inline
-  useEffect(() => {
-    if (spec.panel && onOpenPanel) {
-      onOpenPanel(spec, sequence)
-    }
-  }, [spec.panel, sequence]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (spec.panel) {
-    // Render a placeholder card with a "Opened in panel" note
-    return (
-      <div className="rounded-lg border border-border/50 bg-card/50 p-3 flex items-center gap-2 text-xs text-muted-foreground">
-        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          {spec.title || spec.type} — opened in panel
-        </span>
-      </div>
-    )
-  }
-
+export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputRendererProps) {
   if (fillPanel) {
     return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} fillPanel />
   }
 
-  return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      {spec.title && (
-        <div className="px-3 py-2 border-b border-border text-xs font-medium text-muted-foreground">
-          {spec.title}
-        </div>
-      )}
-      <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} />
-    </div>
-  )
+  return <OutputContent spec={spec} sessionId={sessionId} sequence={sequence} />
 }
 
 function OutputContent({
@@ -134,7 +104,6 @@ function OutputContent({
           sessionId={sessionId}
           sequence={sequence}
           className={fillPanel ? "w-full h-full border-0" : undefined}
-          panelMode={fillPanel}
         />
       )
     }

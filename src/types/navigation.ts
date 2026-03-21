@@ -15,7 +15,7 @@ export type PanelState =
   | { id: string; type: "detail"; props: { itemId: string } }
   | { id: string; type: "session"; props: { sessionId: string; linkedItemId?: string } }
   | { id: string; type: "new_session"; props: Record<string, never> }
-  | { id: string; type: "artifact"; props: { sessionId: string; sequence: number; outputType: string } }
+  | { id: string; type: "artifact"; props: { sessionId: string; sequence: number; outputType: string; spec: import("@/components/session/OutputRenderer").OutputSpec } }
   | { id: string; type: "compose"; props: { threadId: string; draftBody?: string } }
   | { id: string; type: "settings"; props: Record<string, never> }
   | { id: string; type: "new_session"; props: Record<string, never> }
@@ -36,6 +36,8 @@ export interface TabState {
   itemDirection?: number
   /** List index of the last selected item (for computing direction) */
   prevListIndex?: number
+  /** Extra panels (position 2+) saved per item, restored on re-selection */
+  savedPanels?: Record<string, PanelState[]>
 }
 
 // --- Full navigation state ---

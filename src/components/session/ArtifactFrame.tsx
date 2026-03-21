@@ -8,8 +8,6 @@ interface ArtifactFrameProps {
   sessionId: string
   sequence: number
   className?: string
-  /** Remove body padding/dark background so the artifact fills edge-to-edge */
-  panelMode?: boolean
 }
 
 /**
@@ -43,13 +41,13 @@ function resolveThemeVars(): Record<string, string> {
   return vars
 }
 
-export function ArtifactFrame({ code, title, sessionId, sequence, className, panelMode }: ArtifactFrameProps) {
+export function ArtifactFrame({ code, title, sessionId, sequence, className }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
   const themeVars = useMemo(() => resolveThemeVars(), [])
 
-  const srcDoc = useMemo(() => buildArtifactHtml(code, title, panelMode, themeVars), [code, title, panelMode, themeVars])
+  const srcDoc = useMemo(() => buildArtifactHtml(code, title, themeVars), [code, title, themeVars])
 
   // Restore saved state when iframe loads
   const handleLoad = useCallback(() => {
@@ -86,7 +84,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, pan
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-scripts"
-      className={className ?? "w-full border-0 rounded-md bg-background h-[400px]"}
+      className={className ?? "w-full border-0 rounded-md bg-card h-[600px]"}
       title={title || "React Artifact"}
       onLoad={handleLoad}
     />
@@ -99,8 +97,8 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, pan
  * The artifact code is embedded as a JSON-encoded data attribute so no unsafe
  * string concatenation occurs inside a script block.
  */
-export function buildArtifactHtml(code: string | undefined, title?: string, panelMode?: boolean, themeVars?: Record<string, string>): string {
-  if (!code) return `<!DOCTYPE html><html><body style="background:#09090b;color:#fafafa;font-family:sans-serif;padding:2rem"><p>No artifact code provided.</p></body></html>`
+export function buildArtifactHtml(code: string | undefined, title?: string, themeVars?: Record<string, string>): string {
+  if (!code) return `<!DOCTYPE html><html><body style="background:var(--card);color:var(--foreground);font-family:sans-serif;"><p>No artifact code provided.</p></body></html>`
   // Resolve a theme variable with fallback
   const t = (name: string, fallback: string) => themeVars?.[name] || fallback
   const safeTitle = (title ?? "Artifact").replace(/[<>&"]/g, (c) =>
@@ -152,7 +150,13 @@ tailwind.config = {
   --destructive: ${t("destructive", "#f85149")}; --destructive-foreground: ${t("destructive-foreground", "#fff")};
   --ring: ${t("ring", "#4493f8")};
 }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--card); color: var(--foreground); padding: ${panelMode ? "0" : "16px"}; min-height: 100vh; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--card); color: var(--foreground); min-height: 100vh; }
+/* Style native form elements to match shadcn */
+input, textarea, select { display: flex; width: 100%; border-radius: 0.375rem; border: 1px solid var(--input); background: var(--background); padding: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--foreground); outline: none; font-family: inherit; }
+input:focus, textarea:focus, select:focus { border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring); }
+input::placeholder, textarea::placeholder { color: var(--muted-foreground); }
+textarea { min-height: 5rem; resize: vertical; }
+label { font-size: 0.875rem; font-weight: 500; line-height: 1; }
 .error-box { background: #3c1111; border: 1px solid var(--destructive); border-radius: 6px; padding: 12px; color: #fca5a5; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
 </style>
 </head>
@@ -231,8 +235,16 @@ window.addEventListener('message', function(e) {
     '  var v = { default: "bg-primary text-primary-foreground", secondary: "bg-secondary text-secondary-foreground", outline: "border border-border text-foreground" };',
     '  return React.createElement("span", { className: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium " + (v[variant||"default"]||v.default) + " " + (className||"") }, children);',
     '}',
-    'function Input(p) { return React.createElement("input", Object.assign({ className: "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring " + (p.className||"") }, p)); }',
-    'function Separator({ className }) { return React.createElement("div", { className: "shrink-0 bg-border h-[1px] w-full " + (className||"") }); }',
+    'function Input(p) { var {className, ...rest} = p||{}; return React.createElement("input", Object.assign({ className: "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 " + (className||"") }, rest)); }',
+    'function Textarea(p) { var {className, ...rest} = p||{}; return React.createElement("textarea", Object.assign({ className: "flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 " + (className||"") }, rest)); }',
+    'function Label({ children, className, htmlFor }) { return React.createElement("label", { className: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 " + (className||""), htmlFor: htmlFor }, children); }',
+    'function Select(p) { var {className, children, ...rest} = p||{}; return React.createElement("select", Object.assign({ className: "flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 " + (className||"") }, rest), children); }',
+    'function Separator({ className, orientation }) { return React.createElement("div", { className: "shrink-0 bg-border " + (orientation === "vertical" ? "h-full w-[1px]" : "h-[1px] w-full") + " " + (className||"") }); }',
+    'function Switch({ checked, onCheckedChange, className }) {',
+    '  return React.createElement("button", { type: "button", role: "switch", "aria-checked": !!checked, onClick: function() { onCheckedChange && onCheckedChange(!checked); },',
+    '    className: "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors " + (checked ? "bg-primary" : "bg-secondary") + " " + (className||"") },',
+    '    React.createElement("span", { className: "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform " + (checked ? "translate-x-4" : "translate-x-0") }));',
+    '}',
   ].join('\\n');
 
   try {
