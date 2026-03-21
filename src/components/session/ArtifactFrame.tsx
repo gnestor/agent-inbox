@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from "react"
 import { usePreference } from "@/hooks/use-preferences"
 import { resumeSession } from "@/api/client"
-import { transformArtifactCode } from "@/lib/artifact-transform"
+import { transformArtifactCode, escapeForScript } from "@/lib/artifact-transform"
 
 interface ArtifactFrameProps {
   code: string
@@ -130,7 +130,7 @@ export function buildArtifactHtml(
   const safeTitle = (title ?? "Artifact").replace(/[<>&"]/g, (c) =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] ?? c)
   )
-  const codeAttr = btoa(unescape(encodeURIComponent(code)))
+  const safeCode = escapeForScript(code)
   const origin = typeof window !== "undefined" ? window.location.origin : ""
 
   return `<!DOCTYPE html>
@@ -138,46 +138,59 @@ export function buildArtifactHtml(
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' ${origin} https://unpkg.com https://cdn.tailwindcss.com; style-src 'unsafe-inline'; img-src * data: blob:; font-src *;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin}; style-src 'unsafe-inline' ${origin}; img-src * data: blob:; font-src *;">
 <title>${safeTitle}</title>
 <script type="importmap">
 {
   "imports": {
-    "@hammies/frontend/components/ui": "${origin}/@hammies/components.mjs",
-    "@hammies/frontend/lib/utils": "${origin}/@hammies/components.mjs"
+    "react": "${origin}/@hammies/react.mjs",
+    "react-dom": "${origin}/@hammies/react-dom.mjs",
+    "react-dom/client": "${origin}/@hammies/react-dom.mjs",
+    "react/jsx-runtime": "${origin}/@hammies/react-jsx.mjs",
+    "@hammies/frontend/components/ui": "${origin}/@hammies/artifact.mjs",
+    "@hammies/frontend/lib/utils": "${origin}/@hammies/artifact.mjs"
   }
 }
 </script>
-<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-  darkMode: 'class',
-  theme: {
-    extend: {
-      colors: {
-        background: 'var(--card)',
-        foreground: 'var(--foreground)',
-        card: { DEFAULT: 'var(--card)', foreground: 'var(--card-foreground)' },
-        primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
-        secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
-        muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
-        accent: { DEFAULT: 'var(--accent)', foreground: 'var(--accent-foreground)' },
-        popover: { DEFAULT: 'var(--popover)', foreground: 'var(--popover-foreground)' },
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
-        destructive: { DEFAULT: 'var(--destructive)', foreground: 'var(--destructive-foreground)' },
-        chart: { 1: 'var(--chart-1)', 2: 'var(--chart-2)', 3: 'var(--chart-3)', 4: 'var(--chart-4)', 5: 'var(--chart-5)' },
-      },
-      borderColor: { DEFAULT: 'var(--border)' },
-      borderRadius: { sm: 'calc(var(--radius) - 4px)', md: 'calc(var(--radius) - 2px)', lg: 'var(--radius)', xl: 'calc(var(--radius) + 4px)' },
-      fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
-    }
-  }
+<script src="${origin}/@hammies/tailwindcss.js"></script>
+<style type="text/tailwindcss">
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
-</script>
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-card text-foreground font-sans; }
+}
+</style>
 <style>
 :root {
   --background: ${t("background", "#0d1117")}; --foreground: ${t("foreground", "#e6edf3")};
@@ -196,19 +209,12 @@ tailwind.config = {
   --font-sans: ${t("font-sans", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif")};
   --font-mono: ${t("font-mono", "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace")};
 }
-body { font-family: var(--font-sans); font-size: 14px; background: var(--card); color: var(--foreground); min-height: 100vh; }
-/* Style native form elements to match shadcn */
-input, textarea, select { display: flex; width: 100%; border-radius: var(--radius); border: 1px solid var(--input); background: var(--background); padding: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--foreground); outline: none; font-family: inherit; }
-input:focus, textarea:focus, select:focus { border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring); }
-input::placeholder, textarea::placeholder { color: var(--muted-foreground); }
-textarea { min-height: 5rem; resize: vertical; }
-label { font-size: 0.875rem; font-weight: 500; line-height: 1; }
+body { font-size: 14px; min-height: 100vh; }
 .error-box { background: color-mix(in srgb, var(--destructive) 15%, transparent); border: 1px solid var(--destructive); border-radius: var(--radius); padding: 12px; color: var(--destructive); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <div id="root"></div>
-<div id="artifact-code" data-code="${codeAttr}" data-export="${exportedName ?? ""}" style="display:none"></div>
 <script>
 // postMessage bridge helpers
 window.__sendAction = function(intent) {
@@ -222,47 +228,31 @@ window.addEventListener('message', function(e) {
     window.__onStateRestored(e.data.state);
   }
 });
+</script>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
 
-(function bootstrap() {
-  var codeEl = document.getElementById('artifact-code');
-  var raw = codeEl ? codeEl.getAttribute('data-code') : '';
-  if (!raw) { return; }
-  var code = decodeURIComponent(escape(atob(raw)));
-  var exportedName = codeEl.getAttribute('data-export') || null;
+try {
+${safeCode}
 
-  try {
-    // Code is pre-transformed in the parent (JSX → createElement, imports handled)
-    (0, eval)(code);
+// Mount the component
+const _root = document.getElementById('root');
+const _Component = typeof ${exportedName ? exportedName : "App"} !== 'undefined'
+  ? ${exportedName || "App"}
+  : null;
 
-    // Find the component to render
-    var RootComponent = null;
-    if (exportedName && typeof eval(exportedName) !== 'undefined') {
-      RootComponent = eval(exportedName);
-    } else if (typeof App !== 'undefined') {
-      RootComponent = App;
-    } else {
-      // Scan for any PascalCase component defined in the code
-      var componentMatch = code.match(/function\\s+([A-Z]\\w*)\\s*\\(/);
-      if (componentMatch && typeof eval(componentMatch[1]) !== 'undefined') {
-        RootComponent = eval(componentMatch[1]);
-      }
-    }
-
-    if (RootComponent) {
-      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(RootComponent));
-    } else {
-      var fallback = document.createElement('div');
-      fallback.style.color = 'var(--muted-foreground)';
-      fallback.textContent = 'No App component found';
-      document.getElementById('root').appendChild(fallback);
-    }
-  } catch(err) {
-    var errEl = document.createElement('div');
-    errEl.className = 'error-box';
-    errEl.textContent = err.message;
-    document.getElementById('root').appendChild(errEl);
-  }
-})();
+if (_Component) {
+  createRoot(_root).render(React.createElement(_Component));
+} else {
+  _root.innerHTML = '<div style="color:var(--muted-foreground)">No component found</div>';
+}
+} catch(_err) {
+  const _el = document.createElement('div');
+  _el.className = 'error-box';
+  _el.textContent = _err.message;
+  document.getElementById('root').appendChild(_el);
+}
 </script>
 </body>
 </html>`

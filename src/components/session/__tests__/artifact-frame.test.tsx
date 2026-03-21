@@ -14,38 +14,19 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("No artifact code provided")
   })
 
-  it("embeds code as base64 in data attribute", () => {
+  it("embeds transformed code as inline module script", () => {
     const code = 'var x = React.createElement("div", null, "Hello");'
     const html = buildArtifactHtml(code)
     expect(html).toContain("<!DOCTYPE html>")
-    expect(html).toContain('data-code="')
-    const match = html.match(/data-code="([^"]+)"/)
-    expect(match).not.toBeNull()
-    const decoded = decodeURIComponent(escape(atob(match![1])))
-    expect(decoded).toBe(code)
+    expect(html).toContain('<script type="module">')
+    expect(html).toContain(code)
   })
 
-  it("handles code with newlines and special characters", () => {
-    const code = `var count = 0;
-function App() {
-  return React.createElement("div", { className: "card" },
-    React.createElement("p", null, "Special: \\"quotes\\" & stuff")
-  );
-}`
+  it("escapes </script> in embedded code", () => {
+    const code = 'var x = "</script>";'
     const html = buildArtifactHtml(code)
-    const match = html.match(/data-code="([^"]+)"/)
-    expect(match).not.toBeNull()
-    const decoded = decodeURIComponent(escape(atob(match![1])))
-    expect(decoded).toBe(code)
-  })
-
-  it("handles code with unicode characters", () => {
-    const code = 'var x = React.createElement("div", null, "Hello 🌍 café naïve");'
-    const html = buildArtifactHtml(code)
-    const match = html.match(/data-code="([^"]+)"/)
-    expect(match).not.toBeNull()
-    const decoded = decodeURIComponent(escape(atob(match![1])))
-    expect(decoded).toBe(code)
+    expect(html).not.toContain("</script>;")
+    expect(html).toContain("<\\/script")
   })
 
   it("escapes HTML in title", () => {
@@ -59,44 +40,55 @@ function App() {
     expect(html).toContain("<title>Artifact</title>")
   })
 
-  it("does NOT include Babel CDN (transform happens in parent)", () => {
+  it("does NOT include any external CDN scripts", () => {
     const html = buildArtifactHtml("var x = 1;")
+    expect(html).not.toContain("unpkg.com")
+    expect(html).not.toContain("cdn.tailwindcss.com")
     expect(html).not.toContain("babel")
-    expect(html).not.toContain("Babel")
   })
 
-  it("includes React and ReactDOM CDN scripts", () => {
+  it("loads React and ReactDOM as ES modules from server", () => {
     const html = buildArtifactHtml("var x = 1;")
-    expect(html).toContain("react.development.js")
-    expect(html).toContain("react-dom")
+    expect(html).toContain("/@hammies/react.mjs")
+    expect(html).toContain("/@hammies/react-dom.mjs")
+    expect(html).toContain("/@hammies/react-jsx.mjs")
   })
 
-  it("includes Tailwind CDN", () => {
+  it("loads @tailwindcss/browser from server", () => {
     const html = buildArtifactHtml("var x = 1;")
-    expect(html).toContain("cdn.tailwindcss.com")
+    expect(html).toContain("/@hammies/tailwindcss.js")
   })
 
-  it("includes import map for @hammies/frontend components", () => {
+  it("includes Tailwind v4 theme config via <style type='text/tailwindcss'>", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain('type="text/tailwindcss"')
+    expect(html).toContain("@theme inline")
+    expect(html).toContain("--color-primary")
+    expect(html).toContain("--color-border")
+  })
+
+  it("includes import map for React, ReactDOM, and components", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain('<script type="importmap">')
+    expect(html).toContain('"react"')
+    expect(html).toContain('"react-dom"')
+    expect(html).toContain('"react/jsx-runtime"')
     expect(html).toContain("@hammies/frontend/components/ui")
     expect(html).toContain("@hammies/frontend/lib/utils")
-    expect(html).toContain("/@hammies/components.mjs")
   })
 
-  it("includes CSP meta tag blocking fetch/XHR", () => {
+  it("includes CSP meta tag with no external CDN access", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("Content-Security-Policy")
-    // default-src 'none' blocks connect-src (fetch/XHR) unless explicitly overridden
     expect(html).toContain("default-src 'none'")
+    // Only allows scripts from our own origin
+    expect(html).not.toContain("unpkg.com")
   })
 
   it("does NOT include component stubs (real components via ES module)", () => {
     const html = buildArtifactHtml("var x = 1;")
-    // Old stubs defined functions inline — should be gone
     expect(html).not.toContain("function Button(")
     expect(html).not.toContain("function Card(")
-    expect(html).not.toContain("function Badge(")
   })
 
   it("includes postMessage bridge helpers", () => {
@@ -106,21 +98,14 @@ function App() {
     expect(html).toContain("__onStateRestored")
   })
 
-  it("passes exportedName as data-export attribute", () => {
+  it("uses exportedName for component mounting", () => {
     const html = buildArtifactHtml("function Dashboard() {}", "Test", undefined, "Dashboard")
-    expect(html).toContain('data-export="Dashboard"')
+    expect(html).toContain("Dashboard")
   })
 
-  it("sets data-export to empty string when no export", () => {
+  it("falls back to App when no exportedName", () => {
     const html = buildArtifactHtml("function App() {}", "Test", undefined, null)
-    expect(html).toContain('data-export=""')
-  })
-
-  it("bootstrap detects component via exportedName, App, or PascalCase", () => {
-    const html = buildArtifactHtml("var x = 1;")
-    expect(html).toContain("exportedName")
-    expect(html).toContain("RootComponent")
-    expect(html).toContain("[A-Z]")
+    expect(html).toContain("App")
   })
 
   it("applies theme variables with fallbacks", () => {
@@ -132,13 +117,10 @@ function App() {
     expect(html).toContain("--foreground: #e6edf3")
   })
 
-  it("data attribute value contains no unescaped quotes", () => {
-    const code = `var msg = "hello 'world'";
-var obj = { "key": "value" };`
-    const html = buildArtifactHtml(code)
-    const match = html.match(/data-code="([^"]*)"/)
-    expect(match).not.toBeNull()
-    const decoded = decodeURIComponent(escape(atob(match![1])))
-    expect(decoded).toBe(code)
+  it("does not use eval or base64 encoding", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).not.toContain("data-code=")
+    expect(html).not.toContain("atob(")
+    expect(html).not.toContain("(0, eval)")
   })
 })

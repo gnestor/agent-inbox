@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { transformArtifactCode } from "../artifact-transform"
+import { transformArtifactCode, escapeForScript } from "../artifact-transform"
 
 describe("transformArtifactCode", () => {
   it("returns empty code for empty input", () => {
@@ -8,20 +8,21 @@ describe("transformArtifactCode", () => {
     expect(result.exportedName).toBeNull()
   })
 
-  it("strips React imports", () => {
+  it("preserves React imports (resolved by import map)", () => {
     const source = `import { useState, useEffect } from 'react'
 import React from 'react'
 function App() { return <div>Hello</div> }`
     const result = transformArtifactCode(source)
-    expect(result.code).not.toContain("from 'react'")
-    expect(result.code).toContain("React.createElement")
+    // React imports are kept — the import map resolves them
+    expect(result.code).toContain("from 'react'")
+    expect(result.code).toContain("createElement")
   })
 
-  it("strips react-dom imports", () => {
+  it("preserves react-dom imports", () => {
     const source = `import { createRoot } from 'react-dom/client'
 function App() { return <div>Hello</div> }`
     const result = transformArtifactCode(source)
-    expect(result.code).not.toContain("from 'react-dom")
+    expect(result.code).toContain("from 'react-dom/client'")
   })
 
   it("preserves @hammies/frontend imports", () => {
@@ -58,8 +59,7 @@ function App() { return <div>Hello</div> }`
     const source = `export default function EmailEditor() { return <div>Editor</div> }`
     const result = transformArtifactCode(source)
     expect(result.exportedName).toBe("EmailEditor")
-    expect(result.code).toContain("function EmailEditor")
-    expect(result.code).not.toContain("export default")
+    expect(result.code).toContain("EmailEditor")
   })
 
   it("detects standalone export default Name", () => {
@@ -67,34 +67,23 @@ function App() { return <div>Hello</div> }`
 export default MyComponent;`
     const result = transformArtifactCode(source)
     expect(result.exportedName).toBe("MyComponent")
-    expect(result.code).not.toContain("export default")
-  })
-
-  it("strips export keyword from named exports", () => {
-    const source = `export function helper() { return 42 }
-export const FOO = 'bar'
-function App() { return <div>{helper()} {FOO}</div> }`
-    const result = transformArtifactCode(source)
-    expect(result.code).not.toMatch(/^export\s/m)
-    expect(result.code).toContain("function helper")
-    expect(result.code).toContain("FOO")
-  })
-
-  it("prepends React hooks preamble", () => {
-    const source = `function App() { const [x, setX] = useState(0); return <div>{x}</div> }`
-    const result = transformArtifactCode(source)
-    expect(result.code).toContain("useState")
-    expect(result.code).toContain("useEffect")
-    expect(result.code).toContain("useRef")
-    expect(result.code).toContain("createContext")
   })
 
   it("transforms JSX to React.createElement", () => {
     const source = `function App() { return <div className="test"><span>Hello</span></div> }`
     const result = transformArtifactCode(source)
-    expect(result.code).toContain("React.createElement")
+    expect(result.code).toContain("createElement")
     expect(result.code).not.toContain("<div")
     expect(result.code).not.toContain("<span")
+  })
+
+  it("uses sourceType module (supports import/export syntax)", () => {
+    const source = `import { Button } from '@hammies/frontend/components/ui'
+export default function App() { return <Button>Click</Button> }`
+    const result = transformArtifactCode(source)
+    // Should not throw — sourceType: "module" allows import/export
+    expect(result.code).toContain("createElement")
+    expect(result.exportedName).toBe("App")
   })
 
   it("fixes multiline regex literals (LLM bug)", () => {
@@ -104,8 +93,7 @@ function App() { return <div>{helper()} {FOO}</div> }`
   return <div>{text}</div>
 }`
     const result = transformArtifactCode(source)
-    // Should not throw — the /\n/g fix prevents Babel parse errors
-    expect(result.code).toContain("React.createElement")
+    expect(result.code).toContain("createElement")
   })
 
   it("handles complex component with multiple features", () => {
@@ -126,10 +114,26 @@ export default function Dashboard() {
 }`
     const result = transformArtifactCode(source)
     expect(result.exportedName).toBe("Dashboard")
-    expect(result.code).not.toContain("from 'react'")
+    expect(result.code).toContain("from 'react'")
     expect(result.code).toContain("from '@hammies/frontend/components/ui'")
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
-    expect(result.code).toContain("React.createElement")
-    expect(result.code).toContain("function Dashboard")
+    expect(result.code).toContain("createElement")
+  })
+})
+
+describe("escapeForScript", () => {
+  it("escapes </script> tags", () => {
+    expect(escapeForScript('var x = "</script>";')).toBe('var x = "<\\/script>";')
+  })
+
+  it("is case-insensitive", () => {
+    const result = escapeForScript("</Script>")
+    expect(result).not.toContain("</Script>")
+    expect(result).toContain("<\\/script")
+  })
+
+  it("does not alter code without </script>", () => {
+    const code = "var x = 1; function App() { return null; }"
+    expect(escapeForScript(code)).toBe(code)
   })
 })
