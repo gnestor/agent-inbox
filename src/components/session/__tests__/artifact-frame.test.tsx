@@ -14,12 +14,11 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("No artifact code provided")
   })
 
-  it("embeds simple code as base64 in data attribute", () => {
-    const code = 'function App() { return <div>Hello</div> }'
+  it("embeds code as base64 in data attribute", () => {
+    const code = 'var x = React.createElement("div", null, "Hello");'
     const html = buildArtifactHtml(code)
     expect(html).toContain("<!DOCTYPE html>")
     expect(html).toContain('data-code="')
-    // Decode the base64 from the data attribute
     const match = html.match(/data-code="([^"]+)"/)
     expect(match).not.toBeNull()
     const decoded = decodeURIComponent(escape(atob(match![1])))
@@ -27,14 +26,10 @@ describe("buildArtifactHtml", () => {
   })
 
   it("handles code with newlines and special characters", () => {
-    const code = `function App() {
-  const [count, setCount] = useState(0);
-  return (
-    <div className="card">
-      <h1>Count: {count}</h1>
-      <button onClick={() => setCount(c => c + 1)}>+</button>
-      <p>Special chars: "quotes" & <angles> \\ backslash</p>
-    </div>
+    const code = `var count = 0;
+function App() {
+  return React.createElement("div", { className: "card" },
+    React.createElement("p", null, "Special: \\"quotes\\" & stuff")
   );
 }`
     const html = buildArtifactHtml(code)
@@ -45,7 +40,7 @@ describe("buildArtifactHtml", () => {
   })
 
   it("handles code with unicode characters", () => {
-    const code = 'function App() { return <div>Hello 🌍 café naïve</div> }'
+    const code = 'var x = React.createElement("div", null, "Hello 🌍 café naïve");'
     const html = buildArtifactHtml(code)
     const match = html.match(/data-code="([^"]+)"/)
     expect(match).not.toBeNull()
@@ -54,88 +49,96 @@ describe("buildArtifactHtml", () => {
   })
 
   it("escapes HTML in title", () => {
-    const html = buildArtifactHtml("function App() {}", '<script>alert("xss")</script>')
+    const html = buildArtifactHtml("var x = 1;", '<script>alert("xss")</script>')
     expect(html).not.toContain("<script>alert")
     expect(html).toContain("&lt;script&gt;alert")
   })
 
   it("uses default title when none provided", () => {
-    const html = buildArtifactHtml("function App() {}")
+    const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("<title>Artifact</title>")
   })
 
-  it("includes React and Babel script tags", () => {
-    const html = buildArtifactHtml("function App() {}")
-    expect(html).toContain("babel.min.js")
+  it("does NOT include Babel CDN (transform happens in parent)", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).not.toContain("babel")
+    expect(html).not.toContain("Babel")
+  })
+
+  it("includes React and ReactDOM CDN scripts", () => {
+    const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("react.development.js")
     expect(html).toContain("react-dom")
   })
 
-  it("includes component stubs (Button, Card, Badge)", () => {
-    const html = buildArtifactHtml("function App() {}")
-    expect(html).toContain("function Button(")
-    expect(html).toContain("function Card(")
-    expect(html).toContain("function Badge(")
+  it("includes Tailwind CDN", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("cdn.tailwindcss.com")
+  })
+
+  it("includes import map for @hammies/frontend components", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain('<script type="importmap">')
+    expect(html).toContain("@hammies/frontend/components/ui")
+    expect(html).toContain("@hammies/frontend/lib/utils")
+    expect(html).toContain("/@hammies/components.mjs")
+  })
+
+  it("includes CSP meta tag blocking fetch/XHR", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("Content-Security-Policy")
+    // default-src 'none' blocks connect-src (fetch/XHR) unless explicitly overridden
+    expect(html).toContain("default-src 'none'")
+  })
+
+  it("does NOT include component stubs (real components via ES module)", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    // Old stubs defined functions inline — should be gone
+    expect(html).not.toContain("function Button(")
+    expect(html).not.toContain("function Card(")
+    expect(html).not.toContain("function Badge(")
   })
 
   it("includes postMessage bridge helpers", () => {
-    const html = buildArtifactHtml("function App() {}")
+    const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("__sendAction")
     expect(html).toContain("__saveState")
     expect(html).toContain("__onStateRestored")
   })
 
+  it("passes exportedName as data-export attribute", () => {
+    const html = buildArtifactHtml("function Dashboard() {}", "Test", undefined, "Dashboard")
+    expect(html).toContain('data-export="Dashboard"')
+  })
+
+  it("sets data-export to empty string when no export", () => {
+    const html = buildArtifactHtml("function App() {}", "Test", undefined, null)
+    expect(html).toContain('data-export=""')
+  })
+
+  it("bootstrap detects component via exportedName, App, or PascalCase", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("exportedName")
+    expect(html).toContain("RootComponent")
+    expect(html).toContain("[A-Z]")
+  })
+
+  it("applies theme variables with fallbacks", () => {
+    const themeVars = { background: "oklch(0.5 0 0)", primary: "oklch(0.7 0.2 255)" }
+    const html = buildArtifactHtml("var x = 1;", "Test", themeVars)
+    expect(html).toContain("--background: oklch(0.5 0 0)")
+    expect(html).toContain("--primary: oklch(0.7 0.2 255)")
+    // Unset vars should get fallback
+    expect(html).toContain("--foreground: #e6edf3")
+  })
+
   it("data attribute value contains no unescaped quotes", () => {
-    // Code with lots of quotes that previously broke the attribute
-    const code = `const msg = "hello 'world'";
-const obj = { "key": "value", 'other': 'val' };
-function App() { return <div data-x="test">hi</div> }`
+    const code = `var msg = "hello 'world'";
+var obj = { "key": "value" };`
     const html = buildArtifactHtml(code)
-    // The data-code attribute should be properly quoted
     const match = html.match(/data-code="([^"]*)"/)
     expect(match).not.toBeNull()
     const decoded = decodeURIComponent(escape(atob(match![1])))
     expect(decoded).toBe(code)
-  })
-
-  it("bootstrap strips import statements via line-by-line parsing", () => {
-    const html = buildArtifactHtml("function App() {}")
-    // Should use line-by-line import stripping, not regex on full string
-    expect(html).toContain("trimStart()")
-    expect(html).toContain("^import")
-  })
-
-  it("bootstrap uses only the react preset (no env/CommonJS)", () => {
-    const html = buildArtifactHtml("function App() {}")
-    expect(html).toContain("presets: ['react']")
-    expect(html).not.toContain("'env'")
-  })
-
-  it("includes additional hooks in stubs (useReducer, useContext, createContext)", () => {
-    const html = buildArtifactHtml("function App() {}")
-    expect(html).toContain("useReducer")
-    expect(html).toContain("useContext")
-    expect(html).toContain("createContext")
-  })
-
-  it("bootstrap detects exported default component name", () => {
-    const html = buildArtifactHtml("export default function EmailEditor() {}")
-    // Should track exportedName and use it for rendering
-    expect(html).toContain("exportedName")
-    expect(html).toContain("RootComponent")
-  })
-
-  it("bootstrap falls back to any PascalCase component if no App", () => {
-    const html = buildArtifactHtml("function FileTable() {}")
-    // Should scan for PascalCase functions as fallback
-    expect(html).toContain("componentMatch")
-    expect(html).toContain("[A-Z]")
-  })
-
-  it("bootstrap fixes multiline regex literals (LLM /\\n/ mistake)", () => {
-    const html = buildArtifactHtml("function App() {}")
-    // Should contain the fixup that replaces /⏎/g with /\n/g
-    expect(html).toContain("Fix common LLM mistake")
-    expect(html).toContain("userCode.replace(")
   })
 })

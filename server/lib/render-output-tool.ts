@@ -13,10 +13,13 @@ export function buildRenderOutputMcpServer() {
     "render_output",
     `Render a structured output in the inbox UI. The output appears inline in the session transcript.
 
-For type "react": the sandbox includes Tailwind CSS and a shadcn/ui dark theme. Use Tailwind classes for ALL styling — never use inline styles.
+For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and real @hammies/frontend components. Use Tailwind classes for ALL styling — never use inline styles.
 
-COMPONENTS (use instead of raw HTML elements):
-Button (variant: primary|secondary|destructive|outline|ghost, size: sm|md|lg|icon), Card, Badge (variant: default|secondary|outline), Input, Textarea, Select, Label, Switch (checked, onCheckedChange), Separator (orientation: horizontal|vertical).
+COMPONENTS — import from '@hammies/frontend/components/ui':
+  import { Button, Card, CardContent, Badge, Input, Tabs, TabsList, TabsTrigger, TabsContent } from '@hammies/frontend/components/ui'
+  import { cn } from '@hammies/frontend/lib/utils'
+
+Available: Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, CardAction, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, Tooltip, TooltipProvider, TooltipTrigger, TooltipContent, RadioGroup, RadioGroupItem, Spinner, cn.
 
 DESIGN RULES — follow these patterns to match the app:
 - Colors: bg-background (base), bg-card (containers), text-foreground (primary text), text-muted-foreground (secondary text), hover:bg-secondary (hover states), bg-primary text-primary-foreground (selected/active), bg-accent text-accent-foreground (highlights/links)

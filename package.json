@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
+    "@babel/standalone": "^7.29.2",
     "@hammies/frontend": "file:../frontend",
     "@hono/node-server": "^1.8.0",
     "@tailwindcss/typography": "^0.5.19",

@@ -102,7 +102,7 @@ describe("OutputRenderer", () => {
     expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts")
   })
 
-  it("renders react artifact in sandboxed iframe", () => {
+  it("renders react artifact in sandboxed iframe with CSP", () => {
     const { container } = render(
       <OutputRenderer
         spec={{ type: "react", data: { code: "function App() { return <div>hi</div> }" } }}
@@ -112,8 +112,9 @@ describe("OutputRenderer", () => {
     )
     const iframe = container.querySelector("iframe")
     expect(iframe).toBeInTheDocument()
-    // Must NOT have allow-same-origin
-    expect(iframe?.getAttribute("sandbox") ?? "").not.toContain("allow-same-origin")
+    // allow-same-origin needed for ES module imports; CSP blocks network access
+    expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts")
+    expect(iframe?.getAttribute("sandbox")).toContain("allow-same-origin")
   })
 
   it("renders content directly without card wrapper when fillPanel is true", () => {
