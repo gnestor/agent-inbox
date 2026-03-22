@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getConnections, disconnectIntegration } from "@/api/client"
+import { toast } from "sonner"
 
 export function useConnections() {
   return useQuery({
@@ -17,6 +18,10 @@ export function useDisconnectIntegration() {
     mutationFn: (integration: string) => disconnectIntegration(integration),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["connections"] })
+      toast.success("Integration disconnected")
+    },
+    onError: (error) => {
+      toast.error(`Failed to disconnect: ${error.message}`)
     },
   })
 }

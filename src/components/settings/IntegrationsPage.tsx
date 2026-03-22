@@ -1,20 +1,28 @@
+import { useEffect } from "react"
 import { useConnections } from "@/hooks/use-connections"
 import { IntegrationCard } from "./IntegrationCard"
 import { useSearchParams } from "react-router-dom"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { toast } from "sonner"
 
 export function IntegrationsPage() {
   const { data: integrations, isLoading } = useConnections()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const error = searchParams.get("error")
-  const connected = searchParams.get("connected")
-
-  // Clear URL params after the status banner fades out
-  function handleStatusDismiss() {
+  useEffect(() => {
+    const error = searchParams.get("error")
+    const connected = searchParams.get("connected")
+    if (!error && !connected) return
+    if (connected && !integrations) return
+    if (error) {
+      toast.error(`Connection failed: ${error}`)
+    } else if (connected) {
+      const name = integrations?.find((i) => i.id === connected)?.name ?? connected
+      toast.success(`Successfully connected ${name}!`)
+    }
     setSearchParams({})
-  }
+  }, [searchParams, integrations, setSearchParams])
 
   const userIntegrations = integrations?.filter((i) => i.scope === "user") || []
   const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace") || []
@@ -34,23 +42,6 @@ export function IntegrationsPage() {
         <PanelSkeleton />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl">
-          {error && (
-            <div
-              className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive animate-[fade-out_0.5s_4.5s_forwards]"
-              onAnimationEnd={handleStatusDismiss}
-            >
-              Connection failed: {error}
-            </div>
-          )}
-
-          {connected && (
-            <div
-              className="rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-400 animate-[fade-out_0.5s_4.5s_forwards]"
-              onAnimationEnd={handleStatusDismiss}
-            >
-              Successfully connected {integrations?.find((i) => i.id === connected)?.name || connected}!
-            </div>
-          )}
 
           {userIntegrations.length > 0 && (
             <section className="space-y-3">
