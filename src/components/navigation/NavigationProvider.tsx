@@ -290,9 +290,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Derive initial activeTab from URL synchronously so SlotStack renders
   // at the correct scroll position on the first frame (no flash of Emails tab).
   const [state, dispatch] = useReducer(navReducer, location.pathname, (pathname) => {
-    const { tabId } = parseUrl(pathname)
+    const parsed = parseUrl(pathname)
     const base = createDefaultNavigationState()
-    base.activeTab = tabId
+    base.activeTab = parsed.tabId
+    // Create ephemeral tab state for recent:* URLs so SlotStack has the key
+    if (parsed.tabId.startsWith("recent:")) {
+      base.tabs[parsed.tabId] = createRecentTabState(parsed)
+    }
     return base
   })
   const navigate = useNavigate()
@@ -330,8 +334,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       base.activeTab = parsed.tabId
 
       if (parsed.tabId.startsWith("recent:")) {
-        // Ephemeral tab — no list panel, built from URL
-        base.tabs[parsed.tabId] = createRecentTabState(parsed)
+        // Use persisted state if available, otherwise build from URL
+        if (!base.tabs[parsed.tabId]) {
+          base.tabs[parsed.tabId] = createRecentTabState(parsed)
+        }
       } else {
         const tab = base.tabs[parsed.tabId] ?? createDefaultTabState()
         if (parsed.selectedId) {
