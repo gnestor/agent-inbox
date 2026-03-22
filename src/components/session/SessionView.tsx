@@ -41,7 +41,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     handleStartEdit, handleFinishEdit, handleEditKeyDown, setEditTitle,
     visibility, toggleVisibility,
     prompt, setPrompt, textareaRef,
-    isStreaming, isSending, inputDisabled,
+    isStreaming, isSending,
     handleSend, handleKeyDown,
     handleBack, handleOpenPanel, isFromSidebar,
   } = useSessionView({ sessionId, title, session, phase, mutations })
@@ -89,17 +89,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       }
       right={
         <div className="flex items-center gap-1">
-          {isStreaming && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => mutations.abort.mutate()}
-              disabled={mutations.abort.isPending}
-            >
-              <Square className="h-3 w-3 mr-1" />
-              Stop
-            </Button>
-          )}
           <button
             type="button"
             className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
@@ -214,22 +203,33 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isStreaming ? "Session is running..." : "Write a prompt..."}
-              disabled={inputDisabled}
+              placeholder={isStreaming ? "Interrupt with a message..." : "Write a prompt..."}
+              disabled={isSending}
               className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
               rows={1}
             />
-            <Button
-              onClick={handleSend}
-              disabled={!prompt.trim() || inputDisabled}
-              size="icon-lg"
-            >
-              {isSending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+            {isStreaming && !prompt.trim() ? (
+              <Button
+                onClick={() => mutations.abort.mutate()}
+                disabled={mutations.abort.isPending}
+                variant="destructive"
+                size="icon-lg"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSend}
+                disabled={!prompt.trim() || isSending}
+                size="icon-lg"
+              >
+                {isSending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            )}
           </div>
         </div>
       )}

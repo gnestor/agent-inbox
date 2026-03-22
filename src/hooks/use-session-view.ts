@@ -97,10 +97,9 @@ export function useSessionView({ sessionId, title, session, phase, mutations }: 
 
   const isStreaming = phase.status === "streaming"
   const isSending = phase.status === "sending"
-  const inputDisabled = isStreaming || isSending
 
   function handleSend() {
-    if (!prompt.trim() || inputDisabled) return
+    if (!prompt.trim() || isSending) return
     mutations.resume.mutate(prompt)
   }
 
@@ -131,7 +130,6 @@ export function useSessionView({ sessionId, title, session, phase, mutations }: 
     textareaRef,
     isStreaming,
     isSending,
-    inputDisabled,
     handleSend,
     handleKeyDown,
 
