@@ -27,12 +27,11 @@ export function isRecentSession(session: Session): boolean {
 
 const IDLE_MS = 30 * 60 * 1000
 
-function getIndicatorColor(session: Session, isRead: boolean): string {
+function getIndicatorColor(session: Session): string {
   if (session.status === "running") return "#EAB308"
   if (session.status === "awaiting_user_input" || session.status === "errored") return "#EF4444"
   const lastActivity = new Date(session.completedAt ?? session.updatedAt).getTime()
-  if (Date.now() - lastActivity > IDLE_MS) return "#9CA3AF"
-  return isRead ? "#9CA3AF" : "#22C55E"
+  return Date.now() - lastActivity > IDLE_MS ? "#9CA3AF" : "#22C55E"
 }
 
 function getSessionTitle(session: Session): string {
@@ -136,8 +135,6 @@ export function SidebarRecentSessions() {
 
 
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const readSet = useMemo(() => loadReadSet(), [recent])
   const isRecentRoute = location.pathname.startsWith("/recent/")
   const activeSessionId = activeSessionIdFromPath(location.pathname)
   const isSessionsTab = location.pathname.startsWith("/sessions")
@@ -148,8 +145,7 @@ export function SidebarRecentSessions() {
       <SidebarGroupContent>
         <SidebarMenu>
           {recent.map((session, i) => {
-            const isRead = readSet.has(session.id)
-            const color = getIndicatorColor(session, isRead)
+            const color = getIndicatorColor(session)
             const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
             const title = linkedTitle || getSessionTitle(session)
             const isActive = isRecentRoute && session.id === activeSessionId

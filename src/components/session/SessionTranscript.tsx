@@ -69,7 +69,6 @@ interface SessionTranscriptProps {
 export function SessionTranscript({
   messages,
   isStreaming,
-  messageCount,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
@@ -79,7 +78,6 @@ export function SessionTranscript({
   const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
     messages,
     visibility,
-    isStreaming,
     sessionId,
     shouldRenderMessage,
   })

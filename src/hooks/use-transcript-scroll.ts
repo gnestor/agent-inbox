@@ -6,7 +6,6 @@ import type { TranscriptVisibility } from "@/components/session/SessionTranscrip
 interface UseTranscriptScrollOptions {
   messages: SessionMessage[]
   visibility: TranscriptVisibility
-  isStreaming: boolean
   sessionId?: string
   shouldRenderMessage: (message: SessionMessage, visibility: TranscriptVisibility) => boolean
 }
@@ -14,7 +13,6 @@ interface UseTranscriptScrollOptions {
 export function useTranscriptScroll({
   messages,
   visibility,
-  isStreaming,
   sessionId,
   shouldRenderMessage,
 }: UseTranscriptScrollOptions) {
@@ -88,13 +86,16 @@ export function useTranscriptScroll({
     prevTotalRef.current = total
   })
 
-  // Auto-scroll during streaming
+  // Auto-scroll when new messages arrive and user is near the bottom
+  const prevCount = useRef(visibleMessages.length)
   useEffect(() => {
     if (settling.current) return
-    if (!isStreaming || !shouldAutoScroll.current) return
+    const didAppend = visibleMessages.length > prevCount.current
+    prevCount.current = visibleMessages.length
+    if (!didAppend || !shouldAutoScroll.current) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [isStreaming, visibleMessages.length])
+  }, [visibleMessages.length])
 
   function handleScroll() {
     if (settling.current) return
