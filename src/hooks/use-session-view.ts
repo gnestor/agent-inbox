@@ -57,7 +57,7 @@ export function useSessionView({ sessionId, title, session, phase, mutations }: 
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState("")
 
-  const displayTitle = session?.linkedItemTitle ?? title ?? "Session"
+  const displayTitle = session?.linkedItemTitle ?? session?.summary ?? title ?? session?.prompt?.slice(0, 80) ?? "Session"
 
   function handleStartEdit() {
     setEditTitle(session?.summary ?? session?.prompt?.slice(0, 80) ?? displayTitle)
