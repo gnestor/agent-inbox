@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { getLinkedSession } from "@/api/client"
@@ -254,11 +255,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
-const EMAIL_THEME_VARS = ["foreground", "card", "font-sans", "font-mono"] as const
-
 function HtmlBody({ html }: { html: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-
   const sanitizedHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\s+style="[^"]*"/gi, "")
@@ -286,54 +283,7 @@ function HtmlBody({ html }: { html: string }) {
     h1, h2, h3, h4, h5, h6 { font-size: 14px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
   </style></head><body>${sanitizedHtml}</body></html>`
 
-  // Sync theme variables from parent into iframe + auto-size height
-  useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe) return
-
-    function syncTheme() {
-      const doc = iframe!.contentDocument
-      if (!doc) return
-      const parentStyle = getComputedStyle(document.documentElement)
-      const root = doc.documentElement
-      for (const name of EMAIL_THEME_VARS) {
-        const val = parentStyle.getPropertyValue(`--${name}`).trim()
-        if (val) root.style.setProperty(`--${name}`, val)
-      }
-      // Sync color-scheme so the browser canvas matches the app theme
-      const isDark = document.documentElement.classList.contains("dark")
-      root.style.colorScheme = isDark ? "dark" : "light"
-    }
-
-    function syncHeight() {
-      const body = iframe!.contentDocument?.body
-      if (body) iframe!.style.height = body.scrollHeight + "px"
-    }
-
-    let ro: ResizeObserver | undefined
-    let observer: MutationObserver | undefined
-
-    function onLoad() {
-      syncTheme()
-      syncHeight()
-      const body = iframe!.contentDocument?.body
-      if (body) {
-        ro = new ResizeObserver(syncHeight)
-        ro.observe(body)
-      }
-    }
-    iframe.addEventListener("load", onLoad)
-
-    // Watch for theme changes (class attribute on parent <html>)
-    observer = new MutationObserver(syncTheme)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
-
-    return () => {
-      iframe.removeEventListener("load", onLoad)
-      ro?.disconnect()
-      observer?.disconnect()
-    }
-  }, [srcDoc])
+  const { iframeRef } = useIframeAutoHeight(srcDoc)
 
   return (
     <iframe

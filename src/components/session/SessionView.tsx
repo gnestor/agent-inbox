@@ -1,6 +1,3 @@
-import { useState, useRef, useCallback } from "react"
-import { useLocalDraft } from "@/hooks/use-local-draft"
-import { useLocation } from "react-router-dom"
 import {
   Button,
   Textarea,
@@ -15,16 +12,13 @@ import {
   AvatarFallback,
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
-import type { OutputSpec } from "./OutputRenderer"
-import { useNavigation } from "@/hooks/use-navigation"
 import { useUser } from "@/hooks/use-user"
-import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
-import type { TranscriptVisibility } from "./SessionTranscript"
+import { SessionTranscript } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { usePreference } from "@/hooks/use-preferences"
 import { useSessionPhase } from "@/hooks/use-session-phase"
+import { useSessionView } from "@/hooks/use-session-view"
 import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
@@ -33,91 +27,24 @@ interface SessionViewProps {
 }
 
 export function SessionView({ sessionId, title }: SessionViewProps) {
-  const location = useLocation()
-  const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const { user } = useUser()
-  const isFromSidebar = location.pathname.startsWith("/recent/")
-  const sessionPanelId = `session:${sessionId}`
-
-  function handleBack() {
-    if (activeTab === "sessions") {
-      deselectItem()
-    } else {
-      popPanel(sessionPanelId)
-    }
-  }
-
-  const resumeKey = `inbox:resume:${sessionId}`
-  const [prompt, setPrompt] = useLocalDraft(resumeKey)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { phase, session, messages, presenceUsers, isLive, mutations, answerQuestion } =
     useSessionPhase({
       sessionId,
       onResume: () => setPrompt(""),
-      onArchive: handleBack,
+      onArchive: () => handleBack(),
     })
 
-  const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
-    pushPanel({
-      id: `artifact:${sessionId}:${sequence}`,
-      type: "artifact",
-      props: { sessionId, sequence, outputType: spec.type, spec },
-    })
-  }, [sessionId, pushPanel])
-
-  const [isEditing, setIsEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState("")
-
-  const displayTitle = session?.linkedItemTitle || title || "Session"
-
-  function handleStartEdit() {
-    setEditTitle(session?.summary || session?.prompt?.slice(0, 80) || displayTitle)
-    setIsEditing(true)
-  }
-
-  function handleFinishEdit() {
-    setIsEditing(false)
-    const trimmed = editTitle.trim()
-    if (trimmed && trimmed !== displayTitle) {
-      mutations.rename.mutate(trimmed)
-    }
-  }
-
-  function handleEditKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleFinishEdit()
-    }
-    if (e.key === "Escape") {
-      setIsEditing(false)
-    }
-  }
-
-  const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
-    "sessions.transcript.visibility",
-    DEFAULT_TRANSCRIPT_VISIBILITY,
-  )
-
-  function toggleVisibility(key: keyof TranscriptVisibility) {
-    setVisibility({ ...visibility, [key]: !visibility[key] })
-  }
-
-  const isStreaming = phase.status === "streaming"
-  const isSending = phase.status === "sending"
-  const inputDisabled = isStreaming || isSending
-
-  function handleSend() {
-    if (!prompt.trim() || inputDisabled) return
-    mutations.resume.mutate(prompt)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  const {
+    isEditing, editTitle, displayTitle,
+    handleStartEdit, handleFinishEdit, handleEditKeyDown, setEditTitle,
+    visibility, toggleVisibility,
+    prompt, setPrompt, textareaRef,
+    isStreaming, isSending, inputDisabled,
+    handleSend, handleKeyDown,
+    handleBack, handleOpenPanel, isFromSidebar,
+  } = useSessionView({ sessionId, title, session, phase, mutations })
 
   const header = (
     <PanelHeader

@@ -1,5 +1,5 @@
-import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
-import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
+import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
+import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
@@ -73,87 +73,13 @@ export function SessionTranscript({
   onOpenPanel,
   onAction,
 }: SessionTranscriptProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const shouldAutoScroll = useRef(true)
-  const hasInitialScroll = useRef(false)
-  const previousMessageCount = useRef(0)
-  const scrollRaf = useRef<number | null>(null)
-  const visibleMessages = useMemo(
-    () => messages.filter((message) => shouldRenderMessage(message, visibility)),
-    [messages, visibility],
-  )
-
-  const virtualizer = useVirtualizerSafe({
-    count: visibleMessages.length,
-    getScrollElement: () => scrollRef.current,
-    getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
-    // estimateSize must be <= the minimum actual item height (accordion trigger
-    // ~44px). When items are taller than the estimate, measuring them increases
-    // total size → items only EXIT the virtual window, never enter → no new
-    // commitAttachRef calls → the flushSpawnedWork cascade terminates at depth 1.
-    // If estimate > any item height, that item's measurement DECREASES total size,
-    // adding new items to the window → more commitAttachRef → deeper cascade →
-    // "Maximum update depth exceeded" after 50 levels.
-    estimateSize: () => 44,
-    overscan: 10,
-    // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
-    // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
-    // React state updates during the commit phase.
-    useAnimationFrameWithResizeObserver: true,
+  const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
+    messages,
+    visibility,
+    isStreaming,
+    sessionId,
+    shouldRenderMessage,
   })
-
-  useEffect(() => {
-    hasInitialScroll.current = false
-    shouldAutoScroll.current = true
-    previousMessageCount.current = 0
-    if (scrollRaf.current !== null) {
-      cancelAnimationFrame(scrollRaf.current)
-      scrollRaf.current = null
-    }
-  }, [sessionId])
-
-  useEffect(() => {
-    if (visibleMessages.length === 0) {
-      previousMessageCount.current = 0
-      return
-    }
-
-    const lastIndex = visibleMessages.length - 1
-    const hadMessages = previousMessageCount.current > 0
-    const didAppend = visibleMessages.length > previousMessageCount.current
-    previousMessageCount.current = visibleMessages.length
-
-    const shouldScrollToBottom =
-      !hasInitialScroll.current || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
-
-    if (!shouldScrollToBottom) return
-
-    hasInitialScroll.current = true
-    if (scrollRaf.current !== null) {
-      cancelAnimationFrame(scrollRaf.current)
-    }
-    scrollRaf.current = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(lastIndex, { align: "end" })
-      scrollRaf.current = requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(lastIndex, { align: "end" })
-        scrollRaf.current = null
-      })
-    })
-  }, [isStreaming, visibleMessages.length, virtualizer])
-
-  useEffect(() => {
-    return () => {
-      if (scrollRaf.current !== null) {
-        cancelAnimationFrame(scrollRaf.current)
-      }
-    }
-  }, [])
-
-  function handleScroll() {
-    if (!scrollRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-    shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100
-  }
 
   return (
     <div

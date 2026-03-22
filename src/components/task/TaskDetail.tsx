@@ -1,5 +1,3 @@
-import { useLocation } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 import {
   ScrollArea,
   Popover,
@@ -7,15 +5,15 @@ import {
   PopoverContent,
 } from "@hammies/frontend/components/ui"
 import { ExternalLink, SlidersHorizontal } from "lucide-react"
-import { getTask, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
-import { useTaskMutation } from "@/hooks/use-task-mutation"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
-import { useNavigation } from "@/hooks/use-navigation"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
 import { NotionBlockRenderer } from "./NotionBlockRenderer"
+import { useTaskDetail } from "@/hooks/use-task-detail"
+import { useNavigation } from "@/hooks/use-navigation"
+import { useLocation } from "react-router-dom"
 
 interface TaskDetailProps {
   taskId: string
@@ -27,32 +25,11 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
   const { deselectItem } = useNavigation()
   const location = useLocation()
   const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
-  const { data: task, isLoading: loading, error: queryError } = useQuery({
-    queryKey: ["task", taskId],
-    queryFn: () => getTask(taskId),
-  })
-  const { data: linkedData } = useQuery({
-    queryKey: ["linked-session", "task", taskId],
-    queryFn: () => getLinkedSession(undefined, taskId),
-  })
-  const { data: statusOpts } = useQuery({
-    queryKey: ["notion-options", "Status"],
-    queryFn: () => getNotionOptions("Status"),
-  })
-  const { data: priorityOpts } = useQuery({
-    queryKey: ["notion-options", "Priority"],
-    queryFn: () => getNotionOptions("Priority"),
-  })
-  const { data: tagOpts } = useQuery({
-    queryKey: ["notion-options", "Tags"],
-    queryFn: () => getNotionOptions("Tags"),
-  })
-  const linkedSession = linkedData?.session
-  const error = queryError?.message ?? null
-  const mutation = useTaskMutation(taskId)
-
-  const dueDate = task?.properties?.["Due Date"]?.date?.start
-  const createdBy = task?.properties?.["Created By"]?.created_by?.name
+  const {
+    task, loading, error, linkedSession, mutation,
+    statusOpts, priorityOpts, tagOpts,
+    dueDate, createdBy,
+  } = useTaskDetail(taskId)
 
   const header = (
     <PanelHeader
@@ -82,21 +59,21 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
                   <label className="text-sm font-medium">Status</label>
                   <PropertySelect
                     value={task.status}
-                    options={statusOpts?.options ?? []}
+                    options={statusOpts}
                     onChange={mutation.updateStatus}
                     loading={mutation.isPending}
                   />
                   <label className="text-sm font-medium">Priority</label>
                   <PropertySelect
                     value={task.priority || ""}
-                    options={priorityOpts?.options ?? []}
+                    options={priorityOpts}
                     onChange={mutation.updatePriority}
                     loading={mutation.isPending}
                   />
                   <label className="text-sm font-medium self-start pt-1.5">Tags</label>
                   <PropertyMultiSelect
                     value={task.tags}
-                    options={tagOpts?.options ?? []}
+                    options={tagOpts}
                     onChange={mutation.updateTags}
                     loading={mutation.isPending}
                     placeholder="Add tag..."
