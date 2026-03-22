@@ -48,6 +48,8 @@ const taskOptionsFetcher: Record<string, () => Promise<string[]>> = {
   assignee: () => getTaskAssignees().then((r) => r.assignees),
 }
 
+const getId = (t: Record<string, unknown>) => t.id as string
+
 export function TaskListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
   const filters = getFilters("tasks")
@@ -71,24 +73,18 @@ export function TaskListView() {
 
   return (
     <ListView
-      title="Tasks"
       items={tasks as unknown as Record<string, unknown>[]}
-      loading={loading}
-      error={error}
       fieldSchema={taskFieldSchema}
-      getItemId={(t) => t.id as string}
+      getItemId={getId}
       selectedId={getSelectedItemId("tasks")}
       onSelect={selectItem}
-      itemHeight={74}
-      activeFilters={filters}
-      onFilterChange={setFilter}
-      hasMore={hasMore}
-      loadMore={loadMore}
-      onSearch={(q) => setFilter("q", q)}
-      searchPlaceholder="Search tasks..."
-      optionsFetcher={taskOptionsFetcher}
-      hiddenBadgeFields={hiddenBadgeFields}
-      headerRight={
+    >
+      <ListView.Header title="Tasks">
+        <ListView.Filters
+          activeFilters={filters}
+          onFilterChange={setFilter}
+          optionsFetcher={taskOptionsFetcher}
+        />
         <BadgeToggleMenu
           items={[
             { label: "Status", checked: showStatus, onChange: setShowStatus },
@@ -97,7 +93,20 @@ export function TaskListView() {
             { label: "Assignee", checked: showAssignee, onChange: setShowAssignee },
           ]}
         />
-      }
-    />
+      </ListView.Header>
+      <ListView.Search
+        placeholder="Search tasks..."
+        onSearch={(q) => setFilter("q", q)}
+      />
+      <ListView.Body
+        itemHeight={74}
+        loading={loading}
+        error={error}
+        hasMore={hasMore}
+        loadMore={loadMore}
+        hiddenBadgeFields={hiddenBadgeFields}
+        emptyMessage="No tasks found"
+      />
+    </ListView>
   )
 }

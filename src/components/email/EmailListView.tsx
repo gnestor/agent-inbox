@@ -71,6 +71,8 @@ const emailOptionsFetcher: Record<string, () => Promise<string[]>> = {
     ),
 }
 
+const getThreadId = (t: Record<string, unknown>) => t.threadId as string
+
 export function EmailListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter, switchTab } = useNavigation()
   const filters = getFilters("emails")
@@ -145,25 +147,18 @@ export function EmailListView() {
 
   return (
     <ListView
-      title="Emails"
       items={threads}
-      loading={loading}
-      error={error}
-      errorContent={connectionErrorContent}
       fieldSchema={emailFieldSchema}
-      getItemId={(t) => t.threadId}
+      getItemId={getThreadId}
       selectedId={getSelectedItemId("emails")}
       onSelect={selectItem}
-      itemHeight={100}
-      activeFilters={filters}
-      onFilterChange={setFilter}
-      hasMore={hasMore}
-      loadMore={loadMore}
-      searchPlaceholder="Search emails..."
-      onSearch={(q) => setFilter("q", q)}
-      optionsFetcher={emailOptionsFetcher}
-      hiddenBadgeFields={hiddenBadgeFields}
-      headerRight={
+    >
+      <ListView.Header title="Emails">
+        <ListView.Filters
+          activeFilters={filters}
+          onFilterChange={setFilter}
+          optionsFetcher={emailOptionsFetcher}
+        />
         <BadgeToggleMenu
           items={[
             { label: "Read status", checked: showReadStatus, onChange: setShowReadStatus },
@@ -171,7 +166,21 @@ export function EmailListView() {
             { label: "Starred", checked: showStarred, onChange: setShowStarred },
           ]}
         />
-      }
-    />
+      </ListView.Header>
+      <ListView.Search
+        placeholder="Search emails..."
+        onSearch={(q) => setFilter("q", q)}
+      />
+      <ListView.Body
+        itemHeight={100}
+        loading={loading}
+        error={error}
+        errorContent={connectionErrorContent}
+        hasMore={hasMore}
+        loadMore={loadMore}
+        hiddenBadgeFields={hiddenBadgeFields}
+        emptyMessage="No emails found"
+      />
+    </ListView>
   )
 }

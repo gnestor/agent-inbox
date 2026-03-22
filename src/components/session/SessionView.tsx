@@ -1,7 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { useLocation } from "react-router-dom"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Button,
   Textarea,
@@ -16,8 +15,6 @@ import {
   AvatarFallback,
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
-import { getSession, answerSessionQuestion } from "@/api/client"
-import { useSessionStream } from "@/hooks/use-session-stream"
 import type { OutputSpec } from "./OutputRenderer"
 import { useNavigation } from "@/hooks/use-navigation"
 import { useUser } from "@/hooks/use-user"
@@ -27,7 +24,7 @@ import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { usePreference } from "@/hooks/use-preferences"
-import { useSessionMutations } from "@/hooks/use-session-mutations"
+import { useSessionPhase } from "@/hooks/use-session-phase"
 import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
@@ -37,7 +34,6 @@ interface SessionViewProps {
 
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const location = useLocation()
-  const qc = useQueryClient()
   const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const { user } = useUser()
   const isFromSidebar = location.pathname.startsWith("/recent/")
@@ -51,6 +47,17 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     }
   }
 
+  const resumeKey = `inbox:resume:${sessionId}`
+  const [prompt, setPrompt] = useLocalDraft(resumeKey)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const { phase, session, messages, presenceUsers, isLive, mutations, answerQuestion } =
+    useSessionPhase({
+      sessionId,
+      onResume: () => setPrompt(""),
+      onArchive: handleBack,
+    })
+
   const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
     pushPanel({
       id: `artifact:${sessionId}:${sequence}`,
@@ -59,42 +66,13 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     })
   }, [sessionId, pushPanel])
 
-  const { data, isLoading, error: queryError } = useQuery({
-    queryKey: ["session", sessionId],
-    queryFn: () => getSession(sessionId),
-    refetchOnMount: true,
-  })
-
-  const resumeKey = `inbox:resume:${sessionId}`
-  const [prompt, setPrompt] = useLocalDraft(resumeKey)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const { resume: resumeMutation, abort: abortMutation, archive: archiveMutation, rename: renameMutation } =
-    useSessionMutations({
-      sessionId,
-      onResume: () => setPrompt(""),
-      onArchive: handleBack,
-    })
-
-  // Derive status from query cache (optimistically updated by mutations) + stream
-  const status = (data?.session.status as string) ?? undefined
-  const shouldStream =
-    status === "running" ||
-    status === "awaiting_user_input"
-
-  const stream = useSessionStream(sessionId, shouldStream)
-  const { presenceUsers } = stream
-
-  // Stream status takes priority when connected (real-time updates)
-  const effectiveStatus = stream.sessionStatus ?? status
-
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState("")
 
-  const displayTitle = data?.session.linkedItemTitle || title || "Session"
+  const displayTitle = session?.linkedItemTitle || title || "Session"
 
   function handleStartEdit() {
-    setEditTitle(data?.session.summary || data?.session.prompt?.slice(0, 80) || displayTitle)
+    setEditTitle(session?.summary || session?.prompt?.slice(0, 80) || displayTitle)
     setIsEditing(true)
   }
 
@@ -102,7 +80,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     setIsEditing(false)
     const trimmed = editTitle.trim()
     if (trimmed && trimmed !== displayTitle) {
-      renameMutation.mutate(trimmed)
+      mutations.rename.mutate(trimmed)
     }
   }
 
@@ -116,17 +94,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     }
   }
 
-  const initialMessages = data?.messages ?? []
-  const loading = isLoading
-  const error = queryError?.message ?? null
-
-  const allMessages = useMemo(() => {
-    const merged = new Map<number, typeof initialMessages[number]>()
-    for (const message of initialMessages) merged.set(message.sequence, message)
-    for (const message of stream.messages) merged.set(message.sequence, message)
-    return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
-  }, [initialMessages, stream.messages])
-
   const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
     "sessions.transcript.visibility",
     DEFAULT_TRANSCRIPT_VISIBILITY,
@@ -136,19 +103,13 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     setVisibility({ ...visibility, [key]: !visibility[key] })
   }
 
-  const isRunning = effectiveStatus === "running"
-  const isAwaitingInput = effectiveStatus === "awaiting_user_input" || !!stream.pendingQuestion
-  const sending = resumeMutation.isPending
-
-  async function handleAnswer(answers: Record<string, string>) {
-    await answerSessionQuestion(sessionId, answers)
-    stream.clearPendingQuestion()
-    qc.invalidateQueries({ queryKey: ["sessions"] })
-  }
+  const isStreaming = phase.status === "streaming"
+  const isSending = phase.status === "sending"
+  const inputDisabled = isStreaming || isSending
 
   function handleSend() {
-    if (!prompt.trim() || sending) return
-    resumeMutation.mutate(prompt)
+    if (!prompt.trim() || inputDisabled) return
+    mutations.resume.mutate(prompt)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -201,12 +162,12 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       }
       right={
         <div className="flex items-center gap-1">
-          {isRunning && (
+          {isStreaming && (
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => abortMutation.mutate()}
-              disabled={abortMutation.isPending}
+              onClick={() => mutations.abort.mutate()}
+              disabled={mutations.abort.isPending}
             >
               <Square className="h-3 w-3 mr-1" />
               Stop
@@ -215,8 +176,8 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           <button
             type="button"
             className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-            onClick={() => archiveMutation.mutate()}
-            disabled={archiveMutation.isPending}
+            onClick={() => mutations.archive.mutate()}
+            disabled={mutations.archive.isPending}
             title="Archive session"
           >
             <Archive className="h-4 w-4" />
@@ -276,7 +237,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     />
   )
 
-  if (loading || !data) {
+  if (phase.status === "loading") {
     return (
       <div className="flex flex-col h-full">
         {header}
@@ -285,11 +246,11 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     )
   }
 
-  if (error) {
+  if (phase.status === "error") {
     return (
       <div className="flex flex-col h-full">
         {header}
-        <div className="p-6 text-destructive">Error loading session: {error}</div>
+        <div className="p-6 text-destructive">Error loading session: {phase.message}</div>
       </div>
     )
   }
@@ -302,22 +263,22 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       <div className="flex-1 overflow-hidden">
         <SessionTranscript
           key={sessionId}
-          messages={allMessages}
-          isStreaming={isRunning}
-          status={effectiveStatus}
-          messageCount={data.session.messageCount}
-          isLive={stream.connected}
+          messages={messages}
+          isStreaming={isStreaming}
+          status={phase.status}
+          messageCount={session?.messageCount}
+          isLive={isLive}
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
           onOpenPanel={handleOpenPanel}
-          onAction={(intent) => resumeMutation.mutate(intent)}
+          onAction={(intent) => mutations.resume.mutate(intent)}
         />
       </div>
 
       {/* Chat input / AskUserPanel */}
-      {isAwaitingInput && stream.pendingQuestion ? (
-        <AskUserPanel pendingQuestion={stream.pendingQuestion} onSubmit={handleAnswer} />
+      {phase.status === "awaiting_input" ? (
+        <AskUserPanel pendingQuestion={phase.question} onSubmit={answerQuestion} />
       ) : (
         <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex gap-2 items-end">
@@ -326,17 +287,17 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
-              disabled={isRunning || sending}
+              placeholder={isStreaming ? "Session is running..." : "Write a prompt..."}
+              disabled={inputDisabled}
               className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
               rows={1}
             />
             <Button
               onClick={handleSend}
-              disabled={!prompt.trim() || isRunning || sending}
+              disabled={!prompt.trim() || inputDisabled}
               size="icon-lg"
             >
-              {sending ? (
+              {isSending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />
