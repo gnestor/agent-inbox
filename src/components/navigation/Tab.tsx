@@ -31,12 +31,15 @@ function useExitChildren(
   children: React.ReactNode,
   targetPanelIndex: number,
   hasMounted: React.RefObject<boolean>,
+  transition: "item" | "none",
 ) {
   const prevChildrenRef = useRef<React.ReactNode>(children)
   const prevTargetRef = useRef(targetPanelIndex)
   const [exitChildren, setExitChildren] = useState<React.ReactNode>(null)
 
-  if (targetPanelIndex < prevTargetRef.current && hasMounted.current) {
+  // Only collapse panels for push/pop transitions. Item selection transitions
+  // are handled by PanelSlot's vertical slide — the whole panel group moves as a unit.
+  if (targetPanelIndex < prevTargetRef.current && hasMounted.current && transition !== "item") {
     if (!exitChildren) {
       setExitChildren(prevChildrenRef.current)
     }
@@ -51,7 +54,7 @@ function useExitChildren(
 // --- MobileTab (fullscreen panels, scroll-snap, touch navigation) ---
 
 function MobileTab({ id, children }: TabProps) {
-  const { activeTab, getSelectedItemId, getPanels, switchTab } = useNavigation()
+  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const [snapEnabled, setSnapEnabled] = useState(false)
@@ -61,7 +64,7 @@ function MobileTab({ id, children }: TabProps) {
   void getSelectedItemId(id) // trigger re-render on selection change
   const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
 
-  const { renderedChildren, exitChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted)
+  const { renderedChildren, exitChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
 
   // Scroll to the correct panel on every render
   useEffect(() => {
@@ -167,7 +170,7 @@ function MobileTab({ id, children }: TabProps) {
 // --- DesktopTab (side-by-side panels, horizontal scroll) ---
 
 function DesktopTab({ id, children }: TabProps) {
-  const { activeTab, getPanels } = useNavigation()
+  const { activeTab, getPanels, getPanelTransition } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const prevPanelCountRef = useRef(0)
@@ -177,7 +180,7 @@ function DesktopTab({ id, children }: TabProps) {
 
   const panels = getPanels(id)
   const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
-  const { renderedChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted)
+  const { renderedChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
 
   // Save/restore scroll position when switching tabs
   useEffect(() => {
