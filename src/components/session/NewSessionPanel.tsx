@@ -8,6 +8,7 @@ import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
 import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
+import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import type { NotionTaskDetail } from "@/types"
@@ -100,23 +101,10 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     ? `inbox:draft:thread:${threadId}`
     : taskId
       ? `inbox:draft:task:${taskId}`
-      : null
+      : ""
 
-  // Read once at mount — null means no key, "" means cleared, non-empty means real draft
-  const savedDraft = useState(() => {
-    if (!draftKey) return null
-    try { return localStorage.getItem(draftKey) } catch { return null }
-  })[0]
-
-  const [prompt, setPrompt] = useState(savedDraft ?? "")
-
-  const hasSavedDraft = useRef(!!savedDraft)
-
-  // Persist draft on every change
-  useEffect(() => {
-    if (!draftKey) return
-    try { localStorage.setItem(draftKey, prompt) } catch {}
-  }, [draftKey, prompt])
+  const [prompt, setPrompt] = useLocalDraft(draftKey)
+  const hasSavedDraft = useRef(!!prompt)
 
   // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
   const { thread } = useEmailThread(threadId)
@@ -127,7 +115,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   })
 
   // Derived — no useState needed
-  const ready = !!savedDraft || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
+  const ready = hasSavedDraft.current || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
 
   // Seed prompt once when linked data first arrives (render-time, no effect needed)
   const seeded = useRef(hasSavedDraft.current)
