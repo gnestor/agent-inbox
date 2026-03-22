@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from "react"
+import { useRef, useEffect, useMemo, useCallback } from "react"
 import { useVirtualizerSafe } from "./use-virtualizer-safe"
 import type { SessionMessage } from "@/types"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
@@ -29,18 +29,32 @@ export function useTranscriptScroll({
     [messages, visibility, shouldRenderMessage],
   )
 
+  // Per-item height estimate. Must be <= actual height to avoid the
+  // "Maximum update depth exceeded" cascade (overestimates add items
+  // to the window → more measurements → deeper cascade).
+  const estimateSize = useCallback((index: number) => {
+    const msg = visibleMessages[index]
+    if (!msg) return 44
+    const payload = msg.message
+    // Artifact tool calls render iframes — much taller than accordions
+    if (payload.type === "assistant") {
+      const blocks = Array.isArray(payload.content) ? payload.content
+        : Array.isArray((payload as any).message?.content) ? (payload as any).message.content
+        : []
+      for (const b of blocks) {
+        if (b.type === "tool_use" && (b.name === "render_output" || b.name === "mcp__render_output__render_output")) {
+          return 200
+        }
+      }
+    }
+    return 44
+  }, [visibleMessages])
+
   const virtualizer = useVirtualizerSafe({
     count: visibleMessages.length,
     getScrollElement: () => scrollRef.current,
     getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
-    // estimateSize must be <= the minimum actual item height (accordion trigger
-    // ~44px). When items are taller than the estimate, measuring them increases
-    // total size → items only EXIT the virtual window, never enter → no new
-    // commitAttachRef calls → the flushSpawnedWork cascade terminates at depth 1.
-    // If estimate > any item height, that item's measurement DECREASES total size,
-    // adding new items to the window → more commitAttachRef → deeper cascade →
-    // "Maximum update depth exceeded" after 50 levels.
-    estimateSize: () => 44,
+    estimateSize,
     overscan: 10,
     // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
     // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
