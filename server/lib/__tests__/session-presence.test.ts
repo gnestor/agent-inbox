@@ -99,10 +99,10 @@ describe("resumeSessionQuery author attribution", () => {
     // Mock the claude-agent-sdk to avoid actual network calls
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
-        [Symbol.asyncIterator]: async function* () {
-          // yield nothing — the user message is stored before the loop
-        },
+        [Symbol.asyncIterator]: async function* () {},
       })),
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
     }))
 
     // Capture all JSON values passed to db.prepare().run()
@@ -132,16 +132,16 @@ describe("resumeSessionQuery author attribution", () => {
     const userMsg = userMsgs[0] as any
     expect(userMsg.authorEmail).toBe("alice@test.com")
     expect(userMsg.authorName).toBe("Alice")
-    expect(userMsg.authorPicture).toBe("https://example.com/alice.jpg")
+    expect(userMsg.authorPicture).toBeUndefined() // picture stored in DB, not JSONL
   })
 
   it("omits author fields when no userProfile provided (backward compat)", async () => {
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
-        [Symbol.asyncIterator]: async function* () {
-          // yield nothing
-        },
+        [Symbol.asyncIterator]: async function* () {},
       })),
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
     }))
 
     const storedJsonArgs: unknown[] = []

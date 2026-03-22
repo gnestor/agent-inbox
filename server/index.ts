@@ -125,6 +125,17 @@ app.route("/api/plugins", pluginRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
 
+// User profiles — look up by email for transcript author avatars
+app.get("/api/users", (c) => {
+  const emails = c.req.query("emails")
+  if (!emails) return c.json({ users: [] })
+  const list = emails.split(",").map((e) => e.trim()).filter(Boolean)
+  if (list.length === 0) return c.json({ users: [] })
+  const placeholders = list.map(() => "?").join(",")
+  const rows = db.prepare(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`).all(...list)
+  return c.json({ users: rows })
+})
+
 // Error handler
 app.onError((err, c) => {
   console.error("Server error:", err)

@@ -187,6 +187,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
+          currentUserPicture={user?.picture}
           onOpenPanel={handleOpenPanel}
           onAction={(intent) => resumeSession(intent)}
         />

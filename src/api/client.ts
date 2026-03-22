@@ -374,3 +374,7 @@ export async function setPreference(key: string, value: unknown) {
     body: JSON.stringify({ key, value }),
   })
 }
+
+export async function getUserProfiles(emails: string[]): Promise<{ users: { email: string; name: string; picture?: string }[] }> {
+  return request(`/users?emails=${emails.map(encodeURIComponent).join(",")}`)
+}

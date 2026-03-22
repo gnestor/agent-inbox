@@ -1,5 +1,6 @@
 import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
+import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { User, Bot, Wrench, Brain, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
@@ -62,6 +63,7 @@ interface SessionTranscriptProps {
   visibility?: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  currentUserPicture?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
 }
@@ -72,6 +74,7 @@ export function SessionTranscript({
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
+  currentUserPicture,
   onOpenPanel,
   onAction,
 }: SessionTranscriptProps) {
@@ -81,6 +84,7 @@ export function SessionTranscript({
     sessionId,
     shouldRenderMessage,
   })
+  const userProfiles = useUserProfiles(messages)
 
   return (
     <div
@@ -106,7 +110,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} onAction={onAction} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} onOpenPanel={onOpenPanel} onAction={onAction} />
               </div>
             ))}
           </div>
@@ -239,6 +243,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
   visibility,
   sessionId,
   currentUserEmail,
+  currentUserPicture,
+  userProfiles,
   onOpenPanel,
   onAction,
 }: {
@@ -246,6 +252,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
   visibility: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  currentUserPicture?: string
+  userProfiles?: Map<string, { name: string; picture?: string }>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
 }) {
@@ -325,8 +333,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
     const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
-    const authorLabel = isCurrentUser ? "You" : (msg.authorName || "User")
-    const authorPicture = isCurrentUser ? undefined : msg.authorPicture
+    const profile = msg.authorEmail ? userProfiles?.get(msg.authorEmail) : undefined
+    const authorLabel = isCurrentUser ? "You" : (profile?.name || msg.authorName || "User")
+    const authorPicture = isCurrentUser ? currentUserPicture : profile?.picture
     const authorColor = isCurrentUser ? "text-chart-2" : "text-chart-3"
     return (
       <TranscriptAccordionEntry

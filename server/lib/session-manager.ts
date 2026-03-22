@@ -489,7 +489,6 @@ export async function resumeSessionQuery(
     ...(userProfile && {
       authorEmail: userProfile.email,
       authorName: userProfile.name,
-      authorPicture: userProfile.picture,
     }),
   }
   appendSessionMessage(sessionId, sequence, "user", userMessage)
