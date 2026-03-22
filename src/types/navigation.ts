@@ -17,8 +17,12 @@ export type PanelState =
   | { id: string; type: "artifact"; props: { sessionId: string; sequence: number; outputType: string } }
   | { id: string; type: "compose"; props: { threadId: string; draftBody?: string } }
   | { id: string; type: "settings"; props: Record<string, never> }
+  | { id: string; type: "new_session"; props: Record<string, never> }
 
 export type PanelType = PanelState["type"]
+
+/** Singleton panel for the new-session compose form */
+export const NEW_SESSION_PANEL: PanelState = { id: "new_session", type: "new_session", props: {} }
 
 // --- Per-tab state ---
 

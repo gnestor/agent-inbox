@@ -2,7 +2,7 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState } from "@/types/navigation"
+import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helper ---
@@ -26,6 +26,7 @@ export type NavAction =
   | { type: "POP_PANEL"; panelId: string }
   | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState }
   | { type: "OPEN_SESSION"; sessionId?: string }
+  | { type: "OPEN_NEW_SESSION" }
   | { type: "SET_FILTER"; key: string; value: string }
   | { type: "CLEAR_FILTERS" }
 
@@ -120,6 +121,14 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       } else {
         tab.panels = [...tab.panels, sessionPanel]
       }
+      return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
+    }
+
+    case "OPEN_NEW_SESSION": {
+      const tab = { ...getOrCreateTab(state, state.activeTab) }
+      if (tab.panels.some((p) => p.id === NEW_SESSION_PANEL.id)) return state
+      tab.selectedItemId = undefined
+      tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
