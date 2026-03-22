@@ -204,9 +204,16 @@ export const NavigationContext = createContext<NavigationContextValue | null>(nu
 // --- Provider ---
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(navReducer, createDefaultNavigationState())
-  const navigate = useNavigate()
   const location = useLocation()
+  // Derive initial activeTab from URL synchronously so SlotStack renders
+  // at the correct scroll position on the first frame (no flash of Emails tab).
+  const [state, dispatch] = useReducer(navReducer, location.pathname, (pathname) => {
+    const { tabId } = parseUrl(pathname)
+    const base = createDefaultNavigationState()
+    base.activeTab = tabId
+    return base
+  })
+  const navigate = useNavigate()
   const mountStarted = useRef(false)
   const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
