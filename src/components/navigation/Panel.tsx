@@ -22,7 +22,7 @@ export function Panel({ id, variant, width = DEFAULT_PANEL_WIDTH, children }: Pa
           // Mobile: full screen, no card styling, snap alignment
           ? "shrink-0 h-full w-full bg-background overflow-hidden"
           // Desktop: fixed width card
-          : "shrink-0 h-full bg-card rounded-lg shadow-sm ring-1 ring-inset ring-border overflow-hidden"
+          : "shrink-0 h-full bg-card rounded-lg shadow-sm outline outline-1 -outline-offset-1 outline-border overflow-hidden"
       }
       style={isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : { width }}
     >

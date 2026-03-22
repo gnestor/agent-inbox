@@ -61,7 +61,7 @@ const sessionOptionsFetcher: Record<string, () => Promise<string[]>> = {
 }
 
 export function SessionListView() {
-  const { selectItem, getSelectedItemId, getFilters, setFilter, openNewSession } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter, pushPanel } = useNavigation()
   const filters = getFilters("sessions")
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -111,7 +111,9 @@ export function SessionListView() {
             ]}
           />
           <button
-            onClick={openNewSession}
+            onClick={() =>
+              pushPanel({ id: "new_session", type: "new_session", props: {} })
+            }
             className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
           >
             <Plus className="h-4 w-4" />

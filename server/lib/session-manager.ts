@@ -3,6 +3,7 @@ import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
+import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -374,6 +375,9 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      mcpServers: {
+        render_output: buildRenderOutputMcpServer(),
+      },
     },
   })
   let sequence = 0
@@ -471,6 +475,9 @@ export async function resumeSessionQuery(sessionId: string, prompt: string, user
       abortController,
       env: buildAgentEnv(userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      mcpServers: {
+        render_output: buildRenderOutputMcpServer(),
+      },
     },
   })
 
@@ -934,5 +941,96 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     return messages
   } catch {
     return []
+  }
+}
+
+/**
+ * Patch the code of a render_output artifact.
+ * Handles both DB sessions (SQLite) and JSONL-only sessions.
+ */
+export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
+  // Try DB session first
+  const dbResult = patchArtifactInDb(sessionId, sequence, code)
+  if (dbResult) return true
+
+  // Fall back to JSONL file
+  return patchArtifactInJsonl(sessionId, sequence, code)
+}
+
+/** Mutate a render_output tool_use block's code in a parsed message. Returns true if modified. */
+function patchRenderOutputCode(msg: any, code: string): boolean {
+  const content = msg.message?.content || msg.content || []
+  if (!Array.isArray(content)) return false
+  for (const block of content) {
+    if (block.type !== "tool_use") continue
+    if (block.name !== "render_output" && block.name !== "mcp__render_output__render_output") continue
+    if (typeof block.input?.data === "string") {
+      block.input.data = code
+    } else if (block.input?.data && typeof block.input.data === "object") {
+      block.input.data.code = code
+    }
+    return true
+  }
+  return false
+}
+
+function patchArtifactInDb(sessionId: string, sequence: number, code: string): boolean {
+  try {
+    const db = getDb()
+    const row = db
+      .prepare("SELECT message FROM session_messages WHERE session_id = ? AND sequence = ?")
+      .get(sessionId, sequence) as { message: string } | undefined
+    if (!row) return false
+
+    const msg = JSON.parse(row.message)
+    if (!patchRenderOutputCode(msg, code)) return false
+
+    db.prepare("UPDATE session_messages SET message = ? WHERE session_id = ? AND sequence = ?")
+      .run(JSON.stringify(msg), sessionId, sequence)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string): Promise<boolean> {
+  const { readFileSync, writeFileSync } = await import("fs")
+  const { join } = await import("path")
+  const { homedir } = await import("os")
+
+  const encodedDir = workspacePath.replace(/\//g, "-")
+  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+
+  try {
+    const content = readFileSync(sessionFile, "utf-8")
+    const lines = content.trim().split("\n")
+    const displayTypes = new Set(["user", "assistant", "system"])
+    let seq = 0
+
+    for (let i = 0; i < lines.length; i++) {
+      const msg = JSON.parse(lines[i])
+
+      const toolResult = msg.toolUseResult
+      if (toolResult && typeof toolResult.filePath === "string" && toolResult.filePath.includes(".claude/plans/") && toolResult.content) {
+        seq++
+        continue
+      }
+
+      if (!displayTypes.has(msg.type)) continue
+
+      if (seq === sequence && msg.type === "assistant") {
+        if (patchRenderOutputCode(msg, code)) {
+          lines[i] = JSON.stringify(msg)
+          writeFileSync(sessionFile, lines.join("\n") + "\n")
+          return true
+        }
+        return false
+      }
+      seq++
+    }
+
+    return false
+  } catch {
+    return false
   }
 }

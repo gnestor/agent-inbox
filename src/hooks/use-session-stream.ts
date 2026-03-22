@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import type { SessionMessage, PendingQuestion } from "@/types"
 
-export function useSessionStream(sessionId: string | undefined) {
+export function useSessionStream(sessionId: string | undefined, enabled = true) {
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [connected, setConnected] = useState(false)
   const [sessionStatus, setSessionStatus] = useState<string | null>(null)
@@ -10,13 +10,14 @@ export function useSessionStream(sessionId: string | undefined) {
   const seenSequences = useRef(new Set<number>())
 
   useEffect(() => {
-    if (!sessionId) return
-
     seenSequences.current.clear()
     setMessages([])
     setSessionStatus(null)
     setPendingQuestion(null)
     setConnected(false)
+
+    if (!sessionId || !enabled) return
+
     const es = new EventSource(`/api/sessions/${sessionId}/stream`)
     eventSourceRef.current = es
 
@@ -68,7 +69,7 @@ export function useSessionStream(sessionId: string | undefined) {
       es.close()
       eventSourceRef.current = null
     }
-  }, [sessionId])
+  }, [enabled, sessionId])
 
   const disconnect = useCallback(() => {
     eventSourceRef.current?.close()

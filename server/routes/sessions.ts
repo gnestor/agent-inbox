@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming"
 import { getCookie } from "hono/cookie"
 import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
+import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/session-files.js"
 
 export const sessionRoutes = new Hono()
 
@@ -317,18 +318,6 @@ sessionRoutes.get("/:id/stream", async (c) => {
 
     sessions.addSseClient(sessionId, send)
 
-    // Send existing messages first for catch-up
-    const existing = sessions.getSessionMessages(sessionId)
-    for (const msg of existing) {
-      await stream.writeSSE({
-        data: JSON.stringify({
-          sequence: msg.sequence,
-          message: JSON.parse(msg.message as string),
-        }),
-        event: "message",
-      })
-    }
-
     // Keep connection alive
     const keepAlive = setInterval(() => {
       stream.writeSSE({ data: "", event: "ping" })
@@ -366,3 +355,69 @@ sessionRoutes.post("/:id/archive", async (c) => {
   const archived = sessions.archiveSession(sessionId)
   return c.json({ ok: archived })
 })
+
+// --- Artifact code editing ---
+
+sessionRoutes.patch("/:id/artifact", async (c) => {
+  const sessionId = c.req.param("id")
+  const { sequence, code } = await c.req.json()
+  if (typeof sequence !== "number" || typeof code !== "string") {
+    return c.json({ error: "sequence (number) and code (string) are required" }, 400)
+  }
+  const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
+  if (!ok) {
+    return c.json({ error: "Artifact not found at the given sequence" }, 404)
+  }
+  return c.json({ ok: true })
+})
+
+// --- File upload / download ---
+
+sessionRoutes.post("/:id/files", async (c) => {
+  const sessionId = c.req.param("id")
+  const body = await c.req.parseBody()
+  const file = body["file"]
+  if (!file || typeof file === "string") {
+    return c.json({ error: "file field is required" }, 400)
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const result = saveSessionFile(sessionId, file.name, buffer, file.type)
+  return c.json(result)
+})
+
+sessionRoutes.get("/:id/files/:filename", async (c) => {
+  const sessionId = c.req.param("id")
+  const filename = decodeURIComponent(c.req.param("filename"))
+  const filePath = getSessionFilePath(sessionId, filename)
+  if (!filePath) {
+    return c.json({ error: "File not found" }, 404)
+  }
+  // getSessionFilePath already verified existence; read directly
+  const { readFileSync } = await import("fs")
+  const data = readFileSync(filePath)
+  // Use a basic mime-type lookup
+  const mimeType = guessMimeType(filename)
+  c.header("Content-Type", mimeType)
+  c.header("Content-Disposition", `attachment; filename="${filename}"`)
+  return c.body(data)
+})
+
+function guessMimeType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? ""
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    json: "application/json",
+    csv: "text/csv",
+    txt: "text/plain",
+    md: "text/markdown",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    html: "text/html",
+    zip: "application/zip",
+  }
+  return map[ext] ?? "application/octet-stream"
+}
