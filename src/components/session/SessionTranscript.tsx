@@ -1,7 +1,7 @@
 import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
+import { User, Bot, Wrench, Brain, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, UserMessage, AssistantMessage } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
@@ -114,9 +114,16 @@ export function SessionTranscript({
           <PanelSkeleton />
         )}
         {isStreaming && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Agent is working...</span>
+          <div className="flex justify-center py-4">
+            <div className="flex items-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="size-1.5 rounded-full bg-muted-foreground animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s`, animationDuration: "0.6s" }}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
