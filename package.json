@@ -16,7 +16,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "migrate:credentials": "tsx server/scripts/migrate-env-to-vault.ts",
-    "start": "tsx server/index.ts",
+    "start": "npm run build && nohup node --env-file=../../.env --import tsx/esm server/index.ts --workspace ../agent > /tmp/inbox.log 2>&1 & echo $! > /tmp/inbox.pid && echo \"Started (PID $(cat /tmp/inbox.pid)), logs at /tmp/inbox.log\"",
+    "stop": "if [ -f /tmp/inbox.pid ] && kill -0 $(cat /tmp/inbox.pid) 2>/dev/null; then kill $(cat /tmp/inbox.pid) && rm /tmp/inbox.pid && echo 'Stopped'; else echo 'Not running'; rm -f /tmp/inbox.pid; fi",
     "test:e2e": "playwright test"
   },
   "dependencies": {

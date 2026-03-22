@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useCallback } from "react"
+import { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react"
 import { useVirtualizerSafe } from "./use-virtualizer-safe"
 import type { SessionMessage } from "@/types"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
@@ -20,9 +20,8 @@ export function useTranscriptScroll({
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
-  const hasInitialScroll = useRef(false)
-  const previousMessageCount = useRef(0)
-  const scrollRaf = useRef<number | null>(null)
+  const settling = useRef(true)
+  const prevTotalRef = useRef(0)
 
   const visibleMessages = useMemo(
     () => messages.filter((message) => shouldRenderMessage(message, visibility)),
@@ -30,13 +29,11 @@ export function useTranscriptScroll({
   )
 
   // Per-item height estimate. Must be <= actual height to avoid the
-  // "Maximum update depth exceeded" cascade (overestimates add items
-  // to the window → more measurements → deeper cascade).
+  // "Maximum update depth exceeded" cascade.
   const estimateSize = useCallback((index: number) => {
     const msg = visibleMessages[index]
     if (!msg) return 44
     const payload = msg.message
-    // Artifact tool calls render iframes — much taller than accordions
     if (payload.type === "assistant") {
       const blocks = Array.isArray(payload.content) ? payload.content
         : Array.isArray((payload as any).message?.content) ? (payload as any).message.content
@@ -50,83 +47,57 @@ export function useTranscriptScroll({
     return 44
   }, [visibleMessages])
 
+  // Start at the bottom — virtualizer clamps to max scroll position
+  const initialOffset = useMemo(() => {
+    let total = 0
+    for (let i = 0; i < visibleMessages.length; i++) total += estimateSize(i)
+    return total
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- only on mount
+
   const virtualizer = useVirtualizerSafe({
     count: visibleMessages.length,
     getScrollElement: () => scrollRef.current,
     getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
     estimateSize,
-    overscan: 10,
-    // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
-    // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
-    // React state updates during the commit phase.
+    overscan: 5,
+    initialOffset,
     useAnimationFrameWithResizeObserver: true,
   })
 
-  // Reset scroll state when session changes
+  // Reset when session changes
   useEffect(() => {
-    hasInitialScroll.current = false
+    settling.current = true
     shouldAutoScroll.current = true
-    previousMessageCount.current = 0
-    if (scrollRaf.current !== null) {
-      cancelAnimationFrame(scrollRaf.current)
-      scrollRaf.current = null
-    }
+    prevTotalRef.current = 0
   }, [sessionId])
 
-  // Auto-scroll to bottom on new messages during streaming
+  // Bottom-anchor: pin scrollTop to the bottom during settling.
+  // useLayoutEffect runs before paint so no intermediate positions are visible.
+  useLayoutEffect(() => {
+    if (!settling.current) return
+    const el = scrollRef.current
+    if (!el || visibleMessages.length === 0) return
+
+    el.scrollTop = el.scrollHeight
+
+    // Stop settling once total size stabilizes
+    const total = virtualizer.getTotalSize()
+    if (total === prevTotalRef.current && total > 0) {
+      settling.current = false
+    }
+    prevTotalRef.current = total
+  })
+
+  // Auto-scroll during streaming
   useEffect(() => {
-    if (visibleMessages.length === 0) {
-      previousMessageCount.current = 0
-      return
-    }
-
-    const hadMessages = previousMessageCount.current > 0
-    const didAppend = visibleMessages.length > previousMessageCount.current
-    previousMessageCount.current = visibleMessages.length
-
-    const isInitial = !hasInitialScroll.current
-    const shouldScrollToBottom =
-      isInitial || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
-
-    if (!shouldScrollToBottom) return
-
-    hasInitialScroll.current = true
-    if (scrollRaf.current !== null) {
-      cancelAnimationFrame(scrollRaf.current)
-    }
-
-    if (isInitial) {
-      // Initial load: scroll to bottom after virtualizer settles.
-      // Keep scrolling each frame until scrollTop sticks at the bottom.
-      let attempts = 0
-      const scrollToBottom = () => {
-        const el = scrollRef.current
-        if (!el || attempts > 10) { scrollRaf.current = null; return }
-        el.scrollTop = el.scrollHeight
-        attempts++
-        scrollRaf.current = requestAnimationFrame(scrollToBottom)
-      }
-      scrollRaf.current = requestAnimationFrame(scrollToBottom)
-    } else {
-      // Streaming: single scroll to bottom
-      scrollRaf.current = requestAnimationFrame(() => {
-        const el = scrollRef.current
-        if (el) el.scrollTop = el.scrollHeight
-        scrollRaf.current = null
-      })
-    }
-  }, [isStreaming, visibleMessages.length, virtualizer])
-
-  // Cleanup RAF on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollRaf.current !== null) {
-        cancelAnimationFrame(scrollRaf.current)
-      }
-    }
-  }, [])
+    if (settling.current) return
+    if (!isStreaming || !shouldAutoScroll.current) return
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [isStreaming, visibleMessages.length])
 
   function handleScroll() {
+    if (settling.current) return
     if (!scrollRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
     shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100
