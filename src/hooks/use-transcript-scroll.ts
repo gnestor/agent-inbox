@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react"
+import { useRef, useEffect, useMemo, useCallback } from "react"
 import { useVirtualizerSafe } from "./use-virtualizer-safe"
 import type { SessionMessage } from "@/types"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
@@ -18,8 +18,7 @@ export function useTranscriptScroll({
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
-  const settling = useRef(true)
-  const prevTotalRef = useRef(0)
+  const hasScrolledToBottom = useRef(false)
 
   const visibleMessages = useMemo(
     () => messages.filter((message) => shouldRenderMessage(message, visibility)),
@@ -45,7 +44,7 @@ export function useTranscriptScroll({
     return 44
   }, [visibleMessages])
 
-  // Start at the bottom — virtualizer clamps to max scroll position
+  // Start at the bottom
   const initialOffset = useMemo(() => {
     let total = 0
     for (let i = 0; i < visibleMessages.length; i++) total += estimateSize(i)
@@ -64,32 +63,34 @@ export function useTranscriptScroll({
 
   // Reset when session changes
   useEffect(() => {
-    settling.current = true
+    hasScrolledToBottom.current = false
     shouldAutoScroll.current = true
-    prevTotalRef.current = 0
   }, [sessionId])
 
-  // Bottom-anchor: pin scrollTop to the bottom during settling.
-  // useLayoutEffect runs before paint so no intermediate positions are visible.
-  useLayoutEffect(() => {
-    if (!settling.current) return
-    const el = scrollRef.current
-    if (!el || visibleMessages.length === 0) return
+  // Scroll to the last item once messages are available.
+  // Uses virtualizer.scrollToIndex which works with the virtualizer's
+  // measurement system rather than fighting it with raw scrollTop.
+  useEffect(() => {
+    if (hasScrolledToBottom.current) return
+    if (visibleMessages.length === 0) return
 
-    el.scrollTop = el.scrollHeight
+    hasScrolledToBottom.current = true
+    const lastIndex = visibleMessages.length - 1
 
-    // Stop settling once total size stabilizes
-    const total = virtualizer.getTotalSize()
-    if (total === prevTotalRef.current && total > 0) {
-      settling.current = false
-    }
-    prevTotalRef.current = total
-  })
+    // scrollToIndex needs a frame for the virtualizer to initialize
+    requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(lastIndex, { align: "end" })
+      // Second call after measurements settle
+      requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(lastIndex, { align: "end" })
+      })
+    })
+  }, [visibleMessages.length, virtualizer])
 
   // Auto-scroll when new messages arrive and user is near the bottom
   const prevCount = useRef(visibleMessages.length)
   useEffect(() => {
-    if (settling.current) return
+    if (!hasScrolledToBottom.current) return
     const didAppend = visibleMessages.length > prevCount.current
     prevCount.current = visibleMessages.length
     if (!didAppend || !shouldAutoScroll.current) return
@@ -98,7 +99,7 @@ export function useTranscriptScroll({
   }, [visibleMessages.length])
 
   function handleScroll() {
-    if (settling.current) return
+    if (!hasScrolledToBottom.current) return
     if (!scrollRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
     shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100
