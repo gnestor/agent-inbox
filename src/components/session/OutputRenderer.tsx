@@ -95,7 +95,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction 
           title={reactData.title}
           sessionId={sessionId}
           sequence={sequence}
-          className={fillPanel ? "w-full h-full border-0" : undefined}
+          className={fillPanel ? "w-full h-full border-0 p-4" : undefined}
           onAction={onAction}
         />
       )

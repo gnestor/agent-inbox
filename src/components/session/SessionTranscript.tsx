@@ -91,7 +91,7 @@ export function SessionTranscript({
       style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
-      <div className="p-4 min-w-0">
+      <div className="p-4 min-w-0 pb-4">
         {visibleMessages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
@@ -104,7 +104,7 @@ export function SessionTranscript({
                   top: 0,
                   left: 0,
                   width: "100%",
-                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 56,
+                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 12,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
