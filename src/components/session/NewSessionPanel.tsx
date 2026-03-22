@@ -110,9 +110,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
 
   const [prompt, setPrompt] = useState(savedDraft ?? "")
 
-  // If there's a saved draft or no linked item, skip the "Loading..." state
   const hasSavedDraft = useRef(!!savedDraft)
-  const [ready, setReady] = useState(!!savedDraft || (!threadId && !taskId))
 
   // Persist draft on every change
   useEffect(() => {
@@ -128,19 +126,14 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     enabled: !!taskId,
   })
 
-  useEffect(() => {
-    if (threadId && thread) {
-      if (!hasSavedDraft.current) setPrompt("Process this email")
-      setReady(true)
-    }
-  }, [thread, threadId])
+  // Derived — no useState needed
+  const ready = !!savedDraft || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
 
   useEffect(() => {
-    if (taskId && task) {
-      if (!hasSavedDraft.current) setPrompt("Process this task")
-      setReady(true)
-    }
-  }, [task, taskId])
+    if (hasSavedDraft.current) return
+    if (threadId && thread) setPrompt("Process this email")
+    else if (taskId && task) setPrompt("Process this task")
+  }, [thread, threadId, task, taskId])
 
   const contextPrefix = thread
     ? `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>`
