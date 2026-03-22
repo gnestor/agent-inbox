@@ -102,7 +102,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-scripts allow-same-origin"
-      className={className ?? "w-full border-0 rounded-md bg-card h-[600px]"}
+      className={className ?? "w-full border-0 rounded-md h-[600px]"}
       title={title || "React Artifact"}
       onLoad={handleLoad}
     />

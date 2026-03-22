@@ -3,8 +3,13 @@
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
 
+:root {
+  --border: oklch(1 0 0 / 0.06);
+}
+
 :root:not(.dark) {
-  --background: oklch(0.98 0 0);
+  --background: oklch(0.97 0 0);
+  --border: oklch(0 0 0 / 0.06);
 }
 
 /* Suppress prose's auto-backtick wrapping around inline code */

@@ -44,7 +44,7 @@ export const emailFieldSchema: FieldDef[] = [
   { id: "body", label: "Body", type: "html", listRole: "hidden" },
   {
     id: "flags",
-    label: "Filter",
+    label: "Flags",
     type: "text",
     listRole: "hidden",
     filter: {

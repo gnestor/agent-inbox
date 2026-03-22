@@ -88,7 +88,7 @@ export function SessionActionMenu({
         <DropdownMenuGroup>
           <DropdownMenuLabel>Add to existing session</DropdownMenuLabel>
           <div className="px-2 pb-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-card">
               <Search className="h-3 w-3 text-muted-foreground shrink-0" />
               <input
                 ref={searchInputRef}
