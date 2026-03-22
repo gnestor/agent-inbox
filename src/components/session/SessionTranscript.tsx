@@ -669,8 +669,8 @@ function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisi
   }
 
   if (msg.type === "user") {
-    // Synthetic messages are system-injected (skill content, etc.), not user-typed
-    if ("isSynthetic" in msg && msg.isSynthetic) return false
+    // System-injected messages (skill content, tool results) — not user-typed
+    if (("isSynthetic" in msg && msg.isSynthetic) || ("isMeta" in msg && msg.isMeta)) return false
     const text = extractText(msg)
     if (text?.startsWith("<artifact_action")) return true
     if (extractSkillBlock(msg)) return true
