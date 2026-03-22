@@ -91,8 +91,8 @@ describe("buildArtifactHtml", () => {
 
   it("includes postMessage bridge helpers", () => {
     const html = buildArtifactHtml("var x = 1;")
-    expect(html).toContain("__sendAction")
-    expect(html).toContain("__saveState")
+    expect(html).toContain("sendAction")
+    expect(html).toContain("saveState")
     expect(html).toContain("__onStateRestored")
   })
 
@@ -106,13 +106,15 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("App")
   })
 
-  it("applies theme variables with fallbacks", () => {
-    const themeVars = { background: "oklch(0.5 0 0)", primary: "oklch(0.7 0.2 255)" }
-    const html = buildArtifactHtml("var x = 1;", "Test", themeVars)
-    expect(html).toContain("--background: oklch(0.5 0 0)")
-    expect(html).toContain("--primary: oklch(0.7 0.2 255)")
-    // Unset vars should get fallback
-    expect(html).toContain("--foreground: #e6edf3")
+  it("syncs theme variables from parent document at runtime", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    // Theme vars are synced live from parent via script, not baked into HTML
+    expect(html).toContain("syncThemeVars")
+    expect(html).toContain("window.parent.getComputedStyle")
+    expect(html).toContain("MutationObserver")
+    // Should NOT have hardcoded fallback values
+    expect(html).not.toContain("#0d1117")
+    expect(html).not.toContain("#e6edf3")
   })
 
   it("does not use eval or base64 encoding", () => {

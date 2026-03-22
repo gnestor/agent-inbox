@@ -61,6 +61,7 @@ interface SessionTranscriptProps {
   sessionId?: string
   currentUserEmail?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }
 
 export function SessionTranscript({
@@ -70,6 +71,7 @@ export function SessionTranscript({
   sessionId,
   currentUserEmail,
   onOpenPanel,
+  onAction,
 }: SessionTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -177,7 +179,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} onAction={onAction} />
               </div>
             ))}
           </div>
@@ -251,11 +253,13 @@ function OutputAccordion({
   sessionId,
   sequence,
   onOpenPanel,
+  onAction,
 }: {
   spec: OutputSpec
   sessionId: string
   sequence: number
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const [open, setOpen] = useState(true)
   return (
@@ -289,6 +293,7 @@ function OutputAccordion({
             spec={spec}
             sessionId={sessionId}
             sequence={sequence}
+            onAction={onAction}
           />
         </div>
       )}
@@ -302,12 +307,14 @@ const TranscriptEntry = memo(function TranscriptEntry({
   sessionId,
   currentUserEmail,
   onOpenPanel,
+  onAction,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const msg = message.message as any
 
@@ -432,7 +439,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <div className="space-y-1">
         {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} />
+          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} />
         ))}
       </div>
     )
@@ -483,6 +490,7 @@ function ContentBlock({
   visibility,
   sessionId,
   onOpenPanel,
+  onAction,
 }: {
   block: any
   sequence: number
@@ -490,6 +498,7 @@ function ContentBlock({
   visibility: TranscriptVisibility
   sessionId?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
@@ -564,6 +573,7 @@ function ContentBlock({
           sessionId={sessionId}
           sequence={sequence}
           onOpenPanel={onOpenPanel}
+          onAction={onAction}
         />
       )
     }

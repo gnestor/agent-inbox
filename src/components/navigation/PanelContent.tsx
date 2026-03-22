@@ -1,10 +1,11 @@
 // src/components/navigation/PanelContent.tsx
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useCallback } from "react"
 import { X } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { OutputRenderer } from "@/components/session/OutputRenderer"
 import { useNavigation } from "@/hooks/use-navigation"
+import { resumeSession } from "@/api/client"
 
 // Lazy-load tab-specific components to avoid circular imports
 const SessionView = lazy(() =>
@@ -20,6 +21,10 @@ const IntegrationsPage = lazy(() =>
 function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) {
   const { removePanel } = useNavigation()
   const spec = panel.props.spec
+  const handleAction = useCallback(
+    (intent: string) => { resumeSession(panel.props.sessionId, intent).catch(console.error) },
+    [panel.props.sessionId],
+  )
 
   return (
     <div className="flex flex-col h-full">
@@ -41,6 +46,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
             sessionId={panel.props.sessionId}
             sequence={panel.props.sequence}
             fillPanel
+            onAction={handleAction}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

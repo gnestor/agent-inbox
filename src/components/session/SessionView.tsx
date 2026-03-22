@@ -371,6 +371,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       {/* Transcript */}
       <div className="flex-1 overflow-hidden">
         <SessionTranscript
+          key={sessionId}
           messages={allMessages}
           isStreaming={isRunning}
           status={status}
@@ -380,6 +381,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           sessionId={sessionId}
           currentUserEmail={user?.email}
           onOpenPanel={handleOpenPanel}
+          onAction={(intent) => resumeMutation.mutate(intent)}
         />
       </div>
 
@@ -396,7 +398,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               onKeyDown={handleKeyDown}
               placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
               disabled={isRunning || sending}
-              className="min-h-10 max-h-[120px] resize-none overflow-hidden [field-sizing:normal]"
+              className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:normal]"
               rows={1}
             />
             <Button

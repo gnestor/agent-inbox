@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo } from "react"
 import { usePreference } from "@/hooks/use-preferences"
-import { resumeSession } from "@/api/client"
 import { transformArtifactCode, escapeForScript } from "@/lib/artifact-transform"
 
 interface ArtifactFrameProps {
@@ -9,6 +8,8 @@ interface ArtifactFrameProps {
   sessionId: string
   sequence: number
   className?: string
+  /** Called when the artifact sends an action intent via sendAction() */
+  onAction?: (intent: string) => void
 }
 
 /**
@@ -37,27 +38,12 @@ const THEME_VARS = [
   "radius", "font-sans", "font-mono",
 ] as const
 
-// Resolved once at module level — shared across all ArtifactFrame instances.
-// TODO: invalidate on theme change if runtime theme switching is added.
-let _themeVars: Record<string, string> | undefined
-function getThemeVars(): Record<string, string> {
-  if (_themeVars) return _themeVars
-  if (typeof document === "undefined") return {}
-  const style = getComputedStyle(document.documentElement)
-  const vars: Record<string, string> = {}
-  for (const name of THEME_VARS) {
-    const val = style.getPropertyValue(`--${name}`).trim()
-    if (val) vars[name] = val
-  }
-  _themeVars = vars
-  return vars
-}
+const THEME_VARS_JSON = JSON.stringify(THEME_VARS)
 
-export function ArtifactFrame({ code, title, sessionId, sequence, className }: ArtifactFrameProps) {
+export function ArtifactFrame({ code, title, sessionId, sequence, className, onAction }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
-  const themeVars = getThemeVars()
 
   // Transform JSX in parent context — no Babel needed in iframe
   const { code: transformedCode, exportedName } = useMemo(
@@ -66,8 +52,8 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className }: A
   )
 
   const srcDoc = useMemo(
-    () => buildArtifactHtml(transformedCode, title, themeVars, exportedName),
-    [transformedCode, title, themeVars, exportedName],
+    () => buildArtifactHtml(transformedCode, title, exportedName),
+    [transformedCode, title, exportedName],
   )
 
   // Restore saved state when iframe loads
@@ -90,7 +76,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className }: A
       if (!data || typeof data !== "object") return
 
       if (data.type === "action" && typeof data.intent === "string") {
-        resumeSession(sessionId, data.intent).catch(console.error)
+        onAction?.(data.intent)
       } else if (data.type === "state" && data.state) {
         setSavedState(data.state as Record<string, unknown>)
       }
@@ -122,11 +108,9 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className }: A
 export function buildArtifactHtml(
   code: string | undefined,
   title?: string,
-  themeVars?: Record<string, string>,
   exportedName?: string | null,
 ): string {
-  if (!code) return `<!DOCTYPE html><html><body style="background:var(--card);color:var(--foreground);font-family:sans-serif;"><p>No artifact code provided.</p></body></html>`
-  const t = (name: string, fallback: string) => themeVars?.[name] || fallback
+  if (!code) return `<!DOCTYPE html><html><body style="font-family:sans-serif;"><p>No artifact code provided.</p></body></html>`
   const safeTitle = (title ?? "Artifact").replace(/[<>&"]/g, (c) =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] ?? c)
   )
@@ -138,7 +122,7 @@ export function buildArtifactHtml(
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin}; style-src 'unsafe-inline' ${origin}; img-src * data: blob:; font-src *;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin} https://esm.sh https://cdn.jsdelivr.net; style-src 'unsafe-inline' ${origin}; connect-src https://esm.sh https://cdn.jsdelivr.net; img-src * data: blob:; font-src *;">
 <title>${safeTitle}</title>
 <script type="importmap">
 {
@@ -187,39 +171,41 @@ export function buildArtifactHtml(
 }
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-card text-foreground font-sans; }
+  body { @apply text-foreground font-sans; }
 }
 </style>
 <style>
-:root {
-  --background: ${t("background", "#0d1117")}; --foreground: ${t("foreground", "#e6edf3")};
-  --card: ${t("card", "#161b22")}; --card-foreground: ${t("card-foreground", "#e6edf3")};
-  --primary: ${t("primary", "#4493f8")}; --primary-foreground: ${t("primary-foreground", "#fff")};
-  --secondary: ${t("secondary", "#30363d")}; --secondary-foreground: ${t("secondary-foreground", "#e6edf3")};
-  --muted: ${t("muted", "#161b22")}; --muted-foreground: ${t("muted-foreground", "#8b949e")};
-  --accent: ${t("accent", "#388bfd")}; --accent-foreground: ${t("accent-foreground", "#c9d1d9")};
-  --popover: ${t("popover", "#161b22")}; --popover-foreground: ${t("popover-foreground", "#e6edf3")};
-  --border: ${t("border", "#30363d")}; --input: ${t("input", "#30363d")};
-  --destructive: ${t("destructive", "#f85149")}; --destructive-foreground: ${t("destructive-foreground", "#fff")};
-  --ring: ${t("ring", "#4493f8")};
-  --chart-1: ${t("chart-1", "#4493f8")}; --chart-2: ${t("chart-2", "#3fb950")}; --chart-3: ${t("chart-3", "#a371f7")};
-  --chart-4: ${t("chart-4", "#d29922")}; --chart-5: ${t("chart-5", "#f778ba")};
-  --radius: ${t("radius", "0.375rem")};
-  --font-sans: ${t("font-sans", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif")};
-  --font-mono: ${t("font-mono", "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace")};
-}
 body { font-size: 14px; min-height: 100vh; }
 .error-box { background: color-mix(in srgb, var(--destructive) 15%, transparent); border: 1px solid var(--destructive); border-radius: var(--radius); padding: 12px; color: var(--destructive); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }
 </style>
+<script>
+// Sync CSS variables from parent document (live — updates on theme change)
+(function syncThemeVars() {
+  var VARS = ${THEME_VARS_JSON};
+  function sync() {
+    var parentStyle = window.parent.getComputedStyle(window.parent.document.documentElement);
+    var root = document.documentElement;
+    for (var i = 0; i < VARS.length; i++) {
+      var val = parentStyle.getPropertyValue('--' + VARS[i]).trim();
+      if (val) root.style.setProperty('--' + VARS[i], val);
+    }
+  }
+  sync();
+  // Watch for theme changes (class attribute on parent <html>)
+  var observer = new MutationObserver(sync);
+  observer.observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('beforeunload', function() { observer.disconnect(); });
+})();
+</script>
 </head>
 <body>
 <div id="root"></div>
 <script>
 // postMessage bridge helpers
-window.__sendAction = function(intent) {
+window.sendAction = function(intent) {
   window.parent.postMessage({ type: 'action', intent: String(intent) }, '*');
 };
-window.__saveState = function(state) {
+window.saveState = function(state) {
   window.parent.postMessage({ type: 'state', state: state }, '*');
 };
 window.addEventListener('message', function(e) {
@@ -228,29 +214,35 @@ window.addEventListener('message', function(e) {
   }
 });
 </script>
+<script>
+// Global error handlers for module script errors
+window.addEventListener('error', function(e) {
+  var el = document.createElement('div');
+  el.className = 'error-box';
+  el.textContent = e.message || 'Unknown error';
+  document.getElementById('root').appendChild(el);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var el = document.createElement('div');
+  el.className = 'error-box';
+  el.textContent = (e.reason && e.reason.message) || String(e.reason) || 'Unhandled promise rejection';
+  document.getElementById('root').appendChild(el);
+});
+</script>
 <script type="module">
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-
-try {
 ${safeCode}
 
 // Mount the component
+import { createRoot as _createRoot } from 'react-dom/client';
 const _root = document.getElementById('root');
 const _Component = typeof ${exportedName ? exportedName : "App"} !== 'undefined'
   ? ${exportedName || "App"}
   : null;
 
 if (_Component) {
-  createRoot(_root).render(React.createElement(_Component));
+  _createRoot(_root).render(React.createElement(_Component));
 } else {
   _root.innerHTML = '<div style="color:var(--muted-foreground)">No component found</div>';
-}
-} catch(_err) {
-  const _el = document.createElement('div');
-  _el.className = 'error-box';
-  _el.textContent = _err.message;
-  document.getElementById('root').appendChild(_el);
 }
 </script>
 </body>

@@ -1,16 +1,9 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hammies/frontend/components/ui"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot } from "lucide-react"
+import { DataTable } from "@/components/shared/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
@@ -22,7 +15,7 @@ export type OutputSpec =
   | { type: "html"; data: string; title?: string }
   | { type: "table"; data: TableData; title?: string }
   | { type: "json"; data: unknown; title?: string }
-  | { type: "chart"; data: VegaSpec; title?: string }
+  | { type: "chart"; data: ChartData; title?: string }
   | { type: "file"; data: FileData; title?: string }
   | { type: "conversation"; data: ConversationData; title?: string }
   | { type: "react"; data: ReactArtifactData; title?: string }
@@ -32,8 +25,19 @@ export interface TableData {
   rows: unknown[][]
 }
 
-export interface VegaSpec {
-  [key: string]: unknown
+export interface ChartData {
+  /** Chart type */
+  type?: "bar" | "line" | "area" | "pie"
+  /** Array of data points, e.g. [{ month: "Jan", revenue: 100 }] */
+  data: Record<string, unknown>[]
+  /** Field name for x-axis / category */
+  xKey: string
+  /** Field names for y-axis series */
+  yKeys: string[]
+  /** Optional labels for series (defaults to yKey names) */
+  labels?: Record<string, string>
+  /** Optional colors for series (defaults to chart-1, chart-2, etc.) */
+  colors?: Record<string, string>
 }
 
 export interface FileData {
@@ -59,9 +63,11 @@ interface OutputRendererProps {
   sequence: number
   /** When true, react artifacts fill the parent container instead of using a fixed height */
   fillPanel?: boolean
+  /** Called when an artifact sends an action intent via sendAction() */
+  onAction?: (intent: string) => void
 }
 
-export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputRendererProps) {
+export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction }: OutputRendererProps) {
   switch (spec.type) {
     case "markdown":
       return <MarkdownOutput data={spec.data} />
@@ -71,8 +77,11 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputR
       return <TableOutput data={spec.data} />
     case "json":
       return <JsonOutput data={spec.data} />
-    case "chart":
-      return <ChartOutput data={spec.data} />
+    case "chart": {
+      const chartData = normalizeChartData(spec.data)
+      if (!chartData) return <div className="p-3 text-xs text-muted-foreground">Invalid chart data</div>
+      return <ChartOutput data={chartData} />
+    }
     case "file":
       return <FileOutput data={spec.data} sessionId={sessionId} />
     case "conversation":
@@ -87,6 +96,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputR
           sessionId={sessionId}
           sequence={sequence}
           className={fillPanel ? "w-full h-full border-0" : undefined}
+          onAction={onAction}
         />
       )
     }
@@ -103,7 +113,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel }: OutputR
 
 function MarkdownOutput({ data }: { data: string }) {
   return (
-    <div className="p-3 prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
+    <div className="p-4 prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
         {data}
       </ReactMarkdown>
@@ -127,64 +137,10 @@ function HtmlOutput({ data }: { data: string }) {
 
 // --- Table ---
 
-type SortDirection = "asc" | "desc" | null
-
 function TableOutput({ data }: { data: TableData }) {
-  const [sortCol, setSortCol] = useState<number | null>(null)
-  const [sortDir, setSortDir] = useState<SortDirection>(null)
-
-  const sortedRows = useMemo(() => {
-    if (sortCol === null || sortDir === null) return data.rows
-    return [...data.rows].sort((a, b) => {
-      const av = a[sortCol]
-      const bv = b[sortCol]
-      const cmp = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true })
-      return sortDir === "asc" ? cmp : -cmp
-    })
-  }, [data.rows, sortCol, sortDir])
-
-  function handleSort(colIdx: number) {
-    if (sortCol === colIdx) {
-      setSortDir((d) => (d === "asc" ? "desc" : d === "desc" ? null : "asc"))
-      if (sortDir === "desc") setSortCol(null)
-    } else {
-      setSortCol(colIdx)
-      setSortDir("asc")
-    }
-  }
-
   return (
-    <div className="overflow-x-auto max-h-80 overflow-y-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {data.columns.map((col, i) => (
-              <TableHead
-                key={i}
-                className="cursor-pointer select-none whitespace-nowrap"
-                onClick={() => handleSort(i)}
-              >
-                <span className="flex items-center gap-1">
-                  {col}
-                  {sortCol === i && sortDir === "asc" && <ChevronRight className="h-3 w-3 rotate-90 shrink-0" />}
-                  {sortCol === i && sortDir === "desc" && <ChevronDown className="h-3 w-3 shrink-0" />}
-                </span>
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedRows.map((row, ri) => (
-            <TableRow key={ri}>
-              {row.map((cell, ci) => (
-                <TableCell key={ci} className="text-xs">
-                  {String(cell ?? "")}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="p-1">
+      <DataTable columns={data.columns} rows={data.rows} />
     </div>
   )
 }
@@ -193,7 +149,7 @@ function TableOutput({ data }: { data: TableData }) {
 
 function JsonOutput({ data }: { data: unknown }) {
   return (
-    <div className="p-3 max-h-80 overflow-y-auto overflow-x-auto">
+    <div className="p-4 max-h-80 overflow-y-auto overflow-x-auto font-mono">
       <JsonTree value={data} depth={0} />
     </div>
   )
@@ -261,34 +217,115 @@ function JsonTree({ value, depth }: { value: unknown; depth: number }) {
   return <span className="text-xs text-muted-foreground">{String(value)}</span>
 }
 
-// --- Chart (Vega-Lite) ---
-// Lazy-load react-vega to avoid it in the main bundle
+// --- Chart (Recharts via shadcn ChartContainer) ---
 
-function ChartOutput({ data }: { data: VegaSpec }) {
-  const [VegaEmbed, setVegaEmbed] = useState<React.ComponentType<any> | null>(null)
-  const [error, setError] = useState<string | null>(null)
+/**
+ * Normalize chart data — accepts our ChartData format or simple Vega-Lite specs
+ * (backward compat with old sessions). Complex Vega-Lite should use type "react".
+ */
+function normalizeChartData(raw: any): ChartData | null {
+  if (!raw) return null
 
-  useEffect(() => {
-    import("react-vega")
-      .then((m) => setVegaEmbed(() => m.VegaEmbed))
-      .catch(() => setError("Chart library not available. Install react-vega to render charts."))
-  }, [])
+  // Already our format
+  if (raw.xKey && raw.yKeys) return raw as ChartData
 
-  if (error) {
-    return (
-      <div className="p-3 text-xs text-muted-foreground">{error}</div>
-    )
+  // Simple Vega-Lite spec: extract fields from encoding + inline data
+  const encoding = raw.encoding
+  const values = raw.data?.values
+  if (encoding && Array.isArray(values) && encoding.x?.field && encoding.y?.field) {
+    const markType = typeof raw.mark === "string" ? raw.mark : raw.mark?.type
+    return {
+      type: markType === "line" ? "line" : markType === "area" ? "area" : markType === "arc" ? "pie" : "bar",
+      data: values,
+      xKey: encoding.x.field,
+      yKeys: [encoding.y.field],
+    }
   }
 
-  if (!VegaEmbed) {
+  return null
+}
+
+function ChartOutput({ data }: { data: ChartData }) {
+  const [Recharts, setRecharts] = useState<typeof import("recharts") | null>(null)
+  const [ChartComponents, setChartComponents] = useState<typeof import("@hammies/frontend/components/ui/chart") | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      import("recharts"),
+      import("@hammies/frontend/components/ui/chart"),
+    ]).then(([rc, cc]) => {
+      setRecharts(rc)
+      setChartComponents(cc)
+    })
+  }, [])
+
+  if (!Recharts || !ChartComponents || !data?.data) {
+    return <div className="p-3 text-xs text-muted-foreground">Loading chart...</div>
+  }
+
+  const { type = "bar", data: chartData, xKey, yKeys = [], labels, colors } = data
+  const { ChartContainer, ChartTooltip, ChartTooltipContent } = ChartComponents
+
+  const CHART_COLORS = [
+    "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)",
+  ]
+
+  // Build ChartConfig from yKeys
+  const config: Record<string, { label: string; color: string }> = {}
+  yKeys.forEach((key, i) => {
+    config[key] = {
+      label: labels?.[key] ?? key,
+      color: colors?.[key] ?? CHART_COLORS[i % CHART_COLORS.length],
+    }
+  })
+
+  const ChartElement = type === "line" ? Recharts.Line
+    : type === "area" ? Recharts.Area
+    : type === "pie" ? Recharts.Pie
+    : Recharts.Bar
+
+  if (type === "pie") {
+    // Pie chart needs special handling — data is the slice values
+    const pieData = chartData.map((d) => ({
+      name: String(d[xKey] ?? ""),
+      value: Number(d[yKeys[0]] ?? 0),
+      fill: colors?.[String(d[xKey])] ?? CHART_COLORS[chartData.indexOf(d) % CHART_COLORS.length],
+    }))
+
     return (
-      <div className="p-3 text-xs text-muted-foreground">Loading chart...</div>
+      <div className="p-3">
+        <ChartContainer config={config} className="h-[250px] w-full">
+          <Recharts.PieChart>
+            <ChartTooltip content={<ChartTooltipContent />} />
+            <Recharts.Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label />
+          </Recharts.PieChart>
+        </ChartContainer>
+      </div>
     )
   }
 
   return (
-    <div className="p-3 overflow-x-auto">
-      <VegaEmbed spec={data} actions={false} />
+    <div className="p-3">
+      <ChartContainer config={config} className="h-[250px] w-full">
+        <Recharts.ComposedChart data={chartData}>
+          <Recharts.CartesianGrid vertical={false} className="stroke-border" />
+          <Recharts.XAxis dataKey={xKey} tickLine={false} axisLine={false} className="text-xs" />
+          <Recharts.YAxis tickLine={false} axisLine={false} className="text-xs" />
+          <ChartTooltip content={<ChartTooltipContent />} />
+          {yKeys.map((key) => (
+            <ChartElement
+              key={key}
+              dataKey={key}
+              fill={config[key].color}
+              stroke={config[key].color}
+              radius={type === "bar" ? [4, 4, 0, 0] as any : undefined}
+              strokeWidth={type !== "bar" ? 2 : undefined}
+              fillOpacity={type === "area" ? 0.3 : undefined}
+              dot={type === "line" ? false : undefined}
+            />
+          ))}
+        </Recharts.ComposedChart>
+      </ChartContainer>
     </div>
   )
 }
@@ -322,9 +359,11 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
 // --- Conversation ---
 
 function ConversationOutput({ data }: { data: ConversationData }) {
+  // Handle data sent as array directly or with missing messages field
+  const messages = Array.isArray(data) ? data : data?.messages ?? []
   return (
     <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
-      {data.messages.map((msg, i) => {
+      {messages.map((msg, i) => {
         const isUser = msg.role === "user"
         return (
           <div key={i} className={cn("flex items-start gap-2", isUser ? "" : "flex-row-reverse")}>
