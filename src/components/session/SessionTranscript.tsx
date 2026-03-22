@@ -104,7 +104,7 @@ export function SessionTranscript({
                   top: 0,
                   left: 0,
                   width: "100%",
-                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 16,
+                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 56,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
