@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react"
+import { forwardRef, useImperativeHandle, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 export interface SlashCommandItem {
@@ -20,7 +20,12 @@ export const SlashCommandMenu = forwardRef<
 >(({ items, command, clientRect }, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  useEffect(() => setSelectedIndex(0), [items])
+  // Reset selection when items change (render-time, no effect needed)
+  const prevItemsRef = useRef(items)
+  if (prevItemsRef.current !== items) {
+    prevItemsRef.current = items
+    setSelectedIndex(0)
+  }
 
   useImperativeHandle(ref, () => ({
     onKeyDown: (e: KeyboardEvent) => {

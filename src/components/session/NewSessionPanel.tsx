@@ -129,11 +129,13 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   // Derived — no useState needed
   const ready = !!savedDraft || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
 
-  useEffect(() => {
-    if (hasSavedDraft.current) return
+  // Seed prompt once when linked data first arrives (render-time, no effect needed)
+  const seeded = useRef(hasSavedDraft.current)
+  if (!seeded.current && (thread || task)) {
+    seeded.current = true
     if (threadId && thread) setPrompt("Process this email")
     else if (taskId && task) setPrompt("Process this task")
-  }, [thread, threadId, task, taskId])
+  }
 
   const contextPrefix = thread
     ? `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>`

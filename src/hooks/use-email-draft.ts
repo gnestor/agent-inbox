@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { sendEmail, createDraft } from "@/api/client"
 import { toast } from "sonner"
@@ -14,11 +14,13 @@ export function useEmailDraft(threadId: string, thread: GmailThread | undefined)
   bodyRef.current = body
   const qc = useQueryClient()
 
-  // Seed from Gmail draft if no local draft exists
+  // Seed from Gmail draft if no local draft exists (render-time, no effect needed)
   const gmailDraft = thread?.messages.find((m) => m.labelIds.includes("DRAFT"))
-  useEffect(() => {
-    if (!body && gmailDraft?.body) setBody(gmailDraft.body)
-  }, [gmailDraft?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const seededRef = useRef(false)
+  if (!seededRef.current && !body && gmailDraft?.body) {
+    seededRef.current = true
+    setBody(gmailDraft.body)
+  }
 
   // Shared reply metadata — derived, not stored
   function getReplyMeta() {

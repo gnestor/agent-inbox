@@ -1,4 +1,4 @@
-import { useState, useDeferredValue, useRef, useEffect } from "react"
+import { useState, useDeferredValue, useRef } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import {
   DropdownMenu,
@@ -37,14 +37,6 @@ export function SessionActionMenu({
   const attachMutation = useAttachToSession()
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (open) {
-      // Delay to let Base UI finish its focus management
-      const timer = setTimeout(() => searchInputRef.current?.focus(), 0)
-      return () => clearTimeout(timer)
-    }
-  }, [open])
-
   if (hidden) return null
 
   function handleAttach(sessionId: string) {
@@ -61,7 +53,12 @@ export function SessionActionMenu({
       open={open}
       onOpenChange={(v) => {
         setOpen(v)
-        if (!v) setSearch("")
+        if (v) {
+          // Delay to let Base UI finish its focus management
+          setTimeout(() => searchInputRef.current?.focus(), 0)
+        } else {
+          setSearch("")
+        }
       }}
     >
       <DropdownMenuTrigger
