@@ -24,9 +24,19 @@ export async function loadNavigationState(): Promise<NavigationState | null> {
 
 /** Remove panels with unknown types, ensure all static tabs exist */
 function validateState(state: NavigationState): NavigationState {
+  // new_session is intentionally excluded — transient panel that shouldn't persist across reloads
   const validTypes = new Set(["list", "detail", "session", "artifact", "compose", "settings"])
 
   for (const [tabId, tabState] of Object.entries(state.tabs)) {
+    // Validate savedPanels entries too
+    if (tabState.savedPanels) {
+      const cleaned: Record<string, typeof tabState.panels> = {}
+      for (const [itemId, panels] of Object.entries(tabState.savedPanels)) {
+        const valid = panels.filter((p) => validTypes.has(p.type))
+        if (valid.length > 0) cleaned[itemId] = valid
+      }
+      tabState.savedPanels = Object.keys(cleaned).length > 0 ? cleaned : undefined
+    }
     state.tabs[tabId] = {
       ...tabState,
       panels: tabState.panels.filter((p) => validTypes.has(p.type)),

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -12,6 +12,8 @@ import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
+import { OutputRenderer } from "./OutputRenderer"
+import type { OutputSpec } from "./OutputRenderer"
 
 hljs.registerLanguage("json", json)
 
@@ -39,12 +41,14 @@ export interface TranscriptVisibility {
   messages: boolean
   toolCalls: boolean
   thinking: boolean
+  artifacts: boolean
 }
 
 export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
   messages: true,
   toolCalls: true,
   thinking: true,
+  artifacts: true,
 }
 
 interface SessionTranscriptProps {
@@ -56,6 +60,8 @@ interface SessionTranscriptProps {
   visibility?: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }
 
 export function SessionTranscript({
@@ -64,13 +70,23 @@ export function SessionTranscript({
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
+  onOpenPanel,
+  onAction,
 }: SessionTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const hasInitialScroll = useRef(false)
+  const previousMessageCount = useRef(0)
+  const scrollRaf = useRef<number | null>(null)
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => shouldRenderMessage(message, visibility)),
+    [messages, visibility],
+  )
 
   const virtualizer = useVirtualizerSafe({
-    count: messages.length,
+    count: visibleMessages.length,
     getScrollElement: () => scrollRef.current,
+    getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
     // estimateSize must be <= the minimum actual item height (accordion trigger
     // ~44px). When items are taller than the estimate, measuring them increases
     // total size → items only EXIT the virtual window, never enter → no new
@@ -79,33 +95,59 @@ export function SessionTranscript({
     // adding new items to the window → more commitAttachRef → deeper cascade →
     // "Maximum update depth exceeded" after 50 levels.
     estimateSize: () => 44,
-    overscan: 5,
+    overscan: 10,
     // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
     // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
     // React state updates during the commit phase.
     useAnimationFrameWithResizeObserver: true,
   })
 
-  // Auto-scroll to bottom when new messages arrive, unless the user has scrolled up.
-  const needsScrollRef = useRef(false)
   useEffect(() => {
-    if (shouldAutoScroll.current && messages.length > 0) {
-      needsScrollRef.current = true
+    hasInitialScroll.current = false
+    shouldAutoScroll.current = true
+    previousMessageCount.current = 0
+    if (scrollRaf.current !== null) {
+      cancelAnimationFrame(scrollRaf.current)
+      scrollRaf.current = null
     }
-  }, [messages.length])
+  }, [sessionId])
 
-  // Re-run whenever totalSize changes (items measured via ResizeObserver).
-  // Iteratively scrolls toward the last item until it enters the rendered range,
-  // at which point the position is accurate and we stop.
-  const totalSize = virtualizer.getTotalSize()
   useEffect(() => {
-    if (!needsScrollRef.current) return
-    const idx = messages.length - 1
-    virtualizer.scrollToIndex(idx, { align: "end" })
-    if (virtualizer.getVirtualItems().some((vi) => vi.index === idx)) {
-      needsScrollRef.current = false
+    if (visibleMessages.length === 0) {
+      previousMessageCount.current = 0
+      return
     }
-  }, [totalSize])
+
+    const lastIndex = visibleMessages.length - 1
+    const hadMessages = previousMessageCount.current > 0
+    const didAppend = visibleMessages.length > previousMessageCount.current
+    previousMessageCount.current = visibleMessages.length
+
+    const shouldScrollToBottom =
+      !hasInitialScroll.current || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
+
+    if (!shouldScrollToBottom) return
+
+    hasInitialScroll.current = true
+    if (scrollRaf.current !== null) {
+      cancelAnimationFrame(scrollRaf.current)
+    }
+    scrollRaf.current = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(lastIndex, { align: "end" })
+      scrollRaf.current = requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(lastIndex, { align: "end" })
+        scrollRaf.current = null
+      })
+    })
+  }, [isStreaming, visibleMessages.length, virtualizer])
+
+  useEffect(() => {
+    return () => {
+      if (scrollRaf.current !== null) {
+        cancelAnimationFrame(scrollRaf.current)
+      }
+    }
+  }, [])
 
   function handleScroll() {
     if (!scrollRef.current) return
@@ -120,8 +162,8 @@ export function SessionTranscript({
       style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
-      <div className="p-4 space-y-4 min-w-0">
-        {messages.length > 0 ? (
+      <div className="p-4 min-w-0">
+        {visibleMessages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
               <div
@@ -133,10 +175,11 @@ export function SessionTranscript({
                   top: 0,
                   left: 0,
                   width: "100%",
+                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 16,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} onAction={onAction} />
               </div>
             ))}
           </div>
@@ -205,16 +248,73 @@ function TranscriptAccordionEntry({
   )
 }
 
+function OutputAccordion({
+  spec,
+  sessionId,
+  sequence,
+  onOpenPanel,
+  onAction,
+}: {
+  spec: OutputSpec
+  sessionId: string
+  sequence: number
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 py-2 w-full">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          <AppWindow className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-xs font-medium text-primary truncate">{spec.title || spec.type}</span>
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+        {onOpenPanel && (
+          <button
+            type="button"
+            className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0"
+            onClick={() => onOpenPanel(spec, sequence)}
+            title="Open in panel"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="pl-5.5">
+          <OutputRenderer
+            spec={spec}
+            sessionId={sessionId}
+            sequence={sequence}
+            onAction={onAction}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TranscriptEntry = memo(function TranscriptEntry({
   message,
   visibility,
   sessionId,
   currentUserEmail,
+  onOpenPanel,
+  onAction,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const msg = message.message as any
 
@@ -254,6 +354,21 @@ const TranscriptEntry = memo(function TranscriptEntry({
   }
 
   if (msg.type === "user" || msg.role === "user") {
+    const text = extractText(msg)
+
+    // Artifact action — render as a compact system-like event
+    const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)
+    if (actionMatch) {
+      return (
+        <TranscriptAccordionEntry
+          value={`action-${message.sequence}`}
+          icon={Zap}
+          label={actionMatch[1]}
+          color="text-chart-4"
+        />
+      )
+    }
+
     // Skill context injection — render collapsed with skill name
     const skillBlock = extractSkillBlock(msg)
     if (skillBlock) {
@@ -274,7 +389,6 @@ const TranscriptEntry = memo(function TranscriptEntry({
     }
 
     if (!visibility.messages) return null
-    const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
     const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
@@ -339,7 +453,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <div className="space-y-1">
         {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} />
+          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} />
         ))}
       </div>
     )
@@ -389,12 +503,16 @@ function ContentBlock({
   index,
   visibility,
   sessionId,
+  onOpenPanel,
+  onAction,
 }: {
   block: any
   sequence: number
   index: number
   visibility: TranscriptVisibility
   sessionId?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
@@ -459,6 +577,21 @@ function ContentBlock({
   }
 
   if (block.type === "tool_use") {
+    // render_output tool — renders structured output in an accordion
+    if ((block.name === "render_output" || block.name === "mcp__render_output__render_output") && block.input && sessionId) {
+      if (!visibility.artifacts) return null
+      const outputSpec = block.input as OutputSpec
+      return (
+        <OutputAccordion
+          spec={outputSpec}
+          sessionId={sessionId}
+          sequence={sequence}
+          onOpenPanel={onOpenPanel}
+          onAction={onAction}
+        />
+      )
+    }
+
     if (!visibility.toolCalls) return null
     const summary = toolUseSummary(block.name, block.input)
     return (
@@ -536,6 +669,58 @@ function toolUseSummary(name: string, input: any): string {
     default:
       return ""
   }
+}
+
+function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisibility): boolean {
+  const msg = message.message as any
+
+  if (msg.type === "system") {
+    if (msg.subtype === "init") return false
+    if (msg.subtype === "attached_context") return visibility.messages
+    if (msg.subtype === "result" || "result" in msg) return visibility.messages
+    return false
+  }
+
+  if (msg.type === "user" || msg.role === "user") {
+    if (extractSkillBlock(msg)) return true
+    if (!visibility.messages) return false
+    return !!extractText(msg) || parseIdeContext(msg).length > 0
+  }
+
+  if (msg.type === "assistant" || msg.role === "assistant") {
+    const contentBlocks = msg.content || msg.message?.content || []
+    if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+      return visibility.messages && !!extractText(msg)
+    }
+    return contentBlocks.some((block: any) => shouldRenderContentBlock(block, visibility, !!message.sessionId))
+  }
+
+  if (msg.type === "plan") return visibility.messages && !!msg.content
+  if (msg.type === "tool_result") return false
+  return false
+}
+
+function shouldRenderContentBlock(
+  block: any,
+  visibility: TranscriptVisibility,
+  hasSessionId: boolean,
+): boolean {
+  if (block.type === "text") {
+    return visibility.messages && !!block.text
+  }
+
+  if (block.type === "tool_use") {
+    if (block.name === "render_output" || block.name === "mcp__render_output__render_output") {
+      return visibility.artifacts && !!block.input && hasSessionId
+    }
+    return visibility.toolCalls
+  }
+
+  if (block.type === "thinking") {
+    return visibility.thinking && !!block.thinking
+  }
+
+  return false
 }
 
 function isIdeContextBlock(block: any): boolean {

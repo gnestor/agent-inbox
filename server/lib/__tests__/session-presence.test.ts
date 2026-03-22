@@ -19,6 +19,10 @@ vi.mock("../../lib/title-generator.js", () => ({
   generateSessionTitle: vi.fn().mockResolvedValue(null),
 }))
 
+vi.mock("../../lib/render-output-tool.js", () => ({
+  buildRenderOutputMcpServer: () => ({ type: "sdk", name: "render_output", instance: {} }),
+}))
+
 describe("session presence tracking", () => {
   beforeEach(async () => {
     vi.resetModules()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -18,6 +18,7 @@ import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
 import { getSession, resumeSession, abortSession, answerSessionQuestion, updateSession, archiveSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 import { useSessionStream } from "@/hooks/use-session-stream"
+import type { OutputSpec } from "./OutputRenderer"
 import { useNavigation } from "@/hooks/use-navigation"
 import { useUser } from "@/hooks/use-user"
 import { SessionTranscript, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
@@ -36,7 +37,7 @@ interface SessionViewProps {
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const location = useLocation()
   const qc = useQueryClient()
-  const { activeTab, popPanel, deselectItem } = useNavigation()
+  const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const { user } = useUser()
   // Recent-route sessions are sidebar-originated — show SidebarButton, no X, use linkedItemTitle
   const isFromSidebar = location.pathname.startsWith("/recent/")
@@ -49,6 +50,15 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       popPanel(sessionPanelId)
     }
   }
+
+  const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
+    pushPanel({
+      id: `artifact:${sessionId}:${sequence}`,
+      type: "artifact",
+      props: { sessionId, sequence, outputType: spec.type, spec },
+    })
+  }, [sessionId, pushPanel])
+
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -77,8 +87,14 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }, [prompt])
 
-  // Stream for live updates
-  const stream = useSessionStream(sessionId)
+  const shouldStream =
+    statusOverride === "running" ||
+    statusOverride === "awaiting_user_input" ||
+    data?.session.status === "running" ||
+    data?.session.status === "awaiting_user_input"
+
+  // Stream only for live sessions. Completed transcripts come from the query response.
+  const stream = useSessionStream(sessionId, shouldStream)
   const { presenceUsers } = stream
 
   // Reset local overrides when navigating to a different session
@@ -171,8 +187,14 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   // Prefer the linked item title (email subject / task title) over whatever title was passed in
   const displayTitle = data?.session.linkedItemTitle || title || "Session"
 
-  // Merge initial messages with streamed ones
-  const allMessages = stream.messages.length > 0 ? stream.messages : initialMessages
+  // Merge initial messages with streamed ones so live sessions append smoothly
+  // instead of replacing the already-loaded transcript with incremental SSE replay.
+  const allMessages = useMemo(() => {
+    const merged = new Map<number, typeof initialMessages[number]>()
+    for (const message of initialMessages) merged.set(message.sequence, message)
+    for (const message of stream.messages) merged.set(message.sequence, message)
+    return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
+  }, [initialMessages, stream.messages])
 
   const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
     "sessions.transcript.visibility",
@@ -301,6 +323,12 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
                 >
                   Thinking
                 </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={visibility.artifacts}
+                  onCheckedChange={() => toggleVisibility("artifacts")}
+                >
+                  Artifacts
+                </DropdownMenuCheckboxItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -343,6 +371,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       {/* Transcript */}
       <div className="flex-1 overflow-hidden">
         <SessionTranscript
+          key={sessionId}
           messages={allMessages}
           isStreaming={isRunning}
           status={status}
@@ -351,6 +380,8 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
+          onOpenPanel={handleOpenPanel}
+          onAction={(intent) => resumeMutation.mutate(intent)}
         />
       </div>
 
@@ -367,7 +398,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
               onKeyDown={handleKeyDown}
               placeholder={isRunning ? "Session is running..." : "Write a prompt..."}
               disabled={isRunning || sending}
-              className="min-h-10 max-h-[120px] resize-none overflow-hidden [field-sizing:normal]"
+              className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:normal]"
               rows={1}
             />
             <Button

@@ -36,6 +36,11 @@ export function useNavigation() {
     [dispatch],
   )
 
+  const removePanel = useCallback(
+    (panelId: string) => dispatch({ type: "REMOVE_PANEL", panelId }),
+    [dispatch],
+  )
+
   const replacePanel = useCallback(
     (panelId: string, newPanel: PanelState) => dispatch({ type: "REPLACE_PANEL", panelId, newPanel }),
     [dispatch],
@@ -100,6 +105,7 @@ export function useNavigation() {
     deselectItem,
     pushPanel,
     popPanel,
+    removePanel,
     replacePanel,
     openSession,
     openNewSession,
