@@ -29,7 +29,7 @@ interface SessionViewProps {
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const { user } = useUser()
 
-  const { phase, session, messages, presenceUsers, isLive, mutations, answerQuestion } =
+  const { phase, session, messages, presenceUsers, isLive, mutations, resumeSession, answerQuestion } =
     useSessionPhase({
       sessionId,
       onResume: () => setPrompt(""),
@@ -44,7 +44,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     isStreaming, isSending,
     handleSend, handleKeyDown,
     handleBack, handleOpenPanel, isFromSidebar,
-  } = useSessionView({ sessionId, title, session, phase, mutations })
+  } = useSessionView({ sessionId, title, session, phase, mutations, resumeSession })
 
   const header = (
     <PanelHeader
@@ -188,7 +188,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           sessionId={sessionId}
           currentUserEmail={user?.email}
           onOpenPanel={handleOpenPanel}
-          onAction={(intent) => mutations.resume.mutate(intent)}
+          onAction={(intent) => resumeSession(intent)}
         />
       </div>
 

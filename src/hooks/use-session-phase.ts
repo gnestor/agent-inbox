@@ -62,10 +62,15 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
     effectiveStatus === "archived" ? { status: "archived" } :
     { status: "idle" }
 
+  // Tracks stream.messages.length at the time resume was called.
+  // The optimistic prompt shows until new stream messages arrive.
+  const streamCountAtResumeRef = useRef<number | null>(null)
+
   // Merge initial messages with streamed ones, normalizing REST-loaded messages.
   // Prepend session.prompt as a synthetic user message — the JSONL doesn't include it.
   const initialMessages = data?.messages ?? []
   const sessionPrompt = data?.session.prompt
+  const resumePrompt = mutations.resume.variables as string | undefined
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
     if (sessionPrompt) {
@@ -82,8 +87,30 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
       merged.set(message.sequence, { ...message, message: normalizeMessagePayload(message.message) })
     }
     for (const message of stream.messages) merged.set(message.sequence, message)
+
+    // Derived optimistic prompt: show resume prompt until new stream messages arrive
+    const showOptimistic = resumePrompt
+      && streamCountAtResumeRef.current !== null
+      && stream.messages.length <= streamCountAtResumeRef.current
+    if (showOptimistic) {
+      const seq = Math.max(...merged.keys(), 0) + 1
+      merged.set(seq, {
+        id: seq,
+        sessionId,
+        sequence: seq,
+        type: "user",
+        message: { type: "user", content: resumePrompt },
+        createdAt: new Date().toISOString(),
+      } as SessionMessage)
+    }
+
     return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
-  }, [initialMessages, stream.messages, sessionPrompt, sessionId, data?.session.startedAt])
+  }, [initialMessages, stream.messages, sessionPrompt, sessionId, data?.session.startedAt, resumePrompt])
+
+  function resumeSession(prompt: string) {
+    streamCountAtResumeRef.current = stream.messages.length
+    mutations.resume.mutate(prompt)
+  }
 
   async function answerQuestion(answers: Record<string, string>) {
     await answerSessionQuestion(sessionId, answers)
@@ -98,6 +125,7 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
     presenceUsers: stream.presenceUsers,
     isLive: stream.connected,
     mutations,
+    resumeSession,
     answerQuestion,
   }
 }

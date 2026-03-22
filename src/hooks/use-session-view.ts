@@ -16,11 +16,11 @@ interface UseSessionViewOptions {
   phase: SessionPhase
   mutations: {
     rename: { mutate: (title: string) => void }
-    resume: { mutate: (prompt: string) => void }
   }
+  resumeSession: (prompt: string) => void
 }
 
-export function useSessionView({ sessionId, title, session, phase, mutations }: UseSessionViewOptions) {
+export function useSessionView({ sessionId, title, session, phase, mutations, resumeSession }: UseSessionViewOptions) {
   const location = useLocation()
   const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
   const isFromSidebar = location.pathname.startsWith("/recent/")
@@ -100,7 +100,7 @@ export function useSessionView({ sessionId, title, session, phase, mutations }: 
 
   function handleSend() {
     if (!prompt.trim() || isSending) return
-    mutations.resume.mutate(prompt)
+    resumeSession(prompt)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
