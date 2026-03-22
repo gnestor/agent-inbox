@@ -1,11 +1,14 @@
 @import "@hammies/frontend/styles";
-@import "@hammies/frontend/github-syntax.css";
+@import "@hammies/frontend/one-syntax.css";
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
 
 :root {
   --secondary: oklch(0.27 0.02 255.69);
   --border: oklch(1 0 0 / 0.06);
+  /* --font-mono:
+    "Operator Mono Lig", "Operator Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", "Courier New", monospace; */
 }
 
 :root:not(.dark) {
@@ -142,6 +145,10 @@ html {
 /* ── Utility keyframes ────────────────────────────────────────────────────── */
 
 @keyframes fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
