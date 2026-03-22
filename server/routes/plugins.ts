@@ -59,6 +59,18 @@ pluginRoutes.post("/:sourceId/items/:itemId/mutate", async (c) => {
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })
 
-  await plugin.mutate(itemId, action, payload)
+  // Validate payload against plugin-declared schema if available
+  const schema = plugin.actionSchemas?.[action]
+  if (schema) {
+    const result = schema.safeParse(payload)
+    if (!result.success) {
+      throw new HTTPException(400, {
+        message: `Invalid payload for action "${action}": ${result.error.issues.map(i => i.message).join(", ")}`,
+      })
+    }
+    await plugin.mutate(itemId, action, result.data)
+  } else {
+    await plugin.mutate(itemId, action, payload)
+  }
   return c.json({ ok: true })
 })

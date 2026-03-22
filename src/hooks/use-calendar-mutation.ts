@@ -11,7 +11,7 @@ export function useCalendarMutation(itemId: string) {
   }
 
   const mutation = useMutation({
-    mutationFn: (properties: Record<string, unknown>) => updateCalendarItem(itemId, properties),
+    mutationFn: (properties: import("@/types/notion-mutations").CalendarPropertyUpdate) => updateCalendarItem(itemId, properties),
     onSuccess: () => invalidate(),
     onError: (err) => toast.error(`Update failed: ${err.message}`),
   })

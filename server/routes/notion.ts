@@ -1,5 +1,27 @@
 import { Hono } from "hono"
+import { HTTPException } from "hono/http-exception"
 import * as notion from "../lib/notion.js"
+import type { TaskPropertyUpdate, CalendarPropertyUpdate } from "../../src/types/notion-mutations.js"
+
+const TASK_PROPERTY_KEYS: Set<keyof TaskPropertyUpdate> = new Set(["Status", "Priority", "Tags", "Assignee"])
+const CALENDAR_PROPERTY_KEYS: Set<keyof CalendarPropertyUpdate> = new Set(["Status", "Tags", "Assignee", "Date"])
+
+/** Validate that a mutation payload only contains known property keys. */
+function validatePropertyKeys<T>(body: unknown, validKeys: Set<string>): T {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new HTTPException(400, { message: "Request body must be a JSON object" })
+  }
+  const keys = Object.keys(body)
+  if (keys.length === 0) {
+    throw new HTTPException(400, { message: "At least one property is required" })
+  }
+  for (const key of keys) {
+    if (!validKeys.has(key)) {
+      throw new HTTPException(400, { message: `Unknown property: "${key}". Valid: ${[...validKeys].join(", ")}` })
+    }
+  }
+  return body as T
+}
 
 export const notionRoutes = new Hono()
 
@@ -14,7 +36,7 @@ notionRoutes.get("/calendar", async (c) => {
 
 notionRoutes.get("/calendar-assignees", async (c) => {
   const result = await notion.queryCalendarItems({})
-  const assignees = [...new Set(result.items.map((i: any) => i.assignee).filter(Boolean))].sort()
+  const assignees = [...new Set(result.items.map((i) => i.assignee).filter(Boolean))].sort()
   return c.json({ assignees })
 })
 
@@ -25,7 +47,7 @@ notionRoutes.get("/calendar/:id", async (c) => {
 })
 
 notionRoutes.patch("/calendar/:id", async (c) => {
-  const properties = await c.req.json()
+  const properties = validatePropertyKeys<CalendarPropertyUpdate>(await c.req.json(), CALENDAR_PROPERTY_KEYS)
   const id = c.req.param("id")
   const result = await notion.updateTaskProperties(id, properties)
   return c.json(result)
@@ -48,7 +70,7 @@ notionRoutes.get("/tasks/:id", async (c) => {
 })
 
 notionRoutes.patch("/tasks/:id", async (c) => {
-  const properties = await c.req.json()
+  const properties = validatePropertyKeys<TaskPropertyUpdate>(await c.req.json(), TASK_PROPERTY_KEYS)
   const id = c.req.param("id")
   const result = await notion.updateTaskProperties(id, properties)
   return c.json(result)
@@ -56,7 +78,7 @@ notionRoutes.patch("/tasks/:id", async (c) => {
 
 notionRoutes.get("/assignees", async (c) => {
   const tasks = await notion.queryTasks({})
-  const assignees = [...new Set(tasks.tasks.map((t: any) => t.assignee).filter(Boolean))].sort()
+  const assignees = [...new Set(tasks.tasks.map((t) => t.assignee).filter(Boolean))].sort()
   return c.json({ assignees })
 })
 

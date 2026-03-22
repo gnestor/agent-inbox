@@ -131,6 +131,13 @@ export interface SourcePlugin {
   mutate(id: string, action: string, payload?: unknown): Promise<void>
 
   /**
+   * Optional per-action payload schemas for runtime validation.
+   * Keys are action names, values are Zod schemas.
+   * When provided, the server validates payloads before calling mutate().
+   */
+  actionSchemas?: Record<string, import("zod").ZodType>
+
+  /**
    * Combined schema for filter UI, list badge rendering, and detail view layout.
    * Fields are rendered in the order they appear in this array.
    */

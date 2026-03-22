@@ -1,22 +1,75 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useReducer, useEffect, useRef, useCallback, useState } from "react"
 import type { SessionMessage, PendingQuestion, PresenceUser } from "@/types"
+import { normalizeMessagePayload, getMessageType } from "@/types/session-message"
+
+// ---------------------------------------------------------------------------
+// State machine — prevents impossible states like connected=false + status="awaiting_user_input"
+// ---------------------------------------------------------------------------
+
+type StreamState =
+  | { status: "idle"; messages: SessionMessage[]; connected: false; sessionStatus: null; pendingQuestion: null }
+  | { status: "connected"; messages: SessionMessage[]; connected: true; sessionStatus: null; pendingQuestion: null }
+  | { status: "streaming"; messages: SessionMessage[]; connected: true; sessionStatus: null; pendingQuestion: null }
+  | { status: "awaiting_input"; messages: SessionMessage[]; connected: true; sessionStatus: "awaiting_user_input"; pendingQuestion: PendingQuestion }
+  | { status: "complete"; messages: SessionMessage[]; connected: true; sessionStatus: "complete"; pendingQuestion: null }
+  | { status: "errored"; messages: SessionMessage[]; connected: true; sessionStatus: "errored"; pendingQuestion: null }
+  | { status: "disconnected"; messages: SessionMessage[]; connected: false; sessionStatus: string | null; pendingQuestion: null }
+
+type StreamAction =
+  | { type: "RESET" }
+  | { type: "CONNECTED" }
+  | { type: "MESSAGE"; message: SessionMessage }
+  | { type: "ASK_USER"; pendingQuestion: PendingQuestion }
+  | { type: "CLEAR_QUESTION" }
+  | { type: "COMPLETE" }
+  | { type: "ERROR" }
+  | { type: "DISCONNECTED" }
+
+const INITIAL_STATE: StreamState = {
+  status: "idle",
+  messages: [],
+  connected: false,
+  sessionStatus: null,
+  pendingQuestion: null,
+}
+
+function streamReducer(state: StreamState, action: StreamAction): StreamState {
+  switch (action.type) {
+    case "RESET":
+      return INITIAL_STATE
+    case "CONNECTED":
+      return { ...state, status: "connected", connected: true, sessionStatus: null, pendingQuestion: null }
+    case "MESSAGE":
+      return { ...state, status: "streaming", messages: [...state.messages, action.message], connected: true, sessionStatus: null, pendingQuestion: null }
+    case "ASK_USER":
+      return { ...state, status: "awaiting_input", connected: true, sessionStatus: "awaiting_user_input", pendingQuestion: action.pendingQuestion }
+    case "CLEAR_QUESTION":
+      return { ...state, status: "streaming", connected: true, sessionStatus: null, pendingQuestion: null }
+    case "COMPLETE":
+      return { ...state, status: "complete", connected: true, sessionStatus: "complete", pendingQuestion: null }
+    case "ERROR":
+      return { ...state, status: "errored", connected: true, sessionStatus: "errored", pendingQuestion: null }
+    case "DISCONNECTED":
+      return { ...state, status: "disconnected", connected: false, pendingQuestion: null }
+    default:
+      return state
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useSessionStream(sessionId: string | undefined, enabled = true) {
-  const [messages, setMessages] = useState<SessionMessage[]>([])
-  const [connected, setConnected] = useState(false)
-  const [sessionStatus, setSessionStatus] = useState<string | null>(null)
-  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
+  const [state, dispatch] = useReducer(streamReducer, INITIAL_STATE)
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
   const eventSourceRef = useRef<EventSource | null>(null)
   const seenSequences = useRef(new Set<number>())
 
   useEffect(() => {
     seenSequences.current.clear()
-    setMessages([])
-    setSessionStatus(null)
-    setPendingQuestion(null)
+    dispatch({ type: "RESET" })
     setPresenceUsers([])
-    setConnected(false)
 
     if (!sessionId || !enabled) return
 
@@ -29,18 +82,15 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         const data = JSON.parse(event.data)
 
         if (data.type === "session_complete") {
-          setSessionStatus("complete")
-          setPendingQuestion(null)
+          dispatch({ type: "COMPLETE" })
           return
         }
         if (data.type === "session_error") {
-          setSessionStatus("errored")
-          setPendingQuestion(null)
+          dispatch({ type: "ERROR" })
           return
         }
         if (data.type === "ask_user_question") {
-          setSessionStatus("awaiting_user_input")
-          setPendingQuestion({ questions: data.questions })
+          dispatch({ type: "ASK_USER", pendingQuestion: { questions: data.questions } })
           return
         }
         if (data.type === "presence") {
@@ -51,25 +101,25 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         if (data.sequence !== undefined && data.message) {
           if (seenSequences.current.has(data.sequence)) return
           seenSequences.current.add(data.sequence)
-          setMessages((prev) => [
-            ...prev,
-            {
+          dispatch({
+            type: "MESSAGE",
+            message: {
               id: data.sequence,
               sessionId: sessionId,
               sequence: data.sequence,
-              type: data.message.type || "unknown",
-              message: data.message,
+              type: getMessageType(data.message),
+              message: normalizeMessagePayload(data.message),
               createdAt: new Date().toISOString(),
             },
-          ])
+          })
         }
       } catch {
         // Ignore parse errors
       }
     })
 
-    es.addEventListener("open", () => setConnected(true))
-    es.addEventListener("error", () => setConnected(false))
+    es.addEventListener("open", () => dispatch({ type: "CONNECTED" }))
+    es.addEventListener("error", () => dispatch({ type: "DISCONNECTED" }))
 
     return () => {
       es.close()
@@ -80,10 +130,19 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
   const disconnect = useCallback(() => {
     eventSourceRef.current?.close()
     eventSourceRef.current = null
-    setConnected(false)
+    dispatch({ type: "DISCONNECTED" })
   }, [])
 
-  const clearPendingQuestion = useCallback(() => setPendingQuestion(null), [])
+  const clearPendingQuestion = useCallback(() => dispatch({ type: "CLEAR_QUESTION" }), [])
 
-  return { messages, connected, sessionStatus, pendingQuestion, presenceUsers, disconnect, clearPendingQuestion }
+  // Return flat object — same API as before for backward compatibility
+  return {
+    messages: state.messages,
+    connected: state.connected,
+    sessionStatus: state.sessionStatus,
+    pendingQuestion: state.pendingQuestion,
+    presenceUsers,
+    disconnect,
+    clearPendingQuestion,
+  }
 }

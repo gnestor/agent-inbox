@@ -4,6 +4,7 @@ import { getSession, answerSessionQuestion } from "@/api/client"
 import { useSessionStream } from "./use-session-stream"
 import { useSessionMutations } from "./use-session-mutations"
 import type { PendingQuestion, SessionMessage } from "@/types"
+import { normalizeMessagePayload } from "@/types/session-message"
 
 // --- Session phase discriminated union ---
 
@@ -50,11 +51,13 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
     effectiveStatus === "archived" ? { status: "archived" } :
     { status: "idle" }
 
-  // Merge initial messages with streamed ones
+  // Merge initial messages with streamed ones, normalizing REST-loaded messages
   const initialMessages = data?.messages ?? []
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
-    for (const message of initialMessages) merged.set(message.sequence, message)
+    for (const message of initialMessages) {
+      merged.set(message.sequence, { ...message, message: normalizeMessagePayload(message.message) })
+    }
     for (const message of stream.messages) merged.set(message.sequence, message)
     return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
   }, [initialMessages, stream.messages])

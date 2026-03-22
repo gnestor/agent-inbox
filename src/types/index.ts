@@ -186,7 +186,7 @@ export interface SessionMessage {
   sessionId: string
   sequence: number
   type: string
-  message: unknown
+  message: import("./session-message").SessionMessagePayload
   createdAt: string
 }
 
