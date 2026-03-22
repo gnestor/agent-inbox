@@ -70,8 +70,9 @@ export function useTranscriptScroll({
     const didAppend = visibleMessages.length > previousMessageCount.current
     previousMessageCount.current = visibleMessages.length
 
+    const isInitial = !hasInitialScroll.current
     const shouldScrollToBottom =
-      !hasInitialScroll.current || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
+      isInitial || (isStreaming && hadMessages && didAppend && shouldAutoScroll.current)
 
     if (!shouldScrollToBottom) return
 
@@ -79,14 +80,27 @@ export function useTranscriptScroll({
     if (scrollRaf.current !== null) {
       cancelAnimationFrame(scrollRaf.current)
     }
-    // Scroll to the bottom of the container rather than using scrollToIndex
-    // with align:"end". scrollToIndex jumps past tall rows (like artifacts),
-    // pushing preceding messages out of the virtual window.
-    scrollRaf.current = requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-      scrollRaf.current = null
-    })
+
+    if (isInitial) {
+      // Initial load: scroll to bottom after virtualizer settles.
+      // Keep scrolling each frame until scrollTop sticks at the bottom.
+      let attempts = 0
+      const scrollToBottom = () => {
+        const el = scrollRef.current
+        if (!el || attempts > 10) { scrollRaf.current = null; return }
+        el.scrollTop = el.scrollHeight
+        attempts++
+        scrollRaf.current = requestAnimationFrame(scrollToBottom)
+      }
+      scrollRaf.current = requestAnimationFrame(scrollToBottom)
+    } else {
+      // Streaming: single scroll to bottom
+      scrollRaf.current = requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (el) el.scrollTop = el.scrollHeight
+        scrollRaf.current = null
+      })
+    }
   }, [isStreaming, visibleMessages.length, virtualizer])
 
   // Cleanup RAF on unmount

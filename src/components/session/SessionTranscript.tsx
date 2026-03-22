@@ -69,6 +69,7 @@ interface SessionTranscriptProps {
 export function SessionTranscript({
   messages,
   isStreaming,
+  messageCount,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
