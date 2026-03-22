@@ -66,7 +66,6 @@ export function useTranscriptScroll({
       return
     }
 
-    const lastIndex = visibleMessages.length - 1
     const hadMessages = previousMessageCount.current > 0
     const didAppend = visibleMessages.length > previousMessageCount.current
     previousMessageCount.current = visibleMessages.length
@@ -80,12 +79,13 @@ export function useTranscriptScroll({
     if (scrollRaf.current !== null) {
       cancelAnimationFrame(scrollRaf.current)
     }
+    // Scroll to the bottom of the container rather than using scrollToIndex
+    // with align:"end". scrollToIndex jumps past tall rows (like artifacts),
+    // pushing preceding messages out of the virtual window.
     scrollRaf.current = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(lastIndex, { align: "end" })
-      scrollRaf.current = requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(lastIndex, { align: "end" })
-        scrollRaf.current = null
-      })
+      const el = scrollRef.current
+      if (el) el.scrollTop = el.scrollHeight
+      scrollRaf.current = null
     })
   }, [isStreaming, visibleMessages.length, virtualizer])
 

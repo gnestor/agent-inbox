@@ -51,16 +51,28 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
     effectiveStatus === "archived" ? { status: "archived" } :
     { status: "idle" }
 
-  // Merge initial messages with streamed ones, normalizing REST-loaded messages
+  // Merge initial messages with streamed ones, normalizing REST-loaded messages.
+  // Prepend session.prompt as a synthetic user message — the JSONL doesn't include it.
   const initialMessages = data?.messages ?? []
+  const sessionPrompt = data?.session.prompt
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
+    if (sessionPrompt) {
+      merged.set(-1, {
+        id: -1,
+        sessionId,
+        sequence: -1,
+        type: "user",
+        message: { type: "user", content: sessionPrompt },
+        createdAt: data?.session.startedAt ?? "",
+      } as SessionMessage)
+    }
     for (const message of initialMessages) {
       merged.set(message.sequence, { ...message, message: normalizeMessagePayload(message.message) })
     }
     for (const message of stream.messages) merged.set(message.sequence, message)
     return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
-  }, [initialMessages, stream.messages])
+  }, [initialMessages, stream.messages, sessionPrompt, sessionId, data?.session.startedAt])
 
   async function answerQuestion(answers: Record<string, string>) {
     await answerSessionQuestion(sessionId, answers)
