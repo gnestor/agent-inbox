@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { usePreference } from "@/hooks/use-preferences"
 import { transformArtifactCode, escapeForScript } from "@/lib/artifact-transform"
 
@@ -45,18 +45,32 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
 
-  // Transform JSX in parent context — no Babel needed in iframe
-  const { code: transformedCode, exportedName } = useMemo(
-    () => transformArtifactCode(code),
-    [code],
-  )
+  // Transform JSX in parent context — no Babel needed in iframe.
+  // Keep last valid result so syntax errors during editing don't crash the app.
+  const lastValidRef = useRef<{ code: string; exportedName: string | null } | null>(null)
+  const transformResult = useMemo(() => {
+    try {
+      return { ...transformArtifactCode(code), error: null as string | null }
+    } catch (e) {
+      const prev = lastValidRef.current
+      return {
+        code: prev?.code ?? "",
+        exportedName: prev?.exportedName ?? null,
+        error: e instanceof Error ? e.message : String(e),
+      }
+    }
+  }, [code])
+  // Update last valid ref outside useMemo to keep it pure
+  useEffect(() => {
+    if (!transformResult.error) lastValidRef.current = transformResult
+  }, [transformResult])
+  const { code: transformedCode, exportedName, error: transformError } = transformResult
 
   const srcDoc = useMemo(
     () => buildArtifactHtml(transformedCode, title, exportedName),
     [transformedCode, title, exportedName],
   )
 
-  // Restore saved state when iframe loads
   const handleLoad = useCallback(() => {
     const iframe = iframeRef.current
     if (!iframe || !iframe.contentWindow) return
@@ -64,6 +78,10 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       iframe.contentWindow.postMessage({ type: "restore", state: savedState }, "*")
     }
   }, [savedState])
+
+  const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
+  useEffect(() => setRuntimeError(null), [code])
 
   // Listen for postMessage from artifact
   useEffect(() => {
@@ -76,15 +94,17 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       if (!data || typeof data !== "object") return
 
       if (data.type === "action" && typeof data.intent === "string") {
-        // Wrap in XML tag so the transcript renders it as an artifact action, not a user message
         const safeIntent = data.intent.replace(/[<>"&]/g, "")
         const payload = data.data !== undefined ? JSON.stringify(data.data, null, 2) : ""
         const message = `<artifact_action intent="${safeIntent}">${payload}</artifact_action>`
         onAction?.(message)
       } else if (data.type === "state" && data.state) {
         setSavedState(data.state as Record<string, unknown>)
+      } else if (data.type === "error" && typeof data.message === "string") {
+        setRuntimeError(data.message)
+      } else if (data.type === "height" && typeof data.height === "number") {
+        setContentHeight(data.height)
       } else if (data.type === "wheel") {
-        // Re-dispatch horizontal scroll on the iframe's parent so panel nav works
         iframe.dispatchEvent(new WheelEvent("wheel", {
           deltaX: data.deltaX,
           deltaY: data.deltaY,
@@ -98,14 +118,22 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   }, [sessionId, setSavedState])
 
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={srcDoc}
-      sandbox="allow-scripts allow-same-origin"
-      className={className ?? "w-full border-0 rounded-md h-[600px]"}
-      title={title || "React Artifact"}
-      onLoad={handleLoad}
-    />
+    <div className="relative w-full h-full">
+      <iframe
+        ref={iframeRef}
+        srcDoc={srcDoc}
+        sandbox="allow-scripts allow-same-origin"
+        className={className ?? "w-full border-0 rounded-md"}
+        style={!className ? { height: contentHeight != null ? Math.min(contentHeight, 600) : 600 } : undefined}
+        title={title || "React Artifact"}
+        onLoad={handleLoad}
+      />
+      {(transformError || runtimeError) && (
+        <div className="absolute inset-0 bg-destructive p-4 overflow-auto">
+          <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -186,7 +214,7 @@ export function buildArtifactHtml(
 }
 </style>
 <style>
-body { font-size: 14px; min-height: 100vh; }
+body { font-size: 14px; }
 .error-box { background: color-mix(in srgb, var(--destructive) 15%, transparent); border: 1px solid var(--destructive); border-radius: var(--radius); padding: 12px; color: var(--destructive); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }
 </style>
 <script>
@@ -205,7 +233,7 @@ body { font-size: 14px; min-height: 100vh; }
   // Watch for theme changes (class attribute on parent <html>)
   var observer = new MutationObserver(sync);
   observer.observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  window.addEventListener('beforeunload', function() { observer.disconnect(); });
+  window.addEventListener('unload', function() { observer.disconnect(); });
 })();
 </script>
 </head>
@@ -235,18 +263,13 @@ document.addEventListener('wheel', function(e) {
 }, { passive: false });
 </script>
 <script>
-// Global error handlers for module script errors
+// Post errors to parent so they display in the red overlay
 window.addEventListener('error', function(e) {
-  var el = document.createElement('div');
-  el.className = 'error-box';
-  el.textContent = e.message || 'Unknown error';
-  document.getElementById('root').appendChild(el);
+  window.parent.postMessage({ type: 'error', message: e.message || 'Unknown error' }, '*');
 });
 window.addEventListener('unhandledrejection', function(e) {
-  var el = document.createElement('div');
-  el.className = 'error-box';
-  el.textContent = (e.reason && e.reason.message) || String(e.reason) || 'Unhandled promise rejection';
-  document.getElementById('root').appendChild(el);
+  var msg = (e.reason && e.reason.message) || String(e.reason) || 'Unhandled promise rejection';
+  window.parent.postMessage({ type: 'error', message: msg }, '*');
 });
 </script>
 <script type="module">
@@ -262,8 +285,24 @@ const _Component = typeof ${exportedName ? exportedName : "App"} !== 'undefined'
 if (_Component) {
   _createRoot(_root).render(React.createElement(_Component));
 } else {
-  _root.innerHTML = '<div style="color:var(--muted-foreground)">No component found</div>';
+  _root.textContent = 'No component found';
 }
+
+// Report content height to parent for inline auto-sizing.
+// Temporarily override viewport-relative heights to measure intrinsic size.
+(function() {
+  var style = document.createElement('style');
+  style.textContent = '#root, #root > * { height: auto !important; min-height: 0 !important; }';
+  document.head.appendChild(style);
+  function measure() {
+    var root = document.getElementById('root');
+    if (!root) return;
+    window.parent.postMessage({ type: 'height', height: root.scrollHeight }, '*');
+    // Remove the override so component scrolling works at the final size
+    style.remove();
+  }
+  requestAnimationFrame(function() { requestAnimationFrame(measure); });
+})();
 </script>
 </body>
 </html>`
