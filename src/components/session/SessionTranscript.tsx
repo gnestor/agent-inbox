@@ -150,7 +150,7 @@ function TranscriptAccordionEntry({
   color: string
   defaultOpen?: boolean
   extra?: ReactNode
-  children: ReactNode
+  children?: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
