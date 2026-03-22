@@ -3,6 +3,12 @@ import { useVirtualizerSafe } from "./use-virtualizer-safe"
 import type { SessionMessage } from "@/types"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
 
+// Module-level cache: measured row heights persist across remounts.
+// Key: "sessionId:sequence", Value: measured height in px.
+// Capped at 5000 entries (~10 sessions worth) to prevent unbounded growth.
+const heightCache = new Map<string, number>()
+const HEIGHT_CACHE_MAX = 5000
+
 interface UseTranscriptScrollOptions {
   messages: SessionMessage[]
   visibility: TranscriptVisibility
@@ -25,11 +31,13 @@ export function useTranscriptScroll({
     [messages, visibility, shouldRenderMessage],
   )
 
-  // Per-item height estimate. Must be <= actual height to avoid the
-  // "Maximum update depth exceeded" cascade.
+  // Use cached height if available (from a previous visit), otherwise estimate.
+  // Estimates must be <= actual height to avoid the cascade bug.
   const estimateSize = useCallback((index: number) => {
     const msg = visibleMessages[index]
     if (!msg) return 44
+    const cached = sessionId ? heightCache.get(`${sessionId}:${msg.sequence}`) : undefined
+    if (cached) return cached
     const payload = msg.message
     if (payload.type === "assistant") {
       const blocks = Array.isArray(payload.content) ? payload.content
@@ -42,7 +50,7 @@ export function useTranscriptScroll({
       }
     }
     return 44
-  }, [visibleMessages])
+  }, [visibleMessages, sessionId])
 
   // Start at the bottom
   const initialOffset = useMemo(() => {
@@ -59,6 +67,26 @@ export function useTranscriptScroll({
     overscan: 5,
     initialOffset,
     useAnimationFrameWithResizeObserver: true,
+  })
+
+  // Cache measured heights so revisits use correct sizes from frame 1
+  useEffect(() => {
+    if (!sessionId) return
+    const measurements = virtualizer.getVirtualItems()
+    for (const item of measurements) {
+      if (item.size > 0) {
+        heightCache.set(`${sessionId}:${visibleMessages[item.index]?.sequence}`, item.size)
+      }
+    }
+    // Evict oldest entries when cache exceeds limit
+    if (heightCache.size > HEIGHT_CACHE_MAX) {
+      const excess = heightCache.size - HEIGHT_CACHE_MAX
+      const iter = heightCache.keys()
+      for (let i = 0; i < excess; i++) {
+        const key = iter.next().value
+        if (key) heightCache.delete(key)
+      }
+    }
   })
 
   // Reset when session changes

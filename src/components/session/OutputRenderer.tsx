@@ -65,9 +65,11 @@ interface OutputRendererProps {
   fillPanel?: boolean
   /** Called when an artifact sends an action intent via sendAction() */
   onAction?: (intent: string) => void
+  /** Called when a react artifact iframe reports its height (fully loaded) */
+  onArtifactLoaded?: () => void
 }
 
-export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction }: OutputRendererProps) {
+export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction, onArtifactLoaded }: OutputRendererProps) {
   switch (spec.type) {
     case "markdown":
       return <MarkdownOutput data={spec.data} />
@@ -97,6 +99,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction 
           sequence={sequence}
           className={fillPanel ? "w-full h-full border-0 p-4" : undefined}
           onAction={onAction}
+          onHeightReported={onArtifactLoaded}
         />
       )
     }

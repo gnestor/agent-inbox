@@ -1,4 +1,4 @@
-import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
+import { useMemo, useRef, useEffect, useCallback, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -66,6 +66,8 @@ interface SessionTranscriptProps {
   currentUserPicture?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  /** Called when all inline artifacts have reported their height */
+  onArtifactsReady?: () => void
 }
 
 export function SessionTranscript({
@@ -77,6 +79,7 @@ export function SessionTranscript({
   currentUserPicture,
   onOpenPanel,
   onAction,
+  onArtifactsReady,
 }: SessionTranscriptProps) {
   const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
     messages,
@@ -86,6 +89,44 @@ export function SessionTranscript({
   })
   const userProfiles = useUserProfiles(messages)
 
+  // Track artifact loading: count expected render_output blocks vs reported heights
+  const expectedArtifacts = useMemo(() => {
+    let count = 0
+    for (const m of visibleMessages) {
+      const blocks = getContentBlocks(m.message as any)
+      for (const b of blocks) {
+        if (b.type === "tool_use" && (b.name === "render_output" || b.name === "mcp__render_output__render_output")) {
+          count++
+        }
+      }
+    }
+    return count
+  }, [visibleMessages])
+
+  const artifactsLoadedRef = useRef(0)
+  const artifactsReadyFired = useRef(false)
+  // Reset when session changes
+  if (artifactsLoadedRef.current > expectedArtifacts) {
+    artifactsLoadedRef.current = 0
+    artifactsReadyFired.current = false
+  }
+
+  const handleArtifactLoaded = useCallback(() => {
+    artifactsLoadedRef.current++
+    if (artifactsLoadedRef.current >= expectedArtifacts && !artifactsReadyFired.current) {
+      artifactsReadyFired.current = true
+      onArtifactsReady?.()
+    }
+  }, [expectedArtifacts, onArtifactsReady])
+
+  // If no artifacts, fire ready via effect (not during render)
+  useEffect(() => {
+    if (expectedArtifacts === 0 && !artifactsReadyFired.current && visibleMessages.length > 0) {
+      artifactsReadyFired.current = true
+      onArtifactsReady?.()
+    }
+  }, [expectedArtifacts, visibleMessages.length, onArtifactsReady])
+
   return (
     <div
       ref={scrollRef}
@@ -93,7 +134,7 @@ export function SessionTranscript({
       style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
-      <div className="p-4 min-w-0 pb-4 min-h-full flex flex-col justify-end">
+      <div className="p-4 min-w-0 pb-4">
         {visibleMessages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
@@ -110,7 +151,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} onOpenPanel={onOpenPanel} onAction={onAction} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={handleArtifactLoaded} />
               </div>
             ))}
           </div>
@@ -191,12 +232,14 @@ function OutputAccordion({
   sequence,
   onOpenPanel,
   onAction,
+  onArtifactLoaded,
 }: {
   spec: OutputSpec
   sessionId: string
   sequence: number
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onArtifactLoaded?: () => void
 }) {
   const [open, setOpen] = useState(true)
   return (
@@ -231,6 +274,7 @@ function OutputAccordion({
             sessionId={sessionId}
             sequence={sequence}
             onAction={onAction}
+            onArtifactLoaded={onArtifactLoaded}
           />
         </div>
       )}
@@ -247,6 +291,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
   userProfiles,
   onOpenPanel,
   onAction,
+  onArtifactLoaded,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
@@ -256,6 +301,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
   userProfiles?: Map<string, { name: string; picture?: string }>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onArtifactLoaded?: () => void
 }) {
   const msg = message.message
 
@@ -395,7 +441,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <div className="space-y-1">
         {contentBlocks.map((block, i) => (
-          <ContentBlockView key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} />
+          <ContentBlockView key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
         ))}
       </div>
     )
@@ -447,6 +493,7 @@ function ContentBlockView({
   sessionId,
   onOpenPanel,
   onAction,
+  onArtifactLoaded,
 }: {
   block: ContentBlockType
   sequence: number
@@ -455,6 +502,7 @@ function ContentBlockView({
   sessionId?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onArtifactLoaded?: () => void
 }) {
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
@@ -530,6 +578,7 @@ function ContentBlockView({
           sequence={sequence}
           onOpenPanel={onOpenPanel}
           onAction={onAction}
+          onArtifactLoaded={onArtifactLoaded}
         />
       )
     }

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import {
   Button,
   Textarea,
@@ -10,6 +11,7 @@ import {
   Avatar,
   AvatarImage,
   AvatarFallback,
+  Skeleton,
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
@@ -45,6 +47,21 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     handleSend, handleKeyDown,
     handleBack, handleOpenPanel, isFromSidebar,
   } = useSessionView({ sessionId, title, session, phase, mutations, resumeSession })
+
+  // Show skeleton until session data + SSE presence + artifacts are ready.
+  // Skip skeleton entirely if data is already cached (navigating back).
+  const dataMatchesSession = session?.id === sessionId
+  const [sseTimedOut, setSseTimedOut] = useState(dataMatchesSession)
+  const [artifactsReady, setArtifactsReady] = useState(dataMatchesSession)
+  useEffect(() => {
+    if (!dataMatchesSession) {
+      setSseTimedOut(false)
+      setArtifactsReady(false)
+    }
+    const timer = setTimeout(() => setSseTimedOut(true), 2000)
+    return () => clearTimeout(timer)
+  }, [sessionId, dataMatchesSession])
+  const isReady = dataMatchesSession && (isLive || sseTimedOut) && (artifactsReady || sseTimedOut)
 
   const header = (
     <PanelHeader
@@ -153,15 +170,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     />
   )
 
-  if (phase.status === "loading") {
-    return (
-      <div className="flex flex-col h-full">
-        {header}
-        <PanelSkeleton />
-      </div>
-    )
-  }
-
   if (phase.status === "error") {
     return (
       <div className="flex flex-col h-full">
@@ -172,7 +180,21 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {/* Skeleton overlay — covers content until fully loaded */}
+      {!isReady && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-card">
+          <PanelHeader
+            left={
+              <>
+                {isFromSidebar ? <SidebarButton /> : <BackButton onClick={handleBack} />}
+                <Skeleton className="h-4 w-48 rounded" />
+              </>
+            }
+          />
+          <PanelSkeleton />
+        </div>
+      )}
       {header}
 
       {/* Transcript */}
@@ -190,6 +212,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           currentUserPicture={user?.picture}
           onOpenPanel={handleOpenPanel}
           onAction={(intent) => resumeSession(intent)}
+          onArtifactsReady={() => setArtifactsReady(true)}
         />
       </div>
 

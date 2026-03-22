@@ -10,6 +10,8 @@ interface ArtifactFrameProps {
   className?: string
   /** Called when the artifact sends an action intent via sendAction() */
   onAction?: (intent: string) => void
+  /** Called when the artifact iframe reports its content height (fully loaded) */
+  onHeightReported?: () => void
 }
 
 /**
@@ -40,7 +42,7 @@ const THEME_VARS = [
 
 const THEME_VARS_JSON = JSON.stringify(THEME_VARS)
 
-export function ArtifactFrame({ code, title, sessionId, sequence, className, onAction }: ArtifactFrameProps) {
+export function ArtifactFrame({ code, title, sessionId, sequence, className, onAction, onHeightReported }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
@@ -104,6 +106,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         setRuntimeError(data.message)
       } else if (data.type === "height" && typeof data.height === "number") {
         setContentHeight(data.height)
+        onHeightReported?.()
       } else if (data.type === "wheel") {
         iframe.dispatchEvent(new WheelEvent("wheel", {
           deltaX: data.deltaX,
@@ -292,13 +295,13 @@ if (_Component) {
 // Temporarily override viewport-relative heights to measure intrinsic size.
 (function() {
   var style = document.createElement('style');
-  style.textContent = '#root, #root > * { height: auto !important; min-height: 0 !important; }';
+  // Only override the outermost containers — leave component internals intact
+  style.textContent = 'html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; }';
   document.head.appendChild(style);
   function measure() {
-    var root = document.getElementById('root');
-    if (!root) return;
-    window.parent.postMessage({ type: 'height', height: root.scrollHeight }, '*');
-    // Remove the override so component scrolling works at the final size
+    // Use body.scrollHeight — reflects natural content flow after overrides
+    var h = document.body.scrollHeight;
+    if (h > 0) window.parent.postMessage({ type: 'height', height: h }, '*');
     style.remove();
   }
   requestAnimationFrame(function() { requestAnimationFrame(measure); });
