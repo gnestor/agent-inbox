@@ -1,5 +1,6 @@
 import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
+import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, UserMessage, AssistantMessage } from "@/types/session-message"
@@ -110,11 +111,9 @@ export function SessionTranscript({
               </div>
             ))}
           </div>
-        ) : !isStreaming ? (
-          <div className="flex items-center justify-center p-8 text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
-          </div>
-        ) : null}
+        ) : (
+          <PanelSkeleton />
+        )}
         {isStreaming && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -125,6 +124,7 @@ export function SessionTranscript({
     </div>
   )
 }
+
 
 // Simple toggle — intentionally avoids base-ui Accordion/AccordionItem.
 // base-ui's CompositeList registers each AccordionItem via setState in
