@@ -14,6 +14,8 @@ import shippoSvg from "@/assets/icons/shippo.svg"
 import shopifySvg from "@/assets/icons/shopify.svg"
 import slackSvg from "@/assets/icons/slack.svg"
 import googleAdsSvg from "@/assets/icons/google-ads.svg"
+import geminiSvg from "@/assets/icons/gemini.svg"
+import postgresqlSvg from "@/assets/icons/postgresql.svg"
 
 // Simple Icons — QuickBooks
 function QuickBooksIcon() {
@@ -69,6 +71,8 @@ const svgFileIcons: Record<string, string> = {
   shopify: shopifySvg,
   slack: slackSvg,
   "google-ads": googleAdsSvg,
+  gemini: geminiSvg,
+  postgres: postgresqlSvg,
 }
 
 // Inline SVG components (from Simple Icons)
