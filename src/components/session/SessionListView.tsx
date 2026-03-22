@@ -79,9 +79,10 @@ export function SessionListView() {
     return hidden
   }, [showStatus, showProject])
 
-  // Fallback: use prompt as title if summary is empty
-  // Map status to human-readable labels
-  const items = sessions.map((s) => ({
+  // Hide archived by default (unless explicitly filtered to a status)
+  const filtered = filters.status ? sessions : sessions.filter((s) => s.status !== "archived")
+
+  const items = filtered.map((s) => ({
     ...s,
     summary: s.summary || (s.prompt ? s.prompt.slice(0, 60) : "Untitled session"),
     status: STATUS_LABEL_MAP[s.status] || s.status,
