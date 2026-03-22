@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { getSession, answerSessionQuestion } from "@/api/client"
 import { useSessionStream } from "./use-session-stream"
@@ -39,6 +39,17 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
   const shouldStream = queryStatus === "running" || queryStatus === "awaiting_user_input"
 
   const stream = useSessionStream(sessionId, shouldStream)
+
+  // Invalidate sessions list when stream detects a status change
+  // so sidebar and list view update immediately (not on next poll).
+  const prevStreamStatus = useRef(stream.sessionStatus)
+  useEffect(() => {
+    if (stream.sessionStatus && stream.sessionStatus !== prevStreamStatus.current) {
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    }
+    prevStreamStatus.current = stream.sessionStatus
+  }, [stream.sessionStatus, qc, sessionId])
 
   // Single derivation — priority order matters
   const effectiveStatus = stream.sessionStatus ?? queryStatus
