@@ -97,12 +97,12 @@ describe("buildArtifactHtml", () => {
   })
 
   it("uses exportedName for component mounting", () => {
-    const html = buildArtifactHtml("function Dashboard() {}", "Test", undefined, "Dashboard")
+    const html = buildArtifactHtml("function Dashboard() {}", "Test", "Dashboard")
     expect(html).toContain("Dashboard")
   })
 
   it("falls back to App when no exportedName", () => {
-    const html = buildArtifactHtml("function App() {}", "Test", undefined, null)
+    const html = buildArtifactHtml("function App() {}", "Test", null)
     expect(html).toContain("App")
   })
 

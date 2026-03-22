@@ -38,7 +38,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
     <div className="border rounded-lg mx-3 my-2 text-sm overflow-hidden">
       {/* Entity header */}
       <div className="flex items-start gap-2.5 p-3 border-b bg-muted/30">
-        <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-background border">
+        <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-card border">
           <EntityIcon className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
         <div className="min-w-0">

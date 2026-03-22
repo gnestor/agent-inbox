@@ -24,10 +24,10 @@ describe("useEmailThread", () => {
     vi.resetAllMocks()
   })
 
-  it("returns null thread and no loading when threadId is undefined", () => {
+  it("returns undefined thread and no loading when threadId is undefined", () => {
     const { result } = renderHook(() => useEmailThread(undefined), { wrapper })
 
-    expect(result.current.thread).toBeNull()
+    expect(result.current.thread).toBeUndefined()
     expect(result.current.loading).toBe(false)
     expect(client.getEmailThread).not.toHaveBeenCalled()
   })
@@ -50,7 +50,7 @@ describe("useEmailThread", () => {
 
     const { result } = renderHook(() => useEmailThread("t1"), { wrapper })
     await waitFor(() => expect(result.current.error).toBe("API 404: Not Found"))
-    expect(result.current.thread).toBeNull()
+    expect(result.current.thread).toBeUndefined()
   })
 
   it("deduplicates requests for the same threadId", async () => {

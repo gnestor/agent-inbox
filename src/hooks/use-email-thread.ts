@@ -9,7 +9,7 @@ export function useEmailThread(threadId: string | undefined) {
     refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })
   return {
-    thread: thread ?? null,
+    thread: thread ?? undefined,
     loading,
     error: error?.message ?? null,
   }

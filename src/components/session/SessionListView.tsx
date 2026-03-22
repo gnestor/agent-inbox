@@ -60,8 +60,10 @@ const sessionOptionsFetcher: Record<string, () => Promise<string[]>> = {
   project: () => getSessionProjects().then((r) => r.projects),
 }
 
+const getId = (s: Record<string, unknown>) => s.id as string
+
 export function SessionListView() {
-  const { selectItem, getSelectedItemId, getFilters, setFilter, pushPanel } = useNavigation()
+  const { selectItem, getSelectedItemId, getFilters, setFilter, openNewSession } = useNavigation()
   const filters = getFilters("sessions")
   const { sessions, loading, error } = useSessions(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -87,39 +89,42 @@ export function SessionListView() {
 
   return (
     <ListView
-      title="Sessions"
       items={items}
-      loading={loading}
-      error={error}
       fieldSchema={sessionFieldSchema}
-      getItemId={(s) => s.id}
+      getItemId={getId}
       selectedId={getSelectedItemId("sessions")}
       onSelect={selectItem}
-      itemHeight={74}
-      activeFilters={filters}
-      onFilterChange={setFilter}
-      onSearch={(q) => setFilter("q", q)}
-      searchPlaceholder="Search sessions..."
-      optionsFetcher={sessionOptionsFetcher}
-      hiddenBadgeFields={hiddenBadgeFields}
-      headerRight={
-        <div className="flex items-center gap-1">
-          <BadgeToggleMenu
-            items={[
-              { label: "Status", checked: showStatus, onChange: setShowStatus },
-              { label: "Project", checked: showProject, onChange: setShowProject },
-            ]}
-          />
-          <button
-            onClick={() =>
-              pushPanel({ id: "new_session", type: "new_session", props: {} })
-            }
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-      }
-    />
+    >
+      <ListView.Header title="Sessions">
+        <ListView.Filters
+          activeFilters={filters}
+          onFilterChange={setFilter}
+          optionsFetcher={sessionOptionsFetcher}
+        />
+        <BadgeToggleMenu
+          items={[
+            { label: "Status", checked: showStatus, onChange: setShowStatus },
+            { label: "Project", checked: showProject, onChange: setShowProject },
+          ]}
+        />
+        <button
+          onClick={openNewSession}
+          className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </ListView.Header>
+      <ListView.Search
+        placeholder="Search sessions..."
+        onSearch={(q) => setFilter("q", q)}
+      />
+      <ListView.Body
+        itemHeight={74}
+        loading={loading}
+        error={error}
+        hiddenBadgeFields={hiddenBadgeFields}
+        emptyMessage="No sessions found"
+      />
+    </ListView>
   )
 }

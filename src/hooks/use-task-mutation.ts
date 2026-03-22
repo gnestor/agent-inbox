@@ -11,7 +11,7 @@ export function useTaskMutation(taskId: string) {
   }
 
   const mutation = useMutation({
-    mutationFn: (properties: Record<string, unknown>) => updateTask(taskId, properties),
+    mutationFn: (properties: import("@/types/notion-mutations").TaskPropertyUpdate) => updateTask(taskId, properties),
     onSuccess: () => invalidate(),
     onError: (err) => toast.error(`Update failed: ${err.message}`),
   })

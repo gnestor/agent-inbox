@@ -31,12 +31,15 @@ function useExitChildren(
   children: React.ReactNode,
   targetPanelIndex: number,
   hasMounted: React.RefObject<boolean>,
+  transition: "item" | "none",
 ) {
   const prevChildrenRef = useRef<React.ReactNode>(children)
   const prevTargetRef = useRef(targetPanelIndex)
   const [exitChildren, setExitChildren] = useState<React.ReactNode>(null)
 
-  if (targetPanelIndex < prevTargetRef.current && hasMounted.current) {
+  // Only collapse panels for push/pop transitions. Item selection transitions
+  // are handled by PanelSlot's vertical slide — the whole panel group moves as a unit.
+  if (targetPanelIndex < prevTargetRef.current && hasMounted.current && transition !== "item") {
     if (!exitChildren) {
       setExitChildren(prevChildrenRef.current)
     }
@@ -51,7 +54,7 @@ function useExitChildren(
 // --- MobileTab (fullscreen panels, scroll-snap, touch navigation) ---
 
 function MobileTab({ id, children }: TabProps) {
-  const { activeTab, getSelectedItemId, getPanels, switchTab } = useNavigation()
+  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const [snapEnabled, setSnapEnabled] = useState(false)
@@ -61,7 +64,7 @@ function MobileTab({ id, children }: TabProps) {
   void getSelectedItemId(id) // trigger re-render on selection change
   const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
 
-  const { renderedChildren, exitChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted)
+  const { renderedChildren, exitChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
 
   // Scroll to the correct panel on every render
   useEffect(() => {
@@ -92,7 +95,6 @@ function MobileTab({ id, children }: TabProps) {
           if (exitChildren) clearExit()
         }
         el.addEventListener("scrollend", onDone, { once: true })
-        setTimeout(onDone, 800)
       } else {
         el.scrollLeft = target
         requestAnimationFrame(() => {
@@ -168,7 +170,7 @@ function MobileTab({ id, children }: TabProps) {
 // --- DesktopTab (side-by-side panels, horizontal scroll) ---
 
 function DesktopTab({ id, children }: TabProps) {
-  const { activeTab, getPanels } = useNavigation()
+  const { activeTab, getPanels, getPanelTransition } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const prevPanelCountRef = useRef(0)
@@ -178,7 +180,7 @@ function DesktopTab({ id, children }: TabProps) {
 
   const panels = getPanels(id)
   const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
-  const { renderedChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted)
+  const { renderedChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
 
   // Save/restore scroll position when switching tabs
   useEffect(() => {
@@ -232,13 +234,21 @@ function DesktopTab({ id, children }: TabProps) {
     exitingPanel.style.overflow = "hidden"
     exitingPanel.style.transition = `width ${DURATION}s ${EASE_CSS}, opacity ${DURATION * 0.6}s`
 
+    // Clean up when the width transition finishes (longest of the two)
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName === "width") {
+        exitingPanel.removeEventListener("transitionend", onEnd)
+        clearExit()
+      }
+    }
+    exitingPanel.addEventListener("transitionend", onEnd)
+
     requestAnimationFrame(() => {
       exitingPanel.style.width = "0px"
       exitingPanel.style.opacity = "0"
     })
 
-    const timer = setTimeout(clearExit, DURATION * 1000 + 50)
-    return () => clearTimeout(timer)
+    return () => exitingPanel.removeEventListener("transitionend", onEnd)
   }, [renderedChildren, children, clearExit])
 
   // Intercept horizontal wheel → redirect to outer scroll
@@ -258,7 +268,7 @@ function DesktopTab({ id, children }: TabProps) {
   return (
     <div
       ref={scrollRef}
-      className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
+      className="flex flex-row h-full gap-4 shrink-0 overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
       style={{ transition: `${DURATION}s all` }}
     >
       {renderedChildren}

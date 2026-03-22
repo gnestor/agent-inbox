@@ -25,7 +25,7 @@ export async function loadNavigationState(): Promise<NavigationState | null> {
 /** Remove panels with unknown types, ensure all static tabs exist */
 function validateState(state: NavigationState): NavigationState {
   // new_session is intentionally excluded — transient panel that shouldn't persist across reloads
-  const validTypes = new Set(["list", "detail", "session", "artifact", "compose", "settings"])
+  const validTypes = new Set(["list", "detail", "session", "artifact", "code_editor", "compose", "settings"])
 
   for (const [tabId, tabState] of Object.entries(state.tabs)) {
     // Validate savedPanels entries too
@@ -37,22 +37,30 @@ function validateState(state: NavigationState): NavigationState {
       }
       tabState.savedPanels = Object.keys(cleaned).length > 0 ? cleaned : undefined
     }
-    state.tabs[tabId] = {
+    const cleaned = {
       ...tabState,
       panels: tabState.panels.filter((p) => validTypes.has(p.type)),
     }
     // Ensure at least a list panel for source tabs
     if (["emails", "tasks", "calendar", "sessions"].includes(tabId)) {
-      if (tabState.panels.length === 0 || tabState.panels[0].type !== "list") {
-        tabState.panels.unshift({ id: "list", type: "list", props: {} })
+      if (cleaned.panels.length === 0 || cleaned.panels[0].type !== "list") {
+        cleaned.panels = [{ id: "list", type: "list", props: {} }, ...cleaned.panels]
       }
     }
+    state.tabs[tabId] = cleaned
   }
 
   // Ensure all static tabs exist
   for (const tabId of ["emails", "tasks", "calendar", "sessions"]) {
     if (!state.tabs[tabId]) {
       state.tabs[tabId] = createDefaultTabState()
+    }
+  }
+
+  // Clean up stale recent:* tabs (keep only the active one, if any)
+  for (const tabId of Object.keys(state.tabs)) {
+    if (tabId.startsWith("recent:") && tabId !== state.activeTab) {
+      delete state.tabs[tabId]
     }
   }
 

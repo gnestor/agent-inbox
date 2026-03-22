@@ -1,4 +1,15 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
+import type {
+  GmailApiMessage,
+  GmailApiThread,
+  GmailApiPart,
+  GmailApiHeader,
+  GmailApiHistoryResponse,
+  GmailApiThreadListResponse,
+  GmailApiMessageListResponse,
+  GmailApiLabel,
+  GmailApiSendAs,
+} from "./types/gmail-api.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -34,14 +45,14 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&apos;/g, "'")
 }
 
-export function getHeader(message: any, name: string): string {
+export function getHeader(message: GmailApiMessage, name: string): string {
   return (
-    message.payload?.headers?.find((h: any) => h.name.toLowerCase() === name.toLowerCase())
+    message.payload?.headers?.find((h: GmailApiHeader) => h.name.toLowerCase() === name.toLowerCase())
       ?.value || ""
   )
 }
 
-export function getEmailBody(message: any): { body: string; bodyIsHtml: boolean } {
+export function getEmailBody(message: GmailApiMessage): { body: string; bodyIsHtml: boolean } {
   const payload = message.payload
   if (!payload) return { body: "", bodyIsHtml: false }
 
@@ -55,19 +66,19 @@ export function getEmailBody(message: any): { body: string; bodyIsHtml: boolean 
   }
 
   if (payload.parts) {
-    const htmlPart = payload.parts.find((p: any) => p.mimeType === "text/html")
+    const htmlPart = payload.parts.find((p: GmailApiPart) => p.mimeType === "text/html")
     if (htmlPart?.body?.data) {
       const html = decodeBase64Url(htmlPart.body.data).replace(/<script[^>]*>.*?<\/script>/gs, "")
       return { body: html, bodyIsHtml: true }
     }
 
-    const textPart = payload.parts.find((p: any) => p.mimeType === "text/plain")
+    const textPart = payload.parts.find((p: GmailApiPart) => p.mimeType === "text/plain")
     if (textPart?.body?.data)
       return { body: decodeBase64Url(textPart.body.data), bodyIsHtml: false }
 
     for (const part of payload.parts) {
       if (part.parts) {
-        const htmlSub = part.parts.find((p: any) => p.mimeType === "text/html")
+        const htmlSub = part.parts.find((p: GmailApiPart) => p.mimeType === "text/html")
         if (htmlSub?.body?.data) {
           const html = decodeBase64Url(htmlSub.body.data).replace(
             /<script[^>]*>.*?<\/script>/gs,
@@ -75,7 +86,7 @@ export function getEmailBody(message: any): { body: string; bodyIsHtml: boolean 
           )
           return { body: html, bodyIsHtml: true }
         }
-        const textSub = part.parts.find((p: any) => p.mimeType === "text/plain")
+        const textSub = part.parts.find((p: GmailApiPart) => p.mimeType === "text/plain")
         if (textSub?.body?.data)
           return { body: decodeBase64Url(textSub.body.data), bodyIsHtml: false }
       }
@@ -89,13 +100,13 @@ export function getEmailBody(message: any): { body: string; bodyIsHtml: boolean 
  * Build a map of Content-ID → attachmentId for inline images.
  * Walks all MIME parts recursively to find image/* parts with a Content-ID header.
  */
-function getInlineAttachments(payload: any): Map<string, { attachmentId: string; mimeType: string }> {
+function getInlineAttachments(payload: GmailApiPart): Map<string, { attachmentId: string; mimeType: string }> {
   const map = new Map<string, { attachmentId: string; mimeType: string }>()
 
-  function walk(part: any) {
+  function walk(part: GmailApiPart) {
     if (part.mimeType?.startsWith("image/") && part.body?.attachmentId) {
       const cidHeader = part.headers?.find(
-        (h: any) => h.name.toLowerCase() === "content-id",
+        (h: GmailApiHeader) => h.name.toLowerCase() === "content-id",
       )
       if (cidHeader) {
         // Content-ID comes as "<image001.png@01DCB162.3A573F60>", strip angle brackets
@@ -114,13 +125,13 @@ function getInlineAttachments(payload: any): Map<string, { attachmentId: string;
  * Collect non-inline file attachments from a message payload.
  * Excludes inline images (which have a Content-ID header and are image/*).
  */
-export function getAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+export function getAttachments(payload: GmailApiPart): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
   const attachments: { attachmentId: string; filename: string; mimeType: string; size: number }[] = []
 
-  function walk(part: any) {
+  function walk(part: GmailApiPart) {
     if (part.filename && part.body?.attachmentId) {
       // Skip inline images (have Content-ID header and are image/*)
-      const hasCid = part.headers?.some((h: any) => h.name.toLowerCase() === "content-id")
+      const hasCid = part.headers?.some((h: GmailApiHeader) => h.name.toLowerCase() === "content-id")
       const isImage = part.mimeType?.startsWith("image/")
       if (!(hasCid && isImage)) {
         attachments.push({
@@ -150,7 +161,7 @@ function replaceCidReferences(html: string, messageId: string, cidMap: Map<strin
   })
 }
 
-function parseMessage(message: any, sanitizeOpts?: SanitizeOptions) {
+function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) {
   const { body, bodyIsHtml } = getEmailBody(message)
   let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
 
@@ -177,8 +188,8 @@ function parseMessage(message: any, sanitizeOpts?: SanitizeOptions) {
 }
 
 export async function fetchBatched<T>(
-  items: any[],
-  fn: (item: any) => Promise<T>,
+  items: string[],
+  fn: (item: string) => Promise<T>,
   batchSize = 5,
 ): Promise<T[]> {
   const results: T[] = []
@@ -189,20 +200,37 @@ export async function fetchBatched<T>(
   return results
 }
 
-function parseThreadSummary(thread: any) {
+/** Parsed thread summary for list views */
+export interface ThreadSummary {
+  id: string
+  threadId: string
+  historyId?: string
+  messageCount: number
+  subject: string
+  from: string
+  to: string
+  date: string
+  snippet: string
+  isUnread: boolean
+  labelIds: string[]
+  body: string
+  bodyIsHtml: boolean
+}
+
+function parseThreadSummary(thread: GmailApiThread): ThreadSummary {
   const messages = thread.messages || []
   const firstMsg = messages[0]
   const lastMsg = messages[messages.length - 1]
-  const allLabelIds = [...new Set(messages.flatMap((m: any) => m.labelIds || []))] as string[]
+  const allLabelIds = [...new Set(messages.flatMap((m: GmailApiMessage) => m.labelIds || []))] as string[]
   return {
     id: thread.id,
     threadId: thread.id,
     historyId: thread.historyId,
     messageCount: messages.length,
-    subject: getHeader(firstMsg, "subject"),
-    from: getHeader(lastMsg, "from"),
-    to: getHeader(firstMsg, "to"),
-    date: getHeader(lastMsg, "date"),
+    subject: firstMsg ? getHeader(firstMsg, "subject") : "",
+    from: lastMsg ? getHeader(lastMsg, "from") : "",
+    to: firstMsg ? getHeader(firstMsg, "to") : "",
+    date: lastMsg ? getHeader(lastMsg, "date") : "",
     snippet: decodeHtmlEntities(firstMsg?.snippet || ""),
     isUnread: allLabelIds.includes("UNREAD"),
     labelIds: allLabelIds,
@@ -211,7 +239,7 @@ function parseThreadSummary(thread: any) {
   }
 }
 
-export async function getThreadSummary(accessToken: string, threadId: string) {
+export async function getThreadSummary(accessToken: string, threadId: string): Promise<ThreadSummary> {
   const params = new URLSearchParams([
     ["format", "metadata"],
     ["metadataHeaders", "From"],
@@ -219,20 +247,20 @@ export async function getThreadSummary(accessToken: string, threadId: string) {
     ["metadataHeaders", "Subject"],
     ["metadataHeaders", "Date"],
   ])
-  const thread = await gmailRequest(accessToken, `/threads/${threadId}?${params}`)
+  const thread: GmailApiThread = await gmailRequest(accessToken, `/threads/${threadId}?${params}`)
   return parseThreadSummary(thread)
 }
 
 export async function searchThreads(accessToken: string, query: string, maxResults = 20, pageToken?: string) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult = await gmailRequest(accessToken, `/threads?${params}`)
+  const listResult: GmailApiThreadListResponse = await gmailRequest(accessToken, `/threads?${params}`)
 
   if (!listResult.threads?.length) {
-    return { threads: [], nextPageToken: null, historyId: listResult.historyId || null }
+    return { threads: [] as ThreadSummary[], nextPageToken: null, historyId: listResult.historyId || null }
   }
 
-  const threads = await fetchBatched(listResult.threads, (t: any) => getThreadSummary(accessToken, t.id))
+  const threads = await fetchBatched(listResult.threads.map(t => t.id), (id) => getThreadSummary(accessToken, id))
 
   return {
     threads,
@@ -241,7 +269,7 @@ export async function searchThreads(accessToken: string, query: string, maxResul
   }
 }
 
-export async function getHistory(accessToken: string, startHistoryId: string) {
+export async function getHistory(accessToken: string, startHistoryId: string): Promise<GmailApiHistoryResponse> {
   const params = new URLSearchParams({
     startHistoryId,
     historyTypes: "messageAdded,messageDeleted,labelAdded,labelRemoved",
@@ -256,14 +284,14 @@ export async function searchMessages(accessToken: string, query: string, maxResu
     maxResults: String(maxResults),
   })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult = await gmailRequest(accessToken, `/messages?${params}`)
+  const listResult: GmailApiMessageListResponse = await gmailRequest(accessToken, `/messages?${params}`)
 
   if (!listResult.messages?.length) {
     return { messages: [], nextPageToken: null }
   }
 
-  const messages = await fetchBatched(listResult.messages, async (m: any) => {
-    const full = await gmailRequest(accessToken, `/messages/${m.id}?format=full`)
+  const messages = await fetchBatched(listResult.messages.map(m => m.id), async (id) => {
+    const full: GmailApiMessage = await gmailRequest(accessToken, `/messages/${id}?format=full`)
     return parseMessage(full)
   })
 
@@ -271,14 +299,14 @@ export async function searchMessages(accessToken: string, query: string, maxResu
 }
 
 export async function getMessage(accessToken: string, messageId: string) {
-  const full = await gmailRequest(accessToken, `/messages/${messageId}?format=full`)
+  const full: GmailApiMessage = await gmailRequest(accessToken, `/messages/${messageId}?format=full`)
   return parseMessage(full, { keepSignature: true })
 }
 
 export async function getThread(accessToken: string, threadId: string) {
-  const thread = await gmailRequest(accessToken, `/threads/${threadId}?format=full`)
+  const thread: GmailApiThread = await gmailRequest(accessToken, `/threads/${threadId}?format=full`)
   const rawMessages = thread.messages || []
-  const messages = rawMessages.map((msg: any, i: number) =>
+  const messages = rawMessages.map((msg: GmailApiMessage, i: number) =>
     parseMessage(msg, { keepSignature: i === rawMessages.length - 1 }),
   )
   const firstMessage = messages[0]
@@ -291,15 +319,15 @@ export async function getThread(accessToken: string, threadId: string) {
     from: firstMessage?.from || "",
     date: firstMessage?.date || "",
     messageCount: messages.length,
-    isUnread: messages.some((m: any) => m.isUnread),
-    labelIds: [...new Set(messages.flatMap((m: any) => m.labelIds))],
+    isUnread: messages.some((m) => m.isUnread),
+    labelIds: [...new Set(messages.flatMap((m) => m.labelIds))],
   }
 }
 
 export async function getLabels(accessToken: string) {
   const result = await gmailRequest(accessToken, "/labels")
   return {
-    labels: (result.labels || []).map((l: any) => ({
+    labels: ((result.labels || []) as GmailApiLabel[]).map((l) => ({
       id: l.id,
       name: l.name,
       type: l.type,
@@ -339,7 +367,7 @@ export async function modifyThreadLabels(
 
 export async function getSignature(accessToken: string): Promise<string> {
   const data = await gmailRequest(accessToken, "/settings/sendAs")
-  const primary = data.sendAs?.find((s: any) => s.isPrimary)
+  const primary = ((data.sendAs || []) as GmailApiSendAs[]).find((s) => s.isPrimary)
   return primary?.signature || ""
 }
 
@@ -408,7 +436,7 @@ export async function sendMessage(
   signature?: string,
 ) {
   const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
-  const message: any = { raw: encodeRaw(rawMessage) }
+  const message: { raw: string; threadId?: string } = { raw: encodeRaw(rawMessage) }
   if (threadId) message.threadId = threadId
 
   return gmailRequest(accessToken, "/messages/send", {
@@ -433,7 +461,7 @@ export async function createDraft(
   signature?: string,
 ) {
   const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
-  const draft: any = {
+  const draft: { message: { raw: string; threadId?: string } } = {
     message: { raw: encodeRaw(rawMessage) },
   }
   if (threadId) {

@@ -8,13 +8,14 @@ interface SessionFilters {
   q?: string
 }
 
-export function useSessions(filters?: SessionFilters, enabled = true) {
+export function useSessions(filters?: SessionFilters, options?: { enabled?: boolean; refetchInterval?: number | false }) {
   const isRestoring = useIsRestoring()
   const result = useQuery({
     queryKey: ["sessions", filters],
     queryFn: () => getSessions(filters).then((r) => r.sessions),
-    enabled,
+    enabled: options?.enabled ?? true,
     refetchOnMount: true, // refetch when stale (e.g. after invalidation from session create/abort)
+    refetchInterval: options?.refetchInterval,
   })
   return {
     sessions: result.data ?? [],

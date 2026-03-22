@@ -47,7 +47,7 @@ describe("useSessions", () => {
   })
 
   it("does not fetch when enabled=false", () => {
-    const { result } = renderHook(() => useSessions(undefined, false), { wrapper })
+    const { result } = renderHook(() => useSessions(undefined, { enabled: false }), { wrapper })
 
     expect(result.current.loading).toBe(false)
     expect(client.getSessions).not.toHaveBeenCalled()

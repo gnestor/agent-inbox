@@ -7,15 +7,16 @@ import { EmailListView } from "./EmailListView"
 import { EmailDetailView } from "./EmailDetailView"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
+import type { TabId } from "@/types/navigation"
 
-export function EmailTab() {
+export function EmailTab({ tabId = "emails" as TabId }: { tabId?: TabId }) {
   const { getPanels } = useNavigation()
-  const panels = getPanels("emails")
+  const panels = getPanels(tabId)
 
   return (
-    <Tab id="emails">
+    <Tab id={tabId}>
       {panels.map((panel, index) => {
-        if (index === 0) {
+        if (panel.type === "list") {
           return (
             <Panel key="list" id="list" variant="list">
               <EmailListView />

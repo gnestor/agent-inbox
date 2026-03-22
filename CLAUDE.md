@@ -11,17 +11,15 @@ Unified web app for managing emails (Gmail), Notion tasks, and Claude Code agent
 
 ## Running
 
-Always pass `--workspace` explicitly when starting the dev server:
-
 ```bash
 # From workspace root
-npm run inbox:dev -- --workspace ../agent
+npm run inbox:dev
 
 # Or directly
-cd packages/inbox && npm run dev -- --workspace ../agent
+cd packages/inbox && npm run dev
 ```
 
-The `--workspace` arg sets the agent's working directory for new sessions AND scopes which JSONL sessions are shown by default in the Sessions view. The server defaults to `../agent` if omitted, but always specify it explicitly to avoid confusion.
+The `--workspace` arg (defaults to `../agent`) sets the agent's working directory for new sessions and scopes which JSONL sessions are shown in the Sessions view.
 
 Server runs on port 3002, client on port 5175. Vite proxies `/api` to the server.
 

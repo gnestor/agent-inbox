@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
+import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { useLocation } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { getLinkedSession, sendEmail, createDraft } from "@/api/client"
+import { useQuery } from "@tanstack/react-query"
+import { getLinkedSession } from "@/api/client"
 import {
   Button,
   Accordion,
@@ -19,10 +20,10 @@ import {
   Send,
   Save,
 } from "lucide-react"
-import { toast } from "sonner"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { useEmailThread } from "@/hooks/use-email-thread"
 import { useEmailActions } from "@/hooks/use-email-actions"
+import { useEmailDraft } from "@/hooks/use-email-draft"
 import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/formatters"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -50,116 +51,27 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const actions = useEmailActions(threadId, thread, {
     onRemove: () => deselectItem(),
   })
-  const queryClient = useQueryClient()
-  const draftKey = `inbox:reply-draft:${threadId}`
-  const [draftBody, setDraftBody] = useState(() => {
-    // One-time cleanup of stale draft entries (bug: old code saved drafts under wrong keys)
-    if (!localStorage.getItem("inbox:reply-draft-cleanup-v1")) {
-      try {
-        const keys = Object.keys(localStorage).filter((k) => k.startsWith("inbox:reply-draft:"))
-        keys.forEach((k) => localStorage.removeItem(k))
-        localStorage.setItem("inbox:reply-draft-cleanup-v1", "1")
-      } catch {}
-    }
-    try {
-      const saved = localStorage.getItem(draftKey)
-      return saved?.trim() ? saved : ""
-    } catch { return "" }
-  })
 
-  // Reset draft state when switching threads (safety net — key={itemId} should remount)
-  const prevDraftKeyRef = useRef(draftKey)
-  useEffect(() => {
-    if (prevDraftKeyRef.current === draftKey) return
-    prevDraftKeyRef.current = draftKey
-    try { setDraftBody(localStorage.getItem(draftKey) ?? "") } catch { setDraftBody("") }
-  }, [draftKey])
+  const draft = useEmailDraft(threadId, thread)
 
-  // Persist draft to localStorage — only save real user content, skip on thread change
-  useEffect(() => {
-    // Skip the initial mount effect and thread changes — only persist user edits
-    if (draftKey !== prevDraftKeyRef.current) return
-    try {
-      if (draftBody.trim()) localStorage.setItem(draftKey, draftBody)
-      else localStorage.removeItem(draftKey)
-    } catch {}
-  }, [draftBody]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Intentionally omit draftKey — we never want to persist when the key changes
-
-  // Ref for stable mutation access to current draft body
-  const draftBodyRef = useRef(draftBody)
-  draftBodyRef.current = draftBody
-
-  const sendMutation = useMutation({
-    mutationFn: () => {
-      const last = thread?.messages[thread.messages.length - 1]
-      if (!last || !thread) throw new Error("No thread loaded")
-      const to = last.from
-      const subject = thread.subject.startsWith("Re: ") ? thread.subject : `Re: ${thread.subject}`
-      return sendEmail({ to, subject, body: draftBodyRef.current, threadId, inReplyTo: last.id })
-    },
-    onSuccess: () => {
-      setDraftBody("")
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
-      queryClient.invalidateQueries({ queryKey: ["emails"] })
-      toast.success("Reply sent")
-    },
-    onError: (err) => toast.error(`Send failed: ${err.message}`),
-  })
-
-  const draftMutation = useMutation({
-    mutationFn: () => {
-      const last = thread?.messages[thread.messages.length - 1]
-      if (!last || !thread) throw new Error("No thread loaded")
-      const to = last.from
-      const subject = thread.subject.startsWith("Re: ") ? thread.subject : `Re: ${thread.subject}`
-      return createDraft({ to, subject, body: draftBodyRef.current, threadId, inReplyTo: last.id })
-    },
-    onSuccess: () => {
-      toast.success("Draft saved")
-    },
-    onError: (err) => toast.error(`Save draft failed: ${err.message}`),
-  })
-
-  const isPending = sendMutation.isPending || draftMutation.isPending
-
+  // Scroll to bottom when thread loads, and keep scrolling as iframes resize
   useEffect(() => {
     if (!thread || !scrollRef.current) return
     const container = scrollRef.current
 
-    function scrollToLast() {
+    requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight
-    }
-
-    const initial = setTimeout(scrollToLast, 650)
-
-    let timer: ReturnType<typeof setTimeout>
-    const deadline = Date.now() + 2650
-    const observer = new MutationObserver(() => {
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        scrollToLast()
-        if (Date.now() >= deadline) observer.disconnect()
-      }, 50)
     })
-    observer.observe(container, { attributes: true, subtree: true, attributeFilter: ["style"] })
 
-    const cleanup = setTimeout(() => observer.disconnect(), 2650)
-    return () => {
-      clearTimeout(initial)
-      clearTimeout(timer)
-      clearTimeout(cleanup)
-      observer.disconnect()
+    const ro = new ResizeObserver(() => {
+      container.scrollTop = container.scrollHeight
+    })
+    for (const child of container.children) {
+      ro.observe(child)
     }
+
+    return () => ro.disconnect()
   }, [thread?.id])
-
-  // Seed editor from Gmail draft if no local draft exists
-  const gmailDraft = thread?.messages.find((m) => m.labelIds.includes("DRAFT"))
-  useEffect(() => {
-    if (!draftBody && gmailDraft?.body) {
-      setDraftBody(gmailDraft.body)
-    }
-  }, [gmailDraft?.id])
 
   const header = (
     <PanelHeader
@@ -290,7 +202,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 
         {/* Draft reply accordion */}
         <div className="border-b">
-          <Accordion key={threadId} defaultValue={draftBody || gmailDraft ? ["draft-reply"] : []}>
+          <Accordion key={threadId} defaultValue={draft.body || draft.hasGmailDraft ? ["draft-reply"] : []}>
             <AccordionItem value="draft-reply" className="border-0">
               <AccordionTrigger className="px-[15px] py-3 mx-px hover:no-underline hover:bg-secondary">
                 <div className="flex items-center gap-2 w-full min-w-0">
@@ -307,26 +219,26 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                   </div>
                   <RichTextEditor
                     key={threadId}
-                    value={draftBody}
-                    onChange={setDraftBody}
+                    value={draft.body}
+                    onChange={draft.setBody}
                     placeholder="Write your reply..."
-                    disabled={isPending}
-                    onCmdEnter={() => sendMutation.mutate()}
+                    disabled={draft.phase !== "idle"}
+                    onCmdEnter={draft.send}
                   />
                   <div className="flex items-center gap-4 justify-end">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => draftMutation.mutate()}
-                      disabled={isPending || !draftBody.trim()}
+                      onClick={draft.save}
+                      disabled={!draft.canSubmit}
                     >
                       <Save className="h-3.5 w-3.5 mr-1" />
                       Save Draft
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => sendMutation.mutate()}
-                      disabled={isPending || !draftBody.trim()}
+                      onClick={draft.send}
+                      disabled={!draft.canSubmit}
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
                       Send
@@ -343,12 +255,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
-const EMAIL_THEME_VARS = ["foreground", "card", "font-sans", "font-mono"] as const
-
 function HtmlBody({ html }: { html: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-
-  // Strip <style> elements and inline style attributes so the iframe's reset stylesheet applies cleanly
   const sanitizedHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\s+style="[^"]*"/gi, "")
@@ -376,54 +283,7 @@ function HtmlBody({ html }: { html: string }) {
     h1, h2, h3, h4, h5, h6 { font-size: 14px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
   </style></head><body>${sanitizedHtml}</body></html>`
 
-  // Sync theme variables from parent into iframe + auto-size height
-  useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe) return
-
-    function syncTheme() {
-      const doc = iframe!.contentDocument
-      if (!doc) return
-      const parentStyle = getComputedStyle(document.documentElement)
-      const root = doc.documentElement
-      for (const name of EMAIL_THEME_VARS) {
-        const val = parentStyle.getPropertyValue(`--${name}`).trim()
-        if (val) root.style.setProperty(`--${name}`, val)
-      }
-      // Sync color-scheme so the browser canvas matches the app theme
-      const isDark = document.documentElement.classList.contains("dark")
-      root.style.colorScheme = isDark ? "dark" : "light"
-    }
-
-    function syncHeight() {
-      const body = iframe!.contentDocument?.body
-      if (body) iframe!.style.height = body.scrollHeight + "px"
-    }
-
-    let ro: ResizeObserver | undefined
-    let observer: MutationObserver | undefined
-
-    function onLoad() {
-      syncTheme()
-      syncHeight()
-      const body = iframe!.contentDocument?.body
-      if (body) {
-        ro = new ResizeObserver(syncHeight)
-        ro.observe(body)
-      }
-    }
-    iframe.addEventListener("load", onLoad)
-
-    // Watch for theme changes (class attribute on parent <html>)
-    observer = new MutationObserver(syncTheme)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
-
-    return () => {
-      iframe.removeEventListener("load", onLoad)
-      ro?.disconnect()
-      observer?.disconnect()
-    }
-  }, [srcDoc])
+  const { iframeRef } = useIframeAutoHeight(srcDoc)
 
   return (
     <iframe

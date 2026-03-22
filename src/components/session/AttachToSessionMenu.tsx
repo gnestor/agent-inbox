@@ -1,4 +1,4 @@
-import { useState, useDeferredValue, useRef, useEffect } from "react"
+import { useState, useDeferredValue, useRef } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import {
   DropdownMenu,
@@ -33,17 +33,9 @@ export function SessionActionMenu({
   const deferredSearch = useDeferredValue(search)
   const { openSession } = useNavigation()
   const filters = deferredSearch ? { q: deferredSearch } : undefined
-  const { sessions } = useSessions(filters, open)
+  const { sessions } = useSessions(filters, { enabled: open })
   const attachMutation = useAttachToSession()
   const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (open) {
-      // Delay to let Base UI finish its focus management
-      const timer = setTimeout(() => searchInputRef.current?.focus(), 0)
-      return () => clearTimeout(timer)
-    }
-  }, [open])
 
   if (hidden) return null
 
@@ -61,7 +53,12 @@ export function SessionActionMenu({
       open={open}
       onOpenChange={(v) => {
         setOpen(v)
-        if (!v) setSearch("")
+        if (v) {
+          // Delay to let Base UI finish its focus management
+          setTimeout(() => searchInputRef.current?.focus(), 0)
+        } else {
+          setSearch("")
+        }
       }}
     >
       <DropdownMenuTrigger
@@ -91,7 +88,7 @@ export function SessionActionMenu({
         <DropdownMenuGroup>
           <DropdownMenuLabel>Add to existing session</DropdownMenuLabel>
           <div className="px-2 pb-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-card">
               <Search className="h-3 w-3 text-muted-foreground shrink-0" />
               <input
                 ref={searchInputRef}

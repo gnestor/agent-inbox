@@ -8,8 +8,10 @@ import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
 import { createSession, getTask } from "@/api/client"
 import { useEmailThread } from "@/hooks/use-email-thread"
+import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
+import { NEW_SESSION_PANEL } from "@/types/navigation"
 import type { NotionTaskDetail } from "@/types"
 
 
@@ -89,7 +91,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 // ── Compose panel ────────────────────────────────────────────────────────────
 
 function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
-  const { openSession, popPanel } = useNavigation()
+  const { popPanel, replacePanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
   const [savingName, setSavingName] = useState("")
@@ -100,25 +102,10 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     ? `inbox:draft:thread:${threadId}`
     : taskId
       ? `inbox:draft:task:${taskId}`
-      : null
+      : ""
 
-  // Read once at mount — null means no key, "" means cleared, non-empty means real draft
-  const savedDraft = useState(() => {
-    if (!draftKey) return null
-    try { return localStorage.getItem(draftKey) } catch { return null }
-  })[0]
-
-  const [prompt, setPrompt] = useState(savedDraft ?? "")
-
-  // If there's a saved draft or no linked item, skip the "Loading..." state
-  const hasSavedDraft = useRef(!!savedDraft)
-  const [ready, setReady] = useState(!!savedDraft || (!threadId && !taskId))
-
-  // Persist draft on every change
-  useEffect(() => {
-    if (!draftKey) return
-    try { localStorage.setItem(draftKey, prompt) } catch {}
-  }, [draftKey, prompt])
+  const [prompt, setPrompt] = useLocalDraft(draftKey)
+  const hasSavedDraft = useRef(!!prompt)
 
   // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
   const { thread } = useEmailThread(threadId)
@@ -128,19 +115,16 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
     enabled: !!taskId,
   })
 
-  useEffect(() => {
-    if (threadId && thread) {
-      if (!hasSavedDraft.current) setPrompt("Process this email")
-      setReady(true)
-    }
-  }, [thread, threadId])
+  // Derived — no useState needed
+  const ready = hasSavedDraft.current || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
 
-  useEffect(() => {
-    if (taskId && task) {
-      if (!hasSavedDraft.current) setPrompt("Process this task")
-      setReady(true)
-    }
-  }, [task, taskId])
+  // Seed prompt once when linked data first arrives (render-time, no effect needed)
+  const seeded = useRef(hasSavedDraft.current)
+  if (!seeded.current && (thread || task)) {
+    seeded.current = true
+    if (threadId && thread) setPrompt("Process this email")
+    else if (taskId && task) setPrompt("Process this task")
+  }
 
   const contextPrefix = thread
     ? `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>`
@@ -161,16 +145,17 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
-      openSession(sessionId)
+      replacePanel(NEW_SESSION_PANEL.id, {
+        id: `session:${sessionId}`,
+        type: "session",
+        props: { sessionId },
+      })
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })
 
   function handleClose() {
-    // "new_session" is the panel ID used when opened standalone from SessionListView;
-    // "session:new" was a legacy ID — pop whichever is present.
-    popPanel("new_session")
-    popPanel("session:new")
+    popPanel(NEW_SESSION_PANEL.id)
   }
 
   function handleSaveTemplate() {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
@@ -13,9 +13,9 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
-import type { TabId } from "@/types/navigation"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
+import type { TabId } from "@/types/navigation"
 
 const ONE_DAY_MS = 86_400_000
 
@@ -78,20 +78,13 @@ export function markSessionRead(sessionId: string): void {
   }
 }
 
-interface SidebarRecentSessionsProps {
-  switchTab: (tabId: TabId) => void
-}
-
-export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps) {
+export function SidebarRecentSessions() {
   const location = useLocation()
-  const { selectItem } = useNavigation()
+  const { openRecent, switchTab } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
-  const { sessions, refresh } = useSessions()
+  const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
   const recent = sessions.filter(isRecentSession).slice(0, 10)
-  const hasActive = recent.some(
-    (s) => s.status === "running" || s.status === "awaiting_user_input",
-  )
 
   // Collect linked IDs that need title lookups (no linkedItemTitle yet)
   const linkedEmailIds = useMemo(
@@ -137,18 +130,13 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedEmailIds, linkedTaskIds, emailSubjects.join("\0"), taskTitles.join("\0")])
 
-  // Poll every 5s while there are active sessions
-  useEffect(() => {
-    if (!hasActive) return
-    const id = setInterval(refresh, 5_000)
-    return () => clearInterval(id)
-  }, [hasActive, refresh])
+
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const readSet = useMemo(() => loadReadSet(), [recent])
   const isRecentRoute = location.pathname.startsWith("/recent/")
   const activeSessionId = activeSessionIdFromPath(location.pathname)
-  const isSessionsTab = !isRecentRoute && location.pathname.startsWith("/sessions")
+  const isSessionsTab = location.pathname.startsWith("/sessions")
 
   return (
     <SidebarGroup>
@@ -162,14 +150,20 @@ export function SidebarRecentSessions({ switchTab }: SidebarRecentSessionsProps)
             const title = linkedTitle || getSessionTitle(session)
             const isActive = isRecentRoute && session.id === activeSessionId
 
+            const sourceTab: TabId = session.linkedEmailThreadId
+              ? "emails"
+              : session.linkedTaskId
+                ? "tasks"
+                : "sessions"
+            const selectedId = session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
+
             return (
               <SidebarMenuItem key={session.id}>
                 <SidebarMenuButton
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    switchTab("sessions")
-                    selectItem(session.id, i)
+                    openRecent(session.id, sourceTab, selectedId, i)
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn(

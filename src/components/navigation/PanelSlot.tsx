@@ -31,9 +31,10 @@ interface ExitingPanel {
 }
 
 export function PanelSlot({ panelId, children }: PanelSlotProps) {
-  const { getItemDirection } = useNavigation()
+  const { getItemDirection, getPanelTransition } = useNavigation()
   const isMobile = useIsMobile()
-  const direction = getItemDirection()
+  const transition = getPanelTransition()
+  const direction = transition === "item" ? getItemDirection() : 0
 
   // Cache children by panelId so exit animation shows old content
   const cacheRef = useRef(new Map<string, React.ReactNode>())
@@ -45,8 +46,10 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
   const isFirstRef = useRef(true)
 
   if (panelId !== prevIdRef.current) {
-    // panelId changed — start exit animation for old panel
-    setExiting({ id: prevIdRef.current, content: cacheRef.current.get(prevIdRef.current)!, dir: direction })
+    // Only animate for item selection transitions, not panel push/pop
+    if (transition === "item") {
+      setExiting({ id: prevIdRef.current, content: cacheRef.current.get(prevIdRef.current)!, dir: direction })
+    }
     prevIdRef.current = panelId
     isFirstRef.current = false
   }
@@ -78,7 +81,6 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
       <div
         style={{
           position: "relative",
-          overflow: "hidden",
           width,
           height: "100%",
           flexShrink: 0,

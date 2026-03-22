@@ -1,7 +1,9 @@
-import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
-import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip } from "lucide-react"
+import { useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
+import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
+import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
+import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, UserMessage, AssistantMessage } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -12,6 +14,8 @@ import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
+import { OutputRenderer } from "./OutputRenderer"
+import type { OutputSpec } from "./OutputRenderer"
 
 hljs.registerLanguage("json", json)
 
@@ -39,12 +43,14 @@ export interface TranscriptVisibility {
   messages: boolean
   toolCalls: boolean
   thinking: boolean
+  artifacts: boolean
 }
 
 export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
   messages: true,
   toolCalls: true,
   thinking: true,
+  artifacts: true,
 }
 
 interface SessionTranscriptProps {
@@ -55,61 +61,28 @@ interface SessionTranscriptProps {
   isLive?: boolean
   visibility?: TranscriptVisibility
   sessionId?: string
+  currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }
 
 export function SessionTranscript({
   messages,
   isStreaming,
+  messageCount,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
+  currentUserEmail,
+  onOpenPanel,
+  onAction,
 }: SessionTranscriptProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const shouldAutoScroll = useRef(true)
-
-  const virtualizer = useVirtualizerSafe({
-    count: messages.length,
-    getScrollElement: () => scrollRef.current,
-    // estimateSize must be <= the minimum actual item height (accordion trigger
-    // ~44px). When items are taller than the estimate, measuring them increases
-    // total size → items only EXIT the virtual window, never enter → no new
-    // commitAttachRef calls → the flushSpawnedWork cascade terminates at depth 1.
-    // If estimate > any item height, that item's measurement DECREASES total size,
-    // adding new items to the window → more commitAttachRef → deeper cascade →
-    // "Maximum update depth exceeded" after 50 levels.
-    estimateSize: () => 44,
-    overscan: 5,
-    // Defers ResizeObserver callbacks to requestAnimationFrame so accordion open
-    // animations (which fire ResizeObserver ~60×/sec) don't trigger synchronous
-    // React state updates during the commit phase.
-    useAnimationFrameWithResizeObserver: true,
+  const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
+    messages,
+    visibility,
+    isStreaming,
+    sessionId,
+    shouldRenderMessage,
   })
-
-  // Auto-scroll to bottom when new messages arrive, unless the user has scrolled up.
-  const needsScrollRef = useRef(false)
-  useEffect(() => {
-    if (shouldAutoScroll.current && messages.length > 0) {
-      needsScrollRef.current = true
-    }
-  }, [messages.length])
-
-  // Re-run whenever totalSize changes (items measured via ResizeObserver).
-  // Iteratively scrolls toward the last item until it enters the rendered range,
-  // at which point the position is accurate and we stop.
-  const totalSize = virtualizer.getTotalSize()
-  useEffect(() => {
-    if (!needsScrollRef.current) return
-    const idx = messages.length - 1
-    virtualizer.scrollToIndex(idx, { align: "end" })
-    if (virtualizer.getVirtualItems().some((vi) => vi.index === idx)) {
-      needsScrollRef.current = false
-    }
-  }, [totalSize])
-
-  function handleScroll() {
-    if (!scrollRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-    shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100
-  }
 
   return (
     <div
@@ -118,8 +91,8 @@ export function SessionTranscript({
       style={{ overscrollBehavior: "contain" }}
       onScroll={handleScroll}
     >
-      <div className="p-4 space-y-4 min-w-0">
-        {messages.length > 0 ? (
+      <div className="p-4 min-w-0">
+        {visibleMessages.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (
               <div
@@ -131,18 +104,17 @@ export function SessionTranscript({
                   top: 0,
                   left: 0,
                   width: "100%",
+                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 56,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={messages[virtualRow.index]} visibility={visibility} sessionId={sessionId} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} onOpenPanel={onOpenPanel} onAction={onAction} />
               </div>
             ))}
           </div>
-        ) : !isStreaming ? (
-          <div className="flex items-center justify-center p-8 text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
-          </div>
-        ) : null}
+        ) : (
+          <PanelSkeleton />
+        )}
         {isStreaming && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -154,6 +126,7 @@ export function SessionTranscript({
   )
 }
 
+
 // Simple toggle — intentionally avoids base-ui Accordion/AccordionItem.
 // base-ui's CompositeList registers each AccordionItem via setState in
 // useLayoutEffect. When many virtual rows mount simultaneously (one per
@@ -163,6 +136,7 @@ export function SessionTranscript({
 function TranscriptAccordionEntry({
   value: _,
   icon: Icon,
+  picture,
   label,
   color,
   defaultOpen = false,
@@ -171,6 +145,7 @@ function TranscriptAccordionEntry({
 }: {
   value: string
   icon: ElementType
+  picture?: string
   label: string
   color: string
   defaultOpen?: boolean
@@ -185,7 +160,11 @@ function TranscriptAccordionEntry({
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 py-2 w-full text-left"
       >
-        <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
+        {picture ? (
+          <img src={picture} alt={label} className="h-3.5 w-3.5 rounded-full object-cover shrink-0" />
+        ) : (
+          <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
+        )}
         <span className={`text-xs font-medium ${color}`}>{label}</span>
         {extra}
         <ChevronDown
@@ -197,16 +176,75 @@ function TranscriptAccordionEntry({
   )
 }
 
+function OutputAccordion({
+  spec,
+  sessionId,
+  sequence,
+  onOpenPanel,
+  onAction,
+}: {
+  spec: OutputSpec
+  sessionId: string
+  sequence: number
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 py-2 w-full">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          <AppWindow className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-xs font-medium text-primary truncate">{spec.title || spec.type}</span>
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+        {onOpenPanel && (
+          <button
+            type="button"
+            className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0"
+            onClick={() => onOpenPanel(spec, sequence)}
+            title="Open in panel"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="pl-5.5">
+          <OutputRenderer
+            spec={spec}
+            sessionId={sessionId}
+            sequence={sequence}
+            onAction={onAction}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TranscriptEntry = memo(function TranscriptEntry({
   message,
   visibility,
   sessionId,
+  currentUserEmail,
+  onOpenPanel,
+  onAction,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
+  currentUserEmail?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
-  const msg = message.message as any
+  const msg = message.message
 
   if (msg.type === "system") {
     if (msg.subtype === "init") return null
@@ -222,7 +260,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
         </div>
       )
     }
-    if (msg.subtype === "result" || "result" in msg) {
+    if (msg.subtype === "result") {
       if (!visibility.messages) return null
       return (
         <TranscriptAccordionEntry
@@ -243,7 +281,22 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return null
   }
 
-  if (msg.type === "user" || msg.role === "user") {
+  if (msg.type === "user") {
+    const text = extractText(msg)
+
+    // Artifact action — render as a compact system-like event
+    const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)
+    if (actionMatch) {
+      return (
+        <TranscriptAccordionEntry
+          value={`action-${message.sequence}`}
+          icon={Zap}
+          label={actionMatch[1]}
+          color="text-chart-4"
+        />
+      )
+    }
+
     // Skill context injection — render collapsed with skill name
     const skillBlock = extractSkillBlock(msg)
     if (skillBlock) {
@@ -264,15 +317,19 @@ const TranscriptEntry = memo(function TranscriptEntry({
     }
 
     if (!visibility.messages) return null
-    const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
+    const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
+    const authorLabel = isCurrentUser ? "You" : (msg.authorName || "User")
+    const authorPicture = isCurrentUser ? undefined : msg.authorPicture
+    const authorColor = isCurrentUser ? "text-chart-2" : "text-chart-3"
     return (
       <TranscriptAccordionEntry
         value={`user-${message.sequence}`}
         icon={User}
-        label="You"
-        color="text-chart-2"
+        picture={authorPicture}
+        label={authorLabel}
+        color={authorColor}
         defaultOpen
       >
         <div className="pl-5.5 space-y-1.5">
@@ -298,9 +355,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
     )
   }
 
-  if (msg.type === "assistant" || msg.role === "assistant") {
-    const contentBlocks = msg.content || msg.message?.content || []
-    if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+  if (msg.type === "assistant") {
+    const contentBlocks = getContentBlocks(msg)
+    if (contentBlocks.length === 0) {
       if (!visibility.messages) return null
       const text = extractText(msg)
       if (!text) return null
@@ -323,8 +380,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
     return (
       <div className="space-y-1">
-        {contentBlocks.map((block: any, i: number) => (
-          <ContentBlock key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} />
+        {contentBlocks.map((block, i) => (
+          <ContentBlockView key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} />
         ))}
       </div>
     )
@@ -368,18 +425,22 @@ function MarkdownEntry({ value, text }: { value: string; text: string }) {
   )
 }
 
-function ContentBlock({
+function ContentBlockView({
   block,
   sequence,
   index,
   visibility,
   sessionId,
+  onOpenPanel,
+  onAction,
 }: {
-  block: any
+  block: ContentBlockType
   sequence: number
   index: number
   visibility: TranscriptVisibility
   sessionId?: string
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
 }) {
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
@@ -444,6 +505,21 @@ function ContentBlock({
   }
 
   if (block.type === "tool_use") {
+    // render_output tool — renders structured output in an accordion
+    if ((block.name === "render_output" || block.name === "mcp__render_output__render_output") && block.input && sessionId) {
+      if (!visibility.artifacts) return null
+      const outputSpec = block.input as OutputSpec
+      return (
+        <OutputAccordion
+          spec={outputSpec}
+          sessionId={sessionId}
+          sequence={sequence}
+          onOpenPanel={onOpenPanel}
+          onAction={onAction}
+        />
+      )
+    }
+
     if (!visibility.toolCalls) return null
     const summary = toolUseSummary(block.name, block.input)
     return (
@@ -482,7 +558,7 @@ function ContentBlock({
   return null
 }
 
-function HighlightedJson({ data, className }: { data: any; className?: string }) {
+function HighlightedJson({ data, className }: { data: unknown; className?: string }) {
   // hljs.highlight only produces <span class="hljs-*"> tags — safe to use with dangerouslySetInnerHTML
   const html = useMemo(
     () => hljs.highlight(JSON.stringify(data, null, 2), { language: "json" }).value,
@@ -497,35 +573,87 @@ function HighlightedJson({ data, className }: { data: any; className?: string })
   )
 }
 
-function toolUseSummary(name: string, input: any): string {
+function toolUseSummary(name: string, input: Record<string, unknown>): string {
   if (!input) return ""
+  const str = (key: string): string => (typeof input[key] === "string" ? input[key] : "")
   switch (name) {
     case "Read":
-      return input.file_path || ""
     case "Write":
-      return input.file_path || ""
     case "Edit":
-      return input.file_path || ""
+      return str("file_path")
     case "Bash":
-      return (
-        input.description || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
-      )
+      return str("description") || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
     case "Glob":
-      return input.pattern || ""
     case "Grep":
-      return input.pattern || ""
+      return str("pattern")
     case "WebFetch":
-      return input.url || ""
+      return str("url")
     case "WebSearch":
-      return input.query || ""
+      return str("query")
     default:
       return ""
   }
 }
 
-function isIdeContextBlock(block: any): boolean {
-  const text = block.text || ""
-  return text.startsWith("<ide_opened_file>") || text.startsWith("<ide_selection>")
+function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisibility): boolean {
+  const msg = message.message
+
+  if (msg.type === "system") {
+    if (msg.subtype === "init") return false
+    if (msg.subtype === "attached_context") return visibility.messages
+    if (msg.subtype === "result") return visibility.messages
+    return false
+  }
+
+  if (msg.type === "user") {
+    // Synthetic messages are system-injected (skill content, etc.), not user-typed
+    if ("isSynthetic" in msg && msg.isSynthetic) return false
+    const text = extractText(msg)
+    if (text?.startsWith("<artifact_action")) return true
+    if (extractSkillBlock(msg)) return true
+    if (!visibility.messages) return false
+    return !!text || parseIdeContext(msg).length > 0
+  }
+
+  if (msg.type === "assistant") {
+    const contentBlocks = getContentBlocks(msg)
+    if (contentBlocks.length === 0) {
+      return visibility.messages && !!extractText(msg)
+    }
+    return contentBlocks.some((block) => shouldRenderContentBlock(block, visibility, !!message.sessionId))
+  }
+
+  if (msg.type === "plan") return visibility.messages && !!msg.content
+  if (msg.type === "tool_result") return false
+  return false
+}
+
+function shouldRenderContentBlock(
+  block: ContentBlockType,
+  visibility: TranscriptVisibility,
+  hasSessionId: boolean,
+): boolean {
+  if (block.type === "text") {
+    return visibility.messages && !!block.text
+  }
+
+  if (block.type === "tool_use") {
+    if (block.name === "render_output" || block.name === "mcp__render_output__render_output") {
+      return visibility.artifacts && !!block.input && hasSessionId
+    }
+    return visibility.toolCalls
+  }
+
+  if (block.type === "thinking") {
+    return visibility.thinking && !!block.thinking
+  }
+
+  return false
+}
+
+function isIdeContextBlock(block: ContentBlockType): boolean {
+  if (block.type !== "text") return false
+  return block.text.startsWith("<ide_opened_file>") || block.text.startsWith("<ide_selection>")
 }
 
 export function extractXmlTag(text: string, tag: string): string | null {
@@ -533,17 +661,20 @@ export function extractXmlTag(text: string, tag: string): string | null {
   return match ? match[1].trim() : null
 }
 
-function extractSkillBlock(msg: any): { name: string; content: string } | null {
-  const blocks: any[] = Array.isArray(msg.content)
-    ? msg.content
-    : Array.isArray(msg.message?.content)
-      ? msg.message.content
-      : []
+/** Get content blocks from a message, checking both direct and nested paths. */
+function getContentBlocks(msg: UserMessage | AssistantMessage): ContentBlockType[] {
+  if (Array.isArray(msg.content)) return msg.content as ContentBlockType[]
+  if (Array.isArray(msg.message?.content)) return msg.message!.content as ContentBlockType[]
+  return []
+}
+
+function extractSkillBlock(msg: UserMessage | AssistantMessage): { name: string; content: string } | null {
+  const blocks = getContentBlocks(msg)
   const skillBlock = blocks.find(
-    (b: any) => b.type === "text" && (b.text || "").startsWith("Base directory for this skill:"),
+    (b) => b.type === "text" && b.text.startsWith("Base directory for this skill:"),
   )
-  if (!skillBlock) return null
-  const text: string = skillBlock.text
+  if (!skillBlock || skillBlock.type !== "text") return null
+  const text = skillBlock.text
   // Extract skill name from the directory path on the first line
   const dirMatch = text.match(/Base directory for this skill: .+\/(.+)/)
   const name = dirMatch ? dirMatch[1] : "Skill"
@@ -553,7 +684,7 @@ function extractSkillBlock(msg: any): { name: string; content: string } | null {
 }
 
 function parseIdeContext(
-  msg: any,
+  msg: UserMessage | AssistantMessage,
 ): Array<{ type: "file" | "selection"; path: string; filename: string; selectionLines?: string }> {
   const refs: Array<{
     type: "file" | "selection"
@@ -561,14 +692,11 @@ function parseIdeContext(
     filename: string
     selectionLines?: string
   }> = []
-  const blocks: any[] = Array.isArray(msg.content)
-    ? msg.content
-    : Array.isArray(msg.message?.content)
-      ? msg.message.content
-      : []
+  const blocks = getContentBlocks(msg)
   for (const block of blocks) {
     if (!isIdeContextBlock(block)) continue
-    const text = block.text || ""
+    if (block.type !== "text") continue
+    const text = block.text
     const fileMatch = text.match(/<ide_opened_file>The user opened the file (.+?) in the IDE/)
     if (fileMatch) {
       const path = fileMatch[1]
@@ -591,22 +719,28 @@ function parseIdeContext(
   return refs
 }
 
-function extractText(msg: any): string {
+function isVisibleTextBlock(b: ContentBlockType): b is TextBlock {
+  return b.type === "text" && !isIdeContextBlock(b)
+}
+
+function extractText(msg: SessionMessagePayload): string {
+  if (msg.type === "plan") return msg.content
+  if (msg.type === "system" || msg.type === "tool_result") return ""
+  // User or assistant message — content can be string or ContentBlock[]
   if (typeof msg.content === "string") return msg.content
-  if (typeof msg.text === "string") return msg.text
   if (msg.message?.content) {
     if (typeof msg.message.content === "string") return msg.message.content
     if (Array.isArray(msg.message.content)) {
-      return msg.message.content
-        .filter((b: any) => b.type === "text" && !isIdeContextBlock(b))
-        .map((b: any) => b.text)
+      return (msg.message.content as ContentBlockType[])
+        .filter(isVisibleTextBlock)
+        .map((b) => b.text)
         .join("\n")
     }
   }
   if (Array.isArray(msg.content)) {
-    return msg.content
-      .filter((b: any) => b.type === "text" && !isIdeContextBlock(b))
-      .map((b: any) => b.text)
+    return (msg.content as ContentBlockType[])
+      .filter(isVisibleTextBlock)
+      .map((b) => b.text)
       .join("\n")
   }
   return ""

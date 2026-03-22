@@ -92,7 +92,7 @@ export function AskUserPanel({ pendingQuestion, onSubmit }: AskUserPanelProps) {
                       "w-full text-left rounded-md border px-3 py-2 text-sm transition-colors",
                       selected
                         ? "border-primary bg-primary/5"
-                        : "border-border bg-background hover:bg-muted/50",
+                        : "border-border bg-card hover:bg-muted/50",
                     )}
                   >
                     <div className="flex items-start gap-2">
@@ -134,7 +134,7 @@ export function AskUserPanel({ pendingQuestion, onSubmit }: AskUserPanelProps) {
                     "w-full text-left rounded-md border px-3 py-2 text-sm transition-colors",
                     otherText[q.question]?.trim()
                       ? "border-primary bg-primary/5"
-                      : "border-border bg-background hover:bg-muted/50",
+                      : "border-border bg-card hover:bg-muted/50",
                   )}
                 >
                   <div className="flex items-center gap-2">

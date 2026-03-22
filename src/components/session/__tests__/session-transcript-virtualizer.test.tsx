@@ -25,14 +25,10 @@ function makeMessages(count: number): SessionMessage[] {
     id: i,
     sessionId: "test-session",
     sequence: i,
-    type: "message",
-    message: {
-      role: i % 3 === 0 ? "user" : "assistant",
-      content:
-        i % 3 === 0
-          ? "OK"
-          : [{ type: "tool_use", id: `t${i}`, name: "Read", input: { path: `/f/${i}` } }],
-    },
+    type: i % 3 === 0 ? "user" : "assistant",
+    message: i % 3 === 0
+      ? { type: "user" as const, content: "OK" }
+      : { type: "assistant" as const, content: [{ type: "tool_use" as const, id: `t${i}`, name: "Read", input: { path: `/f/${i}` } }] },
     createdAt: new Date().toISOString(),
   } satisfies SessionMessage))
 }

@@ -39,6 +39,8 @@ const calendarOptionsFetcher: Record<string, () => Promise<string[]>> = {
   assignee: () => getCalendarAssignees().then((r) => r.assignees),
 }
 
+const getId = (item: Record<string, unknown>) => item.id as string
+
 export function CalendarListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
   const filters = getFilters("calendar")
@@ -60,23 +62,18 @@ export function CalendarListView() {
 
   return (
     <ListView
-      title="Calendar"
       items={items as unknown as Record<string, unknown>[]}
-      loading={loading}
-      error={error}
       fieldSchema={calendarFieldSchema}
-      getItemId={(item) => item.id as string}
+      getItemId={getId}
       selectedId={getSelectedItemId("calendar")}
       onSelect={selectItem}
-      activeFilters={filters}
-      onFilterChange={setFilter}
-      hasMore={hasMore}
-      loadMore={loadMore}
-      onSearch={(q) => setFilter("q", q)}
-      searchPlaceholder="Search calendar..."
-      optionsFetcher={calendarOptionsFetcher}
-      hiddenBadgeFields={hiddenBadgeFields}
-      headerRight={
+    >
+      <ListView.Header title="Calendar">
+        <ListView.Filters
+          activeFilters={filters}
+          onFilterChange={setFilter}
+          optionsFetcher={calendarOptionsFetcher}
+        />
         <BadgeToggleMenu
           items={[
             { label: "Status", checked: showStatus, onChange: setShowStatus },
@@ -84,7 +81,19 @@ export function CalendarListView() {
             { label: "Assignee", checked: showAssignee, onChange: setShowAssignee },
           ]}
         />
-      }
-    />
+      </ListView.Header>
+      <ListView.Search
+        placeholder="Search calendar..."
+        onSearch={(q) => setFilter("q", q)}
+      />
+      <ListView.Body
+        loading={loading}
+        error={error}
+        hasMore={hasMore}
+        loadMore={loadMore}
+        hiddenBadgeFields={hiddenBadgeFields}
+        emptyMessage="No calendar items found"
+      />
+    </ListView>
   )
 }

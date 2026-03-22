@@ -192,7 +192,7 @@ export async function getTaskDetail(taskId: string) {
   }
 }
 
-export async function updateTaskProperties(taskId: string, properties: Record<string, unknown>) {
+export async function updateTaskProperties(taskId: string, properties: import("../../src/types/notion-mutations.js").NotionPropertyUpdate) {
   await notionRequest(`/pages/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify({ properties }),

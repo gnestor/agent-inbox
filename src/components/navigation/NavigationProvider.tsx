@@ -5,14 +5,96 @@ import type { NavigationState, PanelState, TabId, TabState } from "@/types/navig
 import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
-// --- URL helper ---
+// --- URL helpers ---
 
-export function buildUrl(activeTab: TabId, selectedItemId?: string): string {
+export function buildUrl(activeTab: TabId, selectedItemId?: string, tabState?: TabState): string {
   if (activeTab === "settings") return "/settings/integrations"
   if (activeTab.startsWith("plugin:")) return `/plugins/${activeTab.replace("plugin:", "")}`
+  if (activeTab.startsWith("recent:") && tabState) {
+    return buildRecentUrl(tabState)
+  }
   return selectedItemId
     ? `/${activeTab}/${encodeURIComponent(selectedItemId)}`
     : `/${activeTab}`
+}
+
+function buildRecentUrl(tabState: TabState): string {
+  const sourceTab = tabState.sourceTab ?? "sessions"
+  const detailPanel = tabState.panels.find((p) => p.type === "detail")
+  const sessionPanel = tabState.panels.find((p) => p.type === "session")
+  const itemId = detailPanel?.props.itemId
+
+  if (sourceTab === "sessions") {
+    const sid = sessionPanel?.props.sessionId ?? itemId
+    return `/recent/sessions/${sid ? encodeURIComponent(sid) : ""}`
+  }
+  if (itemId && sessionPanel) {
+    return `/recent/${sourceTab}/${encodeURIComponent(itemId)}/session/${encodeURIComponent(sessionPanel.props.sessionId)}`
+  }
+  if (itemId) {
+    return `/recent/${sourceTab}/${encodeURIComponent(itemId)}`
+  }
+  return `/recent/${sourceTab}`
+}
+
+export interface ParsedUrl {
+  tabId: TabId
+  selectedId?: string
+  sessionId?: string
+  /** For recent:* tabs, the source tab that spawned this */
+  sourceTab?: TabId
+}
+
+/** Parse a URL pathname into navigation intent. Pure function, no side effects. */
+export function parseUrl(pathname: string): ParsedUrl {
+  const parts = pathname.split("/").filter(Boolean)
+  if (parts[0] === "recent") {
+    // /recent/sessions/{sessionId}
+    if (parts[1] === "sessions" && parts[2]) {
+      const sessionId = decodeURIComponent(parts[2])
+      return { tabId: `recent:${sessionId}`, sourceTab: "sessions", selectedId: sessionId }
+    }
+    // /recent/emails/{id}/session/{sessionId} or /recent/tasks/{id}/session/{sessionId}
+    if (["emails", "tasks"].includes(parts[1]) && parts[2]) {
+      const selectedId = decodeURIComponent(parts[2])
+      const sessionId = parts[3] === "session" && parts[4] ? decodeURIComponent(parts[4]) : undefined
+      const key = sessionId ?? selectedId
+      return { tabId: `recent:${key}`, sourceTab: parts[1] as TabId, selectedId, sessionId }
+    }
+    return { tabId: "sessions" }
+  }
+  if (parts[0] === "settings") return { tabId: "settings" }
+  if (parts[0] === "plugins" && parts[1]) return { tabId: `plugin:${parts[1]}` as TabId }
+  if (["emails", "tasks", "calendar", "sessions"].includes(parts[0]))
+    return { tabId: parts[0] as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
+  return { tabId: "emails" }
+}
+
+/** Build an ephemeral tab state for a /recent/ route (no list panel). */
+function createRecentTabState(parsed: ParsedUrl): TabState {
+  const panels: PanelState[] = []
+  if (parsed.selectedId && parsed.sourceTab !== "sessions") {
+    panels.push({ id: `detail:${parsed.selectedId}`, type: "detail", props: { itemId: parsed.selectedId } })
+  }
+  if (parsed.sessionId) {
+    panels.push({
+      id: `session:${parsed.sessionId}`,
+      type: "session",
+      props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
+    })
+  } else if (parsed.sourceTab === "sessions" && parsed.selectedId) {
+    // /recent/sessions/{sessionId} — the selectedId IS the sessionId
+    panels.push({
+      id: `detail:${parsed.selectedId}`,
+      type: "detail",
+      props: { itemId: parsed.selectedId },
+    })
+  }
+  return {
+    panelScrollOffset: 0,
+    panels,
+    sourceTab: parsed.sourceTab,
+  }
 }
 
 // --- Actions ---
@@ -28,6 +110,7 @@ export type NavAction =
   | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState }
   | { type: "OPEN_SESSION"; sessionId?: string }
   | { type: "OPEN_NEW_SESSION" }
+  | { type: "OPEN_RECENT"; sessionId: string; sourceTab: TabId; selectedId?: string; sidebarIndex: number }
   | { type: "SET_FILTER"; key: string; value: string }
   | { type: "CLEAR_FILTERS" }
 
@@ -60,6 +143,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       saveExtraPanels(tab)
 
       tab.selectedItemId = action.itemId
+      tab.panelTransition = "item"
 
       // Compute direction from list index
       if (action.listIndex !== undefined) {
@@ -92,6 +176,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       // Don't push duplicates
       if (tab.panels.some((p) => p.id === action.panel.id)) return state
       tab.panels = [...tab.panels, action.panel]
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -99,13 +184,12 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       const idx = tab.panels.findIndex((p) => p.id === action.panelId)
       if (idx >= 0) {
-        // Truncate from this panel's position — removes it and everything after it
         tab.panels = tab.panels.slice(0, idx)
-        // If the truncation removed the detail panel, clear selectedItemId
         if (!tab.panels.some((p) => p.type === "detail")) {
           tab.selectedItemId = undefined
         }
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -115,12 +199,14 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       if (!tab.panels.some((p) => p.type === "detail")) {
         tab.selectedItemId = undefined
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
     case "REPLACE_PANEL": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       tab.panels = tab.panels.map((p) => (p.id === action.panelId ? action.newPanel : p))
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -132,7 +218,6 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
         type: "session",
         props: { sessionId, linkedItemId: tab.selectedItemId },
       }
-      // Replace existing session panel or push
       const existingIdx = tab.panels.findIndex((p) => p.type === "session")
       if (existingIdx >= 0) {
         tab.panels = [...tab.panels]
@@ -140,6 +225,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       } else {
         tab.panels = [...tab.panels, sessionPanel]
       }
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -149,6 +235,26 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       tab.selectedItemId = undefined
       tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
+    }
+
+    case "OPEN_RECENT": {
+      const tabId: TabId = `recent:${action.sessionId}`
+      const parsed: ParsedUrl = {
+        tabId,
+        sourceTab: action.sourceTab,
+        selectedId: action.selectedId,
+        sessionId: action.sessionId,
+      }
+      const tab = createRecentTabState(parsed)
+
+      // Compute direction from previous recent tab's sidebar position
+      const oldTab = state.activeTab.startsWith("recent:") ? state.tabs[state.activeTab] : undefined
+      const oldIdx = oldTab?.sidebarIndex ?? -1
+      tab.itemDirection = action.sidebarIndex > oldIdx ? 1 : action.sidebarIndex < oldIdx ? -1 : 1
+      tab.sidebarIndex = action.sidebarIndex
+      tab.panelTransition = "item"
+
+      return { ...state, activeTab: tabId, tabs: { ...state.tabs, [tabId]: tab } }
     }
 
     case "SET_FILTER": {
@@ -180,9 +286,17 @@ export const NavigationContext = createContext<NavigationContextValue | null>(nu
 // --- Provider ---
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(navReducer, createDefaultNavigationState())
-  const navigate = useNavigate()
   const location = useLocation()
+  // Derive initial activeTab from URL synchronously so SlotStack renders
+  // at the correct scroll position on the first frame (no flash of Emails tab).
+  const [state, dispatch] = useReducer(navReducer, location.pathname, (pathname) => {
+    const { tabId } = parseUrl(pathname)
+    const base = createDefaultNavigationState()
+    base.activeTab = tabId
+    return base
+  })
+  const navigate = useNavigate()
+  const mountStarted = useRef(false)
   const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -195,26 +309,68 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // effect can distinguish our navigations from browser back/forward.
   const lastNavigatedUrl = useRef(location.pathname)
 
-  // Load state from storage on mount
+  // Load persisted state on mount, merging with URL (URL is source of truth).
+  // mountStarted prevents double-mount; initialized gates other effects until
+  // the async load completes (so the state→URL effect can't fire with default state).
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
+    if (mountStarted.current) return
+    mountStarted.current = true
 
     ;(async () => {
-      let loaded = await loadNavigationState()
-      if (!loaded) {
-        loaded = await migrateFromLocalStorage()
+      // 1. URL is the source of truth on refresh
+      // (parsed result used below in step 3)
+
+      // 2. Persisted state supplements (panel stacks, filters, scroll, savedPanels)
+      let base = await loadNavigationState()
+      if (!base) base = await migrateFromLocalStorage()
+      if (!base) base = createDefaultNavigationState()
+
+      // 3. Override activeTab and selectedItemId from URL
+      const parsed = parseUrl(location.pathname)
+      base.activeTab = parsed.tabId
+
+      if (parsed.tabId.startsWith("recent:")) {
+        // Ephemeral tab — no list panel, built from URL
+        base.tabs[parsed.tabId] = createRecentTabState(parsed)
+      } else {
+        const tab = base.tabs[parsed.tabId] ?? createDefaultTabState()
+        if (parsed.selectedId) {
+          // If persisted state already matches the URL's selected item,
+          // keep the persisted panels (preserves extra panels like code_editor).
+          // Only rebuild if the selected item changed.
+          if (tab.selectedItemId !== parsed.selectedId) {
+            tab.selectedItemId = parsed.selectedId
+            const saved = tab.savedPanels?.[parsed.selectedId] ?? []
+            tab.panels = [
+              tab.panels[0] ?? { id: "list", type: "list", props: {} },
+              { id: `detail:${parsed.selectedId}`, type: "detail", props: { itemId: parsed.selectedId } },
+              ...saved,
+            ]
+          }
+          if (parsed.sessionId) {
+            // Ensure session panel exists (URL may include /session/ suffix)
+            if (!tab.panels.some((p) => p.type === "session" && p.props.sessionId === parsed.sessionId)) {
+              tab.panels = tab.panels.filter((p) => p.type !== "session")
+              tab.panels.push({
+                id: `session:${parsed.sessionId}`,
+                type: "session",
+                props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
+              })
+            }
+          }
+        } else {
+          tab.selectedItemId = undefined
+          tab.panels = [tab.panels[0] ?? { id: "list", type: "list", props: {} }]
+        }
+        base.tabs[parsed.tabId] = tab
       }
-      if (loaded) {
-        dispatch({ type: "SET_STATE", state: loaded })
-        const tab = loaded.tabs[loaded.activeTab]
-        const selectedId = tab?.selectedItemId
-        const url = buildUrl(loaded.activeTab, selectedId)
-        lastNavigatedUrl.current = url
-        navigate(url, { replace: true })
-      }
+
+      // 4. Dispatch merged state; URL already correct, no navigate() needed
+      dispatch({ type: "SET_STATE", state: base })
+      lastNavigatedUrl.current = location.pathname
+      initialized.current = true
     })()
-  }, [navigate])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced persistence
   useEffect(() => {
@@ -227,47 +383,45 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   // Declarative state → URL sync
-  // Derives URL from state and navigates when it differs from the current URL.
-  const activeSelectedId = state.tabs[state.activeTab]?.selectedItemId
+  const activeTabState = state.tabs[state.activeTab]
+  const activeSelectedId = activeTabState?.selectedItemId
   useEffect(() => {
     if (!initialized.current) return
-    const url = buildUrl(state.activeTab, activeSelectedId)
+    const url = buildUrl(state.activeTab, activeSelectedId, activeTabState)
     if (url !== lastNavigatedUrl.current) {
       lastNavigatedUrl.current = url
       navigate(url)
     }
-  }, [state.activeTab, activeSelectedId, navigate])
+  }, [state.activeTab, activeSelectedId, activeTabState, navigate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // URL → state sync (browser back/forward ONLY)
-  // When the URL changes due to our state→URL effect, lastNavigatedUrl matches,
-  // so this effect skips. When it changes due to browser back/forward,
-  // lastNavigatedUrl won't match, so we parse the URL and dispatch.
-  // Uses stateRef to read the latest state without adding `state` as a dependency.
+  // URL → state sync (browser back/forward and sidebar links)
   useEffect(() => {
     if (!initialized.current) return
     if (location.pathname === lastNavigatedUrl.current) return
     lastNavigatedUrl.current = location.pathname
 
-    const parts = location.pathname.split("/").filter(Boolean)
-    let tabId: TabId = "emails"
-    let selectedId: string | undefined
+    const parsed = parseUrl(location.pathname)
+    const currentState = stateRef.current
 
-    if (parts[0] === "settings") tabId = "settings"
-    else if (parts[0] === "plugins" && parts[1]) tabId = `plugin:${parts[1]}` as TabId
-    else if (["emails", "tasks", "calendar", "sessions"].includes(parts[0])) {
-      tabId = parts[0] as TabId
-      if (parts[1]) selectedId = decodeURIComponent(parts[1])
+    // For recent:* tabs, create ephemeral tab state and switch
+    if (parsed.tabId.startsWith("recent:")) {
+      const newTabs = { ...currentState.tabs }
+      newTabs[parsed.tabId] = createRecentTabState(parsed)
+      dispatch({ type: "SET_STATE", state: { ...currentState, activeTab: parsed.tabId, tabs: newTabs } })
+      return
     }
 
-    const currentState = stateRef.current
-    if (tabId !== currentState.activeTab) {
-      dispatch({ type: "SWITCH_TAB", tabId })
+    if (parsed.tabId !== currentState.activeTab) {
+      dispatch({ type: "SWITCH_TAB", tabId: parsed.tabId })
     }
     const currentSelectedId = currentState.tabs[currentState.activeTab]?.selectedItemId
-    if (selectedId && selectedId !== currentSelectedId) {
-      dispatch({ type: "SELECT_ITEM", itemId: selectedId })
-    } else if (!selectedId && currentSelectedId) {
+    if (parsed.selectedId && parsed.selectedId !== currentSelectedId) {
+      dispatch({ type: "SELECT_ITEM", itemId: parsed.selectedId })
+    } else if (!parsed.selectedId && currentSelectedId) {
       dispatch({ type: "DESELECT_ITEM" })
+    }
+    if (parsed.sessionId) {
+      dispatch({ type: "OPEN_SESSION", sessionId: parsed.sessionId })
     }
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 

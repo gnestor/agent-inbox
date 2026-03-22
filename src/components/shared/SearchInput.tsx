@@ -9,7 +9,7 @@ interface SearchInputProps {
 export function SearchInput({ value, onChange, placeholder = "Search..." }: SearchInputProps) {
   return (
     <div className="px-2 py-2 border-b">
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background">
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card">
         <Search className="h-3 w-3 text-muted-foreground shrink-0" />
         <input
           className="flex-1 text-sm bg-transparent outline-none w-full placeholder:text-muted-foreground"

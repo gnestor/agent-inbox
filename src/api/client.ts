@@ -128,7 +128,7 @@ export async function getTask(taskId: string) {
   return request<import("@/types").NotionTaskDetail>(`/notion/tasks/${taskId}`)
 }
 
-export async function updateTask(taskId: string, properties: Record<string, unknown>) {
+export async function updateTask(taskId: string, properties: import("@/types/notion-mutations").TaskPropertyUpdate) {
   return request<{ ok: boolean }>(`/notion/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify(properties),
@@ -156,7 +156,7 @@ export async function getCalendarItem(itemId: string) {
   return request<import("@/types").NotionCalendarItemDetail>(`/notion/calendar/${itemId}`)
 }
 
-export async function updateCalendarItem(itemId: string, properties: Record<string, unknown>) {
+export async function updateCalendarItem(itemId: string, properties: import("@/types/notion-mutations").CalendarPropertyUpdate) {
   return request<{ ok: boolean }>(`/notion/calendar/${itemId}`, {
     method: "PATCH",
     body: JSON.stringify(properties),

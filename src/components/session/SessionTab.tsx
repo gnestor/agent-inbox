@@ -5,16 +5,16 @@ import { PanelSlot } from "@/components/navigation/PanelSlot"
 import { PanelContent } from "@/components/navigation/PanelContent"
 import { SessionListView } from "./SessionListView"
 import { SessionView } from "./SessionView"
+import type { TabId } from "@/types/navigation"
 
-export function SessionTab() {
+export function SessionTab({ tabId = "sessions" as TabId }: { tabId?: TabId }) {
   const { getPanels } = useNavigation()
-  const panels = getPanels("sessions")
+  const panels = getPanels(tabId)
 
   return (
-    <Tab id="sessions">
+    <Tab id={tabId}>
       {panels.map((panel, index) => {
-        // Slot 0 (list) doesn't need item animation
-        if (index === 0) {
+        if (panel.type === "list") {
           return (
             <Panel key="list" id="list" variant="list">
               <SessionListView />
@@ -22,7 +22,6 @@ export function SessionTab() {
           )
         }
 
-        // Other slots get PanelSlot for item-change animation
         return (
           <PanelSlot key={index} panelId={panel.id}>
             <Panel id={panel.id} variant={panel.type}>
