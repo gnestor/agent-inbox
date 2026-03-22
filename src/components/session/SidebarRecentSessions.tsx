@@ -25,9 +25,13 @@ export function isRecentSession(session: Session): boolean {
   return Date.now() - new Date(ref).getTime() < ONE_DAY_MS
 }
 
+const IDLE_MS = 30 * 60 * 1000
+
 function getIndicatorColor(session: Session, isRead: boolean): string {
   if (session.status === "running") return "#EAB308"
   if (session.status === "awaiting_user_input" || session.status === "errored") return "#EF4444"
+  const lastActivity = new Date(session.completedAt ?? session.updatedAt).getTime()
+  if (Date.now() - lastActivity > IDLE_MS) return "#9CA3AF"
   return isRead ? "#9CA3AF" : "#22C55E"
 }
 
