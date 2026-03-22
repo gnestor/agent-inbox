@@ -279,9 +279,9 @@ function ChartOutput({ data }: { data: ChartData }) {
     }
   })
 
-  const ChartElement = type === "line" ? Recharts.Line
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ChartElement: any = type === "line" ? Recharts.Line
     : type === "area" ? Recharts.Area
-    : type === "pie" ? Recharts.Pie
     : Recharts.Bar
 
   if (type === "pie") {

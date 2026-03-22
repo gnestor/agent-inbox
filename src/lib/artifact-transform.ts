@@ -67,17 +67,13 @@ export function transformArtifactCode(source: string): TransformResult {
     "useId", "useTransition", "useDeferredValue", "startTransition",
   ]
   // Consolidate all React imports into one and inject missing APIs.
-  // Collect all named imports and detect if React default is imported.
-  let hasReactDefault = false
   const reactNamedImports = new Set<string>()
   // Remove all existing react imports — we'll emit a single consolidated one
-  code = code.replace(/^import\s+(?:(\w+)\s*,?\s*)?\{([^}]*)\}\s*from\s+['"]react['"];?\s*$/gm, (_, def, named) => {
-    if (def) hasReactDefault = true
+  code = code.replace(/^import\s+(?:(\w+)\s*,?\s*)?\{([^}]*)\}\s*from\s+['"]react['"];?\s*$/gm, (_, _def, named) => {
     named.split(",").forEach((s: string) => { const n = s.trim(); if (n) reactNamedImports.add(n) })
     return ""
   })
-  code = code.replace(/^import\s+(\w+)\s+from\s+['"]react['"];?\s*$/gm, (_, def) => {
-    if (def) hasReactDefault = true
+  code = code.replace(/^import\s+(\w+)\s+from\s+['"]react['"];?\s*$/gm, () => {
     return ""
   })
   // Find which React APIs are used but not yet imported
