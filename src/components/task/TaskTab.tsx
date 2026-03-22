@@ -15,7 +15,7 @@ export function TaskTab({ tabId = "tasks" as TabId }: { tabId?: TabId }) {
 
   return (
     <Tab id={tabId}>
-      {panels.map((panel) => {
+      {panels.map((panel, index) => {
         if (panel.type === "list") {
           return (
             <Panel key="list" id="list" variant="list">
@@ -25,7 +25,7 @@ export function TaskTab({ tabId = "tasks" as TabId }: { tabId?: TabId }) {
         }
 
         return (
-          <PanelSlot key={panel.id} panelId={panel.id}>
+          <PanelSlot key={index} panelId={panel.id}>
             <Panel id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (
                 <TaskDetailView itemId={panel.props.itemId} />
