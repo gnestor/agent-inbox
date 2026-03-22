@@ -81,7 +81,6 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
       <div
         style={{
           position: "relative",
-          overflow: "hidden",
           width,
           height: "100%",
           flexShrink: 0,
