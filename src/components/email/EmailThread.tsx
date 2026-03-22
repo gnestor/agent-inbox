@@ -343,35 +343,32 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
+const EMAIL_THEME_VARS = ["foreground", "card", "font-sans", "font-mono"] as const
+
 function HtmlBody({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const style = getComputedStyle(document.documentElement)
-  const fg = style.getPropertyValue("--foreground").trim() || "inherit"
-  const bg = "transparent"
-  const font =
-    style.getPropertyValue("--font-sans").trim() ||
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 
   // Strip <style> elements and inline style attributes so the iframe's reset stylesheet applies cleanly
   const sanitizedHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\s+style="[^"]*"/gi, "")
 
+  // Use CSS variables (synced live from parent) instead of baked-in values
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><style>
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: ${bg} !important; color: ${fg}; font-family: ${font}; font-size: 14px; line-height: 1.625; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: var(--card, transparent) !important; color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: 14px; line-height: 1.625; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.12); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.2); }
     blockquote, .gmail_quote, .gmail_extra, [class*="quote"] { display: none !important; }
     img { max-width: 100%; height: auto; }
-    a { color: ${fg} !important; opacity: 0.7; word-break: break-all; }
-    pre, code { white-space: pre-wrap !important; font-family: monospace !important; }
+    a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
+    pre, code { white-space: pre-wrap !important; font-family: var(--font-mono, monospace) !important; }
     table, thead, tbody, tr, th, td { border: none !important; }
     table { max-width: 100%; border-collapse: collapse; width: 100%; table-layout: auto; text-align: left; margin: 1em 0; }
-    thead { border-bottom: 1px solid color-mix(in srgb, ${fg} 20%, transparent) !important; }
-    tbody tr { border-bottom: 1px solid color-mix(in srgb, ${fg} 10%, transparent) !important; }
+    thead { border-bottom: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent) !important; }
+    tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent) !important; }
     th { font-weight: 600; padding: 0.5em 0.75em; vertical-align: bottom; }
     td { padding: 0.5em 0.75em; vertical-align: top; }
     p { margin: 0.25em 0; }
@@ -379,20 +376,35 @@ function HtmlBody({ html }: { html: string }) {
     h1, h2, h3, h4, h5, h6 { font-size: 14px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
   </style></head><body>${sanitizedHtml}</body></html>`
 
-  // Size the iframe from the parent using allow-same-origin DOM access (no scripts needed)
+  // Sync theme variables from parent into iframe + auto-size height
   useEffect(() => {
     const iframe = iframeRef.current
     if (!iframe) return
+
+    function syncTheme() {
+      const doc = iframe!.contentDocument
+      if (!doc) return
+      const parentStyle = getComputedStyle(document.documentElement)
+      const root = doc.documentElement
+      for (const name of EMAIL_THEME_VARS) {
+        const val = parentStyle.getPropertyValue(`--${name}`).trim()
+        if (val) root.style.setProperty(`--${name}`, val)
+      }
+      // Sync color-scheme so the browser canvas matches the app theme
+      const isDark = document.documentElement.classList.contains("dark")
+      root.style.colorScheme = isDark ? "dark" : "light"
+    }
 
     function syncHeight() {
       const body = iframe!.contentDocument?.body
       if (body) iframe!.style.height = body.scrollHeight + "px"
     }
 
-    iframe.addEventListener("load", syncHeight)
-
     let ro: ResizeObserver | undefined
+    let observer: MutationObserver | undefined
+
     function onLoad() {
+      syncTheme()
       syncHeight()
       const body = iframe!.contentDocument?.body
       if (body) {
@@ -402,10 +414,14 @@ function HtmlBody({ html }: { html: string }) {
     }
     iframe.addEventListener("load", onLoad)
 
+    // Watch for theme changes (class attribute on parent <html>)
+    observer = new MutationObserver(syncTheme)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+
     return () => {
-      iframe.removeEventListener("load", syncHeight)
       iframe.removeEventListener("load", onLoad)
       ro?.disconnect()
+      observer?.disconnect()
     }
   }, [srcDoc])
 
