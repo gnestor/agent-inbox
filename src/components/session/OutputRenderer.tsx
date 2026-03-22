@@ -79,7 +79,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction 
       return <JsonOutput data={spec.data} />
     case "chart": {
       const chartData = normalizeChartData(spec.data)
-      if (!chartData) return <div className="p-3 text-xs text-muted-foreground">Invalid chart data</div>
+      if (!chartData) return <div className="p-4 text-xs text-muted-foreground">Invalid chart data</div>
       return <ChartOutput data={chartData} />
     }
     case "file":
@@ -102,7 +102,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction 
     }
     default:
       return (
-        <div className="p-3 text-xs text-muted-foreground">
+        <div className="p-4 text-xs text-muted-foreground">
           Unknown output type
         </div>
       )
@@ -260,7 +260,7 @@ function ChartOutput({ data }: { data: ChartData }) {
   }, [])
 
   if (!Recharts || !ChartComponents || !data?.data) {
-    return <div className="p-3 text-xs text-muted-foreground">Loading chart...</div>
+    return <div className="p-4 text-xs text-muted-foreground">Loading chart...</div>
   }
 
   const { type = "bar", data: chartData, xKey, yKeys = [], labels, colors } = data
@@ -293,7 +293,7 @@ function ChartOutput({ data }: { data: ChartData }) {
     }))
 
     return (
-      <div className="p-3">
+      <div className="p-4">
         <ChartContainer config={config} className="h-[250px] w-full">
           <Recharts.PieChart>
             <ChartTooltip content={<ChartTooltipContent />} />
@@ -305,7 +305,7 @@ function ChartOutput({ data }: { data: ChartData }) {
   }
 
   return (
-    <div className="p-3">
+    <div className="p-4">
       <ChartContainer config={config} className="h-[250px] w-full">
         <Recharts.ComposedChart data={chartData}>
           <Recharts.CartesianGrid vertical={false} className="stroke-border" />
@@ -336,7 +336,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
   const downloadUrl = getSessionFileUrl(sessionId, data.name)
 
   return (
-    <div className="flex items-center gap-3 p-3">
+    <div className="flex items-center gap-4 p-4">
       <FileText className="h-8 w-8 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{data.name}</p>
@@ -362,7 +362,7 @@ function ConversationOutput({ data }: { data: ConversationData }) {
   // Handle data sent as array directly or with missing messages field
   const messages = Array.isArray(data) ? data : data?.messages ?? []
   return (
-    <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
+    <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
       {messages.map((msg, i) => {
         const isUser = msg.role === "user"
         return (

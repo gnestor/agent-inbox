@@ -362,6 +362,21 @@ sessionRoutes.post("/:id/archive", async (c) => {
   return c.json({ ok: archived })
 })
 
+// --- Artifact code editing ---
+
+sessionRoutes.patch("/:id/artifact", async (c) => {
+  const sessionId = c.req.param("id")
+  const { sequence, code } = await c.req.json()
+  if (typeof sequence !== "number" || typeof code !== "string") {
+    return c.json({ error: "sequence (number) and code (string) are required" }, 400)
+  }
+  const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
+  if (!ok) {
+    return c.json({ error: "Artifact not found at the given sequence" }, 404)
+  }
+  return c.json({ ok: true })
+})
+
 // --- File upload / download ---
 
 sessionRoutes.post("/:id/files", async (c) => {

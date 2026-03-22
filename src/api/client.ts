@@ -221,6 +221,13 @@ export async function resumeSession(sessionId: string, prompt: string) {
   })
 }
 
+export async function updateArtifactCode(sessionId: string, sequence: number, code: string) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}/artifact`, {
+    method: "PATCH",
+    body: JSON.stringify({ sequence, code }),
+  })
+}
+
 export async function abortSession(sessionId: string) {
   return request<{ ok: boolean }>(`/sessions/${sessionId}/abort`, {
     method: "POST",
