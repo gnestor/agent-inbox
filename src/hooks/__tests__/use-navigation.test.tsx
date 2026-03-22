@@ -128,4 +128,56 @@ describe("useNavigation", () => {
     // The item should NOT appear on the emails tab
     expect(result.current.getSelectedItemId("emails")).toBeUndefined()
   })
+
+  it("openNewSession places new_session panel at position 1", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.openNewSession())
+    const panels = result.current.getPanels()
+    expect(panels).toHaveLength(2)
+    expect(panels[1]).toEqual({ id: "new_session", type: "new_session", props: {} })
+  })
+
+  it("openNewSession clears selectedItemId", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.selectItem("item-1"))
+    expect(result.current.getSelectedItemId()).toBe("item-1")
+    act(() => result.current.openNewSession())
+    expect(result.current.getSelectedItemId()).toBeUndefined()
+  })
+
+  it("openNewSession replaces existing detail panel at position 1", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.selectItem("item-1"))
+    expect(result.current.getPanels()).toHaveLength(2)
+    act(() => result.current.openNewSession())
+    const panels = result.current.getPanels()
+    expect(panels).toHaveLength(2)
+    expect(panels[1].type).toBe("new_session")
+  })
+
+  it("popPanel('new_session') removes the new_session panel", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.openNewSession())
+    act(() => result.current.popPanel("new_session"))
+    expect(result.current.getPanels()).toHaveLength(1) // list only
+  })
+
+  it("replacePanel swaps new_session with a session panel after creation", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.openNewSession())
+    act(() =>
+      result.current.replacePanel("new_session", {
+        id: "session:abc",
+        type: "session",
+        props: { sessionId: "abc" },
+      }),
+    )
+    const panels = result.current.getPanels()
+    expect(panels).toHaveLength(2)
+    expect(panels[1]).toEqual({
+      id: "session:abc",
+      type: "session",
+      props: { sessionId: "abc" },
+    })
+  })
 })

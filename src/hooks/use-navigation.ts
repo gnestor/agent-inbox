@@ -46,6 +46,11 @@ export function useNavigation() {
     [dispatch],
   )
 
+  const openNewSession = useCallback(
+    () => dispatch({ type: "OPEN_NEW_SESSION" }),
+    [dispatch],
+  )
+
   const getPanels = useCallback(
     (tab?: TabId) => {
       const tabId = tab ?? state.activeTab
@@ -97,6 +102,7 @@ export function useNavigation() {
     popPanel,
     replacePanel,
     openSession,
+    openNewSession,
     getPanels,
     getSelectedItemId,
     getItemDirection,

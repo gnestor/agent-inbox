@@ -10,6 +10,9 @@ const SessionView = lazy(() =>
 const IntegrationsPage = lazy(() =>
   import("@/components/settings/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })),
 )
+const NewSessionPanel = lazy(() =>
+  import("@/components/session/NewSessionPanel").then((m) => ({ default: m.NewSessionPanel })),
+)
 
 interface PanelContentProps {
   panel: PanelState
@@ -30,6 +33,13 @@ export function PanelContent({ panel }: PanelContentProps) {
       return (
         <Suspense fallback={fallback}>
           <IntegrationsPage />
+        </Suspense>
+      )
+
+    case "new_session":
+      return (
+        <Suspense fallback={fallback}>
+          <NewSessionPanel />
         </Suspense>
       )
 
