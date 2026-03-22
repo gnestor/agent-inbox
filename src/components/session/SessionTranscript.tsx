@@ -17,6 +17,7 @@ import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
 import { OutputRenderer } from "./OutputRenderer"
 import type { OutputSpec } from "./OutputRenderer"
+import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 
 hljs.registerLanguage("json", json)
 
@@ -242,6 +243,15 @@ function OutputAccordion({
   onArtifactLoaded?: () => void
 }) {
   const [open, setOpen] = useState(true)
+  // Sync with live code edits from the code editor panel
+  const editorKey = artifactEditorKey(sessionId, sequence)
+  const editingCode = useEditingCode(editorKey)
+  const activeSpec = useMemo((): OutputSpec => {
+    if (editingCode == null || spec.type !== "react") return spec
+    const data = typeof spec.data === "string" ? { code: editingCode } : { ...spec.data, code: editingCode }
+    return { ...spec, data }
+  }, [spec, editingCode])
+
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-2 py-2 w-full">
@@ -270,7 +280,7 @@ function OutputAccordion({
       {open && (
         <div className="pl-5.5">
           <OutputRenderer
-            spec={spec}
+            spec={activeSpec}
             sessionId={sessionId}
             sequence={sequence}
             onAction={onAction}

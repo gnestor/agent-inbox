@@ -3,7 +3,7 @@ import { X, Save } from "lucide-react"
 import { toast } from "sonner"
 import { common, createLowlight } from "lowlight"
 import { useNavigation } from "@/hooks/use-navigation"
-import { setEditingCode, clearEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
+import { setEditingCode, getEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 import { updateArtifactCode } from "@/api/client"
 import { hastToHtml, escapeHtml } from "@/lib/hast-html"
 import type { PanelState } from "@/types/navigation"
@@ -34,10 +34,9 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
   const highlightRef = useRef<HTMLPreElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // Initialize the editing store
+  // Initialize the editing store (only if not already editing)
   useEffect(() => {
-    setEditingCode(key, initialCode)
-    return () => clearEditingCode(key)
+    if (!getEditingCode(key)) setEditingCode(key, initialCode)
   }, [key, initialCode])
 
   // Sync scroll between textarea and highlight overlay
@@ -94,9 +93,9 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
 
   const handleClose = useCallback(() => {
     clearTimeout(debounceRef.current)
-    clearEditingCode(key)
+    // Keep edited code in store so artifacts retain the changes
     removePanel(panel.id)
-  }, [key, panel.id, removePanel])
+  }, [panel.id, removePanel])
 
   return (
     <div className="flex flex-col h-full">
