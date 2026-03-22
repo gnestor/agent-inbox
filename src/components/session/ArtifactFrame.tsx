@@ -76,7 +76,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       if (!data || typeof data !== "object") return
 
       if (data.type === "action" && typeof data.intent === "string") {
-        onAction?.(data.intent)
+        // Wrap in XML tag so the transcript renders it as an artifact action, not a user message
+        const safeIntent = data.intent.replace(/[<>"&]/g, "")
+        const payload = data.data !== undefined ? JSON.stringify(data.data, null, 2) : ""
+        const message = `<artifact_action intent="${safeIntent}">${payload}</artifact_action>`
+        onAction?.(message)
       } else if (data.type === "state" && data.state) {
         setSavedState(data.state as Record<string, unknown>)
       } else if (data.type === "wheel") {
@@ -209,8 +213,10 @@ body { font-size: 14px; min-height: 100vh; }
 <div id="root"></div>
 <script>
 // postMessage bridge helpers
-window.sendAction = function(intent) {
-  window.parent.postMessage({ type: 'action', intent: String(intent) }, '*');
+window.sendAction = function(intent, data) {
+  var msg = { type: 'action', intent: String(intent) };
+  if (data !== undefined) msg.data = data;
+  window.parent.postMessage(msg, '*');
 };
 window.saveState = function(state) {
   window.parent.postMessage({ type: 'state', state: state }, '*');

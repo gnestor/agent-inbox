@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2 } from "lucide-react"
+import { User, Bot, Wrench, Brain, Loader2, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -354,6 +354,21 @@ const TranscriptEntry = memo(function TranscriptEntry({
   }
 
   if (msg.type === "user" || msg.role === "user") {
+    const text = extractText(msg)
+
+    // Artifact action — render as a compact system-like event
+    const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)
+    if (actionMatch) {
+      return (
+        <TranscriptAccordionEntry
+          value={`action-${message.sequence}`}
+          icon={Zap}
+          label={actionMatch[1]}
+          color="text-chart-4"
+        />
+      )
+    }
+
     // Skill context injection — render collapsed with skill name
     const skillBlock = extractSkillBlock(msg)
     if (skillBlock) {
@@ -374,7 +389,6 @@ const TranscriptEntry = memo(function TranscriptEntry({
     }
 
     if (!visibility.messages) return null
-    const text = extractText(msg)
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
     const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail

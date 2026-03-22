@@ -11,11 +11,11 @@ import { z } from "zod"
 export function buildRenderOutputMcpServer() {
   const renderOutputTool = tool(
     "render_output",
-    `Render a structured output in the inbox UI. The output appears inline in the session transcript.
+    `Render a structured output in the inbox UI. The output appears inline in the session transcript (600px x 600px) and can be expanded to its own panel (600px x calc(100vh - 77px)).
 
-For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and real @hammies/frontend components. Use Tailwind classes for ALL styling — never use inline styles.
+For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and shadcn components from @hammies/frontend. Use Tailwind classes for ALL styling — never use inline styles.
 
-COMPONENTS — these are real shadcn/ui components. Import from '@hammies/frontend/components/ui'. Missing imports are auto-injected so you can use components without importing.
+COMPONENTS — Import from '@hammies/frontend/components/ui'. Missing imports are auto-injected so you can use components without importing.
 
 Available: Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner, cn.
 
@@ -46,8 +46,17 @@ Import React hooks from 'react':
 Export your root component as default or name it App.
 
 GLOBALS available in artifact code (do not import):
-- sendAction(intent: string) — sends a message to the session as if the user typed it. The agent receives the intent string and can respond. Use for buttons that trigger agent actions.
-- saveState(state: object) — persists UI state across page reloads. Restored automatically on remount.`,
+
+sendAction(intent: string, data?: object) — Sends a message to the session. The agent receives the intent and can respond. Always include relevant component state in the data argument so the agent has full context.
+  Examples:
+  - sendAction('approve', { itemId: 123 })
+  - sendAction('submit_form', { to, subject, body })
+  - sendAction('update_row', { rowId: 5, field: 'status', value: 'done' })
+  The agent receives: <artifact_action intent="approve">{ "itemId": 123 }</artifact_action> — parse the intent attribute and JSON body.
+  Use this for: approval/reject buttons, form submissions, row actions, navigation requests, or any user interaction that should trigger an agent response.
+
+saveState(state: object) — Persists UI state across page reloads. Automatically restored on remount via window.__onStateRestored callback.
+  Example: saveState({ selectedTab: 'details', scrollY: 100 })`,
     {
       type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]),
       data: z.any().describe(
