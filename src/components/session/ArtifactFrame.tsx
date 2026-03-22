@@ -79,6 +79,13 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         onAction?.(data.intent)
       } else if (data.type === "state" && data.state) {
         setSavedState(data.state as Record<string, unknown>)
+      } else if (data.type === "wheel") {
+        // Re-dispatch horizontal scroll on the iframe's parent so panel nav works
+        iframe.dispatchEvent(new WheelEvent("wheel", {
+          deltaX: data.deltaX,
+          deltaY: data.deltaY,
+          bubbles: true,
+        }))
       }
     }
 
@@ -213,6 +220,13 @@ window.addEventListener('message', function(e) {
     window.__onStateRestored(e.data.state);
   }
 });
+// Forward horizontal scroll to parent so panel navigation works
+document.addEventListener('wheel', function(e) {
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    window.parent.postMessage({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }, '*');
+    e.preventDefault();
+  }
+}, { passive: false });
 </script>
 <script>
 // Global error handlers for module script errors
