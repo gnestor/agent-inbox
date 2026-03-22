@@ -7,15 +7,16 @@ import { TaskListView } from "./TaskListView"
 import { TaskDetailView } from "./TaskDetailView"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
+import type { TabId } from "@/types/navigation"
 
-export function TaskTab() {
+export function TaskTab({ tabId = "tasks" as TabId }: { tabId?: TabId }) {
   const { getPanels } = useNavigation()
-  const panels = getPanels("tasks")
+  const panels = getPanels(tabId)
 
   return (
-    <Tab id="tasks">
-      {panels.map((panel, index) => {
-        if (index === 0) {
+    <Tab id={tabId}>
+      {panels.map((panel) => {
+        if (panel.type === "list") {
           return (
             <Panel key="list" id="list" variant="list">
               <TaskListView />

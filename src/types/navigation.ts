@@ -2,8 +2,8 @@
 
 // --- Tab identification ---
 
-/** Static tabs + dynamic plugin tabs */
-export type TabId = "emails" | "tasks" | "calendar" | "sessions" | "settings" | `plugin:${string}`
+/** Static tabs + dynamic plugin/recent tabs */
+export type TabId = "emails" | "tasks" | "calendar" | "sessions" | "settings" | `plugin:${string}` | `recent:${string}`
 
 /** Ordered tabs for animation direction calculation */
 export const STATIC_TAB_ORDER: TabId[] = ["emails", "tasks", "calendar", "sessions"]
@@ -41,6 +41,10 @@ export interface TabState {
   savedPanels?: Record<string, PanelState[]>
   /** Animation hint: "item" for item selection transitions, "none" for panel push/pop */
   panelTransition?: "item" | "none"
+  /** For recent:* tabs — the source tab that spawned this (emails, tasks, sessions) */
+  sourceTab?: TabId
+  /** For recent:* tabs — position in the sidebar list (for animation direction) */
+  sidebarIndex?: number
 }
 
 // --- Full navigation state ---
@@ -83,6 +87,5 @@ export function getTabIndex(tabId: TabId): number {
   if (tabId === "settings") return 0
   const staticIdx = STATIC_TAB_ORDER.indexOf(tabId)
   if (staticIdx >= 0) return staticIdx + 1 // offset by 1 since settings is 0
-  // Plugin tabs come after all static tabs
   return STATIC_TAB_ORDER.length + 1
 }

@@ -1,3 +1,4 @@
+import { useMemo, useContext } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -5,6 +6,7 @@ import { LoginPage } from "@/components/layout/LoginPage"
 import { LiquidGlassFilter } from "@/components/layout/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
+import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
@@ -17,8 +19,7 @@ import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
 
-// Tab order (matches getTabIndex in navigation.ts)
-const TAB_SLOTS: TabId[] = ["settings", "emails", "tasks", "calendar", "sessions"]
+const STATIC_SLOTS = ["settings", "emails", "tasks", "calendar", "sessions"]
 
 function renderTab(tabId: string) {
   switch (tabId) {
@@ -35,18 +36,42 @@ function renderTab(tabId: string) {
         </Tab>
       )
     default:
+      if (tabId.startsWith("recent:")) return <RecentTabSlot tabId={tabId as TabId} />
       if (tabId.startsWith("plugin:")) return <PluginView />
       return null
   }
 }
 
+function RecentTabSlot({ tabId }: { tabId: TabId }) {
+  const { getSourceTab } = useNavigation()
+  const sourceTab = getSourceTab(tabId)
+  switch (sourceTab) {
+    case "emails": return <EmailTab tabId={tabId} />
+    case "tasks": return <TaskTab tabId={tabId} />
+    default: return <SessionTab tabId={tabId} />
+  }
+}
+
 function TabContainer() {
   const { activeTab } = useNavigation()
+  const ctx = useContext(NavigationContext)
+  const tabs = ctx?.state.tabs
+
+  // Keys match sidebar layout: settings, emails, tasks, calendar, [recent sessions], sessions
+  const keys = useMemo(() => {
+    if (!tabs) return STATIC_SLOTS
+    const recentKeys = Object.keys(tabs)
+      .filter((k) => k.startsWith("recent:"))
+      .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
+    if (recentKeys.length === 0) return STATIC_SLOTS
+    // Insert recent tabs between "calendar" and "sessions"
+    return ["settings", "emails", "tasks", "calendar", ...recentKeys, "sessions"]
+  }, [tabs])
 
   return (
     <SlotStack
       activeKey={activeTab}
-      keys={TAB_SLOTS}
+      keys={keys}
       renderItem={renderTab}
       className="h-full w-full"
     />

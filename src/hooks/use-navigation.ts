@@ -56,6 +56,12 @@ export function useNavigation() {
     [dispatch],
   )
 
+  const openRecent = useCallback(
+    (sessionId: string, sourceTab: TabId, selectedId: string | undefined, sidebarIndex: number) =>
+      dispatch({ type: "OPEN_RECENT", sessionId, sourceTab, selectedId, sidebarIndex }),
+    [dispatch],
+  )
+
   const getPanels = useCallback(
     (tab?: TabId) => {
       const tabId = tab ?? state.activeTab
@@ -98,6 +104,14 @@ export function useNavigation() {
     [dispatch],
   )
 
+  const getSourceTab = useCallback(
+    (tab?: TabId) => {
+      const tabId = tab ?? state.activeTab
+      return state.tabs[tabId]?.sourceTab
+    },
+    [state],
+  )
+
   const getFilters = useCallback(
     (tab?: TabId) => {
       const tabId = tab ?? state.activeTab
@@ -117,10 +131,12 @@ export function useNavigation() {
     replacePanel,
     openSession,
     openNewSession,
+    openRecent,
     getPanels,
     getSelectedItemId,
     getItemDirection,
     getPanelTransition,
+    getSourceTab,
     activeFilters: state.tabs[state.activeTab]?.activeFilters ?? {},
     getFilters,
     setFilter,

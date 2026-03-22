@@ -42,8 +42,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { user, logout } = useUser()
   const { switchTab } = useNavigation()
   const { data: plugins } = usePlugins()
-  const isRecentRoute = location.pathname.startsWith("/recent/")
-
   return (
     <Sidebar variant="floating" {...props}>
       <SidebarHeader>
@@ -121,7 +119,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = !isRecentRoute && location.pathname.startsWith(`/${item.tab}`)
+                const isActive = location.pathname.startsWith(`/${item.tab}`)
                 return (
                   <SidebarMenuItem key={item.tab}>
                     <SidebarMenuButton

@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
@@ -13,7 +13,9 @@ import {
 import { cn } from "@hammies/frontend/lib/utils"
 import { getEmailThread, getTask } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
+import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
+import type { TabId } from "@/types/navigation"
 
 const ONE_DAY_MS = 86_400_000
 
@@ -78,7 +80,7 @@ export function markSessionRead(sessionId: string): void {
 
 export function SidebarRecentSessions() {
   const location = useLocation()
-  const navigate = useNavigate()
+  const { openRecent, switchTab } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
@@ -134,19 +136,26 @@ export function SidebarRecentSessions() {
   const readSet = useMemo(() => loadReadSet(), [recent])
   const isRecentRoute = location.pathname.startsWith("/recent/")
   const activeSessionId = activeSessionIdFromPath(location.pathname)
-  const isSessionsTab = !isRecentRoute && location.pathname.startsWith("/sessions")
+  const isSessionsTab = location.pathname.startsWith("/sessions")
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Sessions</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {recent.map((session) => {
+          {recent.map((session, i) => {
             const isRead = readSet.has(session.id)
             const color = getIndicatorColor(session, isRead)
             const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
             const title = linkedTitle || getSessionTitle(session)
             const isActive = isRecentRoute && session.id === activeSessionId
+
+            const sourceTab: TabId = session.linkedEmailThreadId
+              ? "emails"
+              : session.linkedTaskId
+                ? "tasks"
+                : "sessions"
+            const selectedId = session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
 
             return (
               <SidebarMenuItem key={session.id}>
@@ -154,7 +163,7 @@ export function SidebarRecentSessions() {
                   tooltip={title}
                   onClick={() => {
                     markSessionRead(session.id)
-                    navigate(getSessionUrl(session))
+                    openRecent(session.id, sourceTab, selectedId, i)
                     if (isMobile) setOpenMobile(false)
                   }}
                   className={cn(
@@ -183,7 +192,7 @@ export function SidebarRecentSessions() {
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
               )}
               onClick={() => {
-                navigate("/sessions")
+                switchTab("sessions")
                 if (isMobile) setOpenMobile(false)
               }}
             >
