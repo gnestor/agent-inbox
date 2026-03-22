@@ -335,20 +335,28 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       } else {
         const tab = base.tabs[parsed.tabId] ?? createDefaultTabState()
         if (parsed.selectedId) {
-          tab.selectedItemId = parsed.selectedId
-          const saved = tab.savedPanels?.[parsed.selectedId] ?? []
-          tab.panels = [
-            tab.panels[0] ?? { id: "list", type: "list", props: {} },
-            { id: `detail:${parsed.selectedId}`, type: "detail", props: { itemId: parsed.selectedId } },
-            ...saved,
-          ]
+          // If persisted state already matches the URL's selected item,
+          // keep the persisted panels (preserves extra panels like code_editor).
+          // Only rebuild if the selected item changed.
+          if (tab.selectedItemId !== parsed.selectedId) {
+            tab.selectedItemId = parsed.selectedId
+            const saved = tab.savedPanels?.[parsed.selectedId] ?? []
+            tab.panels = [
+              tab.panels[0] ?? { id: "list", type: "list", props: {} },
+              { id: `detail:${parsed.selectedId}`, type: "detail", props: { itemId: parsed.selectedId } },
+              ...saved,
+            ]
+          }
           if (parsed.sessionId) {
-            tab.panels = tab.panels.filter((p) => p.type !== "session")
-            tab.panels.push({
-              id: `session:${parsed.sessionId}`,
-              type: "session",
-              props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
-            })
+            // Ensure session panel exists (URL may include /session/ suffix)
+            if (!tab.panels.some((p) => p.type === "session" && p.props.sessionId === parsed.sessionId)) {
+              tab.panels = tab.panels.filter((p) => p.type !== "session")
+              tab.panels.push({
+                id: `session:${parsed.sessionId}`,
+                type: "session",
+                props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
+              })
+            }
           }
         } else {
           tab.selectedItemId = undefined
