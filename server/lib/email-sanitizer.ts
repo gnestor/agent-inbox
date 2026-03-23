@@ -155,6 +155,12 @@ export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string 
     if (gmailSigIdx > 0) result = result.slice(0, gmailSigIdx)
   }
 
+  // Gmail embedded thread history: when Gmail renders a full thread in a single
+  // message, it embeds previous messages with header tables using "gmail-cf gmail-gJ".
+  // Truncate at the enclosing block to remove the entire embedded thread.
+  const gmailThreadIdx = result.search(/<table[^>]*class="[^"]*gmail-cf gmail-gJ[^"]*"/i)
+  if (gmailThreadIdx > 0) result = result.slice(0, findBlockStart(result, gmailThreadIdx))
+
   // ── Blockquote removal (loop removes innermost first, handles nesting) ─────
 
   // Match only the innermost blockquotes (no nested <blockquote> inside).

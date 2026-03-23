@@ -505,6 +505,20 @@ describe("sanitizeHtmlEmail — real Gmail fixtures", () => {
     expect(result.length).toBeLessThan(raw.length * 0.4)
   })
 
+  it("19d0f3a12b81e7e6: strips embedded Gmail thread history", () => {
+    const raw = fixture("19d0f3a12b81e7e6.html")
+    const result = sanitizeHtmlEmail(raw, { keepSignature: true })
+
+    // Main content preserved
+    expect(result).toContain("available fabric for PS1")
+    // Signature preserved (keepSignature)
+    expect(result).toContain("Product Development Manager")
+    // Embedded previous messages stripped
+    expect(result).not.toContain("Wonderful, thank you")
+    expect(result).not.toMatch(/class="[^"]*gmail-cf gmail-gJ/)
+    expect(result.length).toBeLessThan(raw.length * 0.1)
+  })
+
   it("19cf977c2a39cfec: strips background-color from Google Calendar notification", () => {
     const raw = fixture("19cf977c2a39cfec.html")
     const result = sanitizeHtmlEmail(raw)
