@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect, useCallback, memo, useState, Children, isVa
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { FileText, ChevronRight, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
+import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
@@ -15,6 +15,8 @@ import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import hljs from "highlight.js/lib/core"
 import json from "highlight.js/lib/languages/json"
+import { cn } from "@hammies/frontend/lib/utils"
+import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
 import type { OutputSpec } from "./OutputRenderer"
 import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
@@ -229,6 +231,111 @@ function MessageBubble({ label, align, transparent, children }: { label: string;
   )
 }
 
+/** Read-only display of an AskUserQuestion tool call in the transcript. */
+function AskUserInline({ questions, resultText, sessionId, sequence }: {
+  questions: any[]
+  resultText: string
+  sessionId?: string
+  sequence: number
+}) {
+  const { pushPanel } = useNavigation()
+  const selectedLabels = parseAskUserAnswer(resultText)
+  // Derive a human-readable title from the question header or text
+  const topic = questions[0]?.header || questions[0]?.question?.slice(0, 50) || "question"
+  const headerLabel = `Ask user about ${topic.toLowerCase()}`
+
+  function handleExpand() {
+    if (!sessionId) return
+    pushPanel({
+      id: `ask_user:${sessionId}:${sequence}`,
+      type: "ask_user",
+      props: { sessionId, sequence, questions, resultText },
+    })
+  }
+
+  return (
+    <TranscriptAccordionEntry
+      label={headerLabel}
+      color="text-muted-foreground"
+      bold={false}
+      defaultOpen
+      extra={sessionId ? (
+        <button
+          type="button"
+          className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0 ml-auto"
+          onClick={(e) => { e.stopPropagation(); handleExpand() }}
+          title="Open in panel"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+      ) : undefined}
+    >
+      <div className="space-y-3">
+        <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
+      </div>
+    </TranscriptAccordionEntry>
+  )
+}
+
+/** Shared option rendering for AskUserQuestion — used inline and in panels. */
+/** Parse the selected labels from an AskUserQuestion tool_result text. */
+export function parseAskUserAnswer(resultText: string): string[] {
+  const match = resultText.match(/"([^"]+)"="([^"]+)"/)
+  return match?.[2]?.split(", ").map((s) => s.trim()) ?? []
+}
+
+/** Shared read-only option rendering for AskUserQuestion. */
+export function AskUserOptions({ questions, selectedLabels }: { questions: any[]; selectedLabels: string[] }) {
+  return (
+    <>
+      {questions.map((q: any) => (
+        <div key={q.question} className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide bg-muted px-1.5 py-0.5 rounded">
+              {q.header || "Question"}
+            </span>
+            {q.multiSelect && (
+              <span className="text-[10px] text-muted-foreground">Select all that apply</span>
+            )}
+          </div>
+          <p className="text-sm font-medium">{q.question}</p>
+          <div className="space-y-1">
+            {q.options?.map((opt: any) => {
+              const isSelected = selectedLabels.includes(opt.label)
+              return (
+                <div
+                  key={opt.label}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-sm",
+                    isSelected
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-card opacity-50",
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <div
+                      className={cn(
+                        "mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 transition-colors",
+                        isSelected ? "border-primary bg-primary" : "border-muted-foreground",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-medium">{opt.label}</div>
+                      {opt.description && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{opt.description}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
 function OutputAccordion({
   spec,
   sessionId,
@@ -265,8 +372,7 @@ function OutputAccordion({
           <ChevronRight
             className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`}
           />
-          <AppWindow className="h-3.5 w-3.5 text-foreground shrink-0" />
-          <span className="text-xs font-medium text-foreground truncate">{spec.title || spec.type}</span>
+          <span className="text-xs text-muted-foreground truncate">{spec.title || spec.type}</span>
         </button>
         {onOpenPanel && (
           <button
@@ -356,14 +462,19 @@ const TranscriptEntry = memo(function TranscriptEntry({
   if (msg.type === "user") {
     const text = extractText(msg)
 
-    // Artifact action — render as a compact system-like event
+    // Artifact action — render like a tool call
     const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)
     if (actionMatch) {
+      const intent = actionMatch[1]
+      const dataStr = actionMatch[2]?.trim()
       return (
-        <div className="flex items-center gap-1.5 py-1.5">
-          <Zap className="h-3 w-3 text-muted-foreground shrink-0" />
-          <span className="text-xs text-muted-foreground">{actionMatch[1]}</span>
-        </div>
+        <TranscriptAccordionEntry
+          label="Send action"
+          color="text-muted-foreground"
+          bold={false}
+        >
+          <ArtifactActionDetail intent={intent} dataStr={dataStr} />
+        </TranscriptAccordionEntry>
       )
     }
 
@@ -573,12 +684,25 @@ function ContentBlockView({
       )
     }
 
+    // AskUserQuestion — render inline with user's answer highlighted
+    if (block.name === "AskUserQuestion" && block.input?.questions) {
+      const resultText = toolResultMap?.get(block.id) ?? ""
+      return (
+        <AskUserInline
+          questions={block.input.questions}
+          resultText={resultText}
+          sessionId={sessionId}
+          sequence={sequence}
+        />
+      )
+    }
+
     if (!visibility.toolCalls) return null
+    const displayName = TOOL_DISPLAY_NAME[block.name] ?? block.name
     const summary = toolUseSummary(block.name, block.input)
     return (
       <TranscriptAccordionEntry
-
-        label={summary ? `${block.name} ${summary}` : block.name}
+        label={summary ? `${displayName} ${summary}` : displayName}
         color="text-muted-foreground"
         bold={false}
       >
@@ -631,7 +755,8 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
     if (
       block.type === "tool_use" &&
       block.name !== "render_output" &&
-      block.name !== "mcp__render_output__render_output"
+      block.name !== "mcp__render_output__render_output" &&
+      block.name !== "AskUserQuestion"
     ) {
       toolGroup.push(block)
     } else {
@@ -649,9 +774,10 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
 /** A single accordion containing multiple tool calls. */
 function ToolCallGroup({ blocks, sequence, startIndex, toolResultMap }: { blocks: ToolUseBlock[]; sequence: number; startIndex: number; toolResultMap?: Map<string, string> }) {
   const summary = blocks.length === 1 ? toolUseSummary(blocks[0].name, blocks[0].input) : ""
+  const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
   const label = blocks.length === 1
-    ? (summary ? `${blocks[0].name} ${summary}` : blocks[0].name)
-    : blocks.map((b) => b.name).join(", ")
+    ? (summary ? `${displayName(blocks[0].name)} ${summary}` : displayName(blocks[0].name))
+    : blocks.map((b) => displayName(b.name)).join(", ")
 
   return (
     <TranscriptAccordionEntry
@@ -670,6 +796,31 @@ function ToolCallGroup({ blocks, sequence, startIndex, toolResultMap }: { blocks
 }
 
 /** Structured display of a single tool call: name, command, and tool output. */
+function ArtifactActionDetail({ intent, dataStr }: { intent: string; dataStr: string }) {
+  const [showOutput, setShowOutput] = useState(false)
+  const payload = dataStr
+    ? JSON.stringify({ type: "action", intent, data: JSON.parse(dataStr) }, null, 2)
+    : JSON.stringify({ type: "action", intent }, null, 2)
+  return (
+    <div className="border-l-2 border-border pl-3 py-1 min-w-0">
+      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SendAction</div>
+      <pre className="text-[11px] text-muted-foreground font-mono whitespace-pre">{intent}</pre>
+      <button
+        type="button"
+        className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground mt-0.5"
+        onClick={() => setShowOutput((s) => !s)}
+      >
+        {showOutput ? "Hide output" : "Show output"}
+      </button>
+      {showOutput && (
+        <pre className="text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto text-muted-foreground font-mono whitespace-pre-wrap break-words mt-1">
+          {payload}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: string; input: Record<string, unknown>; toolUseId?: string; toolResultMap?: Map<string, string> }) {
   const [showOutput, setShowOutput] = useState(false)
   const command = toolUseCommand(name, input)
@@ -703,10 +854,15 @@ function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: strin
   )
 }
 
+const TOOL_DISPLAY_NAME: Record<string, string> = {
+  ToolSearch: "Search tools",
+}
+
 const TOOL_PRIMARY_FIELD: Record<string, string> = {
   Read: "file_path", Write: "file_path", Edit: "file_path",
   Glob: "pattern", Grep: "pattern",
   WebFetch: "url", WebSearch: "query",
+  ToolSearch: "query",
 }
 
 /** Short summary for accordion labels (e.g. file path, description). */
@@ -771,6 +927,7 @@ function shouldRenderContentBlock(
     if (block.name === "render_output" || block.name === "mcp__render_output__render_output") {
       return visibility.artifacts && !!block.input && hasSessionId
     }
+    if (block.name === "AskUserQuestion") return true
     return visibility.toolCalls
   }
 
