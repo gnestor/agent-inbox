@@ -1,3 +1,4 @@
+import { getDb } from "./db/schema.js"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
@@ -20,7 +21,7 @@ import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
-import { setWorkspacePath, setCredentialProxy } from "./lib/session-manager.js"
+import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions } from "./lib/session-manager.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
@@ -132,7 +133,7 @@ app.get("/api/users", (c) => {
   const list = emails.split(",").map((e) => e.trim()).filter(Boolean)
   if (list.length === 0) return c.json({ users: [] })
   const placeholders = list.map(() => "?").join(",")
-  const rows = db.prepare(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`).all(...list)
+  const rows = getDb().prepare(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`).all(...list)
   return c.json({ users: rows })
 })
 
@@ -156,6 +157,8 @@ serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
   pruneExpired()
+  // Index all agent SDK sessions into DB (non-blocking)
+  indexAllAgentSessions().catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))

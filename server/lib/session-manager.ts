@@ -595,6 +595,33 @@ export function abortRunningSession(sessionId: string): boolean {
   return false
 }
 
+/** Index all agent SDK sessions into the DB on startup.
+ *  Uses INSERT OR IGNORE so existing records are not overwritten. */
+export async function indexAllAgentSessions() {
+  try {
+    const agentSessions = await listAgentSessions()
+    const db = getDb()
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
+       VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')`
+    )
+    let count = 0
+    for (const s of agentSessions) {
+      const ts = new Date(s.lastModified).toISOString()
+      const result = stmt.run(
+        s.sessionId,
+        s.firstPrompt || "",
+        (s.summary || s.firstPrompt || "").slice(0, 200),
+        ts, ts, ts,
+      )
+      if (result.changes > 0) count++
+    }
+    if (count > 0) console.log(`[server] Indexed ${count} agent sessions into DB`)
+  } catch (err) {
+    console.error("[server] Failed to index agent sessions:", err)
+  }
+}
+
 export async function listAgentSessions() {
   try {
     const { listSessions } = await import("@anthropic-ai/claude-agent-sdk")

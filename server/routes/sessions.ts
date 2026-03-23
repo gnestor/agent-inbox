@@ -277,6 +277,14 @@ sessionRoutes.post("/:id/resume", async (c) => {
     return c.json({ error: "prompt is required" }, 400)
   }
 
+  // Import agent-only session to DB if not already there (prevents FK constraint failure)
+  if (!sessions.getSessionRecord(sessionId)) {
+    const { getAgentSession } = await import("../lib/session-files.js")
+    const agentSession = getAgentSession(sessionId)
+    if (!agentSession) return c.json({ error: "Session not found" }, 404)
+    sessions.importAgentSession(sessionId, agentSession)
+  }
+
   const userSessionToken = getCookie(c, SESSION_COOKIE)
   const user = c.get("user") as UserProfile | undefined
   await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken, user)
