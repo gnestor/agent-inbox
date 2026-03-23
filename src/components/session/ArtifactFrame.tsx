@@ -3,6 +3,9 @@ import { usePreference } from "@/hooks/use-preferences"
 import { transformArtifactCode } from "@/lib/artifact-transform"
 import { buildArtifactHtml } from "@/lib/build-artifact-html"
 
+// Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes
+const srcDocCache = new Map<string, string>()
+
 interface ArtifactFrameProps {
   code: string
   title?: string
@@ -55,10 +58,19 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   }, [transformResult])
   const { code: transformedCode, exportedName, error: transformError } = transformResult
 
-  const srcDoc = useMemo(
-    () => buildArtifactHtml(transformedCode, title, exportedName),
-    [transformedCode, title, exportedName],
-  )
+  const srcDoc = useMemo(() => {
+    const cacheKey = `${sessionId}:${sequence}:${transformedCode}`
+    const cached = srcDocCache.get(cacheKey)
+    if (cached && !transformError) return cached
+    // Evict previous entries for this artifact (different code)
+    const prefix = `${sessionId}:${sequence}:`
+    for (const key of srcDocCache.keys()) {
+      if (key.startsWith(prefix)) srcDocCache.delete(key)
+    }
+    const html = buildArtifactHtml(transformedCode, title, exportedName)
+    if (!transformError) srcDocCache.set(cacheKey, html)
+    return html
+  }, [transformedCode, title, exportedName, sessionId, sequence, transformError])
 
   const handleLoad = useCallback(() => {
     const iframe = iframeRef.current

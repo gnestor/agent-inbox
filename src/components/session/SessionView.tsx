@@ -58,16 +58,20 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
   const dataMatchesSession = session?.id === sessionId
   const [sseTimedOut, setSseTimedOut] = useState(dataMatchesSession)
   const [artifactsReady, setArtifactsReady] = useState(dataMatchesSession)
+  const [artifactsTimedOut, setArtifactsTimedOut] = useState(dataMatchesSession)
   useEffect(() => {
     if (!dataMatchesSession) {
       setSseTimedOut(false)
       setArtifactsReady(false)
+      setArtifactsTimedOut(false)
     }
     const sseTimer = setTimeout(() => setSseTimedOut(true), 1000)
     const artifactTimer = setTimeout(() => setArtifactsTimedOut(true), 1000)
     return () => { clearTimeout(sseTimer); clearTimeout(artifactTimer) }
   }, [sessionId, dataMatchesSession])
-  const isReady = dataMatchesSession && (isLive || sseTimedOut) && (artifactsReady || sseTimedOut)
+  const isReady = dataMatchesSession
+    && (isLive || sseTimedOut)
+    && (artifactsReady || artifactsTimedOut)
 
   const header = (
     <PanelHeader
