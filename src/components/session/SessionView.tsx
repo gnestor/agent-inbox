@@ -19,6 +19,7 @@ import { SessionTranscript } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { useNavigation } from "@/hooks/use-navigation"
 import { useSessionPhase } from "@/hooks/use-session-phase"
 import { useSessionView } from "@/hooks/use-session-view"
 import { getInitials } from "@/lib/formatters"
@@ -30,10 +31,14 @@ interface SessionViewProps {
 
 export function SessionView({ sessionId, title }: SessionViewProps) {
   const { user } = useUser()
+  const { getPanels } = useNavigation()
+  // Only connect SSE when this panel is in the active tab (visible)
+  const isActiveSession = getPanels().some((p) => p.id === panelId)
 
   const { phase, session, messages, presenceUsers, isLive, mutations, resumeSession, answerQuestion } =
     useSessionPhase({
       sessionId,
+      isActive: isActiveSession,
       onResume: () => setPrompt(""),
       onArchive: () => handleBack(),
     })
@@ -58,8 +63,9 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
       setSseTimedOut(false)
       setArtifactsReady(false)
     }
-    const timer = setTimeout(() => setSseTimedOut(true), 2000)
-    return () => clearTimeout(timer)
+    const sseTimer = setTimeout(() => setSseTimedOut(true), 1000)
+    const artifactTimer = setTimeout(() => setArtifactsTimedOut(true), 1000)
+    return () => { clearTimeout(sseTimer); clearTimeout(artifactTimer) }
   }, [sessionId, dataMatchesSession])
   const isReady = dataMatchesSession && (isLive || sseTimedOut) && (artifactsReady || sseTimedOut)
 

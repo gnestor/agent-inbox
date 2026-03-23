@@ -118,6 +118,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         title={title || "React Artifact"}
         onLoad={handleLoad}
       />
+      {(transformError || runtimeError) && (
+        <div className="absolute inset-0 bg-destructive p-4 overflow-auto">
+          <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
+        </div>
+      )}
     </div>
   )
 }

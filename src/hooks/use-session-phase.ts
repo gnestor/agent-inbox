@@ -19,11 +19,13 @@ export type SessionPhase =
 
 interface UseSessionPhaseOptions {
   sessionId: string
+  /** Whether this session's tab is currently active (visible) */
+  isActive?: boolean
   onResume?: () => void
   onArchive?: () => void
 }
 
-export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPhaseOptions) {
+export function useSessionPhase({ sessionId, isActive = true, onResume, onArchive }: UseSessionPhaseOptions) {
   const qc = useQueryClient()
 
   const { data, isLoading, error: queryError } = useQuery({
@@ -35,9 +37,10 @@ export function useSessionPhase({ sessionId, onResume, onArchive }: UseSessionPh
   const mutations = useSessionMutations({ sessionId, onResume, onArchive })
 
   const queryStatus = data?.session.status as string | undefined
-  // Always connect SSE when viewing a session (for presence).
-  // Message streaming is a bonus when the session is running.
-  const stream = useSessionStream(sessionId, !isLoading && !queryError)
+  const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
+  // Connect SSE when actively viewing (for presence) or when session is running.
+  // Disconnect for background tabs to avoid exhausting browser connection limit.
+  const stream = useSessionStream(sessionId, !isLoading && !queryError && (isActive || isRunning))
 
   // Invalidate sessions list when stream detects a status change
   // so sidebar and list view update immediately (not on next poll).
