@@ -109,7 +109,7 @@ export function PanelContent({ panel }: PanelContentProps) {
     case "session":
       return (
         <Suspense fallback={fallback}>
-          <SessionView sessionId={panel.props.sessionId} />
+          <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
         </Suspense>
       )
 

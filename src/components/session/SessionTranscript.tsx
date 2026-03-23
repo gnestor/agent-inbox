@@ -1,10 +1,10 @@
-import { useMemo, useRef, useEffect, useCallback, memo, useState, Children, isValidElement, type ElementType, type ReactNode } from "react"
+import { useMemo, useRef, useEffect, useCallback, memo, useState, Children, isValidElement, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { User, Bot, Wrench, Brain, FileText, ChevronDown, ClipboardList, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
+import { FileText, ChevronRight, Paperclip, AppWindow, Maximize2, Zap } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
-import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, UserMessage, AssistantMessage } from "@/types/session-message"
+import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -88,6 +88,7 @@ export function SessionTranscript({
     shouldRenderMessage,
   })
   const userProfiles = useUserProfiles(messages)
+  const toolResultMap = useMemo(() => buildToolResultMap(messages), [messages])
 
   // Track artifact loading: count expected render_output blocks vs reported heights
   const expectedArtifacts = useMemo(() => {
@@ -151,7 +152,7 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={handleArtifactLoaded} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={handleArtifactLoaded} />
               </div>
             ))}
           </div>
@@ -184,20 +185,16 @@ export function SessionTranscript({
 // the total exceeds React 19's 50-nested-update limit and throws
 // "Maximum update depth exceeded". Local useState has no registration cascade.
 function TranscriptAccordionEntry({
-  value: _,
-  icon: Icon,
-  picture,
   label,
   color,
+  bold = true,
   defaultOpen = false,
   extra,
   children,
 }: {
-  value: string
-  icon: ElementType
-  picture?: string
   label: string
   color: string
+  bold?: boolean
   defaultOpen?: boolean
   extra?: ReactNode
   children?: ReactNode
@@ -208,20 +205,26 @@ function TranscriptAccordionEntry({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 py-2 w-full text-left"
+        className="flex items-center gap-1.5 py-1.5 w-full text-left"
       >
-        {picture ? (
-          <img src={picture} alt={label} className="h-3.5 w-3.5 rounded-full object-cover shrink-0" />
-        ) : (
-          <Icon className={`h-3.5 w-3.5 ${color} shrink-0`} />
-        )}
-        <span className={`text-xs font-medium ${color}`}>{label}</span>
-        {extra}
-        <ChevronDown
-          className={`h-3 w-3 ml-auto shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        <ChevronRight
+          className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`}
         />
+        <span className={`text-xs ${bold ? "font-medium" : ""} ${color} truncate`}>{label}</span>
+        {extra}
       </button>
-      {open && <div>{children}</div>}
+      {open && <div className="pl-[18px]">{children}</div>}
+    </div>
+  )
+}
+
+function MessageBubble({ label, align, transparent, children }: { label: string; align: "left" | "right"; transparent?: boolean; children: ReactNode }) {
+  return (
+    <div className={`flex flex-col ${align === "right" ? "items-end" : "items-start"}`}>
+      <span className="text-xs font-medium text-foreground py-1.5">{label}</span>
+      <div className={`rounded-md px-3 py-2 ${transparent ? "" : "bg-secondary"}`}>
+        {children}
+      </div>
     </div>
   )
 }
@@ -253,17 +256,17 @@ function OutputAccordion({
 
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-2 py-2 w-full">
+      <div className="flex items-center gap-1.5 py-1.5 w-full">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
         >
-          <AppWindow className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="text-xs font-medium text-primary truncate">{spec.title || spec.type}</span>
-          <ChevronDown
-            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`}
           />
+          <AppWindow className="h-3.5 w-3.5 text-foreground shrink-0" />
+          <span className="text-xs font-medium text-foreground truncate">{spec.title || spec.type}</span>
         </button>
         {onOpenPanel && (
           <button
@@ -277,7 +280,7 @@ function OutputAccordion({
         )}
       </div>
       {open && (
-        <div className="pl-5.5">
+        <div className="pl-[18px]">
           <OutputRenderer
             spec={activeSpec}
             sessionId={sessionId}
@@ -298,6 +301,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
   currentUserEmail,
   currentUserPicture,
   userProfiles,
+  toolResultMap,
   onOpenPanel,
   onAction,
   onArtifactLoaded,
@@ -308,6 +312,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
   currentUserEmail?: string
   currentUserPicture?: string
   userProfiles?: Map<string, { name: string; picture?: string }>
+  toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
   onArtifactLoaded?: () => void
@@ -332,13 +337,12 @@ const TranscriptEntry = memo(function TranscriptEntry({
       if (!visibility.messages) return null
       return (
         <TranscriptAccordionEntry
-          value={`result-${message.sequence}`}
-          icon={Bot}
+
           label="Result"
-          color="text-chart-1"
+          color="text-foreground"
           defaultOpen
         >
-          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+          <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {msg.result || "Session completed"}
             </ReactMarkdown>
@@ -356,12 +360,10 @@ const TranscriptEntry = memo(function TranscriptEntry({
     const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)
     if (actionMatch) {
       return (
-        <TranscriptAccordionEntry
-          value={`action-${message.sequence}`}
-          icon={Zap}
-          label={actionMatch[1]}
-          color="text-chart-4"
-        />
+        <div className="flex items-center gap-1.5 py-1.5">
+          <Zap className="h-3 w-3 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">{actionMatch[1]}</span>
+        </div>
       )
     }
 
@@ -370,12 +372,12 @@ const TranscriptEntry = memo(function TranscriptEntry({
     if (skillBlock) {
       return (
         <TranscriptAccordionEntry
-          value={`skill-${message.sequence}`}
-          icon={Wrench}
+
           label={skillBlock.name}
           color="text-muted-foreground"
+          bold={false}
         >
-          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+          <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {skillBlock.content}
             </ReactMarkdown>
@@ -390,21 +392,12 @@ const TranscriptEntry = memo(function TranscriptEntry({
     const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
     const profile = msg.authorEmail ? userProfiles?.get(msg.authorEmail) : undefined
     const authorLabel = isCurrentUser ? "You" : (profile?.name || msg.authorName || "User")
-    const authorPicture = isCurrentUser ? currentUserPicture : profile?.picture
-    const authorColor = isCurrentUser ? "text-chart-2" : "text-chart-3"
     return (
-      <TranscriptAccordionEntry
-        value={`user-${message.sequence}`}
-        icon={User}
-        picture={authorPicture}
-        label={authorLabel}
-        color={authorColor}
-        defaultOpen
-      >
-        <div className="pl-5.5 space-y-1.5">
+      <MessageBubble label={authorLabel} align="right">
+        <div className="space-y-1.5">
           {text && <div className="text-sm whitespace-pre-wrap break-words">{text}</div>}
           {ideRefs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 justify-end">
               {ideRefs.map((ref, i) => (
                 <span
                   key={i}
@@ -420,7 +413,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
             </div>
           )}
         </div>
-      </TranscriptAccordionEntry>
+      </MessageBubble>
     )
   }
 
@@ -430,28 +423,19 @@ const TranscriptEntry = memo(function TranscriptEntry({
       if (!visibility.messages) return null
       const text = extractText(msg)
       if (!text) return null
-      return (
-        <TranscriptAccordionEntry
-          value={`assistant-${message.sequence}`}
-          icon={Bot}
-          label="Claude"
-          color="text-chart-4"
-          defaultOpen
-        >
-          <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
-              {text}
-            </ReactMarkdown>
-          </div>
-        </TranscriptAccordionEntry>
-      )
+      return <MarkdownEntry text={text} />
     }
 
+    const grouped = groupContentBlocks(contentBlocks)
     return (
       <div className="space-y-1">
-        {contentBlocks.map((block, i) => (
-          <ContentBlockView key={i} block={block} sequence={message.sequence} index={i} visibility={visibility} sessionId={sessionId} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
-        ))}
+        {grouped.map((item, i) => {
+          if (Array.isArray(item)) {
+            if (!visibility.toolCalls) return null
+            return <ToolCallGroup key={i} blocks={item} sequence={message.sequence} startIndex={contentBlocks.indexOf(item[0])} toolResultMap={toolResultMap} />
+          }
+          return <ContentBlockView key={i} block={item} sequence={message.sequence} visibility={visibility} sessionId={sessionId} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
+        })}
       </div>
     )
   }
@@ -460,13 +444,12 @@ const TranscriptEntry = memo(function TranscriptEntry({
     if (!visibility.messages) return null
     return (
       <TranscriptAccordionEntry
-        value={`plan-${message.sequence}`}
-        icon={ClipboardList}
+
         label="Plan"
-        color="text-chart-3"
+        color="text-foreground"
         defaultOpen
       >
-        <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
+        <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
             {msg.content || ""}
           </ReactMarkdown>
@@ -482,33 +465,33 @@ const TranscriptEntry = memo(function TranscriptEntry({
   return null
 })
 
-function MarkdownEntry({ value, text }: { value: string; text: string }) {
+function MarkdownEntry({ text }: { text: string }) {
   return (
-    <TranscriptAccordionEntry value={value} icon={Bot} label="Claude" color="text-chart-4" defaultOpen>
-      <div className="prose prose-sm max-w-none dark:prose-invert pl-5.5 overflow-x-auto">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+    <MessageBubble label="Claude" align="left" transparent>
+      <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
           {text}
         </ReactMarkdown>
       </div>
-    </TranscriptAccordionEntry>
+    </MessageBubble>
   )
 }
 
 function ContentBlockView({
   block,
   sequence,
-  index,
   visibility,
   sessionId,
+  toolResultMap,
   onOpenPanel,
   onAction,
   onArtifactLoaded,
 }: {
   block: ContentBlockType
   sequence: number
-  index: number
   visibility: TranscriptVisibility
   sessionId?: string
+  toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
   onArtifactLoaded?: () => void
@@ -518,8 +501,6 @@ function ContentBlockView({
     queryFn: getPanelSchemas,
     staleTime: 60_000,
   })
-  const id = `${sequence}-${index}`
-
   if (block.type === "text") {
     if (!block.text || !visibility.messages) return null
 
@@ -531,7 +512,7 @@ function ContentBlockView({
         return (
           <>
             <ContextPanel data={data} />
-            {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+            {rest && <MarkdownEntry text={rest} />}
           </>
         )
       } catch { /* fall through to normal render */ }
@@ -545,7 +526,7 @@ function ContentBlockView({
         return (
           <>
             <InboxResultPanel data={data} sessionId={sessionId ?? ""} />
-            {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+            {rest && <MarkdownEntry text={rest} />}
           </>
         )
       } catch { /* fall through to normal render */ }
@@ -564,7 +545,7 @@ function ContentBlockView({
                 <div className="rounded-lg border p-3 bg-card">
                   <PanelWidget widgets={widgets} data={data} />
                 </div>
-                {rest && <MarkdownEntry value={`text-${id}`} text={rest} />}
+                {rest && <MarkdownEntry text={rest} />}
               </>
             )
           } catch { /* fall through */ }
@@ -572,7 +553,7 @@ function ContentBlockView({
       }
     }
 
-    return <MarkdownEntry value={`text-${id}`} text={block.text} />
+    return <MarkdownEntry text={block.text} />
   }
 
   if (block.type === "tool_use") {
@@ -596,17 +577,12 @@ function ContentBlockView({
     const summary = toolUseSummary(block.name, block.input)
     return (
       <TranscriptAccordionEntry
-        value={`tool-${id}`}
-        icon={Wrench}
-        label={block.name}
+
+        label={summary ? `${block.name} ${summary}` : block.name}
         color="text-muted-foreground"
-        extra={
-          summary ? (
-            <span className="text-xs text-muted-foreground truncate">{summary}</span>
-          ) : undefined
-        }
+        bold={false}
       >
-        {block.input && <HighlightedJson data={block.input} className="pl-5.5" />}
+        <ToolCallDetail name={block.name} input={block.input} toolUseId={block.id} toolResultMap={toolResultMap} />
       </TranscriptAccordionEntry>
     )
   }
@@ -615,12 +591,13 @@ function ContentBlockView({
     if (!block.thinking || !visibility.thinking) return null
     return (
       <TranscriptAccordionEntry
-        value={`thinking-${id}`}
-        icon={Brain}
+
         label="Thinking"
-        color="text-primary"
+        color="text-muted-foreground"
+        bold={false}
+        defaultOpen
       >
-        <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words pl-5.5">
+        <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
           {block.thinking}
         </div>
       </TranscriptAccordionEntry>
@@ -645,26 +622,107 @@ function HighlightedJson({ data, className }: { data: unknown; className?: strin
   )
 }
 
+/** Group consecutive non-render_output tool_use blocks into arrays; other blocks stay individual. */
+function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType | ToolUseBlock[]> {
+  const groups: Array<ContentBlockType | ToolUseBlock[]> = []
+  let toolGroup: ToolUseBlock[] = []
+
+  for (const block of blocks) {
+    if (
+      block.type === "tool_use" &&
+      block.name !== "render_output" &&
+      block.name !== "mcp__render_output__render_output"
+    ) {
+      toolGroup.push(block)
+    } else {
+      if (toolGroup.length > 0) {
+        groups.push(toolGroup)
+        toolGroup = []
+      }
+      groups.push(block)
+    }
+  }
+  if (toolGroup.length > 0) groups.push(toolGroup)
+  return groups
+}
+
+/** A single accordion containing multiple tool calls. */
+function ToolCallGroup({ blocks, sequence, startIndex, toolResultMap }: { blocks: ToolUseBlock[]; sequence: number; startIndex: number; toolResultMap?: Map<string, string> }) {
+  const summary = blocks.length === 1 ? toolUseSummary(blocks[0].name, blocks[0].input) : ""
+  const label = blocks.length === 1
+    ? (summary ? `${blocks[0].name} ${summary}` : blocks[0].name)
+    : blocks.map((b) => b.name).join(", ")
+
+  return (
+    <TranscriptAccordionEntry
+
+      label={label}
+      color="text-muted-foreground"
+      bold={false}
+    >
+      <div className="space-y-2">
+        {blocks.map((block, i) => (
+          <ToolCallDetail key={i} name={block.name} input={block.input} toolUseId={block.id} toolResultMap={toolResultMap} />
+        ))}
+      </div>
+    </TranscriptAccordionEntry>
+  )
+}
+
+/** Structured display of a single tool call: name, command, and tool output. */
+function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: string; input: Record<string, unknown>; toolUseId?: string; toolResultMap?: Map<string, string> }) {
+  const [showOutput, setShowOutput] = useState(false)
+  const command = toolUseCommand(name, input)
+  const resultText = toolUseId ? toolResultMap?.get(toolUseId) : undefined
+
+  return (
+    <div className="border-l-2 border-border pl-3 py-1 min-w-0">
+      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{name}</div>
+      {command && (
+        <div className="overflow-x-auto">
+          <pre className="text-[11px] text-muted-foreground font-mono whitespace-pre">{command}</pre>
+        </div>
+      )}
+      {resultText && (
+        <>
+          <button
+            type="button"
+            className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground mt-0.5"
+            onClick={() => setShowOutput((s) => !s)}
+          >
+            {showOutput ? "Hide output" : "Show output"}
+          </button>
+          {showOutput && (
+            <pre className="text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto text-muted-foreground font-mono whitespace-pre-wrap break-words mt-1">
+              {resultText}
+            </pre>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+const TOOL_PRIMARY_FIELD: Record<string, string> = {
+  Read: "file_path", Write: "file_path", Edit: "file_path",
+  Glob: "pattern", Grep: "pattern",
+  WebFetch: "url", WebSearch: "query",
+}
+
+/** Short summary for accordion labels (e.g. file path, description). */
 function toolUseSummary(name: string, input: Record<string, unknown>): string {
   if (!input) return ""
   const str = (key: string): string => (typeof input[key] === "string" ? input[key] : "")
-  switch (name) {
-    case "Read":
-    case "Write":
-    case "Edit":
-      return str("file_path")
-    case "Bash":
-      return str("description") || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
-    case "Glob":
-    case "Grep":
-      return str("pattern")
-    case "WebFetch":
-      return str("url")
-    case "WebSearch":
-      return str("query")
-    default:
-      return ""
-  }
+  if (name === "Bash") return str("description") || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
+  return TOOL_PRIMARY_FIELD[name] ? str(TOOL_PRIMARY_FIELD[name]) : ""
+}
+
+/** Raw command/input for the detail view (e.g. actual bash command, not description). */
+function toolUseCommand(name: string, input: Record<string, unknown>): string {
+  if (!input) return ""
+  const str = (key: string): string => (typeof input[key] === "string" ? input[key] : "")
+  if (name === "Bash") return str("command")
+  return TOOL_PRIMARY_FIELD[name] ? str(TOOL_PRIMARY_FIELD[name]) : ""
 }
 
 function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisibility): boolean {
@@ -816,4 +874,37 @@ function extractText(msg: SessionMessagePayload): string {
       .join("\n")
   }
   return ""
+}
+
+/** Build a map from tool_use_id → result text by scanning all messages for tool_result content blocks. */
+function buildToolResultMap(messages: SessionMessage[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const m of messages) {
+    const raw = m.message as unknown as Record<string, unknown>
+    // Tool result messages have content blocks with type "tool_result" and a tool_use_id.
+    // They can be at raw.content, raw.message.content, or via the toolUseResult field.
+    const contentSources = [
+      raw.content,
+      (raw.message as Record<string, unknown> | undefined)?.content,
+    ]
+    for (const content of contentSources) {
+      if (!Array.isArray(content)) continue
+      for (const block of content) {
+        if (
+          block &&
+          typeof block === "object" &&
+          block.type === "tool_result" &&
+          typeof block.tool_use_id === "string"
+        ) {
+          const text = typeof block.content === "string"
+            ? block.content
+            : Array.isArray(block.content)
+              ? block.content.map((c: any) => c.text || "").join("\n")
+              : ""
+          if (text) map.set(block.tool_use_id, text)
+        }
+      }
+    }
+  }
+  return map
 }

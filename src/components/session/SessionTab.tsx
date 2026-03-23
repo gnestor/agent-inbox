@@ -8,34 +8,34 @@ import { SessionView } from "./SessionView"
 import type { TabId } from "@/types/navigation"
 
 export function SessionTab({ tabId = "sessions" as TabId }: { tabId?: TabId }) {
-  const { getPanels } = useNavigation()
+  const { getPanels, getSelectedItemId } = useNavigation()
   const panels = getPanels(tabId)
+  const listPanel = panels.find((p) => p.type === "list")
+  const detailPanels = panels.filter((p) => p.type !== "list")
+  const selectedId = getSelectedItemId(tabId)
 
   return (
     <Tab id={tabId}>
-      {panels.map((panel, index) => {
-        if (panel.type === "list") {
-          return (
-            <Panel key="list" id="list" variant="list">
-              <SessionListView />
-            </Panel>
-          )
-        }
-
-        return (
-          <PanelSlot key={index} panelId={panel.id}>
-            <Panel id={panel.id} variant={panel.type}>
+      {listPanel && (
+        <Panel key="list" id="list" variant="list">
+          <SessionListView />
+        </Panel>
+      )}
+      {detailPanels.length > 0 && (
+        <PanelSlot key="detail-group" panelId={selectedId ?? detailPanels[0].id} group>
+          {detailPanels.map((panel) => (
+            <Panel key={panel.id} id={panel.id} variant={panel.type}>
               {panel.type === "session" ? (
-                <SessionView sessionId={panel.props.sessionId} />
+                <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
               ) : panel.type === "detail" && "itemId" in panel.props ? (
-                <SessionView sessionId={panel.props.itemId as string} />
+                <SessionView sessionId={panel.props.itemId as string} panelId={panel.id} />
               ) : (
                 <PanelContent panel={panel} />
               )}
             </Panel>
-          </PanelSlot>
-        )
-      })}
+          ))}
+        </PanelSlot>
+      )}
     </Tab>
   )
 }

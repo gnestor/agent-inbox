@@ -26,10 +26,11 @@ import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
   sessionId: string
+  panelId: string
   title?: string
 }
 
-export function SessionView({ sessionId, title }: SessionViewProps) {
+export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   const { user } = useUser()
   const { getPanels } = useNavigation()
   // Only connect SSE when this panel is in the active tab (visible)
@@ -51,7 +52,7 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
     isStreaming, isSending,
     handleSend, handleKeyDown,
     handleBack, handleOpenPanel, isFromSidebar,
-  } = useSessionView({ sessionId, title, session, phase, mutations, resumeSession })
+  } = useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession })
 
   // Show skeleton until session data + SSE presence + artifacts are ready.
   // Skip skeleton entirely if data is already cached (navigating back).

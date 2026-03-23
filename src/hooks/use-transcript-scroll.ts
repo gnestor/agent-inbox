@@ -35,7 +35,7 @@ export function useTranscriptScroll({
   // Estimates must be <= actual height to avoid the cascade bug.
   const estimateSize = useCallback((index: number) => {
     const msg = visibleMessages[index]
-    if (!msg) return 44
+    if (!msg) return 72
     const cached = sessionId ? heightCache.get(`${sessionId}:${msg.sequence}`) : undefined
     if (cached) return cached
     const payload = msg.message
@@ -49,7 +49,7 @@ export function useTranscriptScroll({
         }
       }
     }
-    return 44
+    return 72
   }, [visibleMessages, sessionId])
 
   // Start at the bottom

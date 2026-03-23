@@ -389,7 +389,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
         </div>
       )}
       {isVideo && (
-        <div className="p-4">
+        <div className="">
           <video
             src={downloadUrl}
             controls
@@ -409,7 +409,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
 
       {/* Attachment bar — always shown */}
       <div className={cn(
-        "flex items-center gap-3 px-4 py-2",
+        "flex items-center gap-3 py-2",
         isInline ? "border-t bg-muted/20" : "",
       )}>
         {fileIcon(ext)}

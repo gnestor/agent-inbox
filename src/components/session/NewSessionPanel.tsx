@@ -31,7 +31,7 @@ interface NewSessionPanelProps {
 
 export function NewSessionPanel({ threadId, taskId, sessionId, autoStart }: NewSessionPanelProps) {
   if (sessionId) {
-    return <SessionView sessionId={sessionId} />
+    return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
   if (autoStart && (threadId || taskId)) {
     return <AutoStartPanel threadId={threadId} taskId={taskId} />

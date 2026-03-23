@@ -20,6 +20,8 @@ const EASE_CSS = `cubic-bezier(${EASE.join(",")})`
 interface PanelSlotProps {
   panelId: string
   children: React.ReactNode
+  /** When true, fills remaining space and lays out children horizontally (for panel groups) */
+  group?: boolean
   /** @deprecated directionRef is no longer needed — reads from NavigationContext */
   directionRef?: React.RefObject<number>
 }
@@ -30,7 +32,7 @@ interface ExitingPanel {
   dir: number
 }
 
-export function PanelSlot({ panelId, children }: PanelSlotProps) {
+export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
   const { getItemDirection, getPanelTransition } = useNavigation()
   const isMobile = useIsMobile()
   const transition = getPanelTransition()
@@ -62,18 +64,22 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
     }
   }
 
-  const width = isMobile ? "100%" : DEFAULT_PANEL_WIDTH
+  const width = isMobile ? "100%" : group ? undefined : DEFAULT_PANEL_WIDTH
   const hasAnimation = !isFirstRef.current && exiting
 
-  // Exit animation: slide the old panel out
   const exitAnimation = exiting
     ? `${exiting.dir >= 0 ? "panel-slide-out-up" : "panel-slide-out-down"} ${DURATION}s ${EASE_CSS} forwards`
     : undefined
 
-  // Enter animation: slide the new panel in
   const enterAnimation = hasAnimation
     ? `${direction >= 0 ? "panel-slide-in-up" : "panel-slide-in-down"} ${DURATION}s ${EASE_CSS} forwards`
     : undefined
+
+  const innerStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    ...(group ? { display: "flex", gap: 16 } : {}),
+  }
 
   return (
     <>
@@ -81,28 +87,24 @@ export function PanelSlot({ panelId, children }: PanelSlotProps) {
       <div
         style={{
           position: "relative",
-          width,
           height: "100%",
-          flexShrink: 0,
+          ...(group ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
           ...(isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : {}),
         }}
       >
-        {/* Exiting panel */}
         {exiting && (
           <div
             key={exiting.id}
-            style={{ position: "absolute", inset: 0, animation: exitAnimation }}
+            style={{ ...innerStyle, animation: exitAnimation }}
             onAnimationEnd={handleExitEnd}
           >
             {exiting.content}
           </div>
         )}
-        {/* Active panel */}
         <div
           key={panelId}
           style={{
-            position: "absolute",
-            inset: 0,
+            ...innerStyle,
             ...(enterAnimation ? { animation: enterAnimation } : {}),
           }}
         >

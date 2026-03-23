@@ -11,6 +11,7 @@ import type { Session } from "@/types"
 
 interface UseSessionViewOptions {
   sessionId: string
+  panelId: string
   title?: string
   session: Session | undefined
   phase: SessionPhase
@@ -20,20 +21,13 @@ interface UseSessionViewOptions {
   resumeSession: (prompt: string) => void
 }
 
-export function useSessionView({ sessionId, title, session, phase, mutations, resumeSession }: UseSessionViewOptions) {
+export function useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession }: UseSessionViewOptions) {
   const location = useLocation()
-  const { activeTab, popPanel, deselectItem, pushPanel } = useNavigation()
+  const { removePanel, pushPanel } = useNavigation()
   const isFromSidebar = location.pathname.startsWith("/recent/")
-  const sessionPanelId = `session:${sessionId}`
-
-  // --- Back navigation ---
 
   function handleBack() {
-    if (activeTab === "sessions") {
-      deselectItem()
-    } else {
-      popPanel(sessionPanelId)
-    }
+    removePanel(panelId)
   }
 
   // --- Draft input ---
