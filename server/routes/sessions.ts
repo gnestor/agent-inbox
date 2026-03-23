@@ -155,33 +155,29 @@ sessionRoutes.get("/:id", async (c) => {
   const session = sessions.getSessionRecord(sessionId)
 
   if (session) {
-    const dbMessages = sessions.getSessionMessages(sessionId)
+    // JSONL is the source of truth for session transcript.
+    // DB only stores metadata (attached_context) and ephemeral stream events.
+    const agentSession = await sessions.findAgentSession(sessionId)
+    const transcript = agentSession
+      ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+      : []
 
-    // If the session was imported (e.g., via attach or rename) it may only have
-    // system messages (attached_context) in the DB. Fall back to the JSONL
-    // transcript for the actual conversation, prepending any DB-only messages.
-    const parsedDbMessages = dbMessages.map((m) => ({
-      id: m.id,
-      sessionId: m.session_id,
-      sequence: m.sequence,
-      type: m.type,
-      message: JSON.parse(m.message as string),
-      createdAt: m.created_at,
-    }))
-    const hasConversation = parsedDbMessages.some(
-      (m) => m.type !== "system" || m.message?.subtype !== "attached_context",
-    )
-    let messages: Array<Record<string, unknown>>
-    if (hasConversation) {
-      messages = parsedDbMessages
-    } else {
-      const agentSession = await sessions.findAgentSession(sessionId)
-      const transcript = agentSession
-        ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
-        : []
-      // Prepend any attached context messages before the transcript
-      messages = [...parsedDbMessages, ...transcript]
-    }
+    // Prepend any DB-only messages (e.g. attached_context) that aren't in the JSONL
+    const dbMessages = sessions.getSessionMessages(sessionId)
+    const attachedContext = dbMessages
+      .filter((m) => {
+        const msg = JSON.parse(m.message as string)
+        return m.type === "system" && msg?.subtype === "attached_context"
+      })
+      .map((m) => ({
+        id: m.id,
+        sessionId: m.session_id,
+        sequence: m.sequence,
+        type: m.type,
+        message: JSON.parse(m.message as string),
+        createdAt: m.created_at,
+      }))
+    const messages = [...attachedContext, ...transcript]
 
     return c.json({
       session: {
