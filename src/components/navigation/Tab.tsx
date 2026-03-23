@@ -1,9 +1,17 @@
 // src/components/navigation/Tab.tsx
-import { useRef, useEffect, useState, createContext, useContext, useCallback } from "react"
+import {
+  Children,
+  useRef,
+  useEffect,
+  useState,
+  createContext,
+  useContext,
+  useCallback,
+} from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
-import { DURATION, EASE } from "@/lib/navigation-constants"
+import { DURATION, EASE, ITEM_GAP, DEFAULT_PANEL_WIDTH } from "@/lib/navigation-constants"
 
 interface TabProps {
   id: TabId
@@ -64,7 +72,12 @@ function MobileTab({ id, children }: TabProps) {
   void getSelectedItemId(id) // trigger re-render on selection change
   const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
 
-  const { renderedChildren, exitChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
+  const { renderedChildren, exitChildren, clearExit } = useExitChildren(
+    children,
+    targetPanelIndex,
+    hasMounted,
+    getPanelTransition(id),
+  )
 
   // Scroll to the correct panel on every render
   useEffect(() => {
@@ -115,7 +128,10 @@ function MobileTab({ id, children }: TabProps) {
       })
       observer.observe(el, { childList: true, subtree: true })
       const cleanup = setTimeout(() => observer.disconnect(), 1000)
-      return () => { observer.disconnect(); clearTimeout(cleanup) }
+      return () => {
+        observer.disconnect()
+        clearTimeout(cleanup)
+      }
     }
 
     doScroll()
@@ -130,9 +146,8 @@ function MobileTab({ id, children }: TabProps) {
       const trySwitch = (me: PointerEvent) => {
         const dy = me.clientY - startY
         if (Math.abs(dy) > threshold) {
-          const nextIdx = dy < 0
-            ? Math.min(currentIdx + 1, ALL_TABS.length - 1)
-            : Math.max(currentIdx - 1, 0)
+          const nextIdx =
+            dy < 0 ? Math.min(currentIdx + 1, ALL_TABS.length - 1) : Math.max(currentIdx - 1, 0)
           if (nextIdx !== currentIdx) switchTab(ALL_TABS[nextIdx])
           document.removeEventListener("pointermove", onMove)
           document.removeEventListener("pointerup", onUp)
@@ -179,8 +194,16 @@ function DesktopTab({ id, children }: TabProps) {
   const hasMounted = useRef(false)
 
   const panels = getPanels(id)
-  const targetPanelIndex = panels.length > 1 ? panels.length - 1 : 0
-  const { renderedChildren, clearExit } = useExitChildren(children, targetPanelIndex, hasMounted, getPanelTransition(id))
+  // Use direct children count (list + group), not total panels count.
+  // Changes inside the PanelSlot group shouldn't trigger tab-level collapse.
+  const childCount = Children.count(children)
+  const targetPanelIndex = childCount > 1 ? childCount - 1 : 0
+  const { renderedChildren, clearExit } = useExitChildren(
+    children,
+    targetPanelIndex,
+    hasMounted,
+    getPanelTransition(id),
+  )
 
   // Save/restore scroll position when switching tabs
   useEffect(() => {
@@ -197,25 +220,23 @@ function DesktopTab({ id, children }: TabProps) {
     }
   }, [isActive])
 
-  // Scroll to new panels when panel count increases
+  // Scroll when panels are added or removed inside the group
+  const panelCount = panels.length
   useEffect(() => {
     if (!isActive || !scrollRef.current) return
-    const el = scrollRef.current
-    const currentCount = el.children.length
 
-    if (currentCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
+    if (panelCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
       hasMounted.current = true
       requestAnimationFrame(() => {
-        if (!scrollRef.current) return
-        const target = scrollRef.current.scrollWidth - scrollRef.current.clientWidth
-        if (isFirstRender.current) {
-          scrollRef.current.scrollLeft = target
-        } else {
-          scrollRef.current.scrollTo({ left: target, behavior: "smooth" })
-        }
+        const el = scrollRef.current
+        if (!el) return
+        const target = el.scrollWidth - el.clientWidth
+        el.scrollTo({ left: target, behavior: isFirstRender.current ? "instant" : "smooth" })
       })
     }
-    prevPanelCountRef.current = currentCount
+    // Panel removed: the PanelSlot's CSS width transition shrinks it,
+    // and the browser clamps scrollLeft to the new scrollWidth automatically.
+    prevPanelCountRef.current = panelCount
     isFirstRender.current = false
     if (!hasMounted.current) hasMounted.current = true
   })
@@ -224,10 +245,16 @@ function DesktopTab({ id, children }: TabProps) {
   useEffect(() => {
     if (renderedChildren === children) return
     const el = scrollRef.current
-    if (!el) { clearExit(); return }
+    if (!el) {
+      clearExit()
+      return
+    }
 
     const exitingPanel = el.lastElementChild as HTMLElement
-    if (!exitingPanel) { clearExit(); return }
+    if (!exitingPanel) {
+      clearExit()
+      return
+    }
 
     const w = exitingPanel.offsetWidth
     exitingPanel.style.width = `${w}px`

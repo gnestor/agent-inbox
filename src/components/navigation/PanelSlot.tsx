@@ -10,7 +10,7 @@
  *   direction >= 0 → new panel enters from below, old exits upward
  *   direction <  0 → new panel enters from above, old exits downward
  */
-import { useRef, useState } from "react"
+import { Children, useRef, useEffect, useState } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import { DEFAULT_PANEL_WIDTH, DURATION, EASE, ITEM_GAP } from "@/lib/navigation-constants"
@@ -64,7 +64,24 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
     }
   }
 
-  const width = isMobile ? "100%" : group ? undefined : DEFAULT_PANEL_WIDTH
+  const childCount = group ? Children.count(children) : 1
+  const groupWidth = childCount * DEFAULT_PANEL_WIDTH + Math.max(0, childCount - 1) * ITEM_GAP
+  const width = isMobile ? "100%" : group ? groupWidth : DEFAULT_PANEL_WIDTH
+
+  // Suppress width transition for one frame on grow (panel added).
+  // The transition stays on so shrink (panel removed) always animates.
+  const prevWidthRef = useRef(groupWidth)
+  const isGrowing = group && groupWidth > prevWidthRef.current
+  const suppressTransition = useRef(false)
+  if (isGrowing) suppressTransition.current = true
+  prevWidthRef.current = groupWidth
+
+  // Re-enable transition after one frame so future shrinks animate
+  useEffect(() => {
+    if (suppressTransition.current) {
+      requestAnimationFrame(() => { suppressTransition.current = false })
+    }
+  })
   const hasAnimation = !isFirstRef.current && exiting
 
   const exitAnimation = exiting
@@ -88,26 +105,18 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
         style={{
           position: "relative",
           height: "100%",
-          ...(group ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
+          width,
+          flexShrink: 0,
+          ...(group ? { transition: suppressTransition.current ? "none" : `width ${DURATION}s ${EASE_CSS}`, overflow: "hidden" } : {}),
           ...(isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : {}),
         }}
       >
         {exiting && (
-          <div
-            key={exiting.id}
-            style={{ ...innerStyle, animation: exitAnimation }}
-            onAnimationEnd={handleExitEnd}
-          >
+          <div key={exiting.id} style={{ ...innerStyle, animation: exitAnimation }} onAnimationEnd={handleExitEnd}>
             {exiting.content}
           </div>
         )}
-        <div
-          key={panelId}
-          style={{
-            ...innerStyle,
-            ...(enterAnimation ? { animation: enterAnimation } : {}),
-          }}
-        >
+        <div key={panelId} style={{ ...innerStyle, ...(enterAnimation ? { animation: enterAnimation } : {}) }}>
           {children}
         </div>
       </div>
