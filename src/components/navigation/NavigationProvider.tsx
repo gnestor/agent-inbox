@@ -2,16 +2,21 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL } from "@/types/navigation"
+import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL, LEGACY_URL_TO_PLUGIN } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
 
 export function buildUrl(activeTab: TabId, selectedItemId?: string, tabState?: TabState): string {
   if (activeTab === "settings") return "/settings/integrations"
-  if (activeTab.startsWith("plugin:")) return `/plugins/${activeTab.replace("plugin:", "")}`
   if (activeTab.startsWith("recent:") && tabState) {
     return buildRecentUrl(tabState)
+  }
+  if (activeTab.startsWith("plugin:")) {
+    const pluginId = activeTab.replace("plugin:", "")
+    return selectedItemId
+      ? `/${pluginId}/${encodeURIComponent(selectedItemId)}`
+      : `/${pluginId}`
   }
   return selectedItemId
     ? `/${activeTab}/${encodeURIComponent(selectedItemId)}`
@@ -24,17 +29,20 @@ function buildRecentUrl(tabState: TabState): string {
   const sessionPanel = tabState.panels.find((p) => p.type === "session")
   const itemId = detailPanel?.props.itemId
 
+  // Extract the URL-safe source name from the tab ID (plugin:gmail → gmail, sessions → sessions)
+  const sourcePath = sourceTab.startsWith("plugin:") ? sourceTab.replace("plugin:", "") : sourceTab
+
   if (sourceTab === "sessions") {
     const sid = sessionPanel?.props.sessionId ?? itemId
     return `/recent/sessions/${sid ? encodeURIComponent(sid) : ""}`
   }
   if (itemId && sessionPanel) {
-    return `/recent/${sourceTab}/${encodeURIComponent(itemId)}/session/${encodeURIComponent(sessionPanel.props.sessionId)}`
+    return `/recent/${sourcePath}/${encodeURIComponent(itemId)}/session/${encodeURIComponent(sessionPanel.props.sessionId)}`
   }
   if (itemId) {
-    return `/recent/${sourceTab}/${encodeURIComponent(itemId)}`
+    return `/recent/${sourcePath}/${encodeURIComponent(itemId)}`
   }
-  return `/recent/${sourceTab}`
+  return `/recent/${sourcePath}`
 }
 
 export interface ParsedUrl {
@@ -54,20 +62,30 @@ export function parseUrl(pathname: string): ParsedUrl {
       const sessionId = decodeURIComponent(parts[2])
       return { tabId: `recent:${sessionId}`, sourceTab: "sessions", selectedId: sessionId }
     }
-    // /recent/emails/{id}/session/{sessionId} or /recent/tasks/{id}/session/{sessionId}
-    if (["emails", "tasks"].includes(parts[1]) && parts[2]) {
+    // /recent/{source}/{id}/session/{sessionId}
+    // Supports both legacy names (emails, tasks) and plugin IDs (gmail, notion-tasks)
+    if (parts[1] && parts[2]) {
       const selectedId = decodeURIComponent(parts[2])
       const sessionId = parts[3] === "session" && parts[4] ? decodeURIComponent(parts[4]) : undefined
       const key = sessionId ?? selectedId
-      return { tabId: `recent:${key}`, sourceTab: parts[1] as TabId, selectedId, sessionId }
+      const pluginId = LEGACY_URL_TO_PLUGIN[parts[1]] ?? parts[1]
+      return { tabId: `recent:${key}`, sourceTab: `plugin:${pluginId}`, selectedId, sessionId }
     }
     return { tabId: "sessions" }
   }
   if (parts[0] === "settings") return { tabId: "settings" }
-  if (parts[0] === "plugins" && parts[1]) return { tabId: `plugin:${parts[1]}` as TabId }
-  if (["emails", "tasks", "calendar", "sessions"].includes(parts[0]))
-    return { tabId: parts[0] as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
-  return { tabId: "emails" }
+  if (parts[0] === "sessions")
+    return { tabId: "sessions", selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
+  // Legacy /plugins/:id URLs
+  if (parts[0] === "plugins" && parts[1])
+    return { tabId: `plugin:${parts[1]}` as TabId, selectedId: parts[2] ? decodeURIComponent(parts[2]) : undefined }
+  // All other paths: treat as plugin ID (or legacy name)
+  // /gmail/{id}, /notion-tasks/{id}, /emails/{id} (backward compat), etc.
+  const pluginId = LEGACY_URL_TO_PLUGIN[parts[0]] ?? parts[0]
+  if (pluginId) {
+    return { tabId: `plugin:${pluginId}` as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
+  }
+  return { tabId: "plugin:gmail" }
 }
 
 /** Build an ephemeral tab state for a /recent/ route (no list panel). */

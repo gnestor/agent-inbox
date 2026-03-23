@@ -134,7 +134,7 @@ export interface InboxContextData {
     role: string | null
   }
   source: {
-    type: "email" | "task"
+    type: string
     id: string
     threadId: string | null
     subject: string | null
@@ -175,6 +175,8 @@ export interface Session {
   linkedEmailId: string | null
   linkedEmailThreadId: string | null
   linkedTaskId: string | null
+  linkedSourceType: string | null
+  linkedSourceId: string | null
   triggerSource: TriggerSource
   project: string
   linkedItemTitle: string | null

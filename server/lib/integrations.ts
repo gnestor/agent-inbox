@@ -87,7 +87,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     icon: "message-square",
     scope: "workspace",
     authType: "api_key",
-    envVars: { credential: "SLACK_API_TOKEN" },
+    envVars: { credential: "SLACK_API_TOKEN", config: ["SLACK_BOT_TOKEN"] },
   },
   {
     id: "shopify",
@@ -240,6 +240,14 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     scope: "workspace",
     authType: "api_key",
     envVars: { credential: "OBSERVABLE_API_TOKEN" },
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    icon: "sparkles",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: { credential: "GEMINI_API_KEY" },
   },
   {
     id: "postgres",

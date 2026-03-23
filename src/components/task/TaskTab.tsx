@@ -9,7 +9,7 @@ import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import type { TabId } from "@/types/navigation"
 
-export function TaskTab({ tabId = "tasks" as TabId }: { tabId?: TabId }) {
+export function TaskTab({ tabId = "plugin:notion-tasks" as TabId }: { tabId?: TabId }) {
   const { getPanels, getSelectedItemId } = useNavigation()
   const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")

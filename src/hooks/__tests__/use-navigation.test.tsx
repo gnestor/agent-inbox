@@ -23,7 +23,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe("useNavigation", () => {
   it("provides default state", () => {
     const { result } = renderHook(() => useNavigation(), { wrapper })
-    expect(result.current.activeTab).toBe("emails")
+    expect(result.current.activeTab).toBe("plugin:gmail")
     expect(result.current.getPanels()).toEqual([{ id: "list", type: "list", props: {} }])
   })
 
@@ -91,18 +91,18 @@ describe("useNavigation", () => {
 
   it("switchTab changes activeTab", () => {
     const { result } = renderHook(() => useNavigation(), { wrapper })
-    act(() => result.current.switchTab("tasks"))
-    expect(result.current.activeTab).toBe("tasks")
+    act(() => result.current.switchTab("plugin:notion-tasks"))
+    expect(result.current.activeTab).toBe("plugin:notion-tasks")
   })
 
   it("getSelectedItemId with tab arg persists across tab switch", () => {
     const { result } = renderHook(() => useNavigation(), { wrapper })
     act(() => result.current.selectItem("email123"))
-    expect(result.current.getSelectedItemId("emails")).toBe("email123")
+    expect(result.current.getSelectedItemId("plugin:gmail")).toBe("email123")
 
-    act(() => result.current.switchTab("tasks"))
+    act(() => result.current.switchTab("plugin:notion-tasks"))
     // Tab-scoped: emails selection still available
-    expect(result.current.getSelectedItemId("emails")).toBe("email123")
+    expect(result.current.getSelectedItemId("plugin:gmail")).toBe("email123")
     // Default (active tab) returns tasks selection (undefined)
     expect(result.current.getSelectedItemId()).toBeUndefined()
   })
@@ -126,7 +126,7 @@ describe("useNavigation", () => {
     expect(result.current.activeTab).toBe("sessions")
     expect(result.current.getSelectedItemId("sessions")).toBe("session-uuid")
     // The item should NOT appear on the emails tab
-    expect(result.current.getSelectedItemId("emails")).toBeUndefined()
+    expect(result.current.getSelectedItemId("plugin:gmail")).toBeUndefined()
   })
 
   it("openNewSession places new_session panel at position 1", () => {

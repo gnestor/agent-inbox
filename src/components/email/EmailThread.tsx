@@ -124,7 +124,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           {thread && (
             <SessionActionMenu
               source={{
-                type: "email",
+                type: "gmail",
                 id: threadId,
                 title: thread.subject,
                 content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,

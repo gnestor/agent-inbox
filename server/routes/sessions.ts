@@ -12,7 +12,7 @@ type UserProfile = { name: string; email: string; picture?: string }
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
-  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId } = await c.req.json()
+  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId, linkedSourceType, linkedSourceId } = await c.req.json()
 
   if (!prompt) {
     return c.json({ error: "prompt is required" }, 400)
@@ -25,6 +25,8 @@ sessionRoutes.post("/", async (c) => {
       linkedEmailId,
       linkedEmailThreadId,
       linkedTaskId,
+      linkedSourceType,
+      linkedSourceId,
       triggerSource: "manual",
       userSessionToken,
     })
@@ -90,6 +92,8 @@ sessionRoutes.get("/", async (c) => {
       linkedEmailId: (s.linked_email_id as string) || null,
       linkedEmailThreadId: (s.linked_email_thread_id as string) || null,
       linkedTaskId: (s.linked_task_id as string) || null,
+      linkedSourceType: (s.linked_source_type as string) || null,
+      linkedSourceId: (s.linked_source_id as string) || null,
       triggerSource: (s.trigger_source as string) || "manual",
       project: currentProject,
       linkedItemTitle:
@@ -110,6 +114,8 @@ sessionRoutes.get("/", async (c) => {
         linkedEmailId: null,
         linkedEmailThreadId: null,
         linkedTaskId: null,
+        linkedSourceType: null,
+        linkedSourceId: null,
         triggerSource: "manual" as const,
         project: s.project,
       })),
@@ -191,6 +197,8 @@ sessionRoutes.get("/:id", async (c) => {
         linkedEmailId: session.linked_email_id,
         linkedEmailThreadId: session.linked_email_thread_id,
         linkedTaskId: session.linked_task_id,
+        linkedSourceType: session.linked_source_type || null,
+        linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(sessions.getWorkspacePath()),
         hasActiveProcess: sessions.isSessionRunning(session.id),
@@ -221,6 +229,8 @@ sessionRoutes.get("/:id", async (c) => {
       linkedEmailId: null,
       linkedEmailThreadId: null,
       linkedTaskId: null,
+      linkedSourceType: null,
+      linkedSourceId: null,
       triggerSource: "manual",
     },
     messages: transcript,

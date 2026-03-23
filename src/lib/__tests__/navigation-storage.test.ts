@@ -40,7 +40,7 @@ describe("navigation-storage", () => {
   describe("saveNavigationState / loadNavigationState", () => {
     it("round-trips a navigation state", async () => {
       const state = createDefaultNavigationState()
-      state.activeTab = "tasks"
+      state.activeTab = "plugin:notion-tasks"
       await saveNavigationState(state)
       const loaded = await loadNavigationState()
       expect(loaded).toEqual(state)
@@ -70,10 +70,10 @@ describe("navigation-storage", () => {
 
       const migrated = await migrateFromLocalStorage()
       expect(migrated).not.toBeNull()
-      expect(migrated!.activeTab).toBe("emails")
+      expect(migrated!.activeTab).toBe("plugin:gmail")
 
-      // Should have list + detail + session panels for emails tab
-      const emailPanels = migrated!.tabs.emails.panels
+      // Should have list + detail + session panels for gmail tab
+      const emailPanels = migrated!.tabs["plugin:gmail"].panels
       expect(emailPanels.length).toBeGreaterThanOrEqual(2)
       expect(emailPanels[0].type).toBe("list")
       expect(emailPanels[1].type).toBe("detail")

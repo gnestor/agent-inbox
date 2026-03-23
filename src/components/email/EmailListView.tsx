@@ -75,7 +75,7 @@ const getThreadId = (t: Record<string, unknown>) => t.threadId as string
 
 export function EmailListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter, switchTab } = useNavigation()
-  const filters = getFilters("emails")
+  const filters = getFilters("plugin:gmail")
 
   const query = useMemo(() => {
     const flags = (filters.flags || "").split(",").filter(Boolean)
@@ -150,7 +150,7 @@ export function EmailListView() {
       items={threads}
       fieldSchema={emailFieldSchema}
       getItemId={getThreadId}
-      selectedId={getSelectedItemId("emails")}
+      selectedId={getSelectedItemId("plugin:gmail")}
       onSelect={selectItem}
     >
       <ListView.Header title="Emails">

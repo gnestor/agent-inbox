@@ -24,7 +24,8 @@ createRoot(document.getElementById("root")!).render(
             persister,
             // Don't cache plugin manifests — they must always be fresh
             dehydrateOptions: {
-              shouldDehydrateQuery: (query) => query.queryKey[0] !== "plugins",
+              shouldDehydrateQuery: (query) =>
+                query.queryKey[0] !== "plugins" && query.state.status !== "error",
             },
           }}
           // After IndexedDB cache is restored, invalidate all queries so active

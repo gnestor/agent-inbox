@@ -7,23 +7,24 @@ import { CalendarListView } from "./CalendarListView"
 import { CalendarDetailView } from "./CalendarDetailView"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
+import type { TabId } from "@/types/navigation"
 
-export function CalendarTab() {
+export function CalendarTab({ tabId = "plugin:notion-calendar" as TabId }: { tabId?: TabId }) {
   const { getPanels, getSelectedItemId } = useNavigation()
-  const panels = getPanels("calendar")
+  const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")
-  const selectedId = getSelectedItemId("calendar")
+  const selectedId = getSelectedItemId(tabId)
 
   return (
-    <Tab id="calendar">
+    <Tab id={tabId}>
       {listPanel && (
         <Panel key="list" id="list" variant="list">
           <CalendarListView />
         </Panel>
       )}
-      {detailPanels.length > 0 && (
-        <PanelSlot key="detail-group" panelId={selectedId ?? detailPanels[0].id} group>
+      {detailPanels.length > 0 && selectedId && (
+        <PanelSlot key="detail-group" panelId={selectedId} group>
           {detailPanels.map((panel) => (
             <Panel key={panel.id} id={panel.id} variant={panel.type}>
               {panel.type === "detail" ? (

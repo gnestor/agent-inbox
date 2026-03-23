@@ -30,7 +30,7 @@ export function useDragTab() {
   return useContext(DragTabContext)
 }
 
-const ALL_TABS: TabId[] = ["settings", "emails", "tasks", "calendar", "sessions"]
+const ALL_TABS: TabId[] = ["settings", "plugin:gmail", "plugin:notion-tasks", "plugin:notion-calendar", "sessions"]
 
 // --- Exit children helper (keeps outgoing panels in DOM during exit animation) ---
 

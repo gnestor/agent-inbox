@@ -10,13 +10,11 @@ import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { homedir } from "os"
 import { existsSync } from "fs"
-import { gmailRoutes } from "./routes/gmail.js"
-import { notionRoutes } from "./routes/notion.js"
 import { sessionRoutes } from "./routes/sessions.js"
 import { webhookRoutes } from "./routes/webhooks.js"
 import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
-import { pluginRoutes } from "./routes/plugins.js"
+import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase } from "./db/schema.js"
@@ -27,8 +25,11 @@ import { resolveCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
 import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
-import { loadPlugins } from "./lib/plugin-loader.js"
+import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
 import { loadPanels } from "./lib/panel-registry.js"
+import { gmailPlugin } from "./plugins/gmail-plugin.js"
+import { notionTasksPlugin } from "./plugins/notion-tasks-plugin.js"
+import { notionCalendarPlugin } from "./plugins/notion-calendar-plugin.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -116,15 +117,19 @@ app.use("/api/*", async (c, next) => {
   await next()
 })
 
-// Protected routes
-app.route("/api/gmail", gmailRoutes)
-app.route("/api/notion", notionRoutes)
+// Register built-in plugins (before workspace plugins are loaded)
+registerPlugin(gmailPlugin)
+registerPlugin(notionTasksPlugin)
+registerPlugin(notionCalendarPlugin)
+
+// Protected routes (static routes first, plugin catch-all last)
 app.route("/api/sessions", sessionRoutes)
 app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
-app.route("/api/plugins", pluginRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
+// Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
+app.route("/api", pluginRoutes)
 
 // User profiles — look up by email for transcript author avatars
 app.get("/api/users", (c) => {
@@ -143,6 +148,10 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500)
 })
 
+// Mount built-in plugin custom routes (gmail attachments, notion options, etc.)
+// Must be before the SPA fallback so /api/gmail/* routes aren't caught by /*
+mountPluginRoutes(app)
+
 // Serve production build if dist/ exists
 const distPath = resolve(__dirname, "../dist")
 if (existsSync(distPath)) {
@@ -153,7 +162,7 @@ if (existsSync(distPath)) {
 
 const port = parseInt(process.env.PORT || "3002", 10)
 
-serve({ fetch: app.fetch, port }, () => {
+const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
   pruneExpired()
@@ -164,8 +173,19 @@ serve({ fetch: app.fetch, port }, () => {
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
-  // Load source plugins and workflow panel schemas (non-blocking)
+  // Load workspace plugins and workflow panel schemas (non-blocking)
   process.env.WORKSPACE_PATH = workspacePath
-  loadPlugins(workspacePath).catch((err) => console.warn("Failed to load plugins:", err.message))
+  loadPlugins(workspacePath).then(() => {
+    // Mount any workspace plugin custom routes
+    mountPluginRoutes(app)
+  }).catch((err) => console.warn("Failed to load plugins:", err.message))
   loadPanels(workspacePath).catch((err) => console.warn("Failed to load panels:", err.message))
 })
+
+// Graceful shutdown — close server and unref timers so tsx can restart cleanly
+function shutdown() {
+  server.close()
+  process.exit(0)
+}
+process.on("SIGTERM", shutdown)
+process.on("SIGINT", shutdown)

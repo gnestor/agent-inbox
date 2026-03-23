@@ -9,7 +9,7 @@ import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import type { TabId } from "@/types/navigation"
 
-export function EmailTab({ tabId = "emails" as TabId }: { tabId?: TabId }) {
+export function EmailTab({ tabId = "plugin:gmail" as TabId }: { tabId?: TabId }) {
   const { getPanels, getSelectedItemId } = useNavigation()
   const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")

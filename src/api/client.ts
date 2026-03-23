@@ -108,12 +108,12 @@ export async function modifyThreadLabels(
 
 export async function getNotionOptions(property: string) {
   return request<{ options: { value: string; color: string | null }[] }>(
-    `/notion/options/${encodeURIComponent(property)}`,
+    `/notion-tasks/options/${encodeURIComponent(property)}`,
   )
 }
 
 export async function getTaskAssignees() {
-  return request<{ assignees: string[] }>(`/notion/assignees`)
+  return request<{ assignees: string[] }>(`/notion-tasks/assignees`)
 }
 
 export async function getTasks(filters?: {
@@ -130,19 +130,20 @@ export async function getTasks(filters?: {
   if (filters?.priority) params.set("priority", filters.priority)
   if (filters?.cursor) params.set("cursor", filters.cursor)
   const qs = params.toString()
-  return request<{ tasks: import("@/types").NotionTask[]; nextCursor: string | null }>(
-    `/notion/tasks${qs ? `?${qs}` : ""}`,
+  const result = await request<{ items: import("@/types").NotionTask[]; nextCursor?: string }>(
+    `/notion-tasks/items${qs ? `?${qs}` : ""}`,
   )
+  return { tasks: result.items, nextCursor: result.nextCursor ?? null }
 }
 
 export async function getTask(taskId: string) {
-  return request<import("@/types").NotionTaskDetail>(`/notion/tasks/${taskId}`)
+  return request<import("@/types").NotionTaskDetail>(`/notion-tasks/items/${taskId}`)
 }
 
 export async function updateTask(taskId: string, properties: import("@/types/notion-mutations").TaskPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion/tasks/${taskId}`, {
-    method: "PATCH",
-    body: JSON.stringify(properties),
+  return request<{ ok: boolean }>(`/notion-tasks/items/${taskId}/mutate`, {
+    method: "POST",
+    body: JSON.stringify({ action: "update-properties", payload: properties }),
   })
 }
 
@@ -159,23 +160,23 @@ export async function getCalendarItems(filters?: {
   if (filters?.cursor) params.set("cursor", filters.cursor)
   const qs = params.toString()
   return request<{ items: import("@/types").NotionCalendarItem[]; nextCursor: string | null }>(
-    `/notion/calendar${qs ? `?${qs}` : ""}`,
+    `/notion-calendar/items${qs ? `?${qs}` : ""}`,
   )
 }
 
 export async function getCalendarItem(itemId: string) {
-  return request<import("@/types").NotionCalendarItemDetail>(`/notion/calendar/${itemId}`)
+  return request<import("@/types").NotionCalendarItemDetail>(`/notion-calendar/items/${itemId}`)
 }
 
 export async function updateCalendarItem(itemId: string, properties: import("@/types/notion-mutations").CalendarPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion/calendar/${itemId}`, {
-    method: "PATCH",
-    body: JSON.stringify(properties),
+  return request<{ ok: boolean }>(`/notion-calendar/items/${itemId}/mutate`, {
+    method: "POST",
+    body: JSON.stringify({ action: "update-properties", payload: properties }),
   })
 }
 
 export async function getCalendarAssignees() {
-  return request<{ assignees: string[] }>(`/notion/calendar-assignees`)
+  return request<{ assignees: string[] }>(`/notion-calendar/calendar-assignees`)
 }
 
 // Sessions
@@ -311,9 +312,14 @@ export interface PluginManifest {
   id: string
   name: string
   icon: string
+  emoji?: string
+  components?: import("@/types/plugin").PluginComponents
+  auth?: { integrationId: string; scope: "user" | "workspace" }
   fieldSchema: import("@/types/plugin").FieldDef[]
   detailSchema?: import("@/types/panels").WidgetDef[]
   hasSubItems?: boolean
+  hasGetItem?: boolean
+  hasFilterOptions?: boolean
 }
 
 export async function getPlugins() {
@@ -321,7 +327,7 @@ export async function getPlugins() {
 }
 
 export async function queryPluginItems(
-  sourceId: string,
+  pluginId: string,
   filters: Record<string, string>,
   cursor?: string
 ) {
@@ -329,12 +335,21 @@ export async function queryPluginItems(
   if (cursor) params.set("cursor", cursor)
   const qs = params.toString()
   return request<{ items: import("@/types/plugin").PluginItem[]; nextCursor?: string }>(
-    `/plugins/${sourceId}/items${qs ? `?${qs}` : ""}`,
+    `/${pluginId}/items${qs ? `?${qs}` : ""}`,
+  )
+}
+
+export async function getPluginItem(
+  pluginId: string,
+  itemId: string,
+) {
+  return request<import("@/types/plugin").PluginItem>(
+    `/${pluginId}/items/${encodeURIComponent(itemId)}`,
   )
 }
 
 export async function queryPluginSubItems(
-  sourceId: string,
+  pluginId: string,
   itemId: string,
   filters: Record<string, string>,
   cursor?: string
@@ -343,7 +358,16 @@ export async function queryPluginSubItems(
   if (cursor) params.set("cursor", cursor)
   const qs = params.toString()
   return request<{ items: import("@/types/plugin").PluginItem[]; nextCursor?: string }>(
-    `/plugins/${sourceId}/items/${itemId}/subitems${qs ? `?${qs}` : ""}`,
+    `/${pluginId}/items/${itemId}/subitems${qs ? `?${qs}` : ""}`,
+  )
+}
+
+export async function getFieldOptions(
+  pluginId: string,
+  fieldId: string,
+) {
+  return request<{ options: string[] }>(
+    `/${pluginId}/fields/${fieldId}/options`,
   )
 }
 
@@ -352,12 +376,12 @@ export async function getPanelSchemas() {
 }
 
 export async function mutatePluginItem(
-  sourceId: string,
+  pluginId: string,
   itemId: string,
   action: string,
   payload?: unknown
 ) {
-  return request<{ ok: boolean }>(`/plugins/${sourceId}/items/${itemId}/mutate`, {
+  return request<{ ok: boolean }>(`/${pluginId}/items/${itemId}/mutate`, {
     method: "POST",
     body: JSON.stringify({ action, payload }),
   })

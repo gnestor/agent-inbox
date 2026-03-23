@@ -52,7 +52,7 @@ const getId = (t: Record<string, unknown>) => t.id as string
 
 export function TaskListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
-  const filters = getFilters("tasks")
+  const filters = getFilters("plugin:notion-tasks")
   const { tasks, loading, error, hasMore, loadMore } = useTasks(
     Object.keys(filters).length > 0 ? filters : undefined,
   )
@@ -76,7 +76,7 @@ export function TaskListView() {
       items={tasks as unknown as Record<string, unknown>[]}
       fieldSchema={taskFieldSchema}
       getItemId={getId}
-      selectedId={getSelectedItemId("tasks")}
+      selectedId={getSelectedItemId("plugin:notion-tasks")}
       onSelect={selectItem}
     >
       <ListView.Header title="Tasks">

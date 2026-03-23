@@ -2,11 +2,11 @@
 
 // --- Tab identification ---
 
-/** Static tabs + dynamic plugin/recent tabs */
-export type TabId = "emails" | "tasks" | "calendar" | "sessions" | "settings" | `plugin:${string}` | `recent:${string}`
+/** Tab IDs: plugin sources + sessions + settings + recent sessions */
+export type TabId = "sessions" | "settings" | `plugin:${string}` | `recent:${string}`
 
-/** Ordered tabs for animation direction calculation */
-export const STATIC_TAB_ORDER: TabId[] = ["emails", "tasks", "calendar", "sessions"]
+/** Ordered tabs for animation direction calculation (settings = 0, then plugins in manifest order, sessions last) */
+export const STATIC_TAB_ORDER: TabId[] = ["sessions"]
 
 // --- Panel state (discriminated union) ---
 
@@ -42,7 +42,7 @@ export interface TabState {
   savedPanels?: Record<string, PanelState[]>
   /** Animation hint: "item" for item selection transitions, "none" for panel push/pop */
   panelTransition?: "item" | "none"
-  /** For recent:* tabs — the source tab that spawned this (emails, tasks, sessions) */
+  /** For recent:* tabs — the source tab that spawned this */
   sourceTab?: TabId
   /** For recent:* tabs — position in the sidebar list (for animation direction) */
   sidebarIndex?: number
@@ -66,11 +66,11 @@ export function createDefaultTabState(): TabState {
 
 export function createDefaultNavigationState(): NavigationState {
   return {
-    activeTab: "emails",
+    activeTab: "plugin:gmail",
     tabs: {
-      emails: createDefaultTabState(),
-      tasks: createDefaultTabState(),
-      calendar: createDefaultTabState(),
+      "plugin:gmail": createDefaultTabState(),
+      "plugin:notion-tasks": createDefaultTabState(),
+      "plugin:notion-calendar": createDefaultTabState(),
       sessions: createDefaultTabState(),
       settings: {
         panelScrollOffset: 0,
@@ -80,13 +80,42 @@ export function createDefaultNavigationState(): NavigationState {
   }
 }
 
+// --- Backward compat: map legacy tab IDs to new plugin:* format ---
+
+/** Maps legacy URL path / tab ID to new plugin:* tab ID */
+export const LEGACY_TAB_MAP: Record<string, TabId> = {
+  emails: "plugin:gmail",
+  tasks: "plugin:notion-tasks",
+  calendar: "plugin:notion-calendar",
+}
+
+/** Maps legacy URL paths to plugin IDs (for URL parsing) */
+export const LEGACY_URL_TO_PLUGIN: Record<string, string> = {
+  emails: "gmail",
+  tasks: "notion-tasks",
+  calendar: "notion-calendar",
+}
+
+/** Convert a legacy tab ID to the new format, or return as-is if already new format */
+export function normalizeTabId(tabId: string): TabId {
+  return LEGACY_TAB_MAP[tabId] ?? tabId as TabId
+}
+
 /**
  * Get the index of a tab for animation direction.
- * Order: settings (0) → emails (1) → tasks (2) → calendar (3) → sessions (4) → plugins (5+)
+ * Order: settings (0) → plugins (1+, in order) → sessions (last)
  */
 export function getTabIndex(tabId: TabId): number {
   if (tabId === "settings") return 0
-  const staticIdx = STATIC_TAB_ORDER.indexOf(tabId)
-  if (staticIdx >= 0) return staticIdx + 1 // offset by 1 since settings is 0
-  return STATIC_TAB_ORDER.length + 1
+  if (tabId === "sessions") return 100
+  if (tabId.startsWith("plugin:")) {
+    // Built-in plugins first, then external, then recent
+    const id = tabId.replace("plugin:", "")
+    const builtinOrder = ["gmail", "notion-tasks", "notion-calendar"]
+    const idx = builtinOrder.indexOf(id)
+    if (idx >= 0) return idx + 1
+    return 50 // external plugins
+  }
+  if (tabId.startsWith("recent:")) return 99
+  return 50
 }
