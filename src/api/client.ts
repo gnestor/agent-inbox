@@ -271,8 +271,12 @@ export async function uploadSessionFile(sessionId: string, file: File) {
   return res.json() as Promise<{ name: string; path: string; size: number; mimeType: string }>
 }
 
-export function getSessionFileUrl(sessionId: string, filename: string): string {
-  return `${BASE}/sessions/${sessionId}/files/${encodeURIComponent(filename)}`
+export function getSessionFileUrl(sessionId: string, filename: string, absolutePath?: string): string {
+  const base = `${BASE}/sessions/${sessionId}/files/${encodeURIComponent(filename)}`
+  if (absolutePath) {
+    return `${base}?path=${encodeURIComponent(absolutePath)}`
+  }
+  return base
 }
 
 export async function getLinkedSession(threadId?: string, taskId?: string) {

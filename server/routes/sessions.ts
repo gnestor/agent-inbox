@@ -1,6 +1,8 @@
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 import { getCookie } from "hono/cookie"
+import { readFileSync } from "fs"
+import { resolve, normalize, basename, sep } from "path"
 import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
 import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/session-files.js"
@@ -396,20 +398,42 @@ sessionRoutes.post("/:id/files", async (c) => {
   return c.json(result)
 })
 
+const INLINE_MIME_PREFIXES = ["image/", "video/", "text/html", "image/svg+xml"]
+
 sessionRoutes.get("/:id/files/:filename", async (c) => {
   const sessionId = c.req.param("id")
   const filename = decodeURIComponent(c.req.param("filename"))
-  const filePath = getSessionFilePath(sessionId, filename)
-  if (!filePath) {
+  const absolutePath = c.req.query("path")
+
+  let resolvedPath: string | null = null
+
+  if (absolutePath) {
+    const workspace = normalize(sessions.getWorkspacePath() || process.cwd())
+    const normalized = normalize(resolve(absolutePath))
+    if (!normalized.startsWith(workspace + sep) && normalized !== workspace) {
+      return c.json({ error: "Path outside workspace" }, 403)
+    }
+    resolvedPath = normalized
+  } else {
+    resolvedPath = getSessionFilePath(sessionId, filename)
+  }
+
+  if (!resolvedPath) {
     return c.json({ error: "File not found" }, 404)
   }
-  // getSessionFilePath already verified existence; read directly
-  const { readFileSync } = await import("fs")
-  const data = readFileSync(filePath)
-  // Use a basic mime-type lookup
-  const mimeType = guessMimeType(filename)
+
+  let data: Buffer
+  try {
+    data = readFileSync(resolvedPath)
+  } catch {
+    return c.json({ error: "File not found" }, 404)
+  }
+
+  const serveName = basename(resolvedPath)
+  const mimeType = guessMimeType(serveName)
   c.header("Content-Type", mimeType)
-  c.header("Content-Disposition", `attachment; filename="${filename}"`)
+  const isInline = INLINE_MIME_PREFIXES.some((t) => mimeType.startsWith(t))
+  c.header("Content-Disposition", isInline ? `inline; filename="${serveName}"` : `attachment; filename="${serveName}"`)
   return c.body(data)
 })
 
@@ -425,8 +449,15 @@ function guessMimeType(filename: string): string {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     gif: "image/gif",
+    webp: "image/webp",
+    avif: "image/avif",
+    ico: "image/x-icon",
     svg: "image/svg+xml",
     html: "text/html",
+    htm: "text/html",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    ogg: "video/ogg",
     zip: "application/zip",
   }
   return map[ext] ?? "application/octet-stream"

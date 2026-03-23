@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
-import { FileText, Download, ChevronRight, ChevronDown, User, Bot } from "lucide-react"
+import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
 import { DataTable } from "@/components/shared/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
 import { getSessionFileUrl } from "@/api/client"
@@ -84,8 +84,13 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
       if (!chartData) return <div className="p-4 text-xs text-muted-foreground">Invalid chart data</div>
       return <ChartOutput data={chartData} />
     }
-    case "file":
-      return <FileOutput data={spec.data} sessionId={sessionId} />
+    case "file": {
+      // Model may send data as a string (just the path) or { name, path, mimeType? }
+      const fileData: FileData = typeof spec.data === "string"
+        ? { name: "", path: spec.data }
+        : spec.data
+      return <FileOutput data={fileData} sessionId={sessionId} />
+    }
     case "conversation":
       return <ConversationOutput data={spec.data} />
     case "react": {
@@ -333,28 +338,94 @@ function ChartOutput({ data }: { data: ChartData }) {
   )
 }
 
-// --- File card ---
+// --- File output ---
+
+const INLINE_IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "ico"])
+const INLINE_VIDEO_EXTS = new Set(["mp4", "webm", "ogg"])
+const INLINE_HTML_EXTS = new Set(["html", "htm"])
+const CODE_EXTS = new Set(["ts", "tsx", "js", "jsx", "py", "rb", "go", "rs"])
+const ICON_CLS = "h-4 w-4 text-muted-foreground shrink-0"
+
+function getFileExt(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() ?? ""
+}
+
+function resolveFileName(data: FileData): string {
+  if (data.name) return data.name
+  if (data.path) {
+    const segments = data.path.replace(/\\/g, "/").split("/")
+    return segments[segments.length - 1] || "file"
+  }
+  return "file"
+}
+
+function fileIcon(ext: string) {
+  if (INLINE_IMAGE_EXTS.has(ext)) return <Image className={ICON_CLS} />
+  if (INLINE_VIDEO_EXTS.has(ext)) return <Film className={ICON_CLS} />
+  if (INLINE_HTML_EXTS.has(ext)) return <FileCode className={ICON_CLS} />
+  if (CODE_EXTS.has(ext)) return <Code2 className={ICON_CLS} />
+  return <FileText className={ICON_CLS} />
+}
 
 function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) {
-  const downloadUrl = getSessionFileUrl(sessionId, data.name)
+  const name = resolveFileName(data)
+  const ext = getFileExt(name)
+  const downloadUrl = getSessionFileUrl(sessionId, name, data.path)
+  const isImage = INLINE_IMAGE_EXTS.has(ext)
+  const isVideo = INLINE_VIDEO_EXTS.has(ext)
+  const isHtml = INLINE_HTML_EXTS.has(ext)
+  const isInline = isImage || isVideo || isHtml
 
   return (
-    <div className="flex items-center gap-4 p-4">
-      <FileText className="h-8 w-8 text-muted-foreground shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{data.name}</p>
-        {data.mimeType && (
-          <p className="text-xs text-muted-foreground">{data.mimeType}</p>
+    <div className="space-y-0">
+      {/* Inline preview for browser-native types */}
+      {isImage && (
+        <div className="flex justify-center bg-muted/30">
+          <img
+            src={downloadUrl}
+            alt={name}
+            className="max-w-full object-contain rounded"
+          />
+        </div>
+      )}
+      {isVideo && (
+        <div className="p-4">
+          <video
+            src={downloadUrl}
+            controls
+            className="max-w-full rounded"
+          />
+        </div>
+      )}
+      {isHtml && (
+        <iframe
+          src={downloadUrl}
+          sandbox="allow-scripts"
+          className="w-full border-0"
+          style={{ height: "300px" }}
+          title={name}
+        />
+      )}
+
+      {/* Attachment bar — always shown */}
+      <div className={cn(
+        "flex items-center gap-3 px-4 py-2",
+        isInline ? "border-t bg-muted/20" : "",
+      )}>
+        {fileIcon(ext)}
+        <span className="text-xs font-medium truncate flex-1 min-w-0">{name}</span>
+        {data.mimeType && !isInline && (
+          <span className="text-xs text-muted-foreground shrink-0">{data.mimeType}</span>
         )}
+        <a
+          href={downloadUrl}
+          download={name}
+          className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          title="Download"
+        >
+          <Download className="h-4 w-4" />
+        </a>
       </div>
-      <a
-        href={downloadUrl}
-        download={data.name}
-        className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-        title="Download"
-      >
-        <Download className="h-4 w-4" />
-      </a>
     </div>
   )
 }
