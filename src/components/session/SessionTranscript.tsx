@@ -59,7 +59,6 @@ interface SessionTranscriptProps {
   messages: SessionMessage[]
   isStreaming: boolean
   status?: string
-  messageCount?: number
   isLive?: boolean
   visibility?: TranscriptVisibility
   sessionId?: string

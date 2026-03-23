@@ -214,7 +214,6 @@ export function SessionView({ sessionId, title }: SessionViewProps) {
           messages={messages}
           isStreaming={isStreaming}
           status={phase.status}
-          messageCount={session?.messageCount}
           isLive={isLive}
           visibility={visibility}
           sessionId={sessionId}

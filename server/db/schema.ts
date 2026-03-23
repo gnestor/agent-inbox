@@ -29,7 +29,6 @@ export function initializeDatabase() {
       started_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
-      message_count INTEGER DEFAULT 0,
       linked_email_id TEXT,
       linked_email_thread_id TEXT,
       linked_task_id TEXT,

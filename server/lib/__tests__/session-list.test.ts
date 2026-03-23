@@ -46,7 +46,6 @@ describe("listSessionRecords", () => {
       started_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
       completed_at: null,
-      message_count: 0,
       linked_email_id: "email-1",
       linked_email_thread_id: "thread-1",
       linked_task_id: null,

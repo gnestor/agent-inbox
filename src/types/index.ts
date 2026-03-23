@@ -172,7 +172,6 @@ export interface Session {
   startedAt: string
   updatedAt: string
   completedAt: string | null
-  messageCount: number
   linkedEmailId: string | null
   linkedEmailThreadId: string | null
   linkedTaskId: string | null

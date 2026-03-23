@@ -156,8 +156,7 @@ export function appendSessionMessage(
      VALUES (?, ?, ?, ?, ?)`,
   ).run(sessionId, sequence, type, JSON.stringify(message), now)
 
-  db.prepare(`UPDATE sessions SET message_count = ?, updated_at = ? WHERE id = ?`).run(
-    sequence + 1,
+  db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(
     now,
     sessionId,
   )
