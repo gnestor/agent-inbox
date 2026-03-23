@@ -18,8 +18,12 @@ export function buildTitlePrompt(
         const content = typeof obj.content === "string"
           ? obj.content
           : Array.isArray(obj.content)
-            ? obj.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
+            ? obj.content
+                .filter((b: any) => b.type === "text")
+                .map((b: any) => b.text)
+                .join(" ")
             : ""
+        if (!content.trim()) return null // Skip messages with no text content (e.g. tool-only turns)
         return { role: obj.type || m.type, content: content.slice(0, 500) }
       } catch {
         return null

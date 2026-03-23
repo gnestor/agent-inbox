@@ -1,4 +1,6 @@
 import { execFileSync } from "child_process"
+
+const INITIAL_SUMMARY_LENGTH = 80
 import { getDb } from "../db/schema.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
@@ -131,7 +133,7 @@ export async function createSessionRecord(
   ).run(
     sessionId,
     prompt,
-    prompt.slice(0, 80),
+    prompt.slice(0, INITIAL_SUMMARY_LENGTH),
     now,
     now,
     options?.linkedEmailId || null,
@@ -352,6 +354,13 @@ export function broadcastToSession(sessionId: string, data: unknown) {
 
 async function autoNameSession(sessionId: string) {
   try {
+    const session = getSessionRecord(sessionId)
+    if (!session) return
+
+    // Skip if user has manually renamed the session
+    const initialSummary = (session.prompt as string).slice(0, INITIAL_SUMMARY_LENGTH)
+    if (session.summary !== initialSummary) return
+
     const messages = getSessionMessages(sessionId)
     if (messages.length < 2) return // Skip trivial sessions (e.g. immediate errors)
 
@@ -424,7 +433,7 @@ export async function startSession(
         // Check for result message (session complete)
         if ("result" in (message as any)) {
           if (sessionId) {
-            updateSessionStatus(sessionId, "complete", (message as any).result?.slice(0, 200))
+            updateSessionStatus(sessionId, "complete")
             broadcastToSession(sessionId, {
               type: "session_complete",
               status: "complete",
@@ -522,7 +531,7 @@ export async function resumeSessionQuery(
         sequence++
 
         if ("result" in (message as any)) {
-          updateSessionStatus(sessionId, "complete", (message as any).result?.slice(0, 200))
+          updateSessionStatus(sessionId, "complete")
           broadcastToSession(sessionId, {
             type: "session_complete",
             status: "complete",
