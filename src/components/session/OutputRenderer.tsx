@@ -81,7 +81,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
       return <JsonOutput data={spec.data} />
     case "chart": {
       const chartData = normalizeChartData(spec.data)
-      if (!chartData) return <div className="p-4 text-xs text-muted-foreground">Invalid chart data</div>
+      if (!chartData) return <div className="text-xs text-muted-foreground">Invalid chart data</div>
       return <ChartOutput data={chartData} />
     }
     case "file": {
@@ -102,7 +102,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
           title={reactData.title}
           sessionId={sessionId}
           sequence={sequence}
-          className={fillPanel ? "w-full h-full border-0 p-4" : undefined}
+          className={fillPanel ? "w-full h-full border-0" : undefined}
           onAction={onAction}
           onHeightReported={onArtifactLoaded}
         />
@@ -146,18 +146,14 @@ function HtmlOutput({ data }: { data: string }) {
 // --- Table ---
 
 function TableOutput({ data }: { data: TableData }) {
-  return (
-    <div className="p-1">
-      <DataTable columns={data.columns} rows={data.rows} />
-    </div>
-  )
+  return <DataTable columns={data.columns} rows={data.rows} />
 }
 
 // --- JSON tree ---
 
 function JsonOutput({ data }: { data: unknown }) {
   return (
-    <div className="p-4 max-h-80 overflow-y-auto overflow-x-auto font-mono">
+    <div className="max-h-80 overflow-y-auto overflow-x-auto font-mono">
       <JsonTree value={data} depth={0} />
     </div>
   )
@@ -301,21 +297,18 @@ function ChartOutput({ data }: { data: ChartData }) {
     }))
 
     return (
-      <div className="p-4">
-        <ChartContainer config={config} className="h-[250px] w-full">
-          <Recharts.PieChart>
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Recharts.Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label />
-          </Recharts.PieChart>
-        </ChartContainer>
-      </div>
+      <ChartContainer config={config} className="h-[250px] w-full">
+        <Recharts.PieChart>
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <Recharts.Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label />
+        </Recharts.PieChart>
+      </ChartContainer>
     )
   }
 
   return (
-    <div className="p-4">
-      <ChartContainer config={config} className="h-[250px] w-full">
-        <Recharts.ComposedChart data={chartData}>
+    <ChartContainer config={config} className="h-[250px] w-full">
+      <Recharts.ComposedChart data={chartData}>
           <Recharts.CartesianGrid vertical={false} className="stroke-border" />
           <Recharts.XAxis dataKey={xKey} tickLine={false} axisLine={false} className="text-xs" />
           <Recharts.YAxis tickLine={false} axisLine={false} className="text-xs" />
@@ -334,7 +327,6 @@ function ChartOutput({ data }: { data: ChartData }) {
           ))}
         </Recharts.ComposedChart>
       </ChartContainer>
-    </div>
   )
 }
 
@@ -409,7 +401,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
 
       {/* Attachment bar — always shown */}
       <div className={cn(
-        "flex items-center gap-3 py-2",
+        "flex items-center gap-3",
         isInline ? "border-t bg-muted/20" : "",
       )}>
         {fileIcon(ext)}
