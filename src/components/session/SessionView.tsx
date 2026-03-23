@@ -54,8 +54,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     handleBack, handleOpenPanel, isFromSidebar,
   } = useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession })
 
-  // Show skeleton until session data + SSE presence + artifacts are ready.
-  // Skip skeleton entirely if data is already cached (navigating back).
   const dataMatchesSession = session?.id === sessionId
   const [sseTimedOut, setSseTimedOut] = useState(dataMatchesSession)
   const [artifactsReady, setArtifactsReady] = useState(dataMatchesSession)
@@ -70,9 +68,8 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     const artifactTimer = setTimeout(() => setArtifactsTimedOut(true), 1000)
     return () => { clearTimeout(sseTimer); clearTimeout(artifactTimer) }
   }, [sessionId, dataMatchesSession])
-  const isReady = dataMatchesSession
-    && (isLive || sseTimedOut)
-    && (artifactsReady || artifactsTimedOut)
+  const isHeaderReady = dataMatchesSession && (isLive || sseTimedOut)
+  const isContentReady = isHeaderReady && (artifactsReady || artifactsTimedOut)
 
   const header = (
     <PanelHeader
@@ -82,16 +79,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
             <SidebarButton />
           ) : (
             <BackButton onClick={handleBack} />
-          )}
-          {presenceUsers.length > 1 && (
-            <div className="flex -space-x-1.5 shrink-0">
-              {presenceUsers.map((u) => (
-                <Avatar key={u.email} size="sm" className="border-2 border-background">
-                  {u.picture && <AvatarImage src={u.picture} alt={u.name} />}
-                  <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
-                </Avatar>
-              ))}
-            </div>
           )}
           {isEditing ? (
             <input
@@ -112,6 +99,16 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
             >
               {displayTitle}
             </h2>
+          )}
+          {presenceUsers.length > 1 && (
+            <div className="flex -space-x-1.5 shrink-0">
+              {presenceUsers.map((u) => (
+                <Avatar key={u.email} size="sm" className="border-2 border-background">
+                  {u.picture && <AvatarImage src={u.picture} alt={u.name} />}
+                  <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
           )}
         </>
       }
@@ -192,8 +189,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Skeleton overlay — covers content until fully loaded */}
-      {!isReady && (
+      {!isHeaderReady && (
         <div className="absolute inset-0 z-10 flex flex-col bg-card">
           <PanelHeader
             left={
@@ -208,8 +204,12 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       )}
       {header}
 
-      {/* Transcript */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
+        {isHeaderReady && !isContentReady && (
+          <div className="absolute inset-0 z-10 bg-card">
+            <PanelSkeleton />
+          </div>
+        )}
         <SessionTranscript
           key={sessionId}
           messages={messages}
