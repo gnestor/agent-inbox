@@ -26,7 +26,7 @@ import {
   type PartialKeys,
 } from "@tanstack/react-virtual"
 import * as React from "react"
-import { useState, useEffect, useLayoutEffect } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 
 export function useVirtualizerSafe<
   TScrollElement extends Element,
@@ -38,6 +38,7 @@ export function useVirtualizerSafe<
   >,
 ): Virtualizer<TScrollElement, TItemElement> {
   const [, rerender] = useState({})
+  const pendingResize = useRef(false)
 
   const resolvedOptions: VirtualizerOptions<TScrollElement, TItemElement> = {
     observeElementRect: observeElementRect as never,
@@ -47,9 +48,16 @@ export function useVirtualizerSafe<
     onChange: (instance, sync) => {
       if (!sync) {
         // sync=false: item size change (measureElement ref during commitAttachRef,
-        // or ResizeObserver). This is the cascade path in React 19 — wrap in
-        // startTransition so flushSpawnedWork doesn't process it synchronously.
-        React.startTransition(() => rerender({}))
+        // or ResizeObserver). Batch into a single rAF to avoid React 19's cascade
+        // (commitAttachRef → resizeItem → notify → setState → commitRoot → repeat)
+        // while keeping reflow faster than startTransition.
+        if (!pendingResize.current) {
+          pendingResize.current = true
+          requestAnimationFrame(() => {
+            pendingResize.current = false
+            React.startTransition(() => rerender({}))
+          })
+        }
       } else {
         // sync=true: scroll offset change — must be immediate for smooth scrolling.
         rerender({})

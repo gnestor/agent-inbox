@@ -204,17 +204,19 @@ function TranscriptAccordionEntry({
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="min-w-0">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 py-1.5 w-full text-left"
-      >
-        <ChevronRight
-          className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`}
-        />
-        <span className={`text-xs ${bold ? "font-medium" : ""} ${color} truncate`}>{label}</span>
+      <div className="flex items-center gap-1.5 py-1.5 w-full">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-left min-w-0"
+        >
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`}
+          />
+          <span className={`text-xs ${bold ? "font-medium" : ""} ${color} truncate`}>{label}</span>
+        </button>
         {extra}
-      </button>
+      </div>
       {open && <div className="pl-[18px]">{children}</div>}
     </div>
   )
@@ -290,14 +292,6 @@ export function AskUserOptions({ questions, selectedLabels }: { questions: any[]
     <>
       {questions.map((q: any) => (
         <div key={q.question} className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide bg-muted px-1.5 py-0.5 rounded">
-              {q.header || "Question"}
-            </span>
-            {q.multiSelect && (
-              <span className="text-[10px] text-muted-foreground">Select all that apply</span>
-            )}
-          </div>
           <p className="text-sm font-medium">{q.question}</p>
           <div className="space-y-1">
             {q.options?.map((opt: any) => {
@@ -798,9 +792,14 @@ function ToolCallGroup({ blocks, sequence, startIndex, toolResultMap }: { blocks
 /** Structured display of a single tool call: name, command, and tool output. */
 function ArtifactActionDetail({ intent, dataStr }: { intent: string; dataStr: string }) {
   const [showOutput, setShowOutput] = useState(false)
-  const payload = dataStr
-    ? JSON.stringify({ type: "action", intent, data: JSON.parse(dataStr) }, null, 2)
-    : JSON.stringify({ type: "action", intent }, null, 2)
+  let payload: string
+  try {
+    payload = dataStr
+      ? JSON.stringify({ type: "action", intent, data: JSON.parse(dataStr) }, null, 2)
+      : JSON.stringify({ type: "action", intent }, null, 2)
+  } catch {
+    payload = JSON.stringify({ type: "action", intent, data: dataStr }, null, 2)
+  }
   return (
     <div className="border-l-2 border-border pl-3 py-1 min-w-0">
       <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SendAction</div>

@@ -4,6 +4,7 @@ import { X, Pencil } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
+import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
 import { useNavigation } from "@/hooks/use-navigation"
 import { resumeSession } from "@/api/client"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
@@ -98,6 +99,32 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
   )
 }
 
+function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user" } }) {
+  const { removePanel } = useNavigation()
+  const { questions, resultText } = panel.props
+  const selectedLabels = parseAskUserAnswer(resultText)
+  const headerLabel = questions[0]?.header || "Question"
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <span className="text-sm font-semibold">{headerLabel}</span>
+        <button
+          type="button"
+          className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          onClick={() => removePanel(panel.id)}
+          aria-label="Close panel"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
+      </div>
+    </div>
+  )
+}
+
 interface PanelContentProps {
   panel: PanelState
 }
@@ -136,6 +163,9 @@ export function PanelContent({ panel }: PanelContentProps) {
           <CodeEditorPanel panel={panel} />
         </Suspense>
       )
+
+    case "ask_user":
+      return <AskUserQuestionPanel panel={panel} />
 
     // Placeholder for unmigrated panel types
     default:

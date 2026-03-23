@@ -37,9 +37,9 @@ describe("useVirtualizerSafe", () => {
     startTransitionMock.mockClear()
   })
 
-  it("calls startTransition for sync=false onChange (item resize — cascade path)", () => {
+  it("calls startTransition for sync=false onChange (item resize — cascade path)", async () => {
     // sync=false is emitted by resizeItem (measureElement ref during commitAttachRef).
-    // This is the cascade path. startTransition must be called to prevent it.
+    // This is the cascade path. Batched into a single rAF then wrapped in startTransition.
     const scrollEl = document.createElement("div")
     const { result } = renderHook(() =>
       useVirtualizerSafe({
@@ -51,6 +51,14 @@ describe("useVirtualizerSafe", () => {
 
     act(() => {
       result.current.options.onChange?.(result.current, false /* item resize */)
+    })
+
+    // startTransition fires in the next rAF, not synchronously
+    expect(startTransitionMock).not.toHaveBeenCalled()
+
+    // Flush rAF
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
     })
 
     expect(startTransitionMock).toHaveBeenCalled()
