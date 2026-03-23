@@ -1,4 +1,5 @@
 import { execFileSync } from "child_process"
+import { resolve } from "path"
 
 const INITIAL_SUMMARY_LENGTH = 80
 import { getDb } from "../db/schema.js"
@@ -90,7 +91,7 @@ let workspacePath = ""
 let workspaceName = ""
 
 export function setWorkspacePath(path: string) {
-  workspacePath = path
+  workspacePath = resolve(path)
   // Derive workspace name from git remote (repo name), fallback to dir basename
   try {
     const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], { cwd: path, encoding: "utf-8" }).trim()
@@ -117,6 +118,8 @@ export async function createSessionRecord(
     linkedEmailId?: string
     linkedEmailThreadId?: string
     linkedTaskId?: string
+    linkedSourceType?: string
+    linkedSourceId?: string
     triggerSource?: string
     linkedItemTitle?: string
   },
@@ -127,9 +130,15 @@ export async function createSessionRecord(
     ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
     : null
 
+  // Derive generic linked_source_type/id from legacy fields if not provided
+  const sourceType = options?.linkedSourceType
+    ?? (options?.linkedEmailThreadId ? "gmail" : options?.linkedTaskId ? "notion-tasks" : null)
+  const sourceId = options?.linkedSourceId
+    ?? options?.linkedEmailThreadId ?? options?.linkedTaskId ?? null
+
   db.prepare(
-    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, trigger_source, metadata)
-     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, linked_source_type, linked_source_id, trigger_source, metadata)
+     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     sessionId,
     prompt,
@@ -139,6 +148,8 @@ export async function createSessionRecord(
     options?.linkedEmailId || null,
     options?.linkedEmailThreadId || null,
     options?.linkedTaskId || null,
+    sourceType,
+    sourceId,
     options?.triggerSource || "manual",
     metadata,
   )
@@ -244,8 +255,22 @@ export function getSessionMessages(sessionId: string) {
 export function getLinkedSession(
   linkedEmailThreadId?: string,
   linkedTaskId?: string,
+  linkedSourceType?: string,
+  linkedSourceId?: string,
 ): Record<string, unknown> | undefined {
   const db = getDb()
+  // Prefer generic linked_source_type/id
+  const srcType = linkedSourceType ?? (linkedEmailThreadId ? "gmail" : linkedTaskId ? "notion-tasks" : undefined)
+  const srcId = linkedSourceId ?? linkedEmailThreadId ?? linkedTaskId
+  if (srcType && srcId) {
+    const result = db
+      .prepare(
+        "SELECT * FROM sessions WHERE linked_source_type = ? AND linked_source_id = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .get(srcType, srcId) as Record<string, unknown> | undefined
+    if (result) return result
+  }
+  // Fallback: check legacy columns for backward compat
   if (linkedEmailThreadId) {
     return db
       .prepare(
@@ -581,11 +606,11 @@ export function attachSourceToSession(
     "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, updated_at = ? WHERE id = ?",
   ).run(source.id, source.type, now, sessionId)
 
-  // Also set type-specific columns so getLinkedSession() can find the link
-  if (source.type === "email") {
+  // Also set legacy columns for backward compat
+  if (source.type === "email" || source.type === "gmail") {
     db.prepare("UPDATE sessions SET linked_email_thread_id = ?, updated_at = ? WHERE id = ?")
       .run(source.id, now, sessionId)
-  } else if (source.type === "task") {
+  } else if (source.type === "task" || source.type === "notion-tasks") {
     db.prepare("UPDATE sessions SET linked_task_id = ?, updated_at = ? WHERE id = ?")
       .run(source.id, now, sessionId)
   }
@@ -609,22 +634,30 @@ export async function indexAllAgentSessions() {
   try {
     const agentSessions = await listAgentSessions()
     const db = getDb()
-    const stmt = db.prepare(
+    const insertStmt = db.prepare(
       `INSERT OR IGNORE INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
        VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')`
     )
-    let count = 0
+    const updateStmt = db.prepare(
+      `UPDATE sessions SET prompt = ?, summary = ? WHERE id = ? AND (prompt IS NULL OR prompt = '')`
+    )
+    let inserted = 0
+    let updated = 0
     for (const s of agentSessions) {
       const ts = new Date(s.lastModified).toISOString()
-      const result = stmt.run(
-        s.sessionId,
-        s.firstPrompt || "",
-        (s.summary || s.firstPrompt || "").slice(0, 200),
-        ts, ts, ts,
-      )
-      if (result.changes > 0) count++
+      const prompt = s.firstPrompt || ""
+      const summary = (s.summary || s.firstPrompt || "").slice(0, 200)
+      const result = insertStmt.run(s.sessionId, prompt, summary, ts, ts, ts)
+      if (result.changes > 0) {
+        inserted++
+      } else if (prompt) {
+        const upd = updateStmt.run(prompt, summary, s.sessionId)
+        if (upd.changes > 0) updated++
+      }
     }
-    if (count > 0) console.log(`[server] Indexed ${count} agent sessions into DB`)
+    if (inserted > 0 || updated > 0) {
+      console.log(`[server] Indexed ${inserted} new, updated ${updated} existing agent sessions`)
+    }
   } catch (err) {
     console.error("[server] Failed to index agent sessions:", err)
   }
