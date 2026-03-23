@@ -29,7 +29,8 @@ const IDLE_MS = 30 * 60 * 1000
 
 function getIndicatorColor(session: Session): string {
   if (session.status === "running") return "#EAB308"
-  if (session.status === "awaiting_user_input" || session.status === "errored") return "#EF4444"
+  if (session.status === "errored") return "#EF4444"
+  if (session.status === "awaiting_user_input") return "#3B82F6"
   const lastActivity = new Date(session.completedAt ?? session.updatedAt).getTime()
   return Date.now() - lastActivity > IDLE_MS ? "#9CA3AF" : "#22C55E"
 }

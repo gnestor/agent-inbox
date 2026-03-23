@@ -55,6 +55,8 @@ export interface BadgeConfig {
   show: "always" | "if-set"
   /** shadcn Badge variant */
   variant?: "default" | "secondary" | "destructive" | "outline"
+  /** Transforms the raw value into a display label */
+  labelFn?: (value: string) => string
   /** Returns a Tailwind CSS class string for custom coloring */
   colorFn?: (value: string) => string
 }
@@ -63,7 +65,7 @@ export interface FilterConfig {
   /** Whether this field appears as a list filter */
   filterable: true
   /** Static options list, or async fn to fetch options from the source */
-  filterOptions?: string[] | (() => Promise<string[]>)
+  filterOptions?: (string | { value: string; label: string })[] | (() => Promise<string[]>)
   /** Defaults to field type — override if filter UI differs from field type */
   filterType?: "select" | "multiselect" | "text" | "date-range"
 }

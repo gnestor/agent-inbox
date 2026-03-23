@@ -3,19 +3,13 @@ import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
 import { getSessionProjects } from "@/api/client"
-import { sessionStatusBadgeClass } from "@/lib/formatters"
+import { sessionStatusBadgeClass, sessionStatusLabel } from "@/lib/formatters"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import type { FieldDef } from "@/types/plugin"
 import { Plus } from "lucide-react"
 
-const STATUS_LABEL_MAP: Record<string, string> = {
-  running: "Running",
-  complete: "Complete",
-  needs_attention: "Needs Attention",
-  errored: "Errored",
-  archived: "Archived",
-}
+const SESSION_FILTER_STATUSES = ["running", "complete", "awaiting_user_input", "errored", "archived"] as const
 
 const sessionFieldSchema: FieldDef[] = [
   { id: "summary", label: "Title", type: "text", listRole: "title" },
@@ -27,9 +21,13 @@ const sessionFieldSchema: FieldDef[] = [
     badge: {
       show: "always",
       variant: "outline",
-      colorFn: (val) => sessionStatusBadgeClass(val),
+      labelFn: sessionStatusLabel,
+      colorFn: sessionStatusBadgeClass,
     },
-    filter: { filterable: true, filterOptions: ["running", "complete", "errored", "archived"] },
+    filter: {
+      filterable: true,
+      filterOptions: SESSION_FILTER_STATUSES.map((s) => ({ value: s, label: sessionStatusLabel(s) })),
+    },
   },
   {
     id: "project",
@@ -85,7 +83,6 @@ export function SessionListView() {
   const items = filtered.map((s) => ({
     ...s,
     summary: s.summary || (s.prompt ? s.prompt.slice(0, 60) : "Untitled session"),
-    status: STATUS_LABEL_MAP[s.status] || s.status,
   }))
 
   return (

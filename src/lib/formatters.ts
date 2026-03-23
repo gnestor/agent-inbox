@@ -32,7 +32,11 @@ export function sessionStatusLabel(status: string): string {
     case "needs_attention":
       return "Needs Attention"
     case "errored":
-      return "Error"
+      return "Errored"
+    case "awaiting_user_input":
+      return "Needs Input"
+    case "archived":
+      return "Archived"
     default:
       return status
   }
@@ -48,6 +52,8 @@ export function sessionStatusColor(status: string): string {
       return "text-chart-2"
     case "errored":
       return "text-destructive"
+    case "awaiting_user_input":
+      return "text-blue-500"
     default:
       return "text-muted-foreground"
   }
@@ -63,6 +69,8 @@ export function sessionStatusBadgeClass(status: string): string {
       return "bg-chart-2/20 text-chart-2"
     case "errored":
       return "bg-destructive/20 text-destructive"
+    case "awaiting_user_input":
+      return "bg-blue-500/20 text-blue-500"
     case "archived":
       return "bg-foreground/10 text-muted-foreground"
     default:

@@ -212,8 +212,9 @@ function ListViewBody({
 
       const values = Array.isArray(value) ? value : [value]
       for (const v of values) {
-        const label = String(v)
-        const className = field.badge?.colorFn?.(label)
+        const raw = String(v)
+        const label = field.badge?.labelFn?.(raw) ?? raw
+        const className = field.badge?.colorFn?.(raw)
         badges.push({
           label,
           variant: field.badge?.variant ?? "secondary",
