@@ -378,6 +378,7 @@ sessionRoutes.patch("/:id/artifact", async (c) => {
   }
   const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
   if (!ok) {
+    console.warn(`[artifact patch] Failed for session=${sessionId} sequence=${sequence}`)
     return c.json({ error: "Artifact not found at the given sequence" }, 404)
   }
   return c.json({ ok: true })

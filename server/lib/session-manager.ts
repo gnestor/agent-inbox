@@ -1018,12 +1018,15 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
  * Handles both DB sessions (SQLite) and JSONL-only sessions.
  */
 export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  // Try DB session first
-  const dbResult = patchArtifactInDb(sessionId, sequence, code)
-  if (dbResult) return true
+  if (patchArtifactInDb(sessionId, sequence, code)) return true
 
-  // Fall back to JSONL file
-  return patchArtifactInJsonl(sessionId, sequence, code)
+  // Locate the JSONL file (may be in a different workspace directory)
+  const agentSession = await findAgentSession(sessionId)
+  if (agentSession) {
+    return patchArtifactInJsonl(sessionId, sequence, code, agentSession.cwd)
+  }
+
+  return false
 }
 
 /** Mutate a render_output tool_use block's code in a parsed message. Returns true if modified. */
@@ -1049,10 +1052,18 @@ function patchArtifactInDb(sessionId: string, sequence: number, code: string): b
     const row = db
       .prepare("SELECT message FROM session_messages WHERE session_id = ? AND sequence = ?")
       .get(sessionId, sequence) as { message: string } | undefined
-    if (!row) return false
+    if (!row) {
+      console.warn(`[patchArtifactInDb] No message at sequence=${sequence} for session=${sessionId}`)
+      return false
+    }
 
     const msg = JSON.parse(row.message)
-    if (!patchRenderOutputCode(msg, code)) return false
+    if (!patchRenderOutputCode(msg, code)) {
+      const content = msg.message?.content || msg.content || []
+      const toolNames = Array.isArray(content) ? content.filter((b: any) => b.type === "tool_use").map((b: any) => b.name) : []
+      console.warn(`[patchArtifactInDb] No render_output block at sequence=${sequence}. Tool names: ${JSON.stringify(toolNames)}, msg.type=${msg.type}`)
+      return false
+    }
 
     db.prepare("UPDATE session_messages SET message = ? WHERE session_id = ? AND sequence = ?")
       .run(JSON.stringify(msg), sessionId, sequence)
@@ -1062,12 +1073,12 @@ function patchArtifactInDb(sessionId: string, sequence: number, code: string): b
   }
 }
 
-async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string): Promise<boolean> {
+async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {
   const { readFileSync, writeFileSync } = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
 
-  const encodedDir = workspacePath.replace(/\//g, "-")
+  const encodedDir = (cwd || workspacePath).replace(/\//g, "-")
   const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
 
   try {
