@@ -258,8 +258,9 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
               <Button
                 onClick={() => mutations.abort.mutate()}
                 disabled={mutations.abort.isPending}
-                variant="destructive"
+                variant="ghost"
                 size="icon-lg"
+                className="text-[var(--ground)]"
               >
                 <Square className="h-4 w-4" />
               </Button>
@@ -267,7 +268,9 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
               <Button
                 onClick={handleSend}
                 disabled={!prompt.trim() || isSending}
+                variant="ghost"
                 size="icon-lg"
+                className="text-[var(--ground)]"
               >
                 {isSending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
