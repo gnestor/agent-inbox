@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
-import { useIframeAutoHeight } from "@hammies/frontend/hooks"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { getLinkedSession } from "@/api/client"
@@ -56,23 +57,13 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 
   const draft = useEmailDraft(threadId, thread)
 
-  // Scroll to bottom when thread loads, and keep scrolling as iframes resize
+  // Scroll to bottom when thread loads
   useEffect(() => {
     if (!thread || !scrollRef.current) return
     const container = scrollRef.current
-
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight
     })
-
-    const ro = new ResizeObserver(() => {
-      container.scrollTop = container.scrollHeight
-    })
-    for (const child of container.children) {
-      ro.observe(child)
-    }
-
-    return () => ro.disconnect()
   }, [thread?.id])
 
   const header = (
@@ -261,52 +252,84 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
-function HtmlBody({ html }: { html: string }) {
-  const sanitizedHtml = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/\s+style="[^"]*"/gi, "")
-
-  // Use CSS variables (synced live from parent) instead of baked-in values
-  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><style>
-    *, *::before, *::after { box-sizing: border-box; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: var(--card, transparent) !important; color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: 14px; line-height: 1.625; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.12); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.2); }
-    blockquote, .gmail_quote, .gmail_extra, [class*="quote"] { display: none !important; }
-    img { max-width: 100%; height: auto; }
-    a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
-    pre, code { white-space: pre-wrap !important; font-family: var(--font-mono, monospace) !important; }
-    table, thead, tbody, tr, th, td { border: none !important; }
-    table { max-width: 100%; border-collapse: collapse; width: 100%; table-layout: auto; text-align: left; margin: 1em 0; }
-    thead { border-bottom: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent) !important; }
-    tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent) !important; }
-    th { font-weight: 600; padding: 0.5em 0.75em; vertical-align: bottom; }
-    td { padding: 0.5em 0.75em; vertical-align: top; }
-    p { margin: 0.25em 0; }
-    div + div { margin-top: 0.5em; }
-    h1, h2, h3, h4, h5, h6 { font-size: 14px !important; font-weight: 600 !important; margin: 0.5em 0 !important; }
-  </style></head><body>${sanitizedHtml}</body></html>`
-
-  const { iframeRef } = useIframeAutoHeight(srcDoc)
-
+function MarkdownBody({ markdown }: { markdown: string }) {
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={srcDoc}
-      sandbox="allow-same-origin allow-popups"
-      className="w-full border-0 overflow-hidden h-0"
-    />
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      className="email-markdown text-sm leading-relaxed"
+      components={{
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-foreground opacity-70 underline hover:opacity-100 break-all"
+          >
+            {children}
+          </a>
+        ),
+        img: ({ src, alt }) => (
+          <img src={src} alt={alt ?? ""} className="max-w-full h-auto" />
+        ),
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-2">
+            <table className="w-full border-collapse text-left">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className="border-b border-border/20">{children}</thead>
+        ),
+        th: ({ children }) => (
+          <th className="font-semibold px-3 py-1.5 align-bottom">{children}</th>
+        ),
+        tbody: ({ children }) => (
+          <tbody>{children}</tbody>
+        ),
+        tr: ({ children }) => (
+          <tr className="border-b border-border/10">{children}</tr>
+        ),
+        td: ({ children }) => (
+          <td className="px-3 py-1.5 align-top">{children}</td>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes("language-")
+          return isBlock ? (
+            <code className={`${className ?? ""} block bg-muted rounded px-3 py-2 text-xs font-mono whitespace-pre-wrap overflow-x-auto`}>
+              {children}
+            </code>
+          ) : (
+            <code className="bg-muted rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+          )
+        },
+        pre: ({ children }) => (
+          <pre className="bg-muted rounded my-2 overflow-x-auto">{children}</pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-border/40 pl-3 opacity-70 my-1">{children}</blockquote>
+        ),
+        p: ({ children }) => <p className="my-1">{children}</p>,
+        ul: ({ children }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>,
+        h1: ({ children }) => <h1 className="text-sm font-semibold my-1">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-sm font-semibold my-1">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-sm font-semibold my-1">{children}</h3>,
+        h4: ({ children }) => <h4 className="text-sm font-semibold my-1">{children}</h4>,
+        h5: ({ children }) => <h5 className="text-sm font-semibold my-1">{children}</h5>,
+        h6: ({ children }) => <h6 className="text-sm font-semibold my-1">{children}</h6>,
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
   )
 }
 
 function EmailMessage({ message }: { message: GmailMessage }) {
+  const isMarkdown = message.bodyFormat === 'markdown' || (message.bodyIsHtml && message.bodyFormat !== 'html')
   return (
     <div className="px-4 py-3 pb-4 space-y-3 selectable-content">
       <div className="text-xs text-muted-foreground">to {formatEmailAddress(message.to)}</div>
-      {message.bodyIsHtml ? (
-        <HtmlBody html={message.body} />
+      {isMarkdown ? (
+        <MarkdownBody markdown={message.body} />
       ) : (
         <div className="text-sm whitespace-pre-wrap leading-relaxed">{message.body}</div>
       )}
