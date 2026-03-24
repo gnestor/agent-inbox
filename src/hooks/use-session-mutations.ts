@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { resumeSession, abortSession, archiveSession, updateSession } from "@/api/client"
+import { resumeSession, abortSession, archiveSession, unarchiveSession, updateSession } from "@/api/client"
 import type { SessionStatus } from "@/types"
 
 interface UseSessionMutationsOptions {
@@ -56,6 +56,20 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     onError: (err: any) => console.error("Failed to archive session:", err),
   })
 
+  const unarchive = useMutation({
+    mutationFn: () => unarchiveSession(sessionId),
+    onSuccess: () => {
+      setSessionStatus(qc, sessionId, "complete")
+      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
+        if (!Array.isArray(old)) return old
+        return old.map((s) => (s.id === sessionId ? { ...s, status: "complete" } : s))
+      })
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    },
+    onError: (err: any) => console.error("Failed to unarchive session:", err),
+  })
+
   const rename = useMutation({
     mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
     onSuccess: () => {
@@ -64,5 +78,5 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     },
   })
 
-  return { resume, abort, archive, rename }
+  return { resume, abort, archive, unarchive, rename }
 }

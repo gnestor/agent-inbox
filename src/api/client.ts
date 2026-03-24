@@ -240,6 +240,12 @@ export async function archiveSession(sessionId: string) {
   })
 }
 
+export async function unarchiveSession(sessionId: string) {
+  return request<{ ok: boolean }>(`/sessions/${sessionId}/unarchive`, {
+    method: "POST",
+  })
+}
+
 export async function answerSessionQuestion(sessionId: string, answers: Record<string, string>) {
   return request<{ ok: boolean }>(`/sessions/${sessionId}/answer`, {
     method: "POST",

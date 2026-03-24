@@ -13,7 +13,7 @@ import {
   AvatarFallback,
   Skeleton,
 } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, X, Ellipsis, Archive } from "lucide-react"
+import { Send, Square, Loader2, X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { SessionTranscript } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
@@ -114,15 +114,27 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       }
       right={
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-            onClick={() => mutations.archive.mutate()}
-            disabled={mutations.archive.isPending}
-            title="Archive session"
-          >
-            <Archive className="h-4 w-4" />
-          </button>
+          {session?.status === "archived" ? (
+            <button
+              type="button"
+              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+              onClick={() => mutations.unarchive.mutate()}
+              disabled={mutations.unarchive.isPending}
+              title="Restore session"
+            >
+              <ArchiveRestore className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+              onClick={() => mutations.archive.mutate()}
+              disabled={mutations.archive.isPending}
+              title="Archive session"
+            >
+              <Archive className="h-4 w-4" />
+            </button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={

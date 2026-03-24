@@ -212,6 +212,15 @@ export function archiveSession(sessionId: string): boolean {
   return true
 }
 
+export function unarchiveSession(sessionId: string): boolean {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const result = db.prepare(
+    `UPDATE sessions SET status = 'complete', updated_at = ? WHERE id = ? AND status = 'archived'`,
+  ).run(now, sessionId)
+  return result.changes > 0
+}
+
 /** Import an agent-only session (JSONL) into the DB as a completed record. */
 export function importAgentSession(
   sessionId: string,

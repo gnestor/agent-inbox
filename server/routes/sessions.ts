@@ -364,6 +364,15 @@ sessionRoutes.post("/:id/archive", async (c) => {
   return c.json({ ok: archived })
 })
 
+sessionRoutes.post("/:id/unarchive", async (c) => {
+  const sessionId = c.req.param("id")
+  const unarchived = sessions.unarchiveSession(sessionId)
+  if (!unarchived) {
+    return c.json({ error: "Session not found or not archived" }, 404)
+  }
+  return c.json({ ok: true })
+})
+
 // --- Artifact code editing ---
 
 sessionRoutes.patch("/:id/artifact", async (c) => {
