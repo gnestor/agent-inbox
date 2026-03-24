@@ -180,4 +180,18 @@ describe("useNavigation", () => {
       props: { sessionId: "abc" },
     })
   })
+
+  it("replacePanel with selectedItemId selects the new session in the list", () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper })
+    act(() => result.current.openNewSession())
+    expect(result.current.getSelectedItemId()).toBeUndefined()
+    act(() =>
+      result.current.replacePanel(
+        "new_session",
+        { id: "session:abc", type: "session", props: { sessionId: "abc" } },
+        "abc",
+      ),
+    )
+    expect(result.current.getSelectedItemId()).toBe("abc")
+  })
 })

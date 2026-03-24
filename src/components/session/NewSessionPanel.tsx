@@ -150,7 +150,7 @@ function ComposePanel({ panelId, threadId, taskId }: { panelId?: string; threadI
         id: `session:${sessionId}`,
         type: "session",
         props: { sessionId },
-      })
+      }, sessionId)
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })

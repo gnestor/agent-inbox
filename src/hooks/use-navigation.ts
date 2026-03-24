@@ -42,7 +42,8 @@ export function useNavigation() {
   )
 
   const replacePanel = useCallback(
-    (panelId: string, newPanel: PanelState) => dispatch({ type: "REPLACE_PANEL", panelId, newPanel }),
+    (panelId: string, newPanel: PanelState, selectedItemId?: string) =>
+      dispatch({ type: "REPLACE_PANEL", panelId, newPanel, selectedItemId }),
     [dispatch],
   )
 

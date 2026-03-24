@@ -107,7 +107,7 @@ export type NavAction =
   | { type: "PUSH_PANEL"; panel: PanelState }
   | { type: "POP_PANEL"; panelId: string }
   | { type: "REMOVE_PANEL"; panelId: string }
-  | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState }
+  | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState; selectedItemId?: string }
   | { type: "OPEN_SESSION"; sessionId?: string }
   | { type: "OPEN_NEW_SESSION" }
   | { type: "OPEN_RECENT"; sessionId: string; sourceTab: TabId; selectedId?: string; sidebarIndex: number }
@@ -206,6 +206,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
     case "REPLACE_PANEL": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       tab.panels = tab.panels.map((p) => (p.id === action.panelId ? action.newPanel : p))
+      if (action.selectedItemId !== undefined) tab.selectedItemId = action.selectedItemId
       tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
