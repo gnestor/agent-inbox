@@ -73,7 +73,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     for (const key of srcDocCache.keys()) {
       if (key.startsWith(prefix)) srcDocCache.delete(key)
     }
-    const html = buildArtifactHtml(transformedCode, title, exportedName)
+    const html = buildArtifactHtml(transformedCode, title, exportedName, transformError)
     if (!transformError) srcDocCache.set(cacheKey, html)
     return html
   }, [transformedCode, title, exportedName, sessionId, sequence, transformError])

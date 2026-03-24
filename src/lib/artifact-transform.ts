@@ -103,13 +103,13 @@ export function transformArtifactCode(source: string): TransformResult {
     "Tooltip", "TooltipTrigger", "TooltipContent", "TooltipProvider",
     "RadioGroup", "RadioGroupItem", "Spinner",
   ]
-  // Consolidate all @hammies/frontend/components/ui imports into one and inject missing components.
+  // Consolidate all @hammies/frontend imports (barrel and per-component paths) into one.
   const alreadyImportedComponents = new Set<string>()
   code = code.replace(
-    /^import\s*\{([^}]*)\}\s*from\s+['"]@hammies\/frontend\/components\/ui['"];?\s*$/gm,
+    /^import\s*\{([^}]*)\}\s*from\s+['"]@hammies\/frontend\/components\/ui(?:\/\w+)?['"];?\s*$/gm,
     (_, named) => {
       named.split(",").forEach((s: string) => { const n = s.trim(); if (n) alreadyImportedComponents.add(n) })
-      return "" // Remove — will emit a single consolidated import
+      return ""
     },
   )
   // Find components used in code but not yet imported

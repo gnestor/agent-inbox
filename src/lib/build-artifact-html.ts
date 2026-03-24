@@ -25,12 +25,13 @@ export function buildArtifactHtml(
   code: string | undefined,
   title?: string,
   exportedName?: string | null,
+  transformError?: string | null,
 ): string {
-  if (!code) return `<!DOCTYPE html><html><body style="font-family:sans-serif;"><p>No artifact code provided.</p></body></html>`
+  if (!code && !transformError) return `<!DOCTYPE html><html><body style="font-family:sans-serif;"><p>No artifact code provided.</p></body></html>`
   const safeTitle = (title ?? "Artifact").replace(/[<>&"]/g, (c) =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] ?? c)
   )
-  const safeCode = escapeForScript(code)
+  const safeCode = escapeForScript(code ?? "")
   const origin = typeof window !== "undefined" ? window.location.origin : ""
 
   return `<!DOCTYPE html>
@@ -171,7 +172,7 @@ window.__reportHeight = function() {
 window.__heightFallback = setTimeout(function() { window.__reportHeight(); }, 2000);
 </script>
 <script type="module">
-${safeCode}
+${transformError ? `// Transform error — show in iframe\nvar _errEl = document.createElement('div'); _errEl.className = 'error-box'; _errEl.textContent = ${JSON.stringify(transformError)}; document.getElementById('root').appendChild(_errEl);\n` : ""}${safeCode}
 
 // Mount the component
 import { createRoot as _createRoot } from 'react-dom/client';

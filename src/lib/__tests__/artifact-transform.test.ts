@@ -188,20 +188,35 @@ export default function Dashboard() {
   })
 })
 
-  it("consolidates multiple @hammies/frontend imports without duplicates", () => {
+  it("consolidates multiple @hammies/frontend barrel imports without duplicates", () => {
     const source = `import { Button, Badge, Input, Textarea, Label } from '@hammies/frontend/components/ui'
 import { Input } from '@hammies/frontend/components/ui'
 import { Textarea } from '@hammies/frontend/components/ui'
-import { Label } from '@hammies/frontend/components/ui'
-import { Badge } from '@hammies/frontend/components/ui'
 
 export default function App() { return <div><Button>Go</Button><Input /><Badge>x</Badge></div> }`
     const result = transformArtifactCode(source)
-    // Should produce exactly one @hammies import with no duplicates
     const imports = result.code.match(/from '@hammies\/frontend\/components\/ui'/g)
     expect(imports).toHaveLength(1)
-    // Should not have duplicate identifiers
-    expect(result.code).not.toMatch(/Identifier '.*' has already been declared/)
+    expect(result.code).toContain("createElement")
+  })
+
+  it("consolidates per-component path imports into a single barrel import", () => {
+    const source = `import { Button } from '@hammies/frontend/components/ui/button'
+import { Badge } from '@hammies/frontend/components/ui/badge'
+import { Input } from '@hammies/frontend/components/ui/input'
+import { Textarea } from '@hammies/frontend/components/ui/textarea'
+
+export default function App() { return <div><Button>Go</Button><Input /><Badge>x</Badge></div> }`
+    const result = transformArtifactCode(source)
+    // All per-component imports consolidated into one barrel import
+    const imports = result.code.match(/from '@hammies\/frontend\/components\/ui'/g)
+    expect(imports).toHaveLength(1)
+    expect(result.code).not.toMatch(/\/ui\/button/)
+    expect(result.code).not.toMatch(/\/ui\/badge/)
+    expect(result.code).toContain("Button")
+    expect(result.code).toContain("Badge")
+    expect(result.code).toContain("Input")
+    expect(result.code).toContain("Textarea")
     expect(result.code).toContain("createElement")
   })
 
