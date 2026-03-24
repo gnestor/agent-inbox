@@ -1,7 +1,11 @@
 import { createServer, type Server, type IncomingMessage } from "node:http"
 import { connect as tlsConnect, createServer as createTlsServer } from "node:tls"
 import { Socket } from "node:net"
+import { fileURLToPath } from "node:url"
+import { dirname, join } from "node:path"
 import { generateCA, generateCertForHost, writeCACertFile } from "./credential-proxy-ca.js"
+
+const PRELOAD_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "agent-proxy-preload.mjs")
 
 /**
  * Hosts where the proxy will intercept and inject credentials.
@@ -13,9 +17,10 @@ export const INTERCEPTED_HOSTS = [
   "slack.com",
   "api.slack.com",
   "hooks.slack.com",
-  "shopify.com",       // *.shopify.com via endsWith check
-  "googleapis.com",    // *.googleapis.com via endsWith check
+  "shopify.com",                    // *.shopify.com via endsWith check
+  "googleapis.com",                 // *.googleapis.com via endsWith check
   "api.air.inc",
+  "quickbooks.api.intuit.com",
 ]
 
 export function shouldIntercept(host: string): boolean {
@@ -34,6 +39,7 @@ export function hostToIntegration(host: string): string {
   if (host.includes("shopify.com")) return "shopify"
   if (host.includes("googleapis.com")) return "google"
   if (host === "api.air.inc") return "air"
+  if (host === "quickbooks.api.intuit.com") return "quickbooks"
   return host
 }
 
@@ -184,7 +190,10 @@ export async function createCredentialProxy(
         getProxyEnv: (sessionToken: string) => ({
           HTTPS_PROXY: `http://${sessionToken}@127.0.0.1:${addr.port}`,
           NODE_EXTRA_CA_CERTS: caCertPath,
-          NODE_USE_ENV_PROXY: "1",
+          // Preload sets up undici's global dispatcher so all fetch() calls in
+          // agent subprocesses are routed through the credential proxy without
+          // any skill-level configuration. Append to preserve any existing options.
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS ? process.env.NODE_OPTIONS + " " : ""}--import "${PRELOAD_SCRIPT}"`,
         }),
       }
 

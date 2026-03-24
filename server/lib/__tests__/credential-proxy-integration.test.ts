@@ -98,7 +98,7 @@ describe("createCredentialProxy", () => {
 
     expect(env.HTTPS_PROXY).toBe(`http://my-session-token-abc@127.0.0.1:${proxy.port}`)
     expect(env.NODE_EXTRA_CA_CERTS).toBe(proxy.caCertPath)
-    expect(env.NODE_USE_ENV_PROXY).toBe("1")
+    expect(env.NODE_OPTIONS).toMatch(/--import .+agent-proxy-preload\.mjs/)
     await proxy.close()
   })
 
@@ -116,7 +116,7 @@ describe("createCredentialProxy", () => {
 
     // Only these three keys should exist
     expect(Object.keys(env).sort()).toEqual(
-      ["HTTPS_PROXY", "NODE_EXTRA_CA_CERTS", "NODE_USE_ENV_PROXY"].sort()
+      ["HTTPS_PROXY", "NODE_EXTRA_CA_CERTS", "NODE_OPTIONS"].sort()
     )
     await proxy.close()
   })

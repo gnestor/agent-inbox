@@ -30,7 +30,7 @@ describe("credential-proxy", () => {
     const env = proxy.getProxyEnv("test-session-token")
     expect(env.HTTPS_PROXY).toBe(`http://test-session-token@127.0.0.1:${proxy.port}`)
     expect(env.NODE_EXTRA_CA_CERTS).toBe(proxy.caCertPath)
-    expect(env.NODE_USE_ENV_PROXY).toBe("1")
+    expect(env.NODE_OPTIONS).toMatch(/--import .+agent-proxy-preload\.mjs/)
     // Session token is embedded in proxy URL userinfo, not a separate env var
     expect((env as Record<string, string>).INBOX_SESSION_TOKEN).toBeUndefined()
     // Should NOT contain raw tokens
