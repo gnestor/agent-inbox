@@ -21,7 +21,7 @@ import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
-import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions } from "./lib/session-manager.js"
+import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions } from "./lib/session-manager.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
@@ -159,6 +159,8 @@ serve({ fetch: app.fetch, port }, () => {
   pruneExpired()
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions().catch((err: unknown) => console.warn("Failed to index sessions:", err))
+  // Auto-resume sessions that were running when the server last shut down
+  recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))

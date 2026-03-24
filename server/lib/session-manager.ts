@@ -161,6 +161,30 @@ export async function createSessionRecord(
   )
 }
 
+/** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
+ *  Uses a targeted query (last 10 assistant messages) instead of loading the full transcript. */
+export function getLastAskUserQuestions(sessionId: string): unknown[] | null {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      "SELECT message FROM session_messages WHERE session_id = ? AND type = 'assistant' ORDER BY sequence DESC LIMIT 10",
+    )
+    .all(sessionId) as Array<{ message: string }>
+  for (const row of rows) {
+    try {
+      const parsed = JSON.parse(row.message)
+      const content = parsed?.message?.content ?? parsed?.content
+      if (!Array.isArray(content)) continue
+      for (const block of content) {
+        if (block.type === "tool_use" && block.name === "AskUserQuestion" && block.input?.questions) {
+          return block.input.questions
+        }
+      }
+    } catch {}
+  }
+  return null
+}
+
 export function appendSessionMessage(
   sessionId: string,
   sequence: number,
@@ -388,6 +412,17 @@ export function addSseClient(sessionId: string, send: (data: string) => void) {
   if (process.env.NODE_ENV !== "production") {
     console.log(`[sse:${sessionId}] client connected (${sseClients.get(sessionId)!.size} total)`)
   }
+
+  // Re-deliver the last AskUserQuestion when the session is awaiting input.
+  // The original broadcast may have fired before any browser was connected
+  // (e.g. agent resumed on startup and hit AskUserQuestion before the user opened the page).
+  const session = getSessionRecord(sessionId)
+  if (session?.status === "awaiting_user_input") {
+    const questions = getLastAskUserQuestions(sessionId)
+    if (questions) {
+      send(JSON.stringify({ type: "ask_user_question", questions }))
+    }
+  }
 }
 
 export function removeSseClient(sessionId: string, send: (data: string) => void) {
@@ -542,10 +577,13 @@ export async function resumeSessionQuery(
   userSessionToken?: string,
   userProfile?: { name: string; email: string; picture?: string },
 ): Promise<void> {
-  const { query } = await import("@anthropic-ai/claude-agent-sdk")
-
+  // Guard against double-resume (e.g. server recovery + frontend orphan detection racing).
+  // Claim the slot before the dynamic import to close the TOCTOU window.
+  if (runningQueries.has(sessionId)) return
   const abortController = new AbortController()
   runningQueries.set(sessionId, abortController)
+
+  const { query } = await import("@anthropic-ai/claude-agent-sdk")
 
   updateSessionStatus(sessionId, "running")
 
@@ -653,6 +691,11 @@ export function attachSourceToSession(
   }
 }
 
+/** Check if a session has an active agent process (in-memory query) */
+export function isSessionRunning(sessionId: string): boolean {
+  return runningQueries.has(sessionId)
+}
+
 export function abortRunningSession(sessionId: string): boolean {
   const controller = runningQueries.get(sessionId)
   if (controller) {
@@ -698,6 +741,60 @@ export async function indexAllAgentSessions() {
   } catch (err) {
     console.error("[server] Failed to index agent sessions:", err)
   }
+}
+
+/** Recover sessions that were running when the server last shut down.
+ *  - `running` sessions updated within cutoffMinutes are auto-resumed.
+ *  - `awaiting_user_input` sessions are left as-is; the SSE handler
+ *    re-delivers the original question when the user reconnects.
+ *  - Old stale sessions are marked as errored. */
+export async function recoverStaleSessions(cutoffMinutes = 30) {
+  const db = getDb()
+  const cutoff = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString()
+
+  // Find all sessions stuck in running/awaiting_user_input
+  const staleSessions = db
+    .prepare(
+      `SELECT id, status, updated_at FROM sessions
+       WHERE status IN ('running', 'awaiting_user_input')`,
+    )
+    .all() as Array<{ id: string; status: string; updated_at: string }>
+
+  if (staleSessions.length === 0) return
+
+  const old = staleSessions.filter((s) => s.updated_at <= cutoff)
+  // Only auto-resume running sessions; awaiting_user_input sessions are
+  // re-delivered to the user via the SSE handler when they reconnect.
+  const toResume = staleSessions.filter((s) => s.updated_at > cutoff && s.status === "running")
+  const toWait = staleSessions.filter((s) => s.updated_at > cutoff && s.status === "awaiting_user_input")
+
+  // Mark old stale sessions as errored
+  for (const session of old) {
+    console.log(`[server] Marking stale session ${session.id} as errored (last updated ${session.updated_at})`)
+    updateSessionStatus(session.id, "errored", "Session interrupted by server restart")
+  }
+
+  // Auto-resume recent running sessions concurrently
+  const results = await Promise.allSettled(
+    toResume.map(async (session) => {
+      console.log(`[server] Auto-resuming session ${session.id}`)
+      await resumeSessionQuery(session.id, "The server was restarted. Continue where you left off.")
+    }),
+  )
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === "rejected") {
+      const session = toResume[i]
+      console.error(`[server] Failed to recover session ${session.id}:`, (results[i] as PromiseRejectedResult).reason)
+      updateSessionStatus(session.id, "errored", "Server restart recovery failed")
+    }
+  }
+
+  if (toWait.length > 0) {
+    console.log(`[server] ${toWait.length} session(s) awaiting user input — question will re-deliver on SSE connect`)
+  }
+  console.log(
+    `[server] Session recovery: ${toResume.length} resumed, ${old.length} marked errored`,
+  )
 }
 
 export async function listAgentSessions() {

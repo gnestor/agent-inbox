@@ -3,7 +3,7 @@ import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
-import type { SessionMessage, InboxContextData, InboxResultData } from "@/types"
+import type { SessionMessage, InboxContextData, InboxResultData, AskUserQuestion } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
@@ -20,6 +20,8 @@ import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
 import type { OutputSpec } from "./OutputRenderer"
 import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
+import { useAskUserForm } from "@/hooks/use-ask-user-form"
+import { AskUserForm } from "./AskUserForm"
 
 hljs.registerLanguage("json", json)
 
@@ -64,9 +66,9 @@ interface SessionTranscriptProps {
   visibility?: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
-  currentUserPicture?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onAnswer?: (answers: Record<string, string>) => Promise<void>
   /** Called when all inline artifacts have reported their height */
   onArtifactsReady?: () => void
   /** Rendered inside the scroll container, after the virtualized messages */
@@ -78,9 +80,9 @@ export function SessionTranscript({
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
-  currentUserPicture,
   onOpenPanel,
   onAction,
+  onAnswer,
   onArtifactsReady,
   children,
 }: SessionTranscriptProps) {
@@ -99,7 +101,11 @@ export function SessionTranscript({
     for (const m of visibleMessages) {
       const blocks = getContentBlocks(m.message as any)
       for (const b of blocks) {
-        if (b.type === "tool_use" && (b.name === "render_output" || b.name === "mcp__render_output__render_output")) {
+        if (
+          b.type === "tool_use"
+          && (b.name === "render_output" || b.name === "mcp__render_output__render_output")
+          && (b as any).input?.type === "react"
+        ) {
           count++
         }
       }
@@ -131,17 +137,18 @@ export function SessionTranscript({
     }
   }, [expectedArtifacts, visibleMessages.length, onArtifactsReady])
 
+  const virtualItems = virtualizer.getVirtualItems()
+
   return (
     <div
       ref={scrollRef}
-      className="h-full overflow-y-auto overflow-x-hidden"
-      style={{ overscrollBehavior: "contain" }}
+      className="h-full overflow-y-auto overflow-x-hidden overscroll-contain"
       onScroll={handleScroll}
     >
       <div className="p-4 min-w-0 pb-4">
-        {visibleMessages.length > 0 ? (
+        {virtualItems.length > 0 ? (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => (
+            {virtualItems.map((virtualRow) => (
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
@@ -155,13 +162,13 @@ export function SessionTranscript({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} currentUserPicture={currentUserPicture} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={handleArtifactLoaded} />
+                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
               </div>
             ))}
           </div>
-        ) : (
+        ) : visibleMessages.length === 0 ? (
           <PanelSkeleton />
-        )}
+        ) : null}
         {children}
       </div>
     </div>
@@ -222,18 +229,28 @@ function MessageBubble({ label, align, transparent, children }: { label: string;
   )
 }
 
-/** Read-only display of an AskUserQuestion tool call in the transcript. */
-function AskUserInline({ questions, resultText, sessionId, sequence }: {
-  questions: any[]
+/** Parse the selected labels from an AskUserQuestion tool_result text. */
+export function parseAskUserAnswer(resultText: string): string[] {
+  const match = resultText.match(/"([^"]+)"="([^"]+)"/)
+  return match?.[2]?.split(", ").map((s) => s.trim()) ?? []
+}
+
+/** AskUserQuestion rendered inline in the transcript.
+ *  Interactive when pending (no resultText), read-only when answered. */
+function AskUserQuestionEntry({ questions, resultText, sessionId, sequence, onAnswer }: {
+  questions: AskUserQuestion[]
   resultText: string
   sessionId?: string
   sequence: number
+  onAnswer?: (answers: Record<string, string>) => Promise<void>
 }) {
-  const { pushPanel } = useNavigation()
-  const selectedLabels = parseAskUserAnswer(resultText)
-  // Derive a human-readable title from the question header or text
-  const topic = questions[0]?.header || questions[0]?.question?.slice(0, 50) || "question"
-  const headerLabel = `Ask user about ${topic.toLowerCase()}`
+  const { pushPanel, getPanels } = useNavigation()
+  const panelId = `ask_user:${sessionId}:${sequence}`
+  const isExpandedToPanel = getPanels().some((p) => p.id === panelId)
+  // Interactive when pending AND not expanded to a separate panel
+  const isPending = !resultText && !!onAnswer && !isExpandedToPanel
+  const selectedLabels = isPending ? [] : parseAskUserAnswer(resultText)
+  const form = useAskUserForm(questions)
 
   function handleExpand() {
     if (!sessionId) return
@@ -243,6 +260,9 @@ function AskUserInline({ questions, resultText, sessionId, sequence }: {
       props: { sessionId, sequence, questions, resultText },
     })
   }
+
+  const topic = questions[0]?.header || questions[0]?.question?.slice(0, 50) || "question"
+  const headerLabel = `Ask user about ${topic.toLowerCase()}`
 
   return (
     <TranscriptAccordionEntry
@@ -261,21 +281,16 @@ function AskUserInline({ questions, resultText, sessionId, sequence }: {
         </button>
       ) : undefined}
     >
-      <div className="space-y-3">
+      {isPending ? (
+        <AskUserForm questions={questions} form={form} onSubmit={() => form.handleSubmit(onAnswer!)} />
+      ) : (
         <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
-      </div>
+      )}
     </TranscriptAccordionEntry>
   )
 }
 
-/** Shared option rendering for AskUserQuestion — used inline and in panels. */
-/** Parse the selected labels from an AskUserQuestion tool_result text. */
-export function parseAskUserAnswer(resultText: string): string[] {
-  const match = resultText.match(/"([^"]+)"="([^"]+)"/)
-  return match?.[2]?.split(", ").map((s) => s.trim()) ?? []
-}
-
-/** Shared read-only option rendering for AskUserQuestion. */
+/** Shared read-only option rendering for AskUserQuestion — used in expanded panels. */
 export function AskUserOptions({ questions, selectedLabels }: { questions: any[]; selectedLabels: string[] }) {
   return (
     <>
@@ -388,22 +403,22 @@ const TranscriptEntry = memo(function TranscriptEntry({
   visibility,
   sessionId,
   currentUserEmail,
-  currentUserPicture,
   userProfiles,
   toolResultMap,
   onOpenPanel,
   onAction,
+  onAnswer,
   onArtifactLoaded,
 }: {
   message: SessionMessage
   visibility: TranscriptVisibility
   sessionId?: string
   currentUserEmail?: string
-  currentUserPicture?: string
   userProfiles?: Map<string, { name: string; picture?: string }>
   toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onAnswer?: (answers: Record<string, string>) => Promise<void>
   onArtifactLoaded?: () => void
 }) {
   const msg = message.message
@@ -512,12 +527,13 @@ const TranscriptEntry = memo(function TranscriptEntry({
   }
 
   if (msg.type === "assistant") {
+    const agentLabel = getAgentLabel(message)
     const contentBlocks = getContentBlocks(msg)
     if (contentBlocks.length === 0) {
       if (!visibility.messages) return null
       const text = extractText(msg)
       if (!text) return null
-      return <MarkdownEntry text={text} />
+      return <MarkdownEntry text={text} label={agentLabel} />
     }
 
     const grouped = groupContentBlocks(contentBlocks)
@@ -528,7 +544,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
             if (!visibility.toolCalls) return null
             return <ToolCallGroup key={i} blocks={item} sequence={message.sequence} startIndex={contentBlocks.indexOf(item[0])} toolResultMap={toolResultMap} />
           }
-          return <ContentBlockView key={i} block={item} sequence={message.sequence} visibility={visibility} sessionId={sessionId} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
+          return <ContentBlockView key={i} block={item} sequence={message.sequence} visibility={visibility} sessionId={sessionId} agentLabel={agentLabel} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={onArtifactLoaded} />
         })}
       </div>
     )
@@ -559,9 +575,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
   return null
 })
 
-function MarkdownEntry({ text }: { text: string }) {
+function MarkdownEntry({ text, label = "Claude" }: { text: string; label?: string }) {
   return (
-    <MessageBubble label="Claude" align="left" transparent>
+    <MessageBubble label={label} align="left" transparent>
       <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
           {text}
@@ -576,18 +592,22 @@ function ContentBlockView({
   sequence,
   visibility,
   sessionId,
+  agentLabel = "Claude",
   toolResultMap,
   onOpenPanel,
   onAction,
+  onAnswer,
   onArtifactLoaded,
 }: {
   block: ContentBlockType
   sequence: number
   visibility: TranscriptVisibility
   sessionId?: string
+  agentLabel?: string
   toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
+  onAnswer?: (answers: Record<string, string>) => Promise<void>
   onArtifactLoaded?: () => void
 }) {
   const { data: panelSchemas } = useQuery({
@@ -606,7 +626,7 @@ function ContentBlockView({
         return (
           <>
             <ContextPanel data={data} />
-            {rest && <MarkdownEntry text={rest} />}
+            {rest && <MarkdownEntry text={rest} label={agentLabel} />}
           </>
         )
       } catch { /* fall through to normal render */ }
@@ -620,7 +640,7 @@ function ContentBlockView({
         return (
           <>
             <InboxResultPanel data={data} sessionId={sessionId ?? ""} />
-            {rest && <MarkdownEntry text={rest} />}
+            {rest && <MarkdownEntry text={rest} label={agentLabel} />}
           </>
         )
       } catch { /* fall through to normal render */ }
@@ -639,7 +659,7 @@ function ContentBlockView({
                 <div className="rounded-lg border p-3 bg-card">
                   <PanelWidget widgets={widgets} data={data} />
                 </div>
-                {rest && <MarkdownEntry text={rest} />}
+                {rest && <MarkdownEntry text={rest} label={agentLabel} />}
               </>
             )
           } catch { /* fall through */ }
@@ -647,7 +667,7 @@ function ContentBlockView({
       }
     }
 
-    return <MarkdownEntry text={block.text} />
+    return <MarkdownEntry text={block.text} label={agentLabel} />
   }
 
   if (block.type === "tool_use") {
@@ -667,15 +687,16 @@ function ContentBlockView({
       )
     }
 
-    // AskUserQuestion — render inline with user's answer highlighted
+    // AskUserQuestion — interactive when pending, read-only when answered
     if (block.name === "AskUserQuestion" && block.input?.questions) {
       const resultText = toolResultMap?.get(block.id) ?? ""
       return (
-        <AskUserInline
-          questions={block.input.questions}
+        <AskUserQuestionEntry
+          questions={block.input.questions as AskUserQuestion[]}
           resultText={resultText}
           sessionId={sessionId}
           sequence={sequence}
+          onAnswer={!resultText ? onAnswer : undefined}
         />
       )
     }
@@ -704,29 +725,16 @@ function ContentBlockView({
         bold={false}
         defaultOpen
       >
-        <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
-          {block.thinking}
+        <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            {block.thinking}
+          </ReactMarkdown>
         </div>
       </TranscriptAccordionEntry>
     )
   }
 
   return null
-}
-
-function HighlightedJson({ data, className }: { data: unknown; className?: string }) {
-  // hljs.highlight only produces <span class="hljs-*"> tags — safe to use with dangerouslySetInnerHTML
-  const html = useMemo(
-    () => hljs.highlight(JSON.stringify(data, null, 2), { language: "json" }).value,
-    [data],
-  )
-  return (
-    <pre
-      className={`text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto ${className || ""}`}
-    >
-      <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
-    </pre>
-  )
 }
 
 /** Group consecutive non-render_output tool_use blocks into arrays; other blocks stay individual. */
@@ -755,7 +763,7 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
 }
 
 /** A single accordion containing multiple tool calls. */
-function ToolCallGroup({ blocks, sequence, startIndex, toolResultMap }: { blocks: ToolUseBlock[]; sequence: number; startIndex: number; toolResultMap?: Map<string, string> }) {
+function ToolCallGroup({ blocks, toolResultMap }: { blocks: ToolUseBlock[]; sequence?: number; startIndex?: number; toolResultMap?: Map<string, string> }) {
   const summary = blocks.length === 1 ? toolUseSummary(blocks[0].name, blocks[0].input) : ""
   const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
   const label = blocks.length === 1
@@ -858,6 +866,7 @@ function toolUseSummary(name: string, input: Record<string, unknown>): string {
   if (!input) return ""
   const str = (key: string): string => (typeof input[key] === "string" ? input[key] : "")
   if (name === "Bash") return str("description") || (typeof input.command === "string" ? input.command.slice(0, 60) : "")
+  if (name === "Agent") return str("description")
   return TOOL_PRIMARY_FIELD[name] ? str(TOOL_PRIMARY_FIELD[name]) : ""
 }
 
@@ -900,6 +909,15 @@ function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisi
   if (msg.type === "plan") return visibility.messages && !!msg.content
   if (msg.type === "tool_result") return false
   return false
+}
+
+/** Extract a display label for the agent that produced a message.
+ *  Subagent messages have a `slug` (human-readable name) or `agentId` field. */
+function getAgentLabel(message: SessionMessage): string {
+  const raw = message.message as unknown as Record<string, unknown>
+  if (raw.slug) return String(raw.slug)
+  if (raw.agentId) return String(raw.agentId)
+  return "Claude"
 }
 
 function shouldRenderContentBlock(

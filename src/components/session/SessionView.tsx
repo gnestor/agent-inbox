@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   Button,
   Textarea,
@@ -16,7 +16,6 @@ import {
 import { Send, Square, Loader2, X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { SessionTranscript, WorkingIndicator } from "./SessionTranscript"
-import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { useNavigation } from "@/hooks/use-navigation"
@@ -54,22 +53,19 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     handleBack, handleOpenPanel, isFromSidebar,
   } = useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession })
 
-  const dataMatchesSession = session?.id === sessionId
-  const [sseTimedOut, setSseTimedOut] = useState(dataMatchesSession)
-  const [artifactsReady, setArtifactsReady] = useState(dataMatchesSession)
-  const [artifactsTimedOut, setArtifactsTimedOut] = useState(dataMatchesSession)
+  // Show skeleton overlay until query data matches AND visible artifacts have
+  // reported their rendered height. Tracks which sessionId is ready so switching
+  // sessions naturally invalidates without a reset effect (which races the callback).
+  // Timeout fallback (must be > the 2s fallback in build-artifact-html.ts):
+  // off-screen artifacts not rendered by the virtualizer can never report.
+  const dataReady = session?.id === sessionId
+  const [readySessionId, setReadySessionId] = useState<string | null>(null)
+  const handleArtifactsReady = useCallback(() => setReadySessionId(sessionId), [sessionId])
   useEffect(() => {
-    if (!dataMatchesSession) {
-      setSseTimedOut(false)
-      setArtifactsReady(false)
-      setArtifactsTimedOut(false)
-    }
-    const sseTimer = setTimeout(() => setSseTimedOut(true), 1000)
-    const artifactTimer = setTimeout(() => setArtifactsTimedOut(true), 1000)
-    return () => { clearTimeout(sseTimer); clearTimeout(artifactTimer) }
-  }, [sessionId, dataMatchesSession])
-  const isHeaderReady = dataMatchesSession && (isLive || sseTimedOut)
-  const isContentReady = isHeaderReady && (artifactsReady || artifactsTimedOut)
+    const timer = setTimeout(() => setReadySessionId(sessionId), 3000)
+    return () => clearTimeout(timer)
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const isReady = dataReady && readySessionId === sessionId
 
   const header = (
     <PanelHeader
@@ -201,7 +197,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
 
   return (
     <div className="flex flex-col h-full relative">
-      {!isHeaderReady && (
+      {!isReady && (
         <div className="absolute inset-0 z-10 flex flex-col bg-card">
           <PanelHeader
             left={
@@ -216,12 +212,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       )}
       {header}
 
-      <div className="flex-1 overflow-hidden relative">
-        {isHeaderReady && !isContentReady && (
-          <div className="absolute inset-0 z-10 bg-card">
-            <PanelSkeleton />
-          </div>
-        )}
+      <div className="flex-1 overflow-hidden">
         <SessionTranscript
           key={sessionId}
           messages={messages}
@@ -230,21 +221,18 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
-          currentUserPicture={user?.picture}
           onOpenPanel={handleOpenPanel}
           onAction={(intent) => resumeSession(intent)}
-          onArtifactsReady={() => setArtifactsReady(true)}
+          onAnswer={answerQuestion}
+          onArtifactsReady={handleArtifactsReady}
         >
           {isStreaming && <WorkingIndicator eventCount={eventCount} />}
         </SessionTranscript>
       </div>
 
-      {/* Chat input / AskUserPanel */}
-      {phase.status === "awaiting_input" ? (
-        <AskUserPanel pendingQuestion={phase.question} onSubmit={answerQuestion} />
-      ) : (
-        <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex gap-2 items-end">
+      {/* Chat input */}
+      <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
               value={prompt}
@@ -282,7 +270,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
             )}
           </div>
         </div>
-      )}
     </div>
   )
 }

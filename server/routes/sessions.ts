@@ -193,6 +193,7 @@ sessionRoutes.get("/:id", async (c) => {
         linkedTaskId: session.linked_task_id,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(sessions.getWorkspacePath()),
+        hasActiveProcess: sessions.isSessionRunning(session.id),
       },
       messages,
     })
@@ -258,7 +259,19 @@ sessionRoutes.post("/:id/answer", async (c) => {
 
   const ok = sessions.provideAskUserAnswer(sessionId, answers as Record<string, string>)
   if (!ok) {
-    return c.json({ error: "No pending question for this session" }, 404)
+    // No pending resolver — the server likely restarted while awaiting input.
+    // Fall back to resuming the session with the user's answers as the prompt.
+    const formatted = Object.entries(answers as Record<string, string>)
+      .map(([q, a]) => `${q}: ${a}`)
+      .join("\n")
+    const userSessionToken = getCookie(c, SESSION_COOKIE)
+    const user = c.get("user") as UserProfile | undefined
+    try {
+      await sessions.resumeSessionQuery(sessionId, formatted, userSessionToken, user)
+    } catch (err: any) {
+      console.error("Failed to resume session after answer fallback:", err)
+      return c.json({ error: "Failed to resume session" }, 500)
+    }
   }
   return c.json({ ok: true })
 })

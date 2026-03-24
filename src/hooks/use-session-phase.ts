@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { getSession, answerSessionQuestion } from "@/api/client"
 import { useSessionStream } from "./use-session-stream"
@@ -27,6 +27,9 @@ interface UseSessionPhaseOptions {
 
 export function useSessionPhase({ sessionId, isActive = true, onResume, onArchive }: UseSessionPhaseOptions) {
   const qc = useQueryClient()
+  const autoResumedRef = useRef(false)
+  // Reset auto-resume guard when switching sessions
+  useEffect(() => { autoResumedRef.current = false }, [sessionId])
 
   const { data, isLoading, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
@@ -41,6 +44,25 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   // Connect SSE when actively viewing (for presence) or when session is running.
   // Disconnect for background tabs to avoid exhausting browser connection limit.
   const stream = useSessionStream(sessionId, !isLoading && !queryError && (isActive || isRunning))
+
+  // Auto-resume orphaned sessions: DB says "running" but server has no active agent process.
+  // This happens when the server restarts while a session is in progress.
+  const resumeMutate = mutations.resume.mutate
+  const resumeIsPending = mutations.resume.isPending
+  useEffect(() => {
+    if (!data?.session || autoResumedRef.current || resumeIsPending) return
+    const { status, hasActiveProcess } = data.session
+    const isOrphaned = (status === "running" || status === "awaiting_user_input") && hasActiveProcess === false
+    if (isOrphaned) {
+      // Only auto-resume running sessions. Orphaned awaiting_user_input sessions
+      // are handled by the SSE handler re-delivering the original question.
+      if (status === "running") {
+        autoResumedRef.current = true
+        console.log(`[session:${sessionId}] Orphaned running session — auto-resuming`)
+        resumeMutate("The server was restarted. Continue where you left off.")
+      }
+    }
+  }, [data?.session, sessionId, resumeIsPending, resumeMutate])
 
   // Invalidate sessions list when stream detects a status change
   // so sidebar and list view update immediately (not on next poll).
@@ -69,13 +91,18 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   const streamCountAtResumeRef = useRef<number | null>(null)
 
   // Merge initial messages with streamed ones, normalizing REST-loaded messages.
-  // Prepend session.prompt as a synthetic user message — the JSONL doesn't include it.
-  const initialMessages = data?.messages ?? []
-  const sessionPrompt = data?.session.prompt
+  // Only prepend the session prompt as a synthetic user message when the transcript
+  // has no messages (e.g. DB-only session before JSONL exists). The JSONL already
+  // includes the first user message, so adding a synthetic one would duplicate it.
+  // Guard against stale data from a previous session during query key transitions.
+  // React Query can briefly return the old key's cached data before the new key resolves.
+  const dataMatchesSession = data?.session.id === sessionId
+  const initialMessages = dataMatchesSession ? (data?.messages ?? []) : []
+  const sessionPrompt = dataMatchesSession ? data?.session.prompt : undefined
   const resumePrompt = mutations.resume.variables as string | undefined
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
-    if (sessionPrompt) {
+    if (sessionPrompt && initialMessages.length === 0 && stream.messages.length === 0) {
       merged.set(-1, {
         id: -1,
         sessionId,
@@ -114,11 +141,11 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
     mutations.resume.mutate(prompt)
   }
 
-  async function answerQuestion(answers: Record<string, string>) {
+  const answerQuestion = useCallback(async (answers: Record<string, string>) => {
     await answerSessionQuestion(sessionId, answers)
     stream.clearPendingQuestion()
     qc.invalidateQueries({ queryKey: ["sessions"] })
-  }
+  }, [sessionId, stream, qc])
 
   return {
     phase,

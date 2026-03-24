@@ -178,6 +178,8 @@ export interface Session {
   triggerSource: TriggerSource
   project: string
   linkedItemTitle: string | null
+  /** True when the server has an active agent process for this session */
+  hasActiveProcess?: boolean
 }
 
 export interface SessionMessage {

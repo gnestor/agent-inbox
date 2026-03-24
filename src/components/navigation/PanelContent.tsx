@@ -5,8 +5,11 @@ import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
 import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
+import { AskUserForm } from "@/components/session/AskUserForm"
+import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { useNavigation } from "@/hooks/use-navigation"
-import { resumeSession } from "@/api/client"
+import { resumeSession, answerSessionQuestion } from "@/api/client"
+import { useQueryClient } from "@tanstack/react-query"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
 
 // Lazy-load tab-specific components to avoid circular imports
@@ -101,9 +104,20 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
 
 function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user" } }) {
   const { removePanel } = useNavigation()
-  const { questions, resultText } = panel.props
-  const selectedLabels = parseAskUserAnswer(resultText)
+  const qc = useQueryClient()
+  const { questions, resultText, sessionId } = panel.props
+  const isPending = !resultText && !!sessionId
+  const selectedLabels = isPending ? [] : parseAskUserAnswer(resultText)
   const headerLabel = questions[0]?.header || "Question"
+  const form = useAskUserForm(questions)
+
+  const handleSubmit = useCallback(async () => {
+    await form.handleSubmit(async (answers) => {
+      await answerSessionQuestion(sessionId, answers)
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    })
+    removePanel(panel.id)
+  }, [form, sessionId, qc, removePanel, panel.id])
 
   return (
     <div className="flex flex-col h-full">
@@ -119,7 +133,11 @@ function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-        <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
+        {isPending ? (
+          <AskUserForm questions={questions} form={form} onSubmit={handleSubmit} />
+        ) : (
+          <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
+        )}
       </div>
     </div>
   )
