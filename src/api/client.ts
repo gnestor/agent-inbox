@@ -297,10 +297,8 @@ export function getSessionFileUrl(sessionId: string, filename: string, absoluteP
   return base
 }
 
-export async function getLinkedSession(threadId?: string, taskId?: string) {
-  const params = new URLSearchParams()
-  if (threadId) params.set("threadId", threadId)
-  if (taskId) params.set("taskId", taskId)
+export async function getLinkedSession(sourceId: string, sourceType: string) {
+  const params = new URLSearchParams({ sourceId, sourceType })
   return request<{ session: { id: string; status: string; prompt: string; summary: string | null; updatedAt: string } | null }>(
     `/sessions/linked?${params}`,
   )

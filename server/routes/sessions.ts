@@ -96,8 +96,7 @@ sessionRoutes.get("/", async (c) => {
       linkedSourceId: (s.linked_source_id as string) || null,
       triggerSource: (s.trigger_source as string) || "manual",
       project: currentProject,
-      linkedItemTitle:
-        (s.linked_email_subject as string) || (s.linked_task_title as string) || null,
+      linkedItemTitle: (s.linked_item_title as string) || null,
     })),
     ...agentSessions
       .filter((s) => projectsFilter.includes(s.project))
@@ -143,7 +142,9 @@ sessionRoutes.get("/projects", async (c) => {
 sessionRoutes.get("/linked", async (c) => {
   const threadId = c.req.query("threadId")
   const taskId = c.req.query("taskId")
-  const session = sessions.getLinkedSession(threadId, taskId)
+  const sourceType = c.req.query("sourceType")
+  const sourceId = c.req.query("sourceId")
+  const session = sessions.getLinkedSession(threadId, taskId, sourceType, sourceId)
   if (!session) return c.json({ session: null })
   return c.json({
     session: {

@@ -1,32 +1,35 @@
-import { useRef } from "react"
+import { useRef, useMemo } from "react"
 import { useIsRestoring } from "@tanstack/react-query"
-import { useParams } from "react-router-dom"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { Plug, SlidersHorizontal } from "lucide-react"
+import { SlidersHorizontal } from "lucide-react"
 import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
 import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
-import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { FilterCombobox } from "@/components/shared/FilterCombobox"
+import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import { useNavigation } from "@/hooks/use-navigation"
+import { getItemTitle, getItemSubtitle, getItemTimestamp } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem, FieldDef } from "@/types/plugin"
 
-function buildBadges(item: PluginItem, fieldSchema: FieldDef[]): ListItemBadge[] {
+function buildBadges(item: PluginItem, fieldSchema: FieldDef[], hiddenFields?: Set<string>): ListItemBadge[] {
   if (item.badges) return item.badges as ListItemBadge[]
   const badges: ListItemBadge[] = []
   for (const field of fieldSchema) {
     if (!field.badge) continue
+    if (hiddenFields?.has(field.id)) continue
     const raw = item[field.id]
     if (raw == null) continue
     const value = String(raw)
     if (field.badge.show === "if-set" && !raw) continue
+    const label = field.badge.labelFn?.(value) ?? value
+    if (!label) continue
     badges.push({
-      label: value,
+      label,
       variant: field.badge.variant,
       className: field.badge.colorFn?.(value),
     })
@@ -34,33 +37,6 @@ function buildBadges(item: PluginItem, fieldSchema: FieldDef[]): ListItemBadge[]
   return badges
 }
 
-function getItemTitle(item: PluginItem): string {
-  for (const key of ["title", "name", "subject", "channelName", "text", "summary"]) {
-    if (typeof item[key] === "string" && item[key]) return item[key] as string
-  }
-  return item.id
-}
-
-function getItemSubtitle(item: PluginItem): string | undefined {
-  for (const key of ["subtitle", "description", "latestText", "preview"]) {
-    if (typeof item[key] === "string" && item[key]) return item[key] as string
-  }
-  return undefined
-}
-
-function getItemTimestamp(item: PluginItem): string {
-  for (const key of ["latestTs", "updatedAt", "createdAt", "timestamp", "date", "ts"]) {
-    const val = item[key]
-    if (!val) continue
-    if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
-    if (typeof val === "string") {
-      const n = parseFloat(val)
-      if (!isNaN(n) && val.includes(".")) return new Date(n * 1000).toLocaleDateString()
-      return new Date(val).toLocaleDateString()
-    }
-  }
-  return ""
-}
 
 interface PluginListInnerProps {
   plugin: PluginManifest
@@ -92,6 +68,25 @@ function PluginListInner({
   }
 
   const hasActiveFilters = Object.values(filterState).some((v) => v.length > 0)
+
+  // Badge visibility preferences per plugin
+  const badgeFields = plugin.fieldSchema.filter((f) => f.badge)
+  const [hiddenBadges, setHiddenBadges] = usePreference<string[]>(
+    `plugin:${plugin.id}.hiddenBadges`,
+    [],
+  )
+  const hiddenBadgeFields = useMemo(() => new Set(hiddenBadges), [hiddenBadges])
+  const badgeToggleItems = badgeFields.map((f) => ({
+    label: f.label,
+    checked: !hiddenBadgeFields.has(f.id),
+    onChange: (checked: boolean) => {
+      if (checked) {
+        setHiddenBadges(hiddenBadges.filter((id) => id !== f.id))
+      } else {
+        setHiddenBadges([...hiddenBadges, f.id])
+      }
+    },
+  }))
 
   const isRestoring = useIsRestoring()
   const { data, isLoading: queryLoading } = usePluginItems(plugin.id, queryFilters)
@@ -148,13 +143,20 @@ function PluginListInner({
             <span className="font-semibold text-sm">{plugin.name}</span>
           </div>
         }
-        right={filterUI}
+        right={
+          <>
+            {filterUI}
+            {badgeToggleItems.length > 0 && <BadgeToggleMenu items={badgeToggleItems} />}
+          </>
+        }
       />
 
       {isLoading && !items.length && <ListSkeleton itemHeight={72} />}
 
       {!isLoading && !items.length && (
-        <EmptyState icon={Plug} message={`No ${plugin.name} items`} />
+        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+          No {plugin.name} items
+        </div>
       )}
 
       {items.length > 0 && (
@@ -163,7 +165,7 @@ function PluginListInner({
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index]
               const title = getItemTitle(item)
-              const badges = buildBadges(item, plugin.fieldSchema)
+              const badges = buildBadges(item, plugin.fieldSchema, hiddenBadgeFields)
 
               return (
                 <div
@@ -201,27 +203,21 @@ function PluginListInner({
 }
 
 export function PluginList({
+  pluginId,
   selectedItemId,
   onSelectedIndexChange,
   onSelectedTitleChange,
 }: {
+  pluginId?: string
   selectedItemId?: string
   onSelectedIndexChange?: (index: number) => void
   onSelectedTitleChange?: (title: string) => void
 }) {
-  const { id } = useParams<{ id: string }>()
   const { data: plugins, isLoading } = usePlugins()
-  const plugin = plugins?.find((p) => p.id === id)
+  const plugin = plugins?.find((p) => p.id === pluginId)
 
-  if (isLoading) return <ListSkeleton itemHeight={72} />
-  if (!plugin) {
-    return (
-      <EmptyState
-        icon={Plug}
-        message={id ? `Plugin "${id}" not found` : "Select a plugin"}
-      />
-    )
-  }
+  if (isLoading || (pluginId && !plugin)) return <ListSkeleton itemHeight={72} />
+  if (!plugin) return null
 
   return (
     <PluginListInner

@@ -290,8 +290,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
       linked_email_thread_id: null,
       linked_task_id: null,
       metadata: null,
-      linked_email_subject: null,
-      linked_task_title: null,
+      linked_item_title: null,
     })
 
     const { listSessionRecords } = await import("../session-manager.js")
@@ -339,8 +338,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
       linked_email_thread_id: null,
       linked_task_id: null,
       metadata: null,
-      linked_email_subject: null,
-      linked_task_title: null,
+      linked_item_title: null,
     })
 
     const { listSessionRecords } = await import("../session-manager.js")

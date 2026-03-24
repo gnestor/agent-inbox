@@ -121,7 +121,7 @@ interface FieldDef {
 
   listRole?: "title" | "subtitle" | "timestamp" | "hidden"
   filter?: { filterable: true; filterOptions?: string[]; filterType?: "select" | "multiselect" | "text" }
-  badge?: { show: "always" | "if-set"; variant?: string; colorFn?: (v) => string }
+  badge?: { show: "always" | "if-set"; variant?: string; labelFn?: (v) => string; colorFn?: (v) => string }
   detailWidget?: WidgetDef
 }
 ```

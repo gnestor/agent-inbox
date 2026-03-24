@@ -153,8 +153,12 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
     case "SET_STATE":
       return action.state
 
-    case "SWITCH_TAB":
-      return { ...state, activeTab: action.tabId }
+    case "SWITCH_TAB": {
+      const tabs = state.tabs[action.tabId]
+        ? state.tabs
+        : { ...state.tabs, [action.tabId]: createDefaultTabState() }
+      return { ...state, activeTab: action.tabId, tabs }
+    }
 
     case "SELECT_ITEM": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
@@ -251,9 +255,14 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
     case "OPEN_NEW_SESSION": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
       if (tab.panels.some((p) => p.id === NEW_SESSION_PANEL.id)) return state
-      tab.selectedItemId = undefined
-      tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
-      tab.panelTransition = "none"
+      // If an item is selected, keep the detail panel and add compose after it
+      if (tab.selectedItemId) {
+        const detailPanels = tab.panels.filter((p) => p.type === "list" || p.type === "detail")
+        tab.panels = [...detailPanels, NEW_SESSION_PANEL]
+      } else {
+        tab.selectedItemId = undefined
+        tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
+      }
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -316,6 +325,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     // Create ephemeral tab state for recent:* URLs so SlotStack has the key
     if (parsed.tabId.startsWith("recent:")) {
       base.tabs[parsed.tabId] = createRecentTabState(parsed)
+    }
+    // Create tab state for plugin tabs not in the default set (external plugins)
+    if (parsed.tabId.startsWith("plugin:") && !base.tabs[parsed.tabId]) {
+      base.tabs[parsed.tabId] = createDefaultTabState()
     }
     return base
   })

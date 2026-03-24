@@ -13,7 +13,7 @@ export function useCalendar(filters?: CalendarFilters, enabled = true) {
     queryKey: ["calendar", filters],
     queryFn: ({ pageParam }) => getCalendarItems({ ...filters, cursor: pageParam as string | undefined }),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
     enabled,
     refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })

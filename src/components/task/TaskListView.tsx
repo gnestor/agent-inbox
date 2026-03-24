@@ -35,8 +35,8 @@ export const taskFieldSchema: FieldDef[] = [
     id: "assignee",
     label: "Assignee",
     type: "text",
-    badge: { show: "if-set", variant: "secondary" },
     filter: { filterable: true },
+    listRole: "hidden",
   },
   { id: "body", label: "Body", type: "text", listRole: "hidden" },
 ]
@@ -60,16 +60,14 @@ export function TaskListView() {
   const [showStatus, setShowStatus] = usePreference("tasks.showStatus", true)
   const [showPriority, setShowPriority] = usePreference("tasks.showPriority", false)
   const [showTags, setShowTags] = usePreference("tasks.showTags", true)
-  const [showAssignee, setShowAssignee] = usePreference("tasks.showAssignee", true)
 
   const hiddenBadgeFields = useMemo(() => {
     const hidden = new Set<string>()
     if (!showStatus) hidden.add("status")
     if (!showPriority) hidden.add("priority")
     if (!showTags) hidden.add("tags")
-    if (!showAssignee) hidden.add("assignee")
     return hidden
-  }, [showStatus, showPriority, showTags, showAssignee])
+  }, [showStatus, showPriority, showTags])
 
   return (
     <ListView
@@ -90,7 +88,6 @@ export function TaskListView() {
             { label: "Status", checked: showStatus, onChange: setShowStatus },
             { label: "Priority", checked: showPriority, onChange: setShowPriority },
             { label: "Tags", checked: showTags, onChange: setShowTags },
-            { label: "Assignee", checked: showAssignee, onChange: setShowAssignee },
           ]}
         />
       </ListView.Header>

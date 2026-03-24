@@ -49,14 +49,6 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_session_messages_session
       ON session_messages(session_id, sequence);
 
-    CREATE TABLE IF NOT EXISTS email_task_links (
-      email_id TEXT NOT NULL,
-      email_thread_id TEXT NOT NULL,
-      task_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (email_id, task_id)
-    );
-
     CREATE TABLE IF NOT EXISTS notion_options (
       property TEXT NOT NULL,
       value TEXT NOT NULL,
@@ -79,18 +71,6 @@ export function initializeDatabase() {
       user_email TEXT NOT NULL,
       user_picture TEXT,
       created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS processed_emails (
-      email_id TEXT PRIMARY KEY,
-      thread_id TEXT,
-      from_address TEXT,
-      subject TEXT,
-      processed_at TEXT NOT NULL,
-      notion_task_id TEXT,
-      session_id TEXT,
-      rule_name TEXT,
-      action TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_preferences (

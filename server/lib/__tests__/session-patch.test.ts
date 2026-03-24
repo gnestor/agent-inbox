@@ -50,8 +50,7 @@ function createSchema(db: Database.Database) {
       linked_task_id TEXT,
       trigger_source TEXT DEFAULT 'manual',
       metadata TEXT,
-      linked_email_subject TEXT,
-      linked_task_title TEXT
+      linked_item_title TEXT
     );
     CREATE TABLE IF NOT EXISTS session_messages (
       id TEXT PRIMARY KEY,

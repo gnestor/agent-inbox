@@ -1,10 +1,14 @@
-import { Plug } from "lucide-react"
+import { useMemo } from "react"
+import { MessageSquare, ExternalLink } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { usePlugins, usePluginItems, usePluginSubItems } from "@/hooks/use-plugins"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
-import { EmptyState } from "@/components/shared/EmptyState"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
-import { mutatePluginItem } from "@/api/client"
+import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
+import { mutatePluginItem, getLinkedSession } from "@/api/client"
+import { getItemTitle } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
@@ -23,13 +27,6 @@ function autoDetailSchema(plugin: PluginManifest): WidgetDef[] {
   if (kvFields.length > 0) widgets.push({ type: "kv-table", fields: kvFields })
   for (const f of proseFields) widgets.push({ type: "prose", field: f })
   return widgets
-}
-
-function getItemTitle(item: Record<string, unknown>): string {
-  for (const key of ["title", "name", "channelName", "subject", "text", "summary"]) {
-    if (typeof item[key] === "string" && item[key]) return item[key] as string
-  }
-  return String(item.id ?? "")
 }
 
 function formatSlackText(text: string): string {
@@ -66,22 +63,36 @@ function formatTs(ts: string): string {
 function MessageRow({ item }: { item: PluginItem }) {
   const data = item as Record<string, unknown>
   const replyCount = Number(data.replyCount ?? 0)
+  const avatar = data.userAvatar as string | undefined
+  const name = String(data.userName ?? data.userId ?? "Unknown")
+  const initials = name.slice(0, 2).toUpperCase()
+
   return (
     <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
-      <div className="flex items-baseline gap-2 mb-0.5">
-        <span className="font-medium text-sm">
-          {String(data.userName ?? data.userId ?? "Unknown")}
-        </span>
-        <span className="text-xs text-muted-foreground">{formatTs(String(data.ts ?? ""))}</span>
-        {replyCount > 0 && (
-          <span className="text-xs text-muted-foreground ml-auto">
-            {replyCount} {replyCount === 1 ? "reply" : "replies"}
-          </span>
+      <div className="flex gap-2.5">
+        {avatar ? (
+          <img src={avatar} alt={name} className="h-8 w-8 rounded-md shrink-0 mt-0.5" />
+        ) : (
+          <div className="h-8 w-8 rounded-md shrink-0 mt-0.5 bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
+            {initials}
+          </div>
         )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 mb-0.5">
+            <span className="font-medium text-sm">{name}</span>
+            <span className="text-xs text-muted-foreground">{formatTs(String(data.ts ?? ""))}</span>
+            {replyCount > 0 && (
+              <span className="text-xs text-muted-foreground ml-auto flex items-center gap-1">
+                <MessageSquare className="h-3 w-3" />
+                {replyCount}
+              </span>
+            )}
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {formatSlackText(String(data.text ?? ""))}
+          </p>
+        </div>
       </div>
-      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-        {formatSlackText(String(data.text ?? ""))}
-      </p>
     </div>
   )
 }
@@ -89,11 +100,9 @@ function MessageRow({ item }: { item: PluginItem }) {
 export function PluginDetail({
   pluginId,
   itemId,
-  parentTitle,
 }: {
   pluginId: string
   itemId: string
-  parentTitle?: string
 }) {
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
@@ -108,7 +117,36 @@ export function PluginDetail({
     undefined,
   )
 
-  const title = parentTitle || itemId
+  // Session linking
+  const { data: linkedData } = useQuery({
+    queryKey: ["linked-session", pluginId, itemId],
+    queryFn: () => getLinkedSession(itemId, pluginId),
+  })
+  const linkedSession = linkedData?.session
+
+  // Look up the parent item from the list query (for title, externalUrl, etc.)
+  const parentItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  const title = parentItem ? getItemTitle(parentItem) : itemId
+  const externalUrl = parentItem?.externalUrl as string | undefined
+
+  // Build session context from sub-items for session linking
+  const sessionSource = useMemo(() => {
+    if (!hasSubItems) return undefined
+    const items = subData?.items ?? []
+    const contextLines = items
+      .slice(0, 20)
+      .map((i) => {
+        const d = i as Record<string, unknown>
+        return `${d.userName ?? d.userId ?? "Unknown"}: ${d.text ?? ""}`
+      })
+      .join("\n")
+    return {
+      type: pluginId,
+      id: itemId,
+      title,
+      content: `${pluginId} conversation: ${title}\n\n${contextLines}`,
+    }
+  }, [hasSubItems, subData?.items, pluginId, itemId, title])
 
   // Sub-items path (e.g. Slack: channel → messages)
   if (hasSubItems) {
@@ -122,9 +160,32 @@ export function PluginDetail({
               <span className="font-semibold text-sm">{title}</span>
             </div>
           }
+          right={
+            <>
+              {externalUrl && (
+                <a
+                  href={externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+                  title={`Open in ${plugin?.name ?? "app"}`}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+              {sessionSource && (
+                <SessionActionMenu
+                  source={sessionSource}
+                  linkedSessionId={linkedSession?.id}
+                />
+              )}
+            </>
+          }
         />
         {subLoading && !items.length && <ListSkeleton itemHeight={72} />}
-        {!subLoading && !items.length && <EmptyState icon={Plug} message="No messages" />}
+        {!subLoading && !items.length && (
+          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No messages</div>
+        )}
         {items.length > 0 && (
           <div className="flex-1 overflow-y-auto">
             {items.map((item) => (
@@ -140,10 +201,12 @@ export function PluginDetail({
   const item = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
 
   if (!plugin || (!item && itemsLoading)) {
-    return <EmptyState icon={Plug} message="Loading..." />
+    return <PanelSkeleton />
   }
   if (!item) {
-    return <EmptyState icon={Plug} message="Item not found" />
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Item not found</div>
+    )
   }
 
   const widgets = plugin.detailSchema ?? autoDetailSchema(plugin)
@@ -152,14 +215,27 @@ export function PluginDetail({
     await mutatePluginItem(pluginId, itemId, action, payload)
   }
 
+  const widgetSource = {
+    type: pluginId,
+    id: itemId,
+    title: getItemTitle(item),
+    content: JSON.stringify(item),
+  }
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <PanelHeader
         left={
           <div className="flex items-center gap-2">
             <SidebarButton />
-            <span className="font-semibold text-sm">{parentTitle || getItemTitle(item)}</span>
+            <span className="font-semibold text-sm">{getItemTitle(item)}</span>
           </div>
+        }
+        right={
+          <SessionActionMenu
+            source={widgetSource}
+            linkedSessionId={linkedSession?.id}
+          />
         }
       />
       <div className="flex-1 overflow-y-auto p-4">

@@ -32,7 +32,7 @@ export function SessionActionMenu({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
-  const { openSession } = useNavigation()
+  const { openSession, openNewSession } = useNavigation()
   const filters = deferredSearch ? { q: deferredSearch } : undefined
   const { sessions } = useSessions(filters, { enabled: open })
   const attachMutation = useAttachToSession()
@@ -79,7 +79,11 @@ export function SessionActionMenu({
           <DropdownMenuItem
             onClick={() => {
               setOpen(false)
-              openSession(linkedSessionId)
+              if (linkedSessionId) {
+                openSession(linkedSessionId)
+              } else {
+                openNewSession()
+              }
             }}
           >
             <Sparkles className="h-4 w-4 mr-2" />

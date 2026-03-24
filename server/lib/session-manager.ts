@@ -366,11 +366,11 @@ export function listSessionRecords(filters?: {
   if (filters?.q) {
     const like = `%${filters.q}%`
     // Join session_messages to search full message content
-    sql = `SELECT DISTINCT s.*, pe.subject AS linked_email_subject, json_extract(s.metadata, '$.linkedItemTitle') AS linked_task_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id LEFT JOIN processed_emails pe ON pe.thread_id = s.linked_email_thread_id`
+    sql = `SELECT DISTINCT s.*, json_extract(s.metadata, '$.linkedItemTitle') AS linked_item_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
     conditions.push("(s.prompt LIKE ? OR s.summary LIKE ? OR sm.message LIKE ?)")
     params.push(like, like, like)
   } else {
-    sql = "SELECT s.*, pe.subject AS linked_email_subject, json_extract(s.metadata, '$.linkedItemTitle') AS linked_task_title FROM sessions s LEFT JOIN processed_emails pe ON pe.thread_id = s.linked_email_thread_id"
+    sql = "SELECT s.*, json_extract(s.metadata, '$.linkedItemTitle') AS linked_item_title FROM sessions s"
   }
 
   if (conditions.length) {
@@ -677,9 +677,14 @@ export function attachSourceToSession(
   // is preserved in session_messages regardless, so multiple attachments work)
   const db = getDb()
   const now = new Date().toISOString()
+
+  // Persist title in metadata so listSessionRecords can surface it without joins
+  const existing = db.prepare("SELECT metadata FROM sessions WHERE id = ?").get(sessionId) as { metadata: string | null } | undefined
+  const meta = existing?.metadata ? JSON.parse(existing.metadata) : {}
+  meta.linkedItemTitle = source.title
   db.prepare(
-    "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, updated_at = ? WHERE id = ?",
-  ).run(source.id, source.type, now, sessionId)
+    "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, metadata = ?, updated_at = ? WHERE id = ?",
+  ).run(source.id, source.type, JSON.stringify(meta), now, sessionId)
 
   // Also set legacy columns for backward compat
   if (source.type === "email" || source.type === "gmail") {

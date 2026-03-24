@@ -7,7 +7,7 @@ export function useEmails(query = "in:inbox is:important OR is:starred", enabled
     queryKey: ["emails", query],
     queryFn: ({ pageParam }) => searchEmails(query, 50, pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextPageToken ?? undefined,
+    getNextPageParam: (lastPage) => lastPage?.nextPageToken ?? undefined,
     enabled,
     refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
   })

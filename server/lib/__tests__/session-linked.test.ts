@@ -66,6 +66,8 @@ describe("attachSourceToSession", () => {
     vi.resetModules()
     mockRun.mockClear()
     mockAll.mockReturnValue([])
+    // Default: SELECT metadata returns null metadata
+    mockGet.mockReturnValue({ metadata: null })
   })
 
   it("sets linked_email_thread_id when attaching an email source", async () => {
@@ -82,6 +84,23 @@ describe("attachSourceToSession", () => {
     )
     expect(emailUpdate).toBeDefined()
     expect(emailUpdate![1]).toBe("thread-123")
+  })
+
+  it("persists title in metadata when attaching a source", async () => {
+    const { attachSourceToSession } = await import("../session-manager.js")
+    attachSourceToSession("sess-1", {
+      type: "email",
+      id: "thread-123",
+      title: "Re: Invoice Q1",
+      content: "Email content",
+    })
+
+    const metadataUpdate = mockRun.mock.calls.find(
+      ([sql]: [string]) => typeof sql === "string" && sql.includes("metadata"),
+    )
+    expect(metadataUpdate).toBeDefined()
+    const metaJson = metadataUpdate!.find((arg: unknown) => typeof arg === "string" && arg.includes("linkedItemTitle"))
+    expect(JSON.parse(metaJson as string)).toMatchObject({ linkedItemTitle: "Re: Invoice Q1" })
   })
 
   it("sets linked_task_id when attaching a task source", async () => {

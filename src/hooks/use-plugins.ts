@@ -5,8 +5,15 @@ export function usePlugins() {
   return useQuery({
     queryKey: ["plugins"],
     queryFn: () => getPlugins(),
-    staleTime: 0,
-    refetchOnMount: true,
+    staleTime: 30_000,
+    gcTime: 60_000,
+    refetchOnMount: "always",
+    // Treat empty arrays from stale cache as placeholder — always refetch
+    placeholderData: (prev) => prev,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      return !data || data.length === 0 ? 2000 : false
+    },
   })
 }
 

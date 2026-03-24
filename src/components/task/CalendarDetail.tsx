@@ -33,7 +33,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
   })
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", "calendar", itemId],
-    queryFn: () => getLinkedSession(undefined, itemId),
+    queryFn: () => getLinkedSession(itemId, "notion-calendar"),
   })
   const { data: statusOpts } = useQuery({
     queryKey: ["notion-options", "calendar:Status"],
