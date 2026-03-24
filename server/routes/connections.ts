@@ -10,6 +10,7 @@ import {
   listWorkspaceCredentials,
 } from "../lib/vault.js"
 import { getWorkspaceName } from "../lib/session-manager.js"
+import { getCredentials } from "../lib/credentials.js"
 import { randomBytes } from "crypto"
 
 export const connectionRoutes = new Hono()
@@ -58,7 +59,7 @@ connectionRoutes.get("/", (c) => {
       config.scope === "user"
         ? connectedUserIntegrations.has(config.id)
         : connectedWorkspaceIntegrations.has(config.id) ||
-          !!process.env[config.envVars.credential],
+          !!getCredentials()[config.envVars.credential],
   }))
 
   return c.json({ integrations })
