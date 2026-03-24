@@ -13,6 +13,7 @@ interface UseTranscriptScrollOptions {
   messages: SessionMessage[]
   visibility: TranscriptVisibility
   sessionId?: string
+  isStreaming?: boolean
   shouldRenderMessage: (message: SessionMessage, visibility: TranscriptVisibility) => boolean
 }
 
@@ -20,6 +21,7 @@ export function useTranscriptScroll({
   messages,
   visibility,
   sessionId,
+  isStreaming,
   shouldRenderMessage,
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -125,6 +127,18 @@ export function useTranscriptScroll({
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [visibleMessages.length])
+
+  // Auto-scroll when streaming starts — the working indicator renders below
+  // the virtualized list, so we need to scroll past it into view.
+  useEffect(() => {
+    if (!isStreaming || !hasScrolledToBottom.current || !shouldAutoScroll.current) return
+    const el = scrollRef.current
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+      })
+    }
+  }, [isStreaming])
 
   function handleScroll() {
     if (!hasScrolledToBottom.current) return

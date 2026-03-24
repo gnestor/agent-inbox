@@ -87,6 +87,7 @@ export function SessionTranscript({
     messages,
     visibility,
     sessionId,
+    isStreaming,
     shouldRenderMessage,
   })
   const userProfiles = useUserProfiles(messages)
