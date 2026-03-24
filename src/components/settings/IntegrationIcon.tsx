@@ -3,7 +3,7 @@ import { Link } from "lucide-react"
 // SVG file imports (Vite resolves to URLs)
 import airSvg from "@/assets/icons/air.svg"
 import githubSvg from "@/assets/icons/github.svg"
-import gorgeousSvg from "@/assets/icons/gorgias.svg"
+import gorgiasSvg from "@/assets/icons/gorgias.svg"
 import happyReturnsSvg from "@/assets/icons/happy-returns.svg"
 import instagramSvg from "@/assets/icons/instagram.svg"
 import klaviyoSvg from "@/assets/icons/klaviyo.svg"
@@ -71,7 +71,7 @@ const svgFileIcons: Record<string, string> = {
   "google-analytics": googleAnalyticsSvg,
   "google-search-console": googleSearchConsoleSvg,
   "google-trends": googleTrendsSvg,
-  gorgias: gorgeousSvg,
+  gorgias: gorgiasSvg,
   "happy-returns": happyReturnsSvg,
   instagram: instagramSvg,
   klaviyo: klaviyoSvg,
