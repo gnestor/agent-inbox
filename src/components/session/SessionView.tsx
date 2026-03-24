@@ -88,12 +88,12 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleFinishEdit}
               onKeyDown={handleEditKeyDown}
-              className="font-semibold text-sm bg-transparent border-b border-foreground/30 outline-none min-w-0 w-full"
+              className="font-semibold text-sm bg-transparent border-b border-foreground/30 outline-none truncate min-w-0 flex-1"
               maxLength={200}
             />
           ) : (
             <h2
-              className="font-semibold text-sm truncate min-w-0 cursor-pointer hover:text-foreground/70"
+              className="font-semibold text-sm truncate min-w-0 flex-1 cursor-pointer hover:text-foreground/70"
               onClick={handleStartEdit}
               title="Click to rename"
             >
