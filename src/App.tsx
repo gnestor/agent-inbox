@@ -96,15 +96,20 @@ function AuthenticatedApp() {
   )
 }
 
+function AppSkeleton() {
+  return (
+    <div className="flex h-svh">
+      <div className="hidden md:block w-[300px] shrink-0 bg-sidebar" />
+      <div className="flex-1" />
+    </div>
+  )
+}
+
 function AppContent() {
   const { user, loading } = useUser()
 
   if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    )
+    return <AppSkeleton />
   }
 
   if (!user) return <LoginPage />

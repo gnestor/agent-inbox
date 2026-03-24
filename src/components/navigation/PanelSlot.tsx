@@ -13,9 +13,7 @@
 import { Children, useRef, useEffect, useState } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
-import { DEFAULT_PANEL_WIDTH, DURATION, EASE, ITEM_GAP } from "@/lib/navigation-constants"
-
-const EASE_CSS = `cubic-bezier(${EASE.join(",")})`
+import { DEFAULT_PANEL_WIDTH, DURATION, EASE_CSS, ITEM_GAP } from "@/lib/navigation-constants"
 
 interface PanelSlotProps {
   panelId: string
@@ -82,6 +80,11 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
       requestAnimationFrame(() => { suppressTransition.current = false })
     }
   })
+
+  // On mobile, group panels are rendered as flat scroll items — the MobileTab
+  // handles horizontal scroll-snap navigation between them.
+  if (isMobile && group) return <>{children}</>
+
   const hasAnimation = !isFirstRef.current && exiting
 
   const exitAnimation = exiting
@@ -99,8 +102,6 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
   }
 
   return (
-    <>
-      <style>{panelKeyframes}</style>
       <div
         style={{
           position: "relative",
@@ -120,26 +121,5 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
           {children}
         </div>
       </div>
-    </>
   )
 }
-
-// CSS @keyframes — injected once via <style> tag
-const panelKeyframes = `
-@keyframes panel-slide-in-up {
-  from { transform: translateY(calc(100% + ${ITEM_GAP}px)); }
-  to { transform: translateY(0); }
-}
-@keyframes panel-slide-out-up {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(-100% - ${ITEM_GAP}px)); }
-}
-@keyframes panel-slide-in-down {
-  from { transform: translateY(calc(-100% - ${ITEM_GAP}px)); }
-  to { transform: translateY(0); }
-}
-@keyframes panel-slide-out-down {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(100% + ${ITEM_GAP}px)); }
-}
-`

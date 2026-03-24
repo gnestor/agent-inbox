@@ -21,6 +21,7 @@ interface PromptTemplate {
 }
 
 interface NewSessionPanelProps {
+  panelId?: string
   threadId?: string
   taskId?: string
   sessionId?: string
@@ -29,14 +30,14 @@ interface NewSessionPanelProps {
 
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ threadId, taskId, sessionId, autoStart }: NewSessionPanelProps) {
+export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
   if (autoStart && (threadId || taskId)) {
     return <AutoStartPanel threadId={threadId} taskId={taskId} />
   }
-  return <ComposePanel threadId={threadId} taskId={taskId} />
+  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} />
 }
 
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
@@ -90,7 +91,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 
 // ── Compose panel ────────────────────────────────────────────────────────────
 
-function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
+function ComposePanel({ panelId, threadId, taskId }: { panelId?: string; threadId?: string; taskId?: string }) {
   const { popPanel, replacePanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
@@ -145,7 +146,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
-      replacePanel(NEW_SESSION_PANEL.id, {
+      replacePanel(panelId ?? NEW_SESSION_PANEL.id, {
         id: `session:${sessionId}`,
         type: "session",
         props: { sessionId },
@@ -155,7 +156,7 @@ function ComposePanel({ threadId, taskId }: { threadId?: string; taskId?: string
   })
 
   function handleClose() {
-    popPanel(NEW_SESSION_PANEL.id)
+    popPanel(panelId ?? NEW_SESSION_PANEL.id)
   }
 
   function handleSaveTemplate() {

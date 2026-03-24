@@ -11,7 +11,7 @@ import {
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
-import { DURATION, EASE, ITEM_GAP, DEFAULT_PANEL_WIDTH } from "@/lib/navigation-constants"
+import { DURATION, EASE_CSS } from "@/lib/navigation-constants"
 
 interface TabProps {
   id: TabId
@@ -31,7 +31,6 @@ export function useDragTab() {
 }
 
 const ALL_TABS: TabId[] = ["settings", "emails", "tasks", "calendar", "sessions"]
-const EASE_CSS = `cubic-bezier(${EASE.join(",")})`
 
 // --- Exit children helper (keeps outgoing panels in DOM during exit animation) ---
 
@@ -118,20 +117,16 @@ function MobileTab({ id, children }: TabProps) {
       hasMounted.current = true
     }
 
-    // Wait for panel to be laid out if not yet in DOM
+    // Wait for panel to be laid out if not yet wide enough to scroll.
+    // Double-rAF covers browsers with a two-frame layout pipeline.
     if (el.scrollWidth <= el.clientWidth && target > 0) {
-      const observer = new MutationObserver(() => {
-        if (el.scrollWidth > el.clientWidth) {
-          observer.disconnect()
-          doScroll()
-        }
+      const raf = requestAnimationFrame(() => {
+        if (el.scrollWidth > el.clientWidth) { doScroll(); return }
+        requestAnimationFrame(() => {
+          if (el.scrollWidth > el.clientWidth) doScroll()
+        })
       })
-      observer.observe(el, { childList: true, subtree: true })
-      const cleanup = setTimeout(() => observer.disconnect(), 1000)
-      return () => {
-        observer.disconnect()
-        clearTimeout(cleanup)
-      }
+      return () => cancelAnimationFrame(raf)
     }
 
     doScroll()
@@ -189,7 +184,6 @@ function DesktopTab({ id, children }: TabProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const prevPanelCountRef = useRef(0)
-  const isFirstRender = useRef(true)
   const savedScrollRef = useRef(0)
   const hasMounted = useRef(false)
 
@@ -207,11 +201,8 @@ function DesktopTab({ id, children }: TabProps) {
 
   // Save/restore scroll position when switching tabs
   useEffect(() => {
-    if (isActive && scrollRef.current) {
-      if (isFirstRender.current) {
-        scrollRef.current.scrollLeft = savedScrollRef.current
-        isFirstRender.current = false
-      }
+    if (isActive && scrollRef.current && !hasMounted.current) {
+      scrollRef.current.scrollLeft = savedScrollRef.current
     }
     return () => {
       if (scrollRef.current) {
@@ -220,26 +211,28 @@ function DesktopTab({ id, children }: TabProps) {
     }
   }, [isActive])
 
-  // Scroll when panels are added or removed inside the group
   const panelCount = panels.length
+  const mountedAt = useRef(performance.now())
+  useEffect(() => { hasMounted.current = true }, [])
+
+  // Scroll when panels are added or removed inside the group
   useEffect(() => {
     if (!isActive || !scrollRef.current) return
 
     if (panelCount > prevPanelCountRef.current && prevPanelCountRef.current > 0) {
-      hasMounted.current = true
       requestAnimationFrame(() => {
         const el = scrollRef.current
         if (!el) return
         const target = el.scrollWidth - el.clientWidth
-        el.scrollTo({ left: target, behavior: isFirstRender.current ? "instant" : "smooth" })
+        // Snap instantly during initial settling (e.g. async persisted state load)
+        const instant = !hasMounted.current || performance.now() - mountedAt.current < 1000
+        el.scrollTo({ left: target, behavior: instant ? "instant" : "smooth" })
       })
     }
     // Panel removed: the PanelSlot's CSS width transition shrinks it,
     // and the browser clamps scrollLeft to the new scrollWidth automatically.
     prevPanelCountRef.current = panelCount
-    isFirstRender.current = false
-    if (!hasMounted.current) hasMounted.current = true
-  })
+  }, [panelCount, isActive])
 
   // Collapse exiting panel with CSS transition when going back
   useEffect(() => {
@@ -296,7 +289,6 @@ function DesktopTab({ id, children }: TabProps) {
     <div
       ref={scrollRef}
       className="flex flex-row h-full gap-4 shrink-0 overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
-      style={{ transition: `${DURATION}s all` }}
     >
       {renderedChildren}
     </div>

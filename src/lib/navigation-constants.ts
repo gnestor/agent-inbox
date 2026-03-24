@@ -3,6 +3,9 @@
 /** Cubic bezier easing for tab and item transitions */
 export const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1]
 
+/** CSS cubic-bezier() string for inline styles */
+export const EASE_CSS = `cubic-bezier(${EASE.join(",")})`
+
 /** Duration in seconds for tab and item transitions */
 export const DURATION = 0.6
 

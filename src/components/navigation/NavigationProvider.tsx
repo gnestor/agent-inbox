@@ -234,6 +234,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       if (tab.panels.some((p) => p.id === NEW_SESSION_PANEL.id)) return state
       tab.selectedItemId = undefined
       tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -371,7 +372,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         base.tabs[parsed.tabId] = tab
       }
 
-      // 4. Dispatch merged state; URL already correct, no navigate() needed
+      // 4. Clear panelTransition on all tabs so persisted "item" transitions
+      //    don't trigger slide animations on load.
+      for (const tab of Object.values(base.tabs)) {
+        tab.panelTransition = "none"
+      }
+
+      // 5. Dispatch merged state; URL already correct, no navigate() needed
       dispatch({ type: "SET_STATE", state: base })
       lastNavigatedUrl.current = location.pathname
       initialized.current = true

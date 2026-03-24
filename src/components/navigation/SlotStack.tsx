@@ -5,7 +5,7 @@
  * The reducer makes the scroll state visible and prevents the ResizeObserver
  * from fighting an in-progress animation.
  */
-import { useRef, useEffect, useReducer, useCallback, memo, type ReactNode } from "react"
+import { useRef, useEffect, useLayoutEffect, useReducer, useCallback, memo, type ReactNode } from "react"
 import { EASE } from "@/lib/navigation-constants"
 
 /** Fixed duration for tab scroll transitions (ms) */
@@ -73,27 +73,55 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
   const scrollStateRef = useRef(scrollState)
   scrollStateRef.current = scrollState
 
-  // Set initial scroll position synchronously via ref callback (before first paint)
+  // Set initial scroll position synchronously via ref callback (before first paint).
+  // Only transition to "idle" (which makes the container visible) if clientHeight > 0,
+  // otherwise the scroll position is wrong and the ResizeObserver will correct it.
   const setRef = useCallback((el: HTMLDivElement | null) => {
     scrollRef.current = el
     if (el && scrollStateRef.current.status === "initial") {
       el.scrollTop = safeIdxRef.current * el.clientHeight
-      dispatch({ type: "INITIALIZED" })
+      if (el.clientHeight > 0) {
+        dispatch({ type: "INITIALIZED" })
+      }
     }
   }, [])
 
-  // On resize, instantly reposition — but only when idle (don't fight animations)
+  // On resize, instantly reposition — but only when idle (don't fight animations).
+  // Also handles deferred initialization when clientHeight was 0 at ref callback time.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
-      if (scrollStateRef.current.status === "idle") {
+      const status = scrollStateRef.current.status
+      if (status === "initial" && el.clientHeight > 0) {
+        el.scrollTop = safeIdxRef.current * el.clientHeight
+        dispatch({ type: "INITIALIZED" })
+      } else if (status === "idle") {
         el.scrollTop = safeIdxRef.current * el.clientHeight
       }
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // When activeIdx changes due to keys array reordering (e.g. recent tab inserted)
+  // but activeKey stays the same, instantly reposition before paint.
+  const prevIdxRef = useRef(activeIdx)
+  const prevKeyForIdxRef = useRef(activeKey)
+  useLayoutEffect(() => {
+    const keyChanged = activeKey !== prevKeyForIdxRef.current
+    if (!keyChanged && activeIdx >= 0 && activeIdx !== prevIdxRef.current) {
+      const el = scrollRef.current
+      if (el) el.scrollTop = activeIdx * el.clientHeight
+    }
+    prevIdxRef.current = activeIdx
+    prevKeyForIdxRef.current = activeKey
+  }, [activeIdx, activeKey])
+
+  // Suppress scroll animation during the initial mount/hydration settling period.
+  // Async state loading (persisted navigation) can cause multiple key/index changes
+  // in the first few frames — all should snap instantly.
+  const mountedAt = useRef(performance.now())
 
   // Start animation when activeKey changes
   useEffect(() => {
@@ -106,6 +134,12 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
     const to = safeIdx * el.clientHeight
     const from = el.scrollTop
     if (Math.abs(to - from) < 1) return
+
+    // Snap instantly during initial settling (first 500ms)
+    if (performance.now() - mountedAt.current < 500) {
+      el.scrollTop = to
+      return
+    }
 
     dispatch({ type: "ANIMATE", from, to })
   }, [activeKey, safeIdx])
@@ -133,6 +167,11 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
     return () => cancelAnimationFrame(raf)
   }, [scrollState])
 
+  // On the very first render, only mount the active tab's slot so the browser's
+  // scroll restoration can't show a different tab. After initialization, mount all
+  // slots so tab-switch animations work normally.
+  const allMounted = scrollState.status !== "initial"
+
   return (
     <div
       ref={setRef}
@@ -144,12 +183,16 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
       }}
     >
       {keys.map((key) => (
-        <MemoizedSlot
-          key={key}
-          tabKey={key}
-          activeKey={activeKey}
-          renderItem={renderItem}
-        />
+        allMounted || key === activeKey ? (
+          <MemoizedSlot
+            key={key}
+            tabKey={key}
+            activeKey={activeKey}
+            renderItem={renderItem}
+          />
+        ) : (
+          <div key={key} style={{ height: "100%", flexShrink: 0 }} />
+        )
       ))}
     </div>
   )

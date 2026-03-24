@@ -152,3 +152,21 @@ html {
     opacity: 0;
   }
 }
+
+/* Panel slide transitions (used by PanelSlot) */
+@keyframes panel-slide-in-up {
+  from { transform: translateY(calc(100% + 16px)); }
+  to { transform: translateY(0); }
+}
+@keyframes panel-slide-out-up {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - 16px)); }
+}
+@keyframes panel-slide-in-down {
+  from { transform: translateY(calc(-100% - 16px)); }
+  to { transform: translateY(0); }
+}
+@keyframes panel-slide-out-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(100% + 16px)); }
+}
