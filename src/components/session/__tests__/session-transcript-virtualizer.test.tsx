@@ -66,7 +66,7 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
   it("does not log Maximum update depth exceeded with 100 messages", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
-    render(withQueryClient(<SessionTranscript messages={makeMessages(100)} isStreaming={false} />))
+    render(withQueryClient(<SessionTranscript messages={makeMessages(100)} />))
 
     const cascadeErrors = errorSpy.mock.calls.filter((call) =>
       call.some(
@@ -80,7 +80,7 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
 
   it("renders without throwing when items measure below estimateSize", () => {
     expect(() =>
-      render(withQueryClient(<SessionTranscript messages={makeMessages(60)} isStreaming={false} />)),
+      render(withQueryClient(<SessionTranscript messages={makeMessages(60)} />)),
     ).not.toThrow()
   })
 })

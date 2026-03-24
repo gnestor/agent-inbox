@@ -149,6 +149,26 @@ window.addEventListener('unhandledrejection', function(e) {
   var msg = (e.reason && e.reason.message) || String(e.reason) || 'Unhandled promise rejection';
   window.parent.postMessage({ type: 'error', message: msg }, '*');
 });
+
+// Height reporting — in a regular script so it always runs even if the
+// module script below fails to parse or import.
+window.__heightReported = false;
+window.__reportHeight = function() {
+  if (window.__heightReported) return;
+  window.__heightReported = true;
+  clearTimeout(window.__heightFallback);
+  var style = document.createElement('style');
+  style.textContent = 'html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; }';
+  document.head.appendChild(style);
+  requestAnimationFrame(function() { requestAnimationFrame(function() {
+    var h = document.body.scrollHeight;
+    if (h > 0) window.parent.postMessage({ type: 'height', height: h }, '*');
+    style.remove();
+  }); });
+};
+// Fallback: if the module script fails to parse/import, report height after 2s.
+// Cancelled in the happy path by __reportHeight().
+window.__heightFallback = setTimeout(function() { window.__reportHeight(); }, 2000);
 </script>
 <script type="module">
 ${safeCode}
@@ -166,21 +186,8 @@ if (_Component) {
   _root.textContent = 'No component found';
 }
 
-// Report content height to parent for inline auto-sizing.
-// Temporarily override viewport-relative heights to measure intrinsic size.
-(function() {
-  var style = document.createElement('style');
-  // Only override the outermost containers — leave component internals intact
-  style.textContent = 'html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; }';
-  document.head.appendChild(style);
-  function measure() {
-    // Use body.scrollHeight — reflects natural content flow after overrides
-    var h = document.body.scrollHeight;
-    if (h > 0) window.parent.postMessage({ type: 'height', height: h }, '*');
-    style.remove();
-  }
-  requestAnimationFrame(function() { requestAnimationFrame(measure); });
-})();
+// Report height after component renders
+window.__reportHeight();
 </script>
 </body>
 </html>`

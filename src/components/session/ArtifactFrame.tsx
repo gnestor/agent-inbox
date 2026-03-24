@@ -2,9 +2,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { usePreference } from "@/hooks/use-preferences"
 import { transformArtifactCode } from "@/lib/artifact-transform"
 import { buildArtifactHtml } from "@/lib/build-artifact-html"
+import { Skeleton } from "@hammies/frontend/components/ui"
 
 // Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes
 const srcDocCache = new Map<string, string>()
+// Cache reported content heights so remounts start at the correct size
+// instead of flashing the default height before the iframe postMessage arrives.
+// Capped at 500 entries to prevent unbounded growth.
+const artifactHeightCache = new Map<string, number>()
+const ARTIFACT_HEIGHT_CACHE_MAX = 500
 
 interface ArtifactFrameProps {
   code: string
@@ -81,7 +87,8 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   }, [savedState])
 
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
-  const [contentHeight, setContentHeight] = useState<number | null>(null)
+  const heightKey = `${sessionId}:${sequence}`
+  const [contentHeight, setContentHeight] = useState<number | null>(() => artifactHeightCache.get(heightKey) ?? null)
   useEffect(() => setRuntimeError(null), [code])
 
   // Listen for postMessage from artifact
@@ -104,6 +111,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       } else if (data.type === "error" && typeof data.message === "string") {
         setRuntimeError(data.message)
       } else if (data.type === "height" && typeof data.height === "number") {
+        artifactHeightCache.set(heightKey, data.height)
+        if (artifactHeightCache.size > ARTIFACT_HEIGHT_CACHE_MAX) {
+          const first = artifactHeightCache.keys().next().value
+          if (first) artifactHeightCache.delete(first)
+        }
         setContentHeight(data.height)
         onHeightReported?.()
       } else if (data.type === "wheel") {
@@ -119,17 +131,25 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     return () => window.removeEventListener("message", handleMessage)
   }, [sessionId, setSavedState])
 
+  const hasHeight = contentHeight != null
+  const iframeHeight = hasHeight ? Math.min(contentHeight, 600) : 200
+
   return (
     <div className="relative w-full h-full">
+      {/* Iframe always renders at a real size so the browser loads content.
+          Before height is reported, it's behind the skeleton via opacity. */}
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
         sandbox="allow-scripts allow-same-origin"
-        className={className ?? "w-full border-0 rounded-md"}
-        style={!className ? { height: contentHeight != null ? Math.min(contentHeight, 600) : 600 } : undefined}
+        className={className ?? `w-full border-0 rounded-md ${hasHeight ? "" : "opacity-0 absolute inset-0"}`}
+        style={!className ? { height: iframeHeight } : undefined}
         title={title || "React Artifact"}
         onLoad={handleLoad}
       />
+      {!hasHeight && !transformError && !runtimeError && (
+        <Skeleton className="w-full h-[200px] rounded-md" />
+      )}
       {(transformError || runtimeError) && (
         <div className="absolute inset-0 bg-destructive p-4 overflow-auto">
           <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
