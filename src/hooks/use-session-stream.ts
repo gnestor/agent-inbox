@@ -80,6 +80,9 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
       if (!event.data) return
       try {
         const data = JSON.parse(event.data)
+        if (import.meta.env.DEV) {
+          console.log(data.message)
+        }
 
         if (data.type === "session_complete") {
           dispatch({ type: "COMPLETE" })
@@ -118,8 +121,14 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
       }
     })
 
-    es.addEventListener("open", () => dispatch({ type: "CONNECTED" }))
-    es.addEventListener("error", () => dispatch({ type: "DISCONNECTED" }))
+    es.addEventListener("open", () => {
+      if (import.meta.env.DEV) console.log(`[session:${sessionId}]`, "connected")
+      dispatch({ type: "CONNECTED" })
+    })
+    es.addEventListener("error", () => {
+      if (import.meta.env.DEV) console.log(`[session:${sessionId}]`, "disconnected")
+      dispatch({ type: "DISCONNECTED" })
+    })
 
     return () => {
       es.close()
