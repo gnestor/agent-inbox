@@ -252,79 +252,39 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
+const REMARK_PLUGINS = [remarkGfm]
+
+const emailMarkdownComponents = {
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="break-all"
+    >
+      {children}
+    </a>
+  ),
+  img: ({ src, alt }: { src?: string; alt?: string }) => (
+    <img src={src} alt={alt ?? ""} className="max-w-full h-auto" />
+  ),
+}
+
 function MarkdownBody({ markdown }: { markdown: string }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      className="email-markdown text-sm leading-relaxed"
-      components={{
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-foreground opacity-70 underline hover:opacity-100 break-all"
-          >
-            {children}
-          </a>
-        ),
-        img: ({ src, alt }) => (
-          <img src={src} alt={alt ?? ""} className="max-w-full h-auto" />
-        ),
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-2">
-            <table className="w-full border-collapse text-left">{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => (
-          <thead className="border-b border-border/20">{children}</thead>
-        ),
-        th: ({ children }) => (
-          <th className="font-semibold px-3 py-1.5 align-bottom">{children}</th>
-        ),
-        tbody: ({ children }) => (
-          <tbody>{children}</tbody>
-        ),
-        tr: ({ children }) => (
-          <tr className="border-b border-border/10">{children}</tr>
-        ),
-        td: ({ children }) => (
-          <td className="px-3 py-1.5 align-top">{children}</td>
-        ),
-        code: ({ children, className }) => {
-          const isBlock = className?.includes("language-")
-          return isBlock ? (
-            <code className={`${className ?? ""} block bg-muted rounded px-3 py-2 text-xs font-mono whitespace-pre-wrap overflow-x-auto`}>
-              {children}
-            </code>
-          ) : (
-            <code className="bg-muted rounded px-1 py-0.5 text-xs font-mono">{children}</code>
-          )
-        },
-        pre: ({ children }) => (
-          <pre className="bg-muted rounded my-2 overflow-x-auto">{children}</pre>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-border/40 pl-3 opacity-70 my-1">{children}</blockquote>
-        ),
-        p: ({ children }) => <p className="my-1">{children}</p>,
-        ul: ({ children }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>,
-        ol: ({ children }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>,
-        h1: ({ children }) => <h1 className="text-sm font-semibold my-1">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-sm font-semibold my-1">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-sm font-semibold my-1">{children}</h3>,
-        h4: ({ children }) => <h4 className="text-sm font-semibold my-1">{children}</h4>,
-        h5: ({ children }) => <h5 className="text-sm font-semibold my-1">{children}</h5>,
-        h6: ({ children }) => <h6 className="text-sm font-semibold my-1">{children}</h6>,
-      }}
-    >
-      {markdown}
-    </ReactMarkdown>
+    <div className="prose prose-sm max-w-none dark:prose-invert">
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        components={emailMarkdownComponents}
+      >
+        {markdown}
+      </ReactMarkdown>
+    </div>
   )
 }
 
 function EmailMessage({ message }: { message: GmailMessage }) {
-  const isMarkdown = message.bodyFormat === 'markdown' || (message.bodyIsHtml && message.bodyFormat !== 'html')
+  const isMarkdown = message.bodyFormat === 'markdown'
   return (
     <div className="px-4 py-3 pb-4 space-y-3 selectable-content">
       <div className="text-xs text-muted-foreground">to {formatEmailAddress(message.to)}</div>

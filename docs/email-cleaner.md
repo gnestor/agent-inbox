@@ -1,13 +1,20 @@
-# Email Body Sanitizing
+# Email Body Processing
 
-Quoted reply history, forwarding headers, and app signatures are stripped from email bodies **server-side** in `parseMessage()` before the result is stored in the SQLite cache. This means the API always returns sanitized content — no re-processing per render.
+Email bodies are processed **server-side** in `parseMessage()` before caching in SQLite. HTML emails go through two stages:
+
+1. **Sanitize** — strip quoted replies, forwarding headers, and app signatures (`email-sanitizer.ts`)
+2. **Convert to markdown** — convert the cleaned HTML to markdown via `turndown` (`email-to-markdown.ts`)
+
+The API returns markdown (for HTML emails) or plain text. The frontend renders both natively — no iframe sandboxing needed.
 
 ## Files
 
 | File | Role |
 |------|------|
 | `server/lib/email-sanitizer.ts` | `sanitizePlainText()` and `sanitizeHtmlEmail()` |
-| `server/lib/gmail.ts` → `parseMessage()` | Calls the sanitizer on every raw Gmail body |
+| `server/lib/email-to-markdown.ts` | `htmlToMarkdown()` — converts sanitized HTML to markdown |
+| `server/lib/gmail.ts` → `parseMessage()` | Calls sanitizer then markdown converter; sets `bodyFormat: 'markdown' \| 'plain'` |
+| `src/components/email/EmailThread.tsx` | `MarkdownBody` renders via `react-markdown` + `remark-gfm` with `prose` styles |
 
 ## Plain Text Sanitizing (`sanitizePlainText`)
 
@@ -67,6 +74,17 @@ The tag-permissive unit `T = "(?:[^<]|<[^>]+>)"` matches either a non-`<` charac
 - Standalone app name elements removed (`<span>Shortwave</span>` etc.)
 - Trailing blank `<p>/<div>` elements removed (Outlook `&nbsp;` padding)
 
+## Markdown Conversion (`htmlToMarkdown`)
+
+After sanitization, HTML emails are converted to markdown using `turndown`. Custom rules handle:
+
+- **cid: images** — stripped (un-proxied inline images that would produce broken markdown)
+- **Proxy images** — preserved as `![alt](url)` (already converted from `cid:` by `replaceCidReferences()`)
+- **style/script/head** — removed by turndown's `td.remove()`
+- **&nbsp; lines** — stripped, then blank line runs collapsed to max 2
+
+The message's `bodyFormat` is set to `'markdown'` and `bodyIsHtml` is set to `false`.
+
 ## Testing
 
 Run the vitest test suite — covers every pattern with both synthetic inline HTML and real Gmail fixture files:
@@ -74,6 +92,7 @@ Run the vitest test suite — covers every pattern with both synthetic inline HT
 ```bash
 cd packages/inbox
 npm run test:run -- server/lib/__tests__/email-sanitizer.test.ts
+npm run test:run -- server/lib/__tests__/email-to-markdown.test.ts
 ```
 
 Fixture files are in `server/lib/__tests__/fixtures/`. Each fixture is the raw HTML body of a real Gmail message that exercises a specific structural or text pattern:

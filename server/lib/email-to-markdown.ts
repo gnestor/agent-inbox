@@ -54,23 +54,10 @@ td.addRule("proxy-images", {
 export function htmlToMarkdown(html: string): string {
   if (!html || !html.trim()) return ""
 
-  // Strip style/script blocks before feeding to turndown (belt-and-suspenders)
-  let cleaned = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+  let md = td.turndown(html)
 
-  let md = td.turndown(cleaned)
-
-  // Collapse runs of 3+ blank lines down to 2
-  md = md.replace(/\n{3,}/g, "\n\n")
-
-  // Strip lines that are only whitespace or &nbsp;
-  md = md
-    .split("\n")
-    .filter((line) => line.trim() !== "&nbsp;" && !/^\s*$/.test(line) || line === "")
-    .join("\n")
-
-  // Final collapse after filter
+  // Strip lines that are only &nbsp; or whitespace, then collapse blank runs
+  md = md.replace(/^[ \t]*&nbsp;[ \t]*$/gm, "")
   md = md.replace(/\n{3,}/g, "\n\n")
 
   return md.trim()
