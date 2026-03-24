@@ -23,7 +23,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
   // --- User-scoped (OAuth) ---
   {
     id: "google",
-    name: "Google",
+    name: "Google Workspace",
     icon: "mail",
     scope: "user",
     authType: "oauth2",
@@ -87,15 +87,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     icon: "message-square",
     scope: "workspace",
     authType: "api_key",
-    envVars: { credential: "SLACK_BOT_TOKEN" },
-  },
-  {
-    id: "github",
-    name: "GitHub",
-    icon: "github",
-    scope: "workspace",
-    authType: "api_key",
-    envVars: { credential: "GITHUB_TOKEN" },
+    envVars: { credential: "SLACK_API_TOKEN" },
   },
   {
     id: "shopify",
@@ -109,15 +101,12 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     },
   },
   {
-    id: "air",
-    name: "Air",
-    icon: "image",
+    id: "klaviyo",
+    name: "Klaviyo",
+    icon: "mail",
     scope: "workspace",
     authType: "api_key",
-    envVars: {
-      credential: "AIR_API_KEY",
-      config: ["AIR_WORKSPACE_ID"],
-    },
+    envVars: { credential: "KLAVIYO_PRIVATE_KEY" },
   },
   {
     id: "gorgias",
@@ -128,6 +117,17 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     envVars: {
       credential: "GORGIAS_API_TOKEN",
       config: ["GORGIAS_DOMAIN", "GORGIAS_EMAIL"],
+    },
+  },
+  {
+    id: "air",
+    name: "Air",
+    icon: "image",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "AIR_API_KEY",
+      config: ["AIR_WORKSPACE_ID"],
     },
   },
   {
@@ -158,14 +158,6 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     envVars: { credential: "INSTAGRAM_ACCESS_TOKEN" },
   },
   {
-    id: "klaviyo",
-    name: "Klaviyo",
-    icon: "mail",
-    scope: "workspace",
-    authType: "api_key",
-    envVars: { credential: "KLAVIYO_PRIVATE_KEY" },
-  },
-  {
     id: "google-ads",
     name: "Google Ads",
     icon: "bar-chart",
@@ -175,6 +167,55 @@ export const INTEGRATIONS: IntegrationConfig[] = [
       credential: "GOOGLE_ADS_DEVELOPER_TOKEN",
       config: ["GOOGLE_ADS_CUSTOMER_ID"],
     },
+  },
+  {
+    id: "google-analytics",
+    name: "Google Analytics",
+    icon: "bar-chart-2",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "GOOGLE_REFRESH_TOKEN"
+    },
+  },
+  {
+    id: "bigquery",
+    name: "BigQuery",
+    icon: "database",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "GOOGLE_REFRESH_TOKEN",
+      config: ["BIGQUERY_PROJECT"],
+    },
+  },
+  {
+    id: "google-search-console",
+    name: "Google Search Console",
+    icon: "search",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "GOOGLE_REFRESH_TOKEN"
+    },
+  },
+  {
+    id: "google-trends",
+    name: "Google Trends",
+    icon: "trending-up",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: {
+      credential: "GOOGLE_REFRESH_TOKEN"
+    },
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    icon: "sparkles",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: { credential: "GEMINI_API_KEY" },
   },
   {
     id: "shippo",
@@ -201,22 +242,6 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     envVars: { credential: "OBSERVABLE_API_TOKEN" },
   },
   {
-    id: "gemini",
-    name: "Gemini",
-    icon: "sparkles",
-    scope: "workspace",
-    authType: "api_key",
-    envVars: { credential: "GEMINI_API_KEY" },
-  },
-  {
-    id: "slack-user",
-    name: "Slack (User)",
-    icon: "message-square",
-    scope: "workspace",
-    authType: "api_key",
-    envVars: { credential: "SLACK_USER_TOKEN" },
-  },
-  {
     id: "postgres",
     name: "PostgreSQL",
     icon: "database",
@@ -226,6 +251,14 @@ export const INTEGRATIONS: IntegrationConfig[] = [
       credential: "POSTGRES_PASSWORD",
       config: ["POSTGRES_USER", "POSTGRES_HOST", "POSTGRES_DATABASE"],
     },
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    icon: "github",
+    scope: "workspace",
+    authType: "api_key",
+    envVars: { credential: "GITHUB_API_TOKEN" },
   },
 ]
 

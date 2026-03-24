@@ -3,7 +3,6 @@ import { Link } from "lucide-react"
 // SVG file imports (Vite resolves to URLs)
 import airSvg from "@/assets/icons/air.svg"
 import githubSvg from "@/assets/icons/github.svg"
-import googleSvg from "@/assets/icons/google.svg"
 import gorgeousSvg from "@/assets/icons/gorgias.svg"
 import happyReturnsSvg from "@/assets/icons/happy-returns.svg"
 import instagramSvg from "@/assets/icons/instagram.svg"
@@ -16,6 +15,11 @@ import slackSvg from "@/assets/icons/slack.svg"
 import googleAdsSvg from "@/assets/icons/google-ads.svg"
 import geminiSvg from "@/assets/icons/gemini.svg"
 import postgresqlSvg from "@/assets/icons/postgresql.svg"
+import googleAnalyticsSvg from "@/assets/icons/google-analytics.svg"
+import bigquerySvg from "@/assets/icons/bigquery.svg"
+import googleSearchConsoleSvg from "@/assets/icons/google-search-console.svg"
+import googleTrendsSvg from "@/assets/icons/google-trends.svg"
+import googleWorkspaceSvg from "@/assets/icons/google.svg"
 
 // Simple Icons — QuickBooks
 function QuickBooksIcon() {
@@ -59,20 +63,24 @@ const monochromeIcons = new Set(["air", "gorgias", "klaviyo", "notion", "github"
 // SVG file-based icons (from brandfetch)
 const svgFileIcons: Record<string, string> = {
   air: airSvg,
+  bigquery: bigquerySvg,
+  gemini: geminiSvg,
   github: githubSvg,
-  google: googleSvg,
+  google: googleWorkspaceSvg,
+  "google-ads": googleAdsSvg,
+  "google-analytics": googleAnalyticsSvg,
+  "google-search-console": googleSearchConsoleSvg,
+  "google-trends": googleTrendsSvg,
   gorgias: gorgeousSvg,
   "happy-returns": happyReturnsSvg,
   instagram: instagramSvg,
   klaviyo: klaviyoSvg,
   notion: notionSvg,
   pinterest: pinterestSvg,
-  shippo: shippoSvg,
+  postgres: postgresqlSvg,
   shopify: shopifySvg,
   slack: slackSvg,
-  "google-ads": googleAdsSvg,
-  gemini: geminiSvg,
-  postgres: postgresqlSvg,
+  shippo: shippoSvg,
 }
 
 // Inline SVG components (from Simple Icons)

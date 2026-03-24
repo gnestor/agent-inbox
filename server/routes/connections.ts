@@ -57,7 +57,8 @@ connectionRoutes.get("/", (c) => {
     connected:
       config.scope === "user"
         ? connectedUserIntegrations.has(config.id)
-        : connectedWorkspaceIntegrations.has(config.id),
+        : connectedWorkspaceIntegrations.has(config.id) ||
+          !!process.env[config.envVars.credential],
   }))
 
   return c.json({ integrations })
