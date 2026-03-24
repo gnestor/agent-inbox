@@ -1,4 +1,5 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
+import { htmlToMarkdown } from "./email-to-markdown.js"
 import type {
   GmailApiMessage,
   GmailApiThread,
@@ -165,10 +166,15 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
   const { body, bodyIsHtml } = getEmailBody(message)
   let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
 
-  // Replace cid: inline image references with proxy URLs
+  let bodyFormat: 'markdown' | 'plain' | 'html' = bodyIsHtml ? 'html' : 'plain'
+
   if (bodyIsHtml && message.payload) {
+    // Replace cid: inline image references with proxy URLs before converting to markdown
     const cidMap = getInlineAttachments(message.payload)
     cleanedBody = replaceCidReferences(cleanedBody, message.id, cidMap)
+    // Convert sanitized HTML to markdown for native React rendering
+    cleanedBody = htmlToMarkdown(cleanedBody)
+    bodyFormat = 'markdown'
   }
 
   return {
@@ -181,7 +187,8 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
     subject: getHeader(message, "subject"),
     date: getHeader(message, "date"),
     body: cleanedBody,
-    bodyIsHtml,
+    bodyIsHtml: false,
+    bodyFormat,
     isUnread: (message.labelIds || []).includes("UNREAD"),
     attachments: message.payload ? getAttachments(message.payload) : [],
   }

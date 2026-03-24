@@ -42,6 +42,7 @@
     "@tiptap/react": "^3.20.0",
     "@tiptap/starter-kit": "^3.20.0",
     "@tiptap/suggestion": "^3.20.0",
+    "@types/turndown": "^5.0.6",
     "better-sqlite3": "^11.8.1",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
@@ -56,7 +57,8 @@
     "rehype-highlight": "^7.0.0",
     "remark-gfm": "^4.0.0",
     "selfsigned": "^5.5.0",
-    "tiptap-markdown": "^0.9.0"
+    "tiptap-markdown": "^0.9.0",
+    "turndown": "^7.2.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

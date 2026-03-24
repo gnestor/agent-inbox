@@ -32,6 +32,8 @@ export interface GmailMessage {
   date: string
   body: string
   bodyIsHtml: boolean
+  /** How to interpret `body`: markdown (converted from HTML), plain text, or raw HTML (legacy) */
+  bodyFormat?: 'markdown' | 'plain' | 'html'
   isUnread: boolean
   attachments: GmailAttachment[]
 }
