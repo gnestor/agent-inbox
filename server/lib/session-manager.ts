@@ -42,6 +42,9 @@ function makeCanUseTool(getSessionId: () => string | null) {
     if (toolName === "AskUserQuestion") {
       const sessionId = getSessionId()
       if (sessionId) {
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[session:${sessionId}] ask_user:`, input.questions)
+        }
         updateSessionStatus(sessionId, "awaiting_user_input")
         broadcastToSession(sessionId, { type: "ask_user_question", questions: input.questions })
 
@@ -49,6 +52,9 @@ function makeCanUseTool(getSessionId: () => string | null) {
           pendingQuestions.set(sessionId, resolve)
         })
 
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[session:${sessionId}] user_answered:`, Object.keys(answers))
+        }
         updateSessionStatus(sessionId, "running")
         return { behavior: "allow", updatedInput: { ...input, answers } }
       }
@@ -184,12 +190,23 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
     const current = db.prepare("SELECT status FROM sessions WHERE id = ?").get(sessionId) as
       | { status: string }
       | undefined
-    if (current?.status === "archived") return
+    if (current?.status === "archived") {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[session:${sessionId}] status change blocked: archived → ${status}`)
+      }
+      return
+    }
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[session:${sessionId}] ${current?.status ?? "unknown"} → ${status}`)
+    }
 
     db.prepare(
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), completed_at = ?, updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, now, sessionId)
   } else {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[session:${sessionId}] → ${status}`)
+    }
     db.prepare(
       `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), updated_at = ? WHERE id = ?`,
     ).run(status, summary || null, now, sessionId)
@@ -368,11 +385,18 @@ export function addSseClient(sessionId: string, send: (data: string) => void) {
     sseClients.set(sessionId, new Set())
   }
   sseClients.get(sessionId)!.add(send)
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[sse:${sessionId}] client connected (${sseClients.get(sessionId)!.size} total)`)
+  }
 }
 
 export function removeSseClient(sessionId: string, send: (data: string) => void) {
   sseClients.get(sessionId)?.delete(send)
-  if (sseClients.get(sessionId)?.size === 0) {
+  const remaining = sseClients.get(sessionId)?.size ?? 0
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[sse:${sessionId}] client disconnected (${remaining} remaining)`)
+  }
+  if (remaining === 0) {
     sseClients.delete(sessionId)
   }
 }
@@ -380,6 +404,10 @@ export function removeSseClient(sessionId: string, send: (data: string) => void)
 export function broadcastToSession(sessionId: string, data: unknown) {
   const clients = sseClients.get(sessionId)
   if (!clients) return
+  // if (process.env.NODE_ENV !== "production") {
+  //   const d = data as Record<string, unknown>
+  //   console.log(`[sse:${sessionId}] → ${d.type ?? `seq:${d.sequence}`} (${clients.size} client${clients.size === 1 ? "" : "s"})`)
+  // }
   const json = JSON.stringify(data)
   for (const send of clients) {
     send(json)
