@@ -1,11 +1,14 @@
 import { useNavigation } from "@/hooks/use-navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
+  Button,
+  buttonVariants,
   ScrollArea,
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@hammies/frontend/components/ui"
+import { cn } from "@hammies/frontend/lib/utils"
 import { ExternalLink, SlidersHorizontal } from "lucide-react"
 import { getCalendarItem, getLinkedSession, getNotionOptions } from "@/api/client"
 import { formatRelativeDate } from "@/lib/formatters"
@@ -60,9 +63,10 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
             <Popover>
               <PopoverTrigger
                 render={
-                  <button
-                    type="button"
-                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground"
                     title="Properties"
                   />
                 }
@@ -109,7 +113,7 @@ export function CalendarDetail({ itemId, title, sessionOpen }: CalendarDetailPro
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+              className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "text-muted-foreground")}
               title="Open in Notion"
             >
               <ExternalLink className="h-4 w-4" />

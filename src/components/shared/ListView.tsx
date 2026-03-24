@@ -226,7 +226,7 @@ function ListViewBody({
   }, [badgeFields, hiddenBadgeFields])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
+    <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
       {loading && <ListSkeleton itemHeight={itemHeight} />}
       {error && (errorContent || <div className="p-3 text-sm text-destructive">{error}</div>)}
       {!loading && items.length > 0 && (

@@ -1,6 +1,7 @@
 import { useState, useDeferredValue, useRef } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import {
+  Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -63,9 +64,10 @@ export function SessionActionMenu({
     >
       <DropdownMenuTrigger
         render={
-          <button
-            type="button"
-            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${linkedSessionId ? "text-chart-4" : "text-muted-foreground"}`}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={linkedSessionId ? "text-chart-4" : "text-muted-foreground"}
             title="Session actions"
           />
         }

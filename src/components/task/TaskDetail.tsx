@@ -1,9 +1,12 @@
 import {
+  Button,
+  buttonVariants,
   ScrollArea,
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@hammies/frontend/components/ui"
+import { cn } from "@hammies/frontend/lib/utils"
 import { ExternalLink, SlidersHorizontal } from "lucide-react"
 import { formatRelativeDate } from "@/lib/formatters"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
@@ -45,9 +48,10 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
             <Popover>
               <PopoverTrigger
                 render={
-                  <button
-                    type="button"
-                    className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground"
                     title="Properties"
                   />
                 }
@@ -101,7 +105,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
               href={task.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+              className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "text-muted-foreground")}
               title="Open in Notion"
             >
               <ExternalLink className="h-4 w-4" />

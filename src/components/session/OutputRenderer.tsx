@@ -136,8 +136,7 @@ function HtmlOutput({ data }: { data: string }) {
     <iframe
       srcDoc={data}
       sandbox="allow-scripts"
-      className="w-full border-0"
-      style={{ height: "300px" }}
+      className="w-full border-0 h-[300px]"
       title="HTML output"
     />
   )
@@ -393,8 +392,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
         <iframe
           src={downloadUrl}
           sandbox="allow-scripts"
-          className="w-full border-0"
-          style={{ height: "300px" }}
+          className="w-full border-0 h-[300px]"
           title={name}
         />
       )}

@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react"
-import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
+import { useIframeAutoHeight } from "@hammies/frontend/hooks"
 import { useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { getLinkedSession } from "@/api/client"
 import {
   Button,
+  buttonVariants,
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from "@hammies/frontend/components/ui"
+import { cn } from "@hammies/frontend/lib/utils"
 import {
   ExternalLink,
   Archive,
@@ -83,43 +85,47 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       }
       right={
         <>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
             onClick={actions.archive}
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
             title="Archive"
           >
             <Archive className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
             onClick={actions.trash}
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
             title="Delete"
           >
             <Trash2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={actions.isStarred ? "text-yellow-500" : "text-muted-foreground"}
             onClick={actions.toggleStar}
-            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${actions.isStarred ? "text-yellow-500" : "text-muted-foreground"}`}
             title={actions.isStarred ? "Unstar" : "Star"}
           >
             <Star className="h-4 w-4" fill={actions.isStarred ? "currentColor" : "none"} />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={actions.isImportant ? "text-yellow-500" : "text-muted-foreground"}
             onClick={actions.toggleImportant}
-            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${actions.isImportant ? "text-yellow-500" : "text-muted-foreground"}`}
             title={actions.isImportant ? "Mark not important" : "Mark important"}
           >
             <Milestone className="h-4 w-4" fill={actions.isImportant ? "currentColor" : "none"} />
-          </button>
+          </Button>
           <a
             href={`https://mail.google.com/mail/u/0/#inbox/${threadId}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "text-muted-foreground")}
             title="Open in Gmail"
           >
             <ExternalLink className="h-4 w-4" />
@@ -290,8 +296,7 @@ function HtmlBody({ html }: { html: string }) {
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-same-origin allow-popups"
-      className="w-full border-0 overflow-hidden"
-      style={{ height: 0 }}
+      className="w-full border-0 overflow-hidden h-0"
     />
   )
 }

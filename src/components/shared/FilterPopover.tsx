@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
+import { Button, Popover, PopoverTrigger, PopoverContent } from "@hammies/frontend/components/ui"
 import { SlidersHorizontal } from "lucide-react"
 import { FilterCombobox } from "./FilterCombobox"
 import type { FieldDef } from "@/types/plugin"
@@ -23,9 +23,10 @@ export function FilterPopover({ fieldSchema, activeFilters, onFilterChange, opti
     <Popover>
       <PopoverTrigger
         render={
-          <button
-            type="button"
-            className={`shrink-0 p-1.5 rounded-md hover:bg-secondary ${hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}`}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={hasActiveFilters ? "text-sidebar-primary" : "text-muted-foreground"}
             title="Filters"
           />
         }

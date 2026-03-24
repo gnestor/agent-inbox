@@ -1,6 +1,6 @@
 import { useCallback } from "react"
 import { ChevronLeft, PanelLeft } from "lucide-react"
-import { useSidebar } from "@hammies/frontend/components/ui"
+import { Button, useSidebar } from "@hammies/frontend/components/ui"
 import { useDragTab } from "@/components/navigation/Tab"
 
 export function PanelHeader({ left, right }: { left: React.ReactNode; right?: React.ReactNode }) {
@@ -55,13 +55,14 @@ export function PanelHeader({ left, right }: { left: React.ReactNode; right?: Re
 
 export function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="md:hidden -ml-1.5 text-muted-foreground"
       onClick={onClick}
     >
       <ChevronLeft className="h-5 w-5" />
-    </button>
+    </Button>
   )
 }
 
@@ -70,12 +71,13 @@ export function BackButton({ onClick }: { onClick: () => void }) {
 export function SidebarButton() {
   const { setOpenMobile } = useSidebar()
   return (
-    <button
-      type="button"
-      className="md:hidden shrink-0 p-1.5 -ml-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="md:hidden -ml-1.5 text-muted-foreground"
       onClick={() => setOpenMobile(true)}
     >
       <PanelLeft className="h-5 w-5" />
-    </button>
+    </Button>
   )
 }

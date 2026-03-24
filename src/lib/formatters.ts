@@ -1,26 +1,11 @@
-import { formatDistanceToNow, format, isToday, isYesterday, isThisYear } from "date-fns"
+// Generic formatters — re-exported from shared frontend package
+export { formatRelativeDate, formatTimeAgo, truncate, formatFileSize, getInitials } from "@hammies/frontend/lib/formatters"
 
-export function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return ""
-  if (isToday(date)) return format(date, "h:mm a")
-  if (isYesterday(date)) return "Yesterday"
-  if (isThisYear(date)) return format(date, "MMM d")
-  return format(date, "MMM d, yyyy")
-}
-
-export function formatTimeAgo(dateStr: string): string {
-  return formatDistanceToNow(new Date(dateStr), { addSuffix: true })
-}
+// Domain-specific formatters — inbox only
 
 export function formatEmailAddress(address: string): string {
   const match = address.match(/^(.+?)\s*<.+>$/)
   return match ? match[1].replace(/"/g, "") : address
-}
-
-export function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) return str
-  return str.slice(0, maxLength - 1) + "\u2026"
 }
 
 export function sessionStatusLabel(status: string): string {
@@ -95,14 +80,4 @@ export function taskStatusBadgeClass(status: string): string {
     default:
       return ""
   }
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-export function getInitials(name: string): string {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
 }

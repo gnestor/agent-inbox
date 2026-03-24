@@ -1,4 +1,5 @@
 import {
+  Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -25,9 +26,10 @@ export function BadgeToggleMenu({ items }: BadgeToggleMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <button
-            type="button"
-            className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
           />
         }
       >

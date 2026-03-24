@@ -20,11 +20,11 @@ export function Panel({ id, variant, width = DEFAULT_PANEL_WIDTH, children }: Pa
       className={
         isMobile
           // Mobile: full screen, no card styling, snap alignment
-          ? "shrink-0 h-full w-full bg-card overflow-hidden"
+          ? "shrink-0 h-full w-full bg-card overflow-hidden snap-start snap-always"
           // Desktop: fixed width card
           : "shrink-0 h-full bg-card rounded-lg shadow-sm outline outline-1 -outline-offset-1 outline-border"
       }
-      style={isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : { width }}
+      style={isMobile ? undefined : { width }}
     >
       {children}
     </div>

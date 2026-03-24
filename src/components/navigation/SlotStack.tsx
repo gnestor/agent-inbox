@@ -191,7 +191,7 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
             renderItem={renderItem}
           />
         ) : (
-          <div key={key} style={{ height: "100%", flexShrink: 0 }} />
+          <div key={key} className="h-full shrink-0" />
         )
       ))}
     </div>
@@ -208,7 +208,7 @@ interface MemoizedSlotProps {
 
 const MemoizedSlot = memo(function MemoizedSlot({ tabKey, renderItem }: MemoizedSlotProps) {
   return (
-    <div style={{ height: "100%", flexShrink: 0 }}>
+    <div className="h-full shrink-0">
       {renderItem(tabKey)}
     </div>
   )
