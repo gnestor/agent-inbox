@@ -272,14 +272,13 @@ const emailMarkdownComponents = {
 
 function MarkdownBody({ markdown }: { markdown: string }) {
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert">
-      <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
-        components={emailMarkdownComponents}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </div>
+    <ReactMarkdown
+      className="prose prose-sm max-w-none dark:prose-invert"
+      remarkPlugins={REMARK_PLUGINS}
+      components={emailMarkdownComponents}
+    >
+      {markdown}
+    </ReactMarkdown>
   )
 }
 

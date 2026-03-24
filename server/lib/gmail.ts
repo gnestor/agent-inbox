@@ -1,5 +1,6 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
 import { htmlToMarkdown } from "./email-to-markdown.js"
+import { googleApiRequest } from "./google-auth.js"
 import type {
   GmailApiMessage,
   GmailApiThread,
@@ -13,22 +14,8 @@ import type {
 } from "./types/gmail-api.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
-
-async function gmailRequest(accessToken: string, path: string, options?: RequestInit) {
-  const res = await fetch(`${GMAIL_BASE}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Gmail API ${res.status}: ${text}`)
-  }
-  return res.json()
-}
+const gmailRequest = (accessToken: string, path: string, options?: RequestInit) =>
+  googleApiRequest(GMAIL_BASE, "Gmail API", accessToken, path, options)
 
 export function decodeBase64Url(data: string): string {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
@@ -166,16 +153,12 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
   const { body, bodyIsHtml } = getEmailBody(message)
   let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
 
-  let bodyFormat: 'markdown' | 'plain' | 'html' = bodyIsHtml ? 'html' : 'plain'
-
   if (bodyIsHtml && message.payload) {
-    // Replace cid: inline image references with proxy URLs before converting to markdown
     const cidMap = getInlineAttachments(message.payload)
     cleanedBody = replaceCidReferences(cleanedBody, message.id, cidMap)
-    // Convert sanitized HTML to markdown for native React rendering
     cleanedBody = htmlToMarkdown(cleanedBody)
-    bodyFormat = 'markdown'
   }
+  const bodyFormat: 'markdown' | 'plain' = bodyIsHtml ? 'markdown' : 'plain'
 
   return {
     id: message.id,

@@ -50,6 +50,14 @@ describe("htmlToMarkdown", () => {
     expect(result).toContain("![photo](/api/gmail/messages/123/attachments/att1)")
   })
 
+  it("strips Microsoft auto-generated alt text", () => {
+    const result = htmlToMarkdown(
+      '<img src="/api/gmail/messages/123/attachments/att1" alt="A black and white sign with white text Description automatically generated">'
+    )
+    expect(result).toContain("![](/api/gmail/messages/123/attachments/att1)")
+    expect(result).not.toContain("Description automatically generated")
+  })
+
   it("strips cid: images (not yet proxied)", () => {
     // cid: images that weren't replaced should be stripped
     const result = htmlToMarkdown('<img src="cid:image001@example.com">')
