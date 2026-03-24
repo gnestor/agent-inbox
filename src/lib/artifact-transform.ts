@@ -103,28 +103,22 @@ export function transformArtifactCode(source: string): TransformResult {
     "Tooltip", "TooltipTrigger", "TooltipContent", "TooltipProvider",
     "RadioGroup", "RadioGroupItem", "Spinner",
   ]
-  const hasComponentImport = /from\s+['"]@hammies\/frontend\/components\/ui['"]/m.test(code)
-  const componentImportMatch = hasComponentImport
-    ? code.match(/import\s*\{([^}]*)\}\s*from\s+['"]@hammies\/frontend\/components\/ui['"]/)
-    : null
+  // Consolidate all @hammies/frontend/components/ui imports into one and inject missing components.
   const alreadyImportedComponents = new Set<string>()
-  if (componentImportMatch?.[1]) {
-    componentImportMatch[1].split(",").forEach((s) => alreadyImportedComponents.add(s.trim()))
-  }
-  // Find components used in JSX (look for <ComponentName or React.createElement(ComponentName)
+  code = code.replace(
+    /^import\s*\{([^}]*)\}\s*from\s+['"]@hammies\/frontend\/components\/ui['"];?\s*$/gm,
+    (_, named) => {
+      named.split(",").forEach((s: string) => { const n = s.trim(); if (n) alreadyImportedComponents.add(n) })
+      return "" // Remove — will emit a single consolidated import
+    },
+  )
+  // Find components used in code but not yet imported
   const usedComponents = ARTIFACT_COMPONENTS.filter((name) =>
     !alreadyImportedComponents.has(name) && new RegExp(`\\b${name}\\b`).test(code)
   )
-  if (usedComponents.length > 0) {
-    if (componentImportMatch) {
-      // Merge into existing import
-      const existing = componentImportMatch[1].trim()
-      const merged = existing ? `${existing}, ${usedComponents.join(", ")}` : usedComponents.join(", ")
-      code = code.replace(componentImportMatch[0], `import { ${merged} } from '@hammies/frontend/components/ui'`)
-    } else {
-      // Add new import
-      code = `import { ${usedComponents.join(", ")} } from '@hammies/frontend/components/ui';\n${code}`
-    }
+  for (const c of usedComponents) alreadyImportedComponents.add(c)
+  if (alreadyImportedComponents.size > 0) {
+    code = `import { ${[...alreadyImportedComponents].join(", ")} } from '@hammies/frontend/components/ui';\n${code}`
   }
 
   // Auto-inject cn import if used but not imported

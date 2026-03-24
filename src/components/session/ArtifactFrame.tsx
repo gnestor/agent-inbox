@@ -88,7 +88,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
 
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const heightKey = `${sessionId}:${sequence}`
-  const [contentHeight, setContentHeight] = useState<number | null>(() => artifactHeightCache.get(heightKey) ?? null)
+  // Use cached height for SIZING (avoids layout shift) but track whether this
+  // mount has received a live postMessage for VISIBILITY (avoids blank flash).
+  const cachedHeight = artifactHeightCache.get(heightKey)
+  const [contentHeight, setContentHeight] = useState<number | null>(cachedHeight ?? null)
+  const [heightReported, setHeightReported] = useState(false)
   useEffect(() => setRuntimeError(null), [code])
 
   // Listen for postMessage from artifact
@@ -117,6 +121,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
           if (first) artifactHeightCache.delete(first)
         }
         setContentHeight(data.height)
+        setHeightReported(true)
         onHeightReported?.()
       } else if (data.type === "wheel") {
         iframe.dispatchEvent(new WheelEvent("wheel", {
@@ -131,8 +136,10 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     return () => window.removeEventListener("message", handleMessage)
   }, [sessionId, setSavedState])
 
+  // Use cached height for sizing (avoids layout shift), live report for visibility
   const hasHeight = contentHeight != null
   const iframeHeight = hasHeight ? Math.min(contentHeight, 600) : 200
+  const showIframe = heightReported
 
   return (
     <div className="relative w-full h-full">
@@ -142,16 +149,16 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         ref={iframeRef}
         srcDoc={srcDoc}
         sandbox="allow-scripts allow-same-origin"
-        className={className ?? `w-full border-0 rounded-md ${hasHeight ? "" : "opacity-0 absolute inset-0"}`}
+        className={className ?? `w-full border-0 rounded-md ${showIframe ? "" : "opacity-0 absolute inset-0"}`}
         style={!className ? { height: iframeHeight } : undefined}
         title={title || "React Artifact"}
         onLoad={handleLoad}
       />
-      {!hasHeight && !transformError && !runtimeError && (
+      {!showIframe && !transformError && !runtimeError && (
         <Skeleton className="w-full h-[200px] rounded-md" />
       )}
       {(transformError || runtimeError) && (
-        <div className="absolute inset-0 bg-destructive p-4 overflow-auto">
+        <div className="min-h-[150px] bg-destructive p-4 rounded-md overflow-auto">
           <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
         </div>
       )}
