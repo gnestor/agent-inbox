@@ -13,9 +13,9 @@ export function buildRenderOutputMcpServer() {
     "render_output",
     `Render a structured output in the inbox UI. The output appears inline in the session transcript (600px x 600px) and can be expanded to its own panel (600px x calc(100vh - 77px)).
 
-For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and shadcn components from @hammies/frontend. Use Tailwind classes for ALL styling — never use inline styles.
+For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and shadcn components from @hammies/frontend. Use Tailwind classes for all styling unless absolutely necessary.
 
-COMPONENTS — Import from '@hammies/frontend/components/ui'. Missing imports are auto-injected so you can use components without importing.
+COMPONENTS — Import from '@hammies/frontend/components/ui'. 
 
 Available: Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner, cn.
 
