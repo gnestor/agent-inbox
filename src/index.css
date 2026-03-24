@@ -153,6 +153,11 @@ html {
   }
 }
 
+@keyframes dot-bounce {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
 /* Panel slide transitions (used by PanelSlot) */
 @keyframes panel-slide-in-up {
   from { transform: translateY(calc(100% + 16px)); }

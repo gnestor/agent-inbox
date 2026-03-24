@@ -63,6 +63,7 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
 export function useSessionStream(sessionId: string | undefined, enabled = true) {
   const [state, dispatch] = useReducer(streamReducer, INITIAL_STATE)
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
+  const [eventCount, setEventCount] = useState(0)
   const eventSourceRef = useRef<EventSource | null>(null)
   const seenSequences = useRef(new Set<number>())
 
@@ -70,6 +71,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
     seenSequences.current.clear()
     dispatch({ type: "RESET" })
     setPresenceUsers([])
+    setEventCount(0)
 
     if (!sessionId || !enabled) return
 
@@ -80,7 +82,8 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
       if (!event.data) return
       try {
         const data = JSON.parse(event.data)
-        if (import.meta.env.DEV) {
+        setEventCount((c) => c + 1)
+        if (import.meta.env.DEV && data?.message) {
           console.log(data.message)
         }
 
@@ -151,6 +154,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
     sessionStatus: state.sessionStatus,
     pendingQuestion: state.pendingQuestion,
     presenceUsers,
+    eventCount,
     disconnect,
     clearPendingQuestion,
   }

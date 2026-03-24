@@ -15,7 +15,7 @@ import {
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
-import { SessionTranscript } from "./SessionTranscript"
+import { SessionTranscript, WorkingIndicator } from "./SessionTranscript"
 import { AskUserPanel } from "./AskUserPanel"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -36,7 +36,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   // Only connect SSE when this panel is in the active tab (visible)
   const isActiveSession = getPanels().some((p) => p.id === panelId)
 
-  const { phase, session, messages, presenceUsers, isLive, mutations, resumeSession, answerQuestion } =
+  const { phase, session, messages, presenceUsers, eventCount, isLive, mutations, resumeSession, answerQuestion } =
     useSessionPhase({
       sessionId,
       isActive: isActiveSession,
@@ -225,7 +225,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
         <SessionTranscript
           key={sessionId}
           messages={messages}
-          isStreaming={isStreaming}
           status={phase.status}
           isLive={isLive}
           visibility={visibility}
@@ -235,7 +234,9 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
           onOpenPanel={handleOpenPanel}
           onAction={(intent) => resumeSession(intent)}
           onArtifactsReady={() => setArtifactsReady(true)}
-        />
+        >
+          {isStreaming && <WorkingIndicator eventCount={eventCount} />}
+        </SessionTranscript>
       </div>
 
       {/* Chat input / AskUserPanel */}

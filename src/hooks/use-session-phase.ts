@@ -125,6 +125,7 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
     session: data?.session,
     messages: allMessages,
     presenceUsers: stream.presenceUsers,
+    eventCount: stream.eventCount,
     isLive: stream.connected,
     mutations,
     resumeSession,

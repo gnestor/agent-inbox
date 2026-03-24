@@ -13,7 +13,6 @@ interface UseTranscriptScrollOptions {
   messages: SessionMessage[]
   visibility: TranscriptVisibility
   sessionId?: string
-  isStreaming?: boolean
   shouldRenderMessage: (message: SessionMessage, visibility: TranscriptVisibility) => boolean
 }
 
@@ -21,7 +20,6 @@ export function useTranscriptScroll({
   messages,
   visibility,
   sessionId,
-  isStreaming,
   shouldRenderMessage,
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -117,28 +115,42 @@ export function useTranscriptScroll({
     })
   }, [visibleMessages.length, virtualizer])
 
-  // Auto-scroll when new messages arrive and user is near the bottom
-  const prevCount = useRef(visibleMessages.length)
+  // Auto-scroll when virtualizer content grows (new messages, item
+  // remeasurement after artifacts load, etc.). Runs as a useEffect
+  // so scrollHeight is accurate in the same commit that updated getTotalSize().
+  const totalSize = virtualizer.getTotalSize()
+  const prevTotalSize = useRef(0)
   useEffect(() => {
-    if (!hasScrolledToBottom.current) return
-    const didAppend = visibleMessages.length > prevCount.current
-    prevCount.current = visibleMessages.length
-    if (!didAppend || !shouldAutoScroll.current) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [visibleMessages.length])
-
-  // Auto-scroll when streaming starts — the working indicator renders below
-  // the virtualized list, so we need to scroll past it into view.
-  useEffect(() => {
-    if (!isStreaming || !hasScrolledToBottom.current || !shouldAutoScroll.current) return
-    const el = scrollRef.current
-    if (el) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight
-      })
+    const grew = totalSize > prevTotalSize.current
+    prevTotalSize.current = totalSize
+    if (grew && hasScrolledToBottom.current && shouldAutoScroll.current) {
+      const el = scrollRef.current
+      if (el) el.scrollTop = el.scrollHeight
     }
-  }, [isStreaming])
+  }, [totalSize])
+
+  // Auto-scroll when non-virtualizer content appears (e.g. working indicator).
+  // ResizeObserver catches content wrapper growth that isn't from getTotalSize().
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const content = el.firstElementChild
+    if (!content) return
+
+    let prevHeight = 0
+
+    const observer = new ResizeObserver((entries) => {
+      const newHeight = entries[0].contentRect.height
+      const grew = newHeight > prevHeight
+      prevHeight = newHeight
+      if (grew && hasScrolledToBottom.current && shouldAutoScroll.current) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [sessionId])
 
   function handleScroll() {
     if (!hasScrolledToBottom.current) return

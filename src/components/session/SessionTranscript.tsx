@@ -59,7 +59,6 @@ export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
 
 interface SessionTranscriptProps {
   messages: SessionMessage[]
-  isStreaming: boolean
   status?: string
   isLive?: boolean
   visibility?: TranscriptVisibility
@@ -70,11 +69,12 @@ interface SessionTranscriptProps {
   onAction?: (intent: string) => void
   /** Called when all inline artifacts have reported their height */
   onArtifactsReady?: () => void
+  /** Rendered inside the scroll container, after the virtualized messages */
+  children?: ReactNode
 }
 
 export function SessionTranscript({
   messages,
-  isStreaming,
   visibility = DEFAULT_TRANSCRIPT_VISIBILITY,
   sessionId,
   currentUserEmail,
@@ -82,12 +82,12 @@ export function SessionTranscript({
   onOpenPanel,
   onAction,
   onArtifactsReady,
+  children,
 }: SessionTranscriptProps) {
   const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
     messages,
     visibility,
     sessionId,
-    isStreaming,
     shouldRenderMessage,
   })
   const userProfiles = useUserProfiles(messages)
@@ -162,19 +162,7 @@ export function SessionTranscript({
         ) : (
           <PanelSkeleton />
         )}
-        {isStreaming && (
-          <div className="flex justify-center py-4">
-            <div className="flex items-center gap-1">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="size-1.5 rounded-full bg-muted-foreground animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s`, animationDuration: "0.6s" }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {children}
       </div>
     </div>
   )
@@ -1064,4 +1052,27 @@ function buildToolResultMap(messages: SessionMessage[]): Map<string, string> {
     }
   }
   return map
+}
+
+/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event. */
+export function WorkingIndicator({ eventCount }: { eventCount: number }) {
+  return (
+    <div className="flex justify-center py-4">
+      <div className="flex items-center gap-1">
+        {[0, 1, 2].map((i) => {
+          const active = eventCount % 3 === i
+          return (
+            <span
+              key={active ? `${i}-${eventCount}` : i}
+              className={`size-1.5 rounded-full ${active ? "bg-foreground" : "bg-muted-foreground"}`}
+              style={{
+                animation: "dot-bounce 0.6s ease-out",
+                animationDelay: `${i * 0.15}s`,
+              }}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
 }
