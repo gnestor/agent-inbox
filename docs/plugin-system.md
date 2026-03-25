@@ -1,6 +1,6 @@
 # Plugin System
 
-The inbox app uses a unified plugin architecture for all data sources. Gmail, Notion Tasks, Notion Calendar, and external integrations like Slack all implement the same `Plugin` interface. The server auto-generates REST endpoints, the client renders a sidebar entry and list/detail views, and sessions can link to any plugin's items.
+The Inbox app uses a unified plugin architecture for all data sources. Gmail, Notion Tasks, Notion Calendar, and external integrations like Slack all implement the same `Plugin` interface. The server auto-generates REST endpoints, the client renders a sidebar entry and list/detail views, and sessions can link to any plugin's items.
 
 ## Architecture Overview
 

@@ -489,6 +489,9 @@ export async function startSession(
   const abortController = new AbortController()
   let sessionId: string | null = null
 
+  // Resolve workflow-plugin path (sibling package to the workspace)
+  const workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
+
   const q = query({
     prompt,
     options: {
@@ -502,6 +505,9 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      plugins: [
+        { type: "local" as const, path: workflowPluginPath },
+      ],
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
