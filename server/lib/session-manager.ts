@@ -609,6 +609,9 @@ export async function resumeSessionQuery(
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
+  // Resolve workflow-plugin path (sibling package to the workspace)
+  const workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
+
   const q = query({
     prompt,
     options: {
@@ -623,6 +626,9 @@ export async function resumeSessionQuery(
       abortController,
       env: buildAgentEnv(userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
+      plugins: [
+        { type: "local" as const, path: workflowPluginPath },
+      ],
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
