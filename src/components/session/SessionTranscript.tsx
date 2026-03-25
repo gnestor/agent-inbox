@@ -552,19 +552,14 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
   if (msg.type === "plan") {
     if (!visibility.messages) return null
+    const planTitle = msg.content?.match(/^#\s+(.+)/m)?.[1] || "Plan"
     return (
-      <TranscriptAccordionEntry
-
-        label="Plan"
-        color="text-foreground"
-        defaultOpen
-      >
-        <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
-            {msg.content || ""}
-          </ReactMarkdown>
-        </div>
-      </TranscriptAccordionEntry>
+      <OutputAccordion
+        spec={{ type: "markdown", data: msg.content || "", title: planTitle }}
+        sessionId={sessionId || ""}
+        sequence={message.sequence}
+        onOpenPanel={onOpenPanel}
+      />
     )
   }
 
