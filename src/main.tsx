@@ -33,10 +33,15 @@ const persister = createAsyncStoragePersister({
   deserialize: (cached) => {
     try {
       const parsed = typeof cached === "string" ? JSON.parse(cached) : cached
-      // Strip any infinite queries that leaked into the cache (fragile pages/pageParams state)
+      // Migration guard: strip queries that old code persisted but shouldn't have.
+      // Safe to remove once all users have reloaded with the updated shouldDehydrateQuery.
       if (parsed?.clientState?.queries) {
         parsed.clientState.queries = parsed.clientState.queries.filter(
-          (q: { state?: { data?: unknown } }) => {
+          (q: { queryKey?: unknown[]; state?: { data?: unknown } }) => {
+            const key = q.queryKey?.[0]
+            // Strip session lists (status changes frequently)
+            if (key === "sessions") return false
+            // Strip infinite queries (fragile pages/pageParams state)
             const data = q.state?.data as Record<string, unknown> | undefined
             if (data && "pages" in data) return false
             return true
@@ -61,18 +66,20 @@ createRoot(document.getElementById("root")!).render(
             persister,
             dehydrateOptions: {
               shouldDehydrateQuery: (query) => {
-                // Never persist plugin manifests (always refetch) or errored queries
-                if (query.queryKey[0] === "plugins" || query.state.status === "error") return false
+                const key = query.queryKey[0]
+                // Never persist plugin manifests or errored queries
+                if (key === "plugins" || query.state.status === "error") return false
+                // Never persist session lists — status changes frequently (archive, complete)
+                // and stale cached statuses cause UI inconsistencies
+                if (key === "sessions") return false
                 // Never persist infinite queries — their pages/pageParams state is fragile
-                // across restarts and causes crashes in TanStack Query's internal hasNextPage
                 const data = query.state.data as Record<string, unknown> | undefined
                 if (data && "pages" in data) return false
                 return true
               },
             },
           }}
-          // After IndexedDB cache is restored, refetch all active queries so
-          // components get fresh data (invalidate alone won't refetch with staleTime: Infinity).
+          // After IndexedDB cache is restored, refetch all active queries in the background
           onSuccess={() => queryClient.refetchQueries()}
         >
           <App />

@@ -14,7 +14,7 @@ export function useSessions(filters?: SessionFilters, options?: { enabled?: bool
     queryKey: ["sessions", filters],
     queryFn: () => getSessions(filters).then((r) => r.sessions),
     enabled: options?.enabled ?? true,
-    refetchOnMount: true, // refetch when stale (e.g. after invalidation from session create/abort)
+    refetchOnMount: true,
     refetchInterval: options?.refetchInterval,
   })
   return {

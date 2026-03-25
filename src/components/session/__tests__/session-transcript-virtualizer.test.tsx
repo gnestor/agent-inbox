@@ -52,6 +52,15 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
   let getBCRSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
+    // jsdom doesn't provide ResizeObserver — stub it
+    if (!globalThis.ResizeObserver) {
+      globalThis.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver
+    }
+
     getBCRSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({

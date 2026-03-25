@@ -8,11 +8,43 @@ interface UseSessionMutationsOptions {
   onArchive?: () => void
 }
 
-function setSessionStatus(qc: ReturnType<typeof useQueryClient>, sessionId: string, status: SessionStatus) {
+type QC = ReturnType<typeof useQueryClient>
+
+function setSessionStatus(qc: QC, sessionId: string, status: SessionStatus) {
   qc.setQueryData<any>(["session", sessionId], (old: any) => {
     if (!old) return old
     return { ...old, session: { ...old.session, status } }
   })
+}
+
+function setSessionListStatus(qc: QC, sessionId: string, status: SessionStatus) {
+  qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
+    if (!Array.isArray(old)) return old
+    return old.map((s) => (s.id === sessionId ? { ...s, status } : s))
+  })
+}
+
+/** Shared optimistic update pattern: cancel in-flight → set status → invalidate on settle → rollback on error */
+function optimisticStatusSwitch(qc: QC, sessionId: string, target: SessionStatus, rollback: SessionStatus) {
+  return {
+    onMutate: async () => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ["sessions"] }),
+        qc.cancelQueries({ queryKey: ["session", sessionId] }),
+      ])
+      setSessionStatus(qc, sessionId, target)
+      setSessionListStatus(qc, sessionId, target)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+    },
+    onError: (err: any) => {
+      setSessionStatus(qc, sessionId, rollback)
+      setSessionListStatus(qc, sessionId, rollback)
+      console.error(`Failed to update session status:`, err)
+    },
+  }
 }
 
 export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessionMutationsOptions) {
@@ -42,32 +74,20 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     onError: (err: any) => console.error("Failed to abort session:", err),
   })
 
+  const archiveOpts = optimisticStatusSwitch(qc, sessionId, "archived", "complete")
   const archive = useMutation({
     mutationFn: () => archiveSession(sessionId),
-    onSuccess: () => {
-      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
-        if (!Array.isArray(old)) return old
-        return old.map((s) => (s.id === sessionId ? { ...s, status: "archived" } : s))
-      })
+    onMutate: async () => {
+      await archiveOpts.onMutate()
       onArchive?.()
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
     },
-    onError: (err: any) => console.error("Failed to archive session:", err),
+    onSettled: archiveOpts.onSettled,
+    onError: archiveOpts.onError,
   })
 
   const unarchive = useMutation({
     mutationFn: () => unarchiveSession(sessionId),
-    onSuccess: () => {
-      setSessionStatus(qc, sessionId, "complete")
-      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
-        if (!Array.isArray(old)) return old
-        return old.map((s) => (s.id === sessionId ? { ...s, status: "complete" } : s))
-      })
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
-    },
-    onError: (err: any) => console.error("Failed to unarchive session:", err),
+    ...optimisticStatusSwitch(qc, sessionId, "complete", "archived"),
   })
 
   const rename = useMutation({

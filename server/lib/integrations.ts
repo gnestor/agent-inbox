@@ -242,14 +242,6 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     envVars: { credential: "OBSERVABLE_API_TOKEN" },
   },
   {
-    id: "gemini",
-    name: "Gemini",
-    icon: "sparkles",
-    scope: "workspace",
-    authType: "api_key",
-    envVars: { credential: "GEMINI_API_KEY" },
-  },
-  {
     id: "postgres",
     name: "PostgreSQL",
     icon: "database",
