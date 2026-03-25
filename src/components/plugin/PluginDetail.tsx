@@ -71,9 +71,9 @@ function MessageRow({ item }: { item: PluginItem }) {
     <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
       <div className="flex gap-2.5">
         {avatar ? (
-          <img src={avatar} alt={name} className="h-8 w-8 rounded-md shrink-0 mt-0.5" />
+          <img src={avatar} alt={name} className="h-8 w-8 rounded-full shrink-0 mt-0.5" />
         ) : (
-          <div className="h-8 w-8 rounded-md shrink-0 mt-0.5 bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
+          <div className="h-8 w-8 rounded-full shrink-0 mt-0.5 bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
             {initials}
           </div>
         )}
