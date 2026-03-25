@@ -329,7 +329,8 @@ This writes both `linked_source_type`/`linked_source_id` and the legacy columns 
 Create `{workspace}/plugins/github/plugin.ts`:
 
 ```typescript
-import type { Plugin } from "path/to/inbox/src/types/plugin.js"
+// From {workspace}/plugins/{id}/, go up to packages/, then into inbox/src/types/
+import type { Plugin } from "../../../inbox/src/types/plugin.js"
 
 export default {
   id: "github",
@@ -415,3 +416,24 @@ For rich detail views that fieldSchema can't express (e.g., interactive editors,
 - **Auth**: Workspace Notion API key
 - **Custom component**: `CalendarTab` → `CalendarListView` + `CalendarDetail` (date picker, property editor)
 - **Mutations**: Shared via `handleNotionMutation()` — update-status, update-tags, update-assignee, update-date, update-properties
+
+## Workspace Plugins
+
+Workspace plugins live at `{workspace}/plugins/{id}/plugin.ts` and are auto-discovered on server startup. They use generic `PluginView` rendering (no custom React components needed).
+
+### Slack Plugin
+
+- **ID**: `slack`
+- **Location**: `{workspace}/plugins/slack/plugin.ts`
+- **Auth**: Workspace API key (`SLACK_API_TOKEN` or `SLACK_BOT_TOKEN` in `.env`)
+- **List view**: Channels and DMs sorted by latest activity, with type/unread badges and filters
+- **Detail view**: Messages in a channel (via `querySubItems`) with avatars, resolved @mentions, and thread counts
+- **Mutations**: mark-read, reply, add-reaction, remove-reaction
+- **Custom routes**: `/send` (post message), `/thread/:channel/:ts` (thread replies), `/users` (workspace members)
+- **Key patterns**: Bulk user loading with deduped lookups, server-side mention resolution, `externalUrl` for "Open in Slack" links
+
+### Creating Workspace Plugins
+
+Workspace plugins can be created manually or by an agent running in the app using the `plugin-creator` skill (provided by `packages/workflow-plugin`). The skill guides through API research, field mapping, and code generation.
+
+To create a plugin for a service that already has a skill (e.g. `skills/gorgias/`), the plugin-creator reuses the skill's API patterns, auth setup, and client code — mapping skill commands to Plugin methods.
