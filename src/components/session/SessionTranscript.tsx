@@ -1007,30 +1007,35 @@ function parseIdeContext(
   return refs
 }
 
-function isVisibleTextBlock(b: ContentBlockType): b is TextBlock {
-  return b.type === "text" && !isIdeContextBlock(b)
-}
 
 function extractText(msg: SessionMessagePayload): string {
   if (msg.type === "plan") return msg.content
   if (msg.type === "system" || msg.type === "tool_result") return ""
   // User or assistant message — content can be string or ContentBlock[]
   if (typeof msg.content === "string") return msg.content
-  if (msg.message?.content) {
-    if (typeof msg.message.content === "string") return msg.message.content
-    if (Array.isArray(msg.message.content)) {
-      return (msg.message.content as ContentBlockType[])
-        .filter(isVisibleTextBlock)
-        .map((b) => b.text)
-        .join("\n")
-    }
-  }
-  if (Array.isArray(msg.content)) {
-    return (msg.content as ContentBlockType[])
-      .filter(isVisibleTextBlock)
-      .map((b) => b.text)
+
+  function extractFromBlocks(blocks: ContentBlockType[]): string {
+    return (blocks as ContentBlockType[])
+      .filter((b): b is TextBlock => b.type === "text")
+      .map((b) => {
+        if (!isIdeContextBlock(b)) return b.text
+        // Strip IDE context XML tags; return any remaining visible text.
+        // Handles legacy sessions where source context was injected inline
+        // (e.g. "<ide_opened_file>Notion task: X</ide_opened_file>\nUser prompt").
+        return b.text
+          .replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, "")
+          .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "")
+          .trim()
+      })
+      .filter(Boolean)
       .join("\n")
   }
+
+  if (msg.message?.content) {
+    if (typeof msg.message.content === "string") return msg.message.content
+    if (Array.isArray(msg.message.content)) return extractFromBlocks(msg.message.content as ContentBlockType[])
+  }
+  if (Array.isArray(msg.content)) return extractFromBlocks(msg.content as ContentBlockType[])
   return ""
 }
 
