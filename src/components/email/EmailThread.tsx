@@ -282,8 +282,13 @@ function MarkdownBody({ markdown }: { markdown: string }) {
   )
 }
 
+function looksLikeMarkdown(text: string): boolean {
+  return /(\*\*[^*\n]+\*\*|__[^_\n]+__|^#{1,6} )/m.test(text)
+}
+
 function EmailMessage({ message }: { message: GmailMessage }) {
-  const isMarkdown = message.bodyFormat === 'markdown'
+  const isMarkdown = message.bodyFormat === 'markdown' ||
+    (message.bodyFormat === 'plain' && looksLikeMarkdown(message.body))
   return (
     <div className="px-4 py-3 pb-4 space-y-3 selectable-content">
       <div className="text-xs text-muted-foreground">to {formatEmailAddress(message.to)}</div>

@@ -173,9 +173,8 @@ export function PropertyDate({
         <PopoverTrigger
           render={
             <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs font-normal justify-start"
+              variant="ghost"
+              className="h-8 w-full border border-input px-2.5 text-xs font-normal justify-start rounded-md hover:bg-transparent dark:border-input"
             />
           }
         >

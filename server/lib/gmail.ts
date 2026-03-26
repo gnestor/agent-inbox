@@ -371,6 +371,60 @@ export async function getSignature(accessToken: string): Promise<string> {
   return primary?.signature || ""
 }
 
+/** Convert a markdown string to basic HTML suitable for email. */
+function markdownToHtml(md: string): string {
+  // Escape HTML entities
+  let html = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+  // Code blocks (must come before inline code)
+  html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`)
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>")
+  // Bold
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+  html = html.replace(/__([^_\n]+)__/g, "<strong>$1</strong>")
+  // Italic
+  html = html.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+  html = html.replace(/_([^_\n]+)_/g, "<em>$1</em>")
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+  // Process paragraphs / blocks
+  const blocks = html.split(/\n\n+/)
+  html = blocks.map((block) => {
+    // Headings
+    const headingMatch = block.match(/^(#{1,6}) (.+)/)
+    if (headingMatch) {
+      const level = headingMatch[1].length
+      return `<h${level}>${headingMatch[2]}</h${level}>`
+    }
+    // Lists
+    if (/^[-*] /m.test(block)) {
+      const items = block
+        .split("\n")
+        .filter((l) => /^[-*] /.test(l))
+        .map((l) => `<li>${l.slice(2)}</li>`)
+        .join("")
+      return `<ul>${items}</ul>`
+    }
+    // Ordered lists
+    if (/^\d+\. /m.test(block)) {
+      const items = block
+        .split("\n")
+        .filter((l) => /^\d+\. /.test(l))
+        .map((l) => `<li>${l.replace(/^\d+\. /, "")}</li>`)
+        .join("")
+      return `<ol>${items}</ol>`
+    }
+    // Skip already-converted blocks
+    if (/^<(pre|ul|ol|h[1-6])/.test(block)) return block
+    // Paragraph: convert remaining single newlines to <br>
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`
+  }).join("\n")
+  return html
+}
+
 function buildRawEmail(
   to: string,
   subject: string,
@@ -378,44 +432,33 @@ function buildRawEmail(
   signature: string,
   inReplyTo?: string,
 ): string {
-  if (signature) {
-    // Send as multipart HTML so the signature renders correctly
-    const htmlBody = `<div>${body.replace(/\n/g, "<br>")}</div><br><div class="gmail_signature">${signature}</div>`
-    const boundary = `boundary_${Date.now()}`
-    const headers: string[] = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    ]
-    if (inReplyTo) {
-      headers.push(`In-Reply-To: ${inReplyTo}`)
-      headers.push(`References: ${inReplyTo}`)
-    }
-    const parts = [
-      `--${boundary}`,
-      "Content-Type: text/plain; charset=utf-8",
-      "",
-      body,
-      `--${boundary}`,
-      "Content-Type: text/html; charset=utf-8",
-      "",
-      htmlBody,
-      `--${boundary}--`,
-    ]
-    return [...headers, "", ...parts].join("\r\n")
-  }
-
-  // Plain text (no signature)
+  // Always send as multipart HTML so markdown renders correctly
+  const htmlContent = markdownToHtml(body)
+  const htmlBody = signature
+    ? `${htmlContent}<br><div class="gmail_signature">${signature}</div>`
+    : htmlContent
+  const boundary = `boundary_${Date.now()}`
   const headers: string[] = [
     `To: ${to}`,
     `Subject: ${subject}`,
-    "Content-Type: text/plain; charset=utf-8",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ]
   if (inReplyTo) {
     headers.push(`In-Reply-To: ${inReplyTo}`)
     headers.push(`References: ${inReplyTo}`)
   }
-  return [...headers, "", body].join("\r\n")
+  const parts = [
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    body,
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "",
+    htmlBody,
+    `--${boundary}--`,
+  ]
+  return [...headers, "", ...parts].join("\r\n")
 }
 
 function encodeRaw(raw: string): string {

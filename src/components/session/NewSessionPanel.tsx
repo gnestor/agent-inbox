@@ -26,18 +26,20 @@ interface NewSessionPanelProps {
   taskId?: string
   sessionId?: string
   autoStart?: boolean
+  sourceType?: string
+  sourceId?: string
 }
 
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart }: NewSessionPanelProps) {
+export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart, sourceType, sourceId }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
   if (autoStart && (threadId || taskId)) {
     return <AutoStartPanel threadId={threadId} taskId={taskId} />
   }
-  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} />
+  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} sourceType={sourceType} sourceId={sourceId} />
 }
 
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
@@ -91,7 +93,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 
 // ── Compose panel ────────────────────────────────────────────────────────────
 
-function ComposePanel({ panelId, threadId, taskId }: { panelId?: string; threadId?: string; taskId?: string }) {
+function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId }: { panelId?: string; threadId?: string; taskId?: string; sourceType?: string; sourceId?: string }) {
   const { popPanel, replacePanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
@@ -141,6 +143,8 @@ function ComposePanel({ panelId, threadId, taskId }: { panelId?: string; threadI
         linkedEmailThreadId: thread?.id,
         linkedEmailId: thread?.messages[0]?.id,
         linkedTaskId: task?.id,
+        linkedSourceType: sourceType,
+        linkedSourceId: sourceId,
       }),
     onSuccess: ({ sessionId }) => {
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
@@ -150,7 +154,7 @@ function ComposePanel({ panelId, threadId, taskId }: { panelId?: string; threadI
         id: `session:${sessionId}`,
         type: "session",
         props: { sessionId },
-      }, sessionId)
+      })
     },
     onError: (err: any) => console.error("Failed to start session:", err),
   })

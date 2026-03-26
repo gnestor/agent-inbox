@@ -2,7 +2,7 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL, LEGACY_URL_TO_PLUGIN, pluginIdFromTab } from "@/types/navigation"
+import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, LEGACY_URL_TO_PLUGIN, pluginIdFromTab } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
@@ -127,7 +127,7 @@ export type NavAction =
   | { type: "REMOVE_PANEL"; panelId: string }
   | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState; selectedItemId?: string }
   | { type: "OPEN_SESSION"; sessionId?: string }
-  | { type: "OPEN_NEW_SESSION" }
+  | { type: "OPEN_NEW_SESSION"; source?: { type: string; id: string } }
   | { type: "OPEN_RECENT"; sessionId: string; sourceTab: TabId; selectedId?: string; sidebarIndex: number }
   | { type: "SET_FILTER"; key: string; value: string }
   | { type: "CLEAR_FILTERS" }
@@ -254,14 +254,15 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "OPEN_NEW_SESSION": {
       const tab = { ...getOrCreateTab(state, state.activeTab) }
-      if (tab.panels.some((p) => p.id === NEW_SESSION_PANEL.id)) return state
+      if (tab.panels.some((p) => p.id === "new_session")) return state
+      const newSessionPanel = makeNewSessionPanel(action.source)
       // If an item is selected, keep the detail panel and add compose after it
       if (tab.selectedItemId) {
         const detailPanels = tab.panels.filter((p) => p.type === "list" || p.type === "detail")
-        tab.panels = [...detailPanels, NEW_SESSION_PANEL]
+        tab.panels = [...detailPanels, newSessionPanel]
       } else {
         tab.selectedItemId = undefined
-        tab.panels = [tab.panels[0], NEW_SESSION_PANEL]
+        tab.panels = [tab.panels[0], newSessionPanel]
       }
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }

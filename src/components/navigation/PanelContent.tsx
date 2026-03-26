@@ -161,7 +161,7 @@ export function PanelContent({ panel }: PanelContentProps) {
     case "new_session":
       return (
         <Suspense fallback={fallback}>
-          <NewSessionPanel />
+          <NewSessionPanel sourceType={panel.props.sourceType} sourceId={panel.props.sourceId} />
         </Suspense>
       )
 

@@ -106,7 +106,7 @@ export function SessionListView() {
           ]}
         />
         <button
-          onClick={openNewSession}
+          onClick={() => openNewSession()}
           className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
         >
           <Plus className="h-4 w-4" />

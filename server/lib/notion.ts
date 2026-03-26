@@ -94,12 +94,6 @@ export async function queryTasks(filters?: {
       })
     }
   }
-  if (filters?.assignee) {
-    filterConditions.push({
-      property: "Assignee",
-      people: { contains: filters.assignee },
-    })
-  }
   if (filters?.priority) {
     const values = filters.priority.split(",")
     if (values.length === 1) {
@@ -134,8 +128,14 @@ export async function queryTasks(filters?: {
     body: JSON.stringify(body),
   })
 
+  let tasks = (result.results || []).map(parseTask)
+  // Notion people filter requires a UUID — filter by display name post-fetch instead
+  if (filters?.assignee) {
+    tasks = tasks.filter((t) => t.assignee === filters.assignee)
+  }
+
   return {
-    tasks: (result.results || []).map(parseTask),
+    tasks,
     nextCursor: result.has_more ? result.next_cursor : null,
   }
 }
@@ -284,13 +284,6 @@ export async function queryCalendarItems(filters?: {
       })
     }
   }
-  if (filters?.assignee) {
-    filterConditions.push({
-      property: "Assignee",
-      people: { contains: filters.assignee },
-    })
-  }
-
   const body: any = {
     sorts: [{ property: "Date", direction: "ascending" }],
     page_size: filters?.pageSize || 50,
@@ -308,8 +301,14 @@ export async function queryCalendarItems(filters?: {
     body: JSON.stringify(body),
   })
 
+  let items = (result.results || []).map(parseCalendarItem)
+  // Notion people filter requires a UUID — filter by display name post-fetch instead
+  if (filters?.assignee) {
+    items = items.filter((i) => i.assignee === filters.assignee)
+  }
+
   return {
-    items: (result.results || []).map(parseCalendarItem),
+    items,
     nextCursor: result.has_more ? result.next_cursor : null,
   }
 }

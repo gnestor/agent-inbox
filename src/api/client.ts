@@ -219,6 +219,8 @@ export async function createSession(body: {
   linkedEmailId?: string
   linkedEmailThreadId?: string
   linkedTaskId?: string
+  linkedSourceType?: string
+  linkedSourceId?: string
 }) {
   return request<{ sessionId: string }>(`/sessions`, {
     method: "POST",

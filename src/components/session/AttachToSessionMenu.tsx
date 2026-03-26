@@ -6,14 +6,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@hammies/frontend/components/ui"
 import { Sparkles, Search } from "lucide-react"
 import { useSessions } from "@/hooks/use-sessions"
 import { useAttachToSession } from "@/hooks/use-session-mutation"
-import { truncate } from "@/lib/formatters"
 
 interface SessionActionMenuProps {
   /** Source context to attach when selecting an existing session */
@@ -47,7 +44,7 @@ export function SessionActionMenu({
     openSession(sessionId)
   }
 
-  const recentSessions = sessions.slice(0, 10)
+  const recentSessions = sessions.filter((s) => s.summary).slice(0, 10)
 
   return (
     <DropdownMenu
@@ -75,56 +72,50 @@ export function SessionActionMenu({
         <Sparkles className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuGroup>
-          <DropdownMenuItem
-            onClick={() => {
-              setOpen(false)
-              if (linkedSessionId) {
-                openSession(linkedSessionId)
-              } else {
-                openNewSession()
-              }
-            }}
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            {linkedSessionId ? "Open session" : "New session"}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+        <DropdownMenuItem
+          onClick={() => {
+            setOpen(false)
+            if (linkedSessionId) {
+              openSession(linkedSessionId)
+            } else {
+              openNewSession({ type: source.type, id: source.id })
+            }
+          }}
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          {linkedSessionId ? "Open session" : "New session"}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Add to existing session</DropdownMenuLabel>
-          <div className="px-2 pb-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-card">
-              <Search className="h-3 w-3 text-muted-foreground shrink-0" />
-              <input
-                ref={searchInputRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search sessions..."
-                className="text-sm bg-transparent outline-none w-full placeholder:text-muted-foreground"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              />
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add to existing session</div>
+        <div className="px-2 pb-1.5">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-card">
+            <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search sessions..."
+              className="text-sm bg-transparent outline-none w-full placeholder:text-muted-foreground"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {recentSessions.length === 0 && (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              {search ? "No matching sessions" : "No sessions"}
             </div>
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {recentSessions.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {search ? "No matching sessions" : "No sessions"}
-              </div>
-            )}
-            {recentSessions.map((session) => (
-              <DropdownMenuItem
-                key={session.id}
-                onClick={() => handleAttach(session.id)}
-              >
-                <span className="truncate">
-                  {session.summary || truncate(session.prompt, 50)}
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </div>
-        </DropdownMenuGroup>
+          )}
+          {recentSessions.map((session) => (
+            <DropdownMenuItem
+              key={session.id}
+              onClick={() => handleAttach(session.id)}
+            >
+              <span className="truncate">{session.summary}</span>
+            </DropdownMenuItem>
+          ))}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )

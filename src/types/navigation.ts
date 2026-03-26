@@ -14,7 +14,7 @@ export type PanelState =
   | { id: string; type: "list"; props: Record<string, never> }
   | { id: string; type: "detail"; props: { itemId: string } }
   | { id: string; type: "session"; props: { sessionId: string; linkedItemId?: string } }
-  | { id: string; type: "new_session"; props: Record<string, never> }
+  | { id: string; type: "new_session"; props: { sourceType?: string; sourceId?: string } }
   | { id: string; type: "output"; props: { sessionId: string; sequence: number; outputType: string; spec: import("@/components/session/OutputRenderer").OutputSpec } }
   | { id: string; type: "code_editor"; props: { sessionId: string; sequence: number; initialCode: string; artifactPanelId: string } }
   | { id: string; type: "ask_user"; props: { sessionId: string; sequence: number; questions: any[]; resultText: string } }
@@ -25,6 +25,10 @@ export type PanelType = PanelState["type"]
 
 /** Singleton panel for the new-session compose form */
 export const NEW_SESSION_PANEL: PanelState = { id: "new_session", type: "new_session", props: {} }
+
+export function makeNewSessionPanel(source?: { type: string; id: string }): PanelState {
+  return { id: "new_session", type: "new_session", props: source ? { sourceType: source.type, sourceId: source.id } : {} }
+}
 
 // --- Per-tab state ---
 

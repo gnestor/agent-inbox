@@ -474,6 +474,22 @@ async function autoNameSession(sessionId: string) {
   }
 }
 
+function buildSourceContext(
+  emailThreadId?: string | null,
+  emailId?: string | null,
+  taskId?: string | null,
+  sourceType?: string | null,
+  sourceId?: string | null,
+): string | null {
+  if (emailThreadId) {
+    return `Source context: Email thread ${emailThreadId}` +
+      (emailId ? ` (message: ${emailId})` : "")
+  }
+  if (taskId) return `Source context: Notion task ${taskId}`
+  if (sourceType && sourceId) return `Source context: ${sourceType} item ${sourceId}`
+  return null
+}
+
 // Session execution using Agent SDK
 export async function startSession(
   prompt: string,
@@ -481,6 +497,8 @@ export async function startSession(
     linkedEmailId?: string
     linkedEmailThreadId?: string
     linkedTaskId?: string
+    linkedSourceType?: string
+    linkedSourceId?: string
     triggerSource?: string
     userSessionToken?: string
   },
@@ -490,6 +508,11 @@ export async function startSession(
 
   const abortController = new AbortController()
   let sessionId: string | null = null
+
+  const sourceContext = buildSourceContext(
+    options?.linkedEmailThreadId, options?.linkedEmailId, options?.linkedTaskId,
+    options?.linkedSourceType, options?.linkedSourceId,
+  )
 
   const q = query({
     prompt,
