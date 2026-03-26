@@ -9,6 +9,7 @@ import { NavigationProvider } from "@/components/navigation"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
+import { pluginIdFromTab } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
 import { EmailTab } from "@/components/email/EmailTab"
 import { TaskTab } from "@/components/task/TaskTab"
@@ -48,7 +49,7 @@ function renderTab(tabId: string) {
   if (tabId === "sessions") return <SessionTab />
   if (tabId.startsWith("recent:")) return <RecentTabSlot tabId={tabId as TabId} />
   if (tabId.startsWith("plugin:")) {
-    const pluginId = tabId.replace("plugin:", "")
+    const pluginId = pluginIdFromTab(tabId)
     const componentKey = `${pluginId}:tab`
     const CustomTab = COMPONENT_REGISTRY[componentKey]
     if (CustomTab) return <CustomTab tabId={tabId as TabId} />
@@ -62,7 +63,7 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
   const sourceTab = getSourceTab(tabId)
   // sourceTab is now plugin:gmail, plugin:notion-tasks, etc.
   if (sourceTab?.startsWith("plugin:")) {
-    const pluginId = sourceTab.replace("plugin:", "")
+    const pluginId = pluginIdFromTab(sourceTab)
     const componentKey = `${pluginId}:tab`
     const CustomTab = COMPONENT_REGISTRY[componentKey]
     if (CustomTab) return <CustomTab tabId={tabId} />

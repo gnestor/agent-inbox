@@ -8,11 +8,12 @@ import { PluginDetail } from "@/components/plugin/PluginDetail"
 import { SessionView } from "@/components/session/SessionView"
 import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import type { TabId } from "@/types/navigation"
+import { pluginIdFromTab } from "@/types/navigation"
 
 export function PluginView() {
   const { activeTab, getPanels, getSelectedItemId } = useNavigation()
   const tabId = activeTab as TabId
-  const pluginId = activeTab.startsWith("plugin:") ? activeTab.replace("plugin:", "") : undefined
+  const pluginId = pluginIdFromTab(activeTab)
   const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")

@@ -95,9 +95,11 @@ function buildAgentEnv(userSessionToken?: string): Record<string, string> {
 
 let workspacePath = ""
 let workspaceName = ""
+let workflowPluginPath = ""
 
 export function setWorkspacePath(path: string) {
   workspacePath = resolve(path)
+  workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
   // Derive workspace name from git remote (repo name), fallback to dir basename
   try {
     const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], { cwd: path, encoding: "utf-8" }).trim()
@@ -489,9 +491,6 @@ export async function startSession(
   const abortController = new AbortController()
   let sessionId: string | null = null
 
-  // Resolve workflow-plugin path (sibling package to the workspace)
-  const workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
-
   const q = query({
     prompt,
     options: {
@@ -608,9 +607,6 @@ export async function resumeSessionQuery(
   appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
-
-  // Resolve workflow-plugin path (sibling package to the workspace)
-  const workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
 
   const q = query({
     prompt,

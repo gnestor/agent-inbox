@@ -122,12 +122,17 @@ export function initializeDatabase() {
   }
 
   // Migrate existing linked_email_thread_id/linked_task_id to generic linked_source_type/id
-  database.prepare(
-    "UPDATE sessions SET linked_source_type = 'gmail', linked_source_id = linked_email_thread_id WHERE linked_email_thread_id IS NOT NULL AND linked_source_id IS NULL"
-  ).run()
-  database.prepare(
-    "UPDATE sessions SET linked_source_type = 'notion-tasks', linked_source_id = linked_task_id WHERE linked_task_id IS NOT NULL AND linked_source_id IS NULL"
-  ).run()
+  const needsMigration = database.prepare(
+    "SELECT COUNT(*) as count FROM sessions WHERE linked_source_id IS NULL AND (linked_email_thread_id IS NOT NULL OR linked_task_id IS NOT NULL)"
+  ).get() as { count: number }
+  if (needsMigration.count > 0) {
+    database.prepare(
+      "UPDATE sessions SET linked_source_type = 'gmail', linked_source_id = linked_email_thread_id WHERE linked_email_thread_id IS NOT NULL AND linked_source_id IS NULL"
+    ).run()
+    database.prepare(
+      "UPDATE sessions SET linked_source_type = 'notion-tasks', linked_source_id = linked_task_id WHERE linked_task_id IS NOT NULL AND linked_source_id IS NULL"
+    ).run()
+  }
 
   console.log("Database initialized at", DB_PATH)
 }

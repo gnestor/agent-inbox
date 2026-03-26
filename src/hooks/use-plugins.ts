@@ -12,7 +12,12 @@ export function usePlugins() {
     placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const data = query.state.data
-      return !data || data.length === 0 ? 2000 : false
+      if (!data || data.length === 0) {
+        // Stop polling after ~30 seconds (15 attempts × 2s) of empty results
+        const fetchCount = query.state.dataUpdateCount
+        return fetchCount < 15 ? 2000 : false
+      }
+      return false
     },
   })
 }

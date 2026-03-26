@@ -2,7 +2,7 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL, LEGACY_URL_TO_PLUGIN } from "@/types/navigation"
+import { createDefaultNavigationState, createDefaultTabState, NEW_SESSION_PANEL, LEGACY_URL_TO_PLUGIN, pluginIdFromTab } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
@@ -13,7 +13,7 @@ export function buildUrl(activeTab: TabId, selectedItemId?: string, tabState?: T
     return buildRecentUrl(tabState)
   }
   if (activeTab.startsWith("plugin:")) {
-    const pluginId = activeTab.replace("plugin:", "")
+    const pluginId = pluginIdFromTab(activeTab)
     return selectedItemId
       ? `/${pluginId}/${encodeURIComponent(selectedItemId)}`
       : `/${pluginId}`
@@ -30,7 +30,7 @@ function buildRecentUrl(tabState: TabState): string {
   const itemId = detailPanel?.props.itemId
 
   // Extract the URL-safe source name from the tab ID (plugin:gmail → gmail, sessions → sessions)
-  const sourcePath = sourceTab.startsWith("plugin:") ? sourceTab.replace("plugin:", "") : sourceTab
+  const sourcePath = pluginIdFromTab(sourceTab) ?? sourceTab
 
   if (sourceTab === "sessions") {
     const sid = sessionPanel?.props.sessionId ?? itemId

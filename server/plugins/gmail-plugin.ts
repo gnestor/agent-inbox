@@ -233,7 +233,6 @@ export const gmailPlugin: Plugin = {
       return c.body(data)
     })
 
-    // Signature
     app.get("/signature", async (c) => {
       const ctx = getContext(c)
       const accessToken = await requireToken(ctx)
@@ -241,7 +240,6 @@ export const gmailPlugin: Plugin = {
       return c.json({ signature })
     })
 
-    // Labels
     app.get("/labels", async (c) => {
       const ctx = getContext(c)
       const accessToken = await requireToken(ctx)
@@ -249,7 +247,6 @@ export const gmailPlugin: Plugin = {
       return c.json(result)
     })
 
-    // Send
     app.post("/send", async (c) => {
       const ctx = getContext(c)
       const accessToken = await requireToken(ctx)

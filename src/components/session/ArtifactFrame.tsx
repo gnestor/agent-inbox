@@ -158,7 +158,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         <Skeleton className="w-full h-[200px] rounded-md" />
       )}
       {(transformError || runtimeError) && (
-        <div className="min-h-[150px] bg-destructive p-4 rounded-md overflow-auto">
+        <div className="min-h-[150px] bg-destructive p-4 rounded-md overflow-auto absolute inset-0">
           <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
         </div>
       )}

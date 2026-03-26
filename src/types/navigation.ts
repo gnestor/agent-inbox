@@ -56,6 +56,11 @@ export interface NavigationState {
 
 // --- Helpers ---
 
+/** Extract the plugin ID from a `plugin:*` tab ID, or undefined if not a plugin tab */
+export function pluginIdFromTab(tabId: string): string | undefined {
+  return tabId.startsWith("plugin:") ? tabId.slice("plugin:".length) : undefined
+}
+
 export function createDefaultTabState(): TabState {
   return {
     panelScrollOffset: 0,
@@ -109,7 +114,7 @@ export function getTabIndex(tabId: TabId): number {
   if (tabId === "sessions") return 100
   if (tabId.startsWith("plugin:")) {
     // Built-in plugins first, then external, then recent
-    const id = tabId.replace("plugin:", "")
+    const id = pluginIdFromTab(tabId)!
     const builtinOrder = ["gmail", "notion-tasks", "notion-calendar"]
     const idx = builtinOrder.indexOf(id)
     if (idx >= 0) return idx + 1
