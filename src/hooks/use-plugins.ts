@@ -38,11 +38,12 @@ export function usePluginSubItems(
   sourceId: string,
   itemId: string,
   filters: Record<string, string> = {},
-  cursor?: string
+  cursor?: string,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ["plugin-subitems", sourceId, itemId, filters, cursor],
     queryFn: () => queryPluginSubItems(sourceId, itemId, filters, cursor),
-    enabled: !!sourceId && !!itemId,
+    enabled: enabled && !!sourceId && !!itemId,
   })
 }

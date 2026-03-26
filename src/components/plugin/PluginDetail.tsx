@@ -187,6 +187,7 @@ export function PluginDetail({
     itemId,
     {},
     undefined,
+    hasSubItems,
   )
 
   // Session linking
