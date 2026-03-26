@@ -1,6 +1,7 @@
 import { useMemo } from "react"
-import { MessageSquare, ExternalLink } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { usePlugins, usePluginItems, usePluginSubItems } from "@/hooks/use-plugins"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
@@ -12,6 +13,13 @@ import { getItemTitle } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
+
+const ACTION_ICONS: Record<string, LucideIcon> = {
+  close: CheckCircle,
+  reopen: RotateCcw,
+  archive: Archive,
+  delete: Trash2,
+}
 
 function autoDetailSchema(plugin: PluginManifest): WidgetDef[] {
   const kvFields: string[] = []
@@ -60,12 +68,43 @@ function formatTs(ts: string): string {
   })
 }
 
+function HtmlMessageBody({ html }: { html: string }) {
+  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    *, *::before, *::after { box-sizing: border-box; background: none !important; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: var(--card, transparent) !important;
+      color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      font-size: 13px; line-height: 1.5; }
+    img { max-width: 100%; height: auto; }
+    a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
+    blockquote { margin: 0.5em 0; padding-left: 0.75em; border-left: 2px solid color-mix(in srgb, var(--foreground) 20%, transparent); }
+    p { margin: 0.25em 0; }
+    table { border-collapse: collapse; max-width: 100%; }
+    td, th { padding: 2px 6px; }
+  </style></head><body>${html}</body></html>`
+
+  const { iframeRef } = useIframeAutoHeight(srcDoc)
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcDoc}
+      sandbox="allow-same-origin"
+      className="w-full border-0 bg-card overflow-hidden h-0"
+    />
+  )
+}
+
 function MessageRow({ item }: { item: PluginItem }) {
   const data = item as Record<string, unknown>
   const replyCount = Number(data.replyCount ?? 0)
   const avatar = data.userAvatar as string | undefined
   const name = String(data.userName ?? data.userId ?? "Unknown")
   const initials = name.slice(0, 2).toUpperCase()
+  const isHtml = data.bodyType === "html"
+  const text = String(data.text ?? "")
+  const attachments = (data.attachments ?? []) as Array<{ url: string; contentType: string; name: string; size?: number }>
+  const imageAttachments = attachments.filter((a) => a.contentType?.startsWith("image/"))
+  const otherAttachments = attachments.filter((a) => !a.contentType?.startsWith("image/"))
 
   return (
     <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
@@ -88,9 +127,41 @@ function MessageRow({ item }: { item: PluginItem }) {
               </span>
             )}
           </div>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-            {formatSlackText(String(data.text ?? ""))}
-          </p>
+          {imageAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {imageAttachments.map((a, i) => (
+                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={a.url}
+                    alt={a.name}
+                    className="max-w-[240px] max-h-[240px] rounded-md object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+          {isHtml && text ? (
+            <HtmlMessageBody html={text} />
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+              {formatSlackText(text)}
+            </p>
+          )}
+          {otherAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {otherAttachments.map((a, i) => (
+                <a
+                  key={i}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  {a.name}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -104,6 +175,7 @@ export function PluginDetail({
   pluginId: string
   itemId: string
 }) {
+  const queryClient = useQueryClient()
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
@@ -148,9 +220,33 @@ export function PluginDetail({
     }
   }, [hasSubItems, subData?.items, pluginId, itemId, title])
 
-  // Sub-items path (e.g. Slack: channel → messages)
+  // Sub-items path (e.g. Slack: channel → messages, Gorgias: ticket → messages)
   if (hasSubItems) {
     const items = subData?.items ?? []
+
+    // Extract action-buttons from detailSchema for toolbar rendering
+    const actionButtons = plugin?.detailSchema
+      ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
+      .flatMap((w) => w.actions) ?? []
+
+    // Resolve dynamic actions: archive ↔ reopen based on item status
+    const itemStatus = parentItem?.status as string | undefined
+    const resolvedActions = actionButtons.map((action) => {
+      if (action.mutation === "archive" && itemStatus === "closed") {
+        return { ...action, label: "Reopen", mutation: "reopen" }
+      }
+      return action
+    })
+
+    async function handleMutate(action: string, payload: unknown) {
+      try {
+        await mutatePluginItem(pluginId, itemId, action, payload)
+        queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
+      } catch (err) {
+        console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
+      }
+    }
+
     return (
       <div className="flex flex-1 flex-col min-h-0">
         <PanelHeader
@@ -162,6 +258,24 @@ export function PluginDetail({
           }
           right={
             <>
+              {resolvedActions.map((action) => {
+                const Icon = ACTION_ICONS[action.mutation]
+                return (
+                  <button
+                    key={action.mutation}
+                    type="button"
+                    title={action.label}
+                    className={`shrink-0 p-1.5 rounded-md ${
+                      action.variant === "destructive"
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-muted-foreground hover:bg-secondary"
+                    }`}
+                    onClick={() => handleMutate(action.mutation, undefined)}
+                  >
+                    {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+                  </button>
+                )
+              })}
               {externalUrl && (
                 <a
                   href={externalUrl}

@@ -22,7 +22,7 @@ export function PluginView() {
     <Tab id={tabId}>
       {listPanel && (
         <Panel key="list" id="list" variant="list">
-          <PluginList pluginId={pluginId} />
+          <PluginList pluginId={pluginId} selectedItemId={selectedId} />
         </Panel>
       )}
       {detailPanels.length > 0 && (
