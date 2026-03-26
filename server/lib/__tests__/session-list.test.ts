@@ -23,21 +23,15 @@ describe("listSessionRecords", () => {
     mockAll.mockReturnValue([])
   })
 
-  it("includes LEFT JOIN with processed_emails for email subject", async () => {
+  it("extracts linked_item_title via json_extract on metadata", async () => {
     const { listSessionRecords } = await import("../session-manager.js")
     listSessionRecords()
-    expect(capturedSql).toContain("processed_emails")
-    expect(capturedSql).toContain("linked_email_subject")
-  })
-
-  it("includes linked_task_title via json_extract on metadata", async () => {
-    const { listSessionRecords } = await import("../session-manager.js")
-    listSessionRecords()
-    expect(capturedSql).toContain("linked_task_title")
+    expect(capturedSql).toContain("linked_item_title")
     expect(capturedSql).toContain("json_extract")
+    expect(capturedSql).not.toContain("processed_emails")
   })
 
-  it("returns linked_email_subject from joined row", async () => {
+  it("returns linked_item_title from metadata", async () => {
     const row = {
       id: "sess-1",
       status: "complete",
@@ -50,13 +44,12 @@ describe("listSessionRecords", () => {
       linked_email_thread_id: "thread-1",
       linked_task_id: null,
       trigger_source: "inbox",
-      metadata: null,
-      linked_email_subject: "Re: Invoice Q1",
-      linked_task_title: null,
+      metadata: JSON.stringify({ linkedItemTitle: "Re: Invoice Q1" }),
+      linked_item_title: "Re: Invoice Q1",
     }
     mockAll.mockReturnValue([row])
     const { listSessionRecords } = await import("../session-manager.js")
     const results = listSessionRecords()
-    expect(results[0]).toMatchObject({ linked_email_subject: "Re: Invoice Q1" })
+    expect(results[0]).toMatchObject({ linked_item_title: "Re: Invoice Q1" })
   })
 })

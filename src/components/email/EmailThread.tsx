@@ -47,7 +47,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", "thread", threadId],
-    queryFn: () => getLinkedSession(threadId),
+    queryFn: () => getLinkedSession(threadId, "gmail"),
   })
   const linkedSession = linkedData?.session
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -124,7 +124,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
           {thread && (
             <SessionActionMenu
               source={{
-                type: "email",
+                type: "gmail",
                 id: threadId,
                 title: thread.subject,
                 content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,

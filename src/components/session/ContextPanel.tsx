@@ -45,20 +45,20 @@ export function ContextPanel({ data }: ContextPanelProps) {
           <div className="font-semibold leading-tight">{entity.name}</div>
           {subtitle && <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>}
         </div>
-        {source.type === "email" && source.threadId && (
+        {(source.type === "email" || source.type === "gmail") && source.threadId && (
           <button
             type="button"
-            onClick={() => { switchTab("emails"); selectItem(source.threadId!) }}
+            onClick={() => { switchTab("plugin:gmail"); selectItem(source.threadId!) }}
             className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
             Open
           </button>
         )}
-        {source.type === "task" && source.id && (
+        {(source.type === "task" || source.type === "notion-tasks") && source.id && (
           <button
             type="button"
-            onClick={() => { switchTab("tasks"); selectItem(source.id!) }}
+            onClick={() => { switchTab("plugin:notion-tasks"); selectItem(source.id!) }}
             className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
@@ -118,7 +118,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={thread.threadId}
                       type="button"
-                      onClick={() => { switchTab("emails"); selectItem(thread.threadId) }}
+                      onClick={() => { switchTab("plugin:gmail"); selectItem(thread.threadId) }}
                       className={cn(
                         "w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors",
                       )}
@@ -152,7 +152,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={task.id}
                       type="button"
-                      onClick={() => { switchTab("tasks"); selectItem(task.id) }}
+                      onClick={() => { switchTab("plugin:notion-tasks"); selectItem(task.id) }}
                       className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center gap-2"
                     >
                       <span className="text-xs flex-1 truncate">{task.title}</span>

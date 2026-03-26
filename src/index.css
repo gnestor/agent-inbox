@@ -1,70 +1,14 @@
 @import "@hammies/frontend/styles";
+@import "@hammies/frontend/prose.css";
 @import "@hammies/frontend/one-syntax.css";
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
 
-:root {
-  --secondary: oklch(0.27 0.02 255.69);
-  --border: oklch(1 0 0 / 0.06);
-  /* --font-mono:
-    "Operator Mono Lig", "Operator Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", "Courier New", monospace; */
-}
-
-:root:not(.dark) {
-  --background: oklch(0.97 0 0);
-  --secondary: oklch(0.97 0 0);
-  --border: oklch(0 0 0 / 0.06);
-}
-
-/* Suppress prose's auto-backtick wrapping around inline code */
-.prose :where(code)::before,
-.prose :where(code)::after {
-  content: none;
-}
-
-/* Code blocks: let hljs theme control background for both pre and code */
-.prose :where(pre) {
-  background: var(--muted);
-  color: var(--foreground);
-}
-.prose :where(pre code) {
-  background: transparent;
-}
-
-.prose-sm {
-  :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-    font-size: 1em;
-  }
-}
-
-/* Bold headings in prose (markdown) and Notion content */
-.prose :where(h1, h2, h3, h4, h5, h6) {
-  font-weight: 700;
-}
-
-/* Mobile app feel: disable zoom and text selection */
-html {
-  touch-action: pan-x pan-y;
-}
-
+/* Inbox-specific: allow text selection in Notion content */
 @media (max-width: 767px) {
-  * {
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  input,
-  textarea,
-  [contenteditable="true"],
-  .prose,
-  .prose *,
   .notion-content,
-  .notion-content *,
-  .selectable-content,
-  .selectable-content * {
+  .notion-content * {
     -webkit-user-select: text;
     user-select: text;
   }
 }
-
-/* Sidebar glass effect, keyframe animations, and utilities are defined in @hammies/frontend/styles */

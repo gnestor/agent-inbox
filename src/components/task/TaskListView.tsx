@@ -35,8 +35,8 @@ export const taskFieldSchema: FieldDef[] = [
     id: "assignee",
     label: "Assignee",
     type: "text",
-    badge: { show: "if-set", variant: "secondary" },
     filter: { filterable: true },
+    listRole: "hidden",
   },
   { id: "body", label: "Body", type: "text", listRole: "hidden" },
 ]
@@ -52,7 +52,7 @@ const getId = (t: Record<string, unknown>) => t.id as string
 
 export function TaskListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
-  const filters = getFilters("tasks")
+  const filters = getFilters("plugin:notion-tasks")
   const { tasks, loading, error, hasMore, loadMore } = useTasks(
     Object.keys(filters).length > 0 ? filters : undefined,
   )
@@ -60,23 +60,21 @@ export function TaskListView() {
   const [showStatus, setShowStatus] = usePreference("tasks.showStatus", true)
   const [showPriority, setShowPriority] = usePreference("tasks.showPriority", false)
   const [showTags, setShowTags] = usePreference("tasks.showTags", true)
-  const [showAssignee, setShowAssignee] = usePreference("tasks.showAssignee", true)
 
   const hiddenBadgeFields = useMemo(() => {
     const hidden = new Set<string>()
     if (!showStatus) hidden.add("status")
     if (!showPriority) hidden.add("priority")
     if (!showTags) hidden.add("tags")
-    if (!showAssignee) hidden.add("assignee")
     return hidden
-  }, [showStatus, showPriority, showTags, showAssignee])
+  }, [showStatus, showPriority, showTags])
 
   return (
     <ListView
       items={tasks as unknown as Record<string, unknown>[]}
       fieldSchema={taskFieldSchema}
       getItemId={getId}
-      selectedId={getSelectedItemId("tasks")}
+      selectedId={getSelectedItemId("plugin:notion-tasks")}
       onSelect={selectItem}
     >
       <ListView.Header title="Tasks">
@@ -90,7 +88,6 @@ export function TaskListView() {
             { label: "Status", checked: showStatus, onChange: setShowStatus },
             { label: "Priority", checked: showPriority, onChange: setShowPriority },
             { label: "Tags", checked: showTags, onChange: setShowTags },
-            { label: "Assignee", checked: showAssignee, onChange: setShowAssignee },
           ]}
         />
       </ListView.Header>

@@ -1,15 +1,20 @@
 /**
- * Inbox Source Plugin — interface spec for third-party data sources.
+ * Inbox Plugin — interface spec for integrations with external services.
  *
- * A source plugin is a TypeScript/JS file in `{workspace}/inbox-plugins/` that exports
- * a default object implementing `SourcePlugin`. The server loads all plugins at startup
- * via dynamic import and auto-generates REST routes at `/api/plugins/:sourceId/*`.
+ * A plugin is a TypeScript/JS file that exports a default object implementing `Plugin`.
+ * Plugins can live in:
+ *   - `{workspace}/plugins/{id}/plugin.ts` (workspace plugins)
+ *   - `{workspace}/inbox-plugins/*.ts` (legacy, backward compat)
+ *   - `packages/inbox/server/plugins/` (built-in plugins)
  *
- * Auth: plugins read credentials directly from `process.env` (set in workspace `.env`).
- * The app assumes the workspace already knows how to talk to the data source.
+ * The server loads all plugins at startup via dynamic import and auto-generates
+ * REST routes at `/api/{pluginId}/*`.
+ *
+ * Auth: plugins receive a `PluginContext` with credential resolution, or can
+ * read credentials directly from `process.env` (set in workspace `.env`).
  *
  * Example:
- *   // {workspace}/inbox-plugins/slack-plugin.ts
+ *   // {workspace}/plugins/slack/plugin.ts
  *   import { WebClient } from "@slack/web-api"
  *   const slack = new WebClient(process.env.SLACK_BOT_TOKEN)
  *
@@ -20,7 +25,7 @@
  *     fieldSchema: [...],
  *     async query(filters, cursor) { ... },
  *     async mutate(id, action, payload) { ... },
- *   } satisfies SourcePlugin
+ *   } satisfies Plugin
  */
 
 // ---------------------------------------------------------------------------
@@ -32,7 +37,7 @@ export interface PluginItem {
   id: string
   /** Optional pre-computed badges (overrides fieldSchema badge rules if provided) */
   badges?: import("./panels").BadgeValue[]
-  /** Source-specific fields — anything goes */
+  /** Plugin-specific fields — anything goes */
   [key: string]: unknown
 }
 
@@ -98,7 +103,40 @@ export interface FieldDef {
 }
 
 // ---------------------------------------------------------------------------
-// Source plugin interface
+// Plugin context (request-scoped, passed by the server to plugin methods)
+// ---------------------------------------------------------------------------
+
+export interface PluginContext {
+  /** Email of the authenticated user making the request */
+  userEmail: string
+  /** Resolve a credential for an integration (per-user OAuth or workspace API key) */
+  getCredential(integration: string): Promise<string | null>
+}
+
+// ---------------------------------------------------------------------------
+// Plugin components (custom client-side rendering)
+// ---------------------------------------------------------------------------
+
+/**
+ * Custom component declarations for client-side rendering.
+ *
+ * Built-in plugins declare string keys that the client resolves via a static
+ * registry of imported React components. E.g. `{ tab: "gmail:tab" }` → EmailTab.
+ *
+ * Plugins that omit `components` get generic PluginView rendering based on
+ * fieldSchema/detailSchema (sufficient for simple plugins like Slack).
+ */
+export interface PluginComponents {
+  /** Custom tab component (renders list + detail panels). Overrides generic PluginView entirely. */
+  tab?: string
+  /** Custom list view component. Used inside the generic tab layout. */
+  list?: string
+  /** Custom detail view component. Receives { itemId: string } props. */
+  detail?: string
+}
+
+// ---------------------------------------------------------------------------
+// Query result
 // ---------------------------------------------------------------------------
 
 export interface QueryResult {
@@ -107,30 +145,41 @@ export interface QueryResult {
   nextCursor?: string
 }
 
-export interface SourcePlugin {
-  /** Unique identifier — used in API routes and session linking */
+// ---------------------------------------------------------------------------
+// Plugin interface
+// ---------------------------------------------------------------------------
+
+export interface Plugin {
+  /** Unique identifier — used in API routes, tab IDs, and session linking */
   id: string
-  /** Display name shown in the nav tab */
+  /** Display name shown in the sidebar */
   name: string
   /** Lucide icon name (e.g. "MessageSquare", "Github", "ShoppingCart") */
   icon: string
+  /** Emoji for sidebar display (alternative to Lucide icon) */
+  emoji?: string
+  /** Custom React components for rendering (omit for generic PluginView rendering) */
+  components?: PluginComponents
+  /** Auth requirements — client shows connection prompts */
+  auth?: { integrationId: string; scope: "user" | "workspace" }
 
   /**
-   * Fetch a page of items from the source.
+   * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
    */
   query(
     filters: Record<string, string>,
-    cursor?: string
+    cursor?: string,
+    ctx?: PluginContext
   ): Promise<QueryResult>
 
   /**
    * Perform a mutation on an item.
-   * Actions are source-defined strings (e.g. "archive", "reply", "mark-done").
+   * Actions are plugin-defined strings (e.g. "archive", "reply", "mark-done").
    * Payload shape is action-specific.
    */
-  mutate(id: string, action: string, payload?: unknown): Promise<void>
+  mutate(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
 
   /**
    * Optional per-action payload schemas for runtime validation.
@@ -155,11 +204,34 @@ export interface SourcePlugin {
   /**
    * Optional sub-item query — e.g. messages within a channel.
    * When present, the detail panel renders a scrollable sub-item list instead
-   * of the widget tree.  The `itemId` is the parent item's id.
+   * of the widget tree. The `itemId` is the parent item's id.
    */
   querySubItems?(
     itemId: string,
     filters: Record<string, string>,
-    cursor?: string
+    cursor?: string,
+    ctx?: PluginContext
   ): Promise<QueryResult>
+
+  /**
+   * Fetch a single item with full detail (e.g. email thread with all messages,
+   * task with child blocks). Returns null if item not found.
+   */
+  getItem?(id: string, ctx?: PluginContext): Promise<PluginItem | null>
+
+  /**
+   * Optional async filter options fetchers. Keys are field IDs.
+   * Called by the server to populate filter dropdowns with dynamic options.
+   */
+  filterOptions?: Record<string, (ctx?: PluginContext) => Promise<string[]>>
+
+  /**
+   * Register additional Hono routes under `/api/{pluginId}/`.
+   * Use for endpoints that don't fit query/mutate (e.g. attachment proxy,
+   * file upload, OAuth callback).
+   */
+  routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => PluginContext }): void
 }
+
+/** @deprecated Use Plugin instead */
+export type SourcePlugin = Plugin

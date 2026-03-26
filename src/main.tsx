@@ -9,9 +9,51 @@ import { queryClient } from "@/lib/queryClient"
 import { App } from "./App"
 import "./index.css"
 
+// Migration: clear V1 cache key (safe to remove after all users have migrated)
+del("INBOX_QUERY_CACHE").catch(() => {})
+
+const CACHE_KEY = "INBOX_QUERY_CACHE_V2"
+
 const persister = createAsyncStoragePersister({
-  storage: { getItem: get, setItem: set, removeItem: del },
-  key: "INBOX_QUERY_CACHE",
+  storage: {
+    getItem: async (key: string) => {
+      try {
+        return await get(key)
+      } catch {
+        // Corrupted IndexedDB — nuke and start fresh
+        await del(key).catch(() => {})
+        return null
+      }
+    },
+    setItem: set,
+    removeItem: del,
+  },
+  key: CACHE_KEY,
+  // If deserialize fails (corrupted/schema-mismatched cache), discard and refetch
+  deserialize: (cached) => {
+    try {
+      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached
+      // Migration guard: strip queries that old code persisted but shouldn't have.
+      // Safe to remove once all users have reloaded with the updated shouldDehydrateQuery.
+      if (parsed?.clientState?.queries) {
+        parsed.clientState.queries = parsed.clientState.queries.filter(
+          (q: { queryKey?: unknown[]; state?: { data?: unknown } }) => {
+            const key = q.queryKey?.[0]
+            // Strip session lists (status changes frequently)
+            if (key === "sessions") return false
+            // Strip infinite queries (fragile pages/pageParams state)
+            const data = q.state?.data as Record<string, unknown> | undefined
+            if (data && "pages" in data) return false
+            return true
+          },
+        )
+      }
+      return parsed
+    } catch {
+      del(CACHE_KEY).catch(() => {})
+      return { timestamp: 0, buster: "", clientState: { mutations: [], queries: [] } }
+    }
+  },
 })
 
 createRoot(document.getElementById("root")!).render(
@@ -22,14 +64,23 @@ createRoot(document.getElementById("root")!).render(
           client={queryClient}
           persistOptions={{
             persister,
-            // Don't cache plugin manifests — they must always be fresh
             dehydrateOptions: {
-              shouldDehydrateQuery: (query) => query.queryKey[0] !== "plugins",
+              shouldDehydrateQuery: (query) => {
+                const key = query.queryKey[0]
+                // Never persist plugin manifests or errored queries
+                if (key === "plugins" || query.state.status === "error") return false
+                // Never persist session lists — status changes frequently (archive, complete)
+                // and stale cached statuses cause UI inconsistencies
+                if (key === "sessions") return false
+                // Never persist infinite queries — their pages/pageParams state is fragile
+                const data = query.state.data as Record<string, unknown> | undefined
+                if (data && "pages" in data) return false
+                return true
+              },
             },
           }}
-          // After IndexedDB cache is restored, invalidate all queries so active
-          // components refetch fresh data in the background on page load.
-          onSuccess={() => queryClient.invalidateQueries()}
+          // After IndexedDB cache is restored, refetch all active queries in the background
+          onSuccess={() => queryClient.refetchQueries()}
         >
           <App />
         </PersistQueryClientProvider>

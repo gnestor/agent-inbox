@@ -114,7 +114,7 @@ export function TaskDetail({ taskId, title, sessionOpen }: TaskDetailProps) {
           {task && (
             <SessionActionMenu
               source={{
-                type: "task",
+                type: "notion-tasks",
                 id: taskId,
                 title: task.title,
                 content: `Notion task: ${task.title}\nStatus: ${task.status}\n\n${task.body || ""}`,

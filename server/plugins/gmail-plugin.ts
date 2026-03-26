@@ -1,0 +1,333 @@
+/**
+ * Gmail built-in plugin — wraps server/lib/gmail.ts and the incremental sync
+ * logic formerly in server/routes/gmail.ts.
+ *
+ * Auth: per-user OAuth (Google). The plugin uses PluginContext.getCredential("google")
+ * to obtain the user's access token.
+ */
+
+import { Hono } from "hono"
+import * as gmail from "../lib/gmail.js"
+import type { ThreadSummary } from "../lib/gmail.js"
+import { get as getCached, set as setCached, invalidate } from "../lib/cache.js"
+import type { Plugin, PluginContext } from "../../src/types/plugin.js"
+
+const SYNC_TTL = 86_400_000 // 24h
+
+type SyncState = {
+  historyId: string
+  threads: ThreadSummary[]
+  nextPageToken: string | null
+}
+
+async function requireToken(ctx?: PluginContext): Promise<string> {
+  if (!ctx) throw new Error("Google account not connected. Go to Settings → Integrations to connect Google.")
+  const token = await ctx.getCredential("google")
+  if (!token) throw new Error("Google account not connected. Go to Settings → Integrations to connect Google.")
+  return token
+}
+
+const MIME_MAP: Record<string, string> = {
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+  gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv", txt: "text/plain", zip: "application/zip",
+  mp4: "video/mp4", mp3: "audio/mpeg",
+}
+
+function mimeFromFilename(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase()
+  return MIME_MAP[ext || ""] || "application/octet-stream"
+}
+
+function sniffMimeType(buf: Buffer): string {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png"
+  if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg"
+  if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif"
+  if (buf[0] === 0x52 && buf[1] === 0x49) return "image/webp"
+  if (buf[0] === 0x25 && buf[1] === 0x50) return "application/pdf"
+  return "application/octet-stream"
+}
+
+export const gmailPlugin: Plugin = {
+  id: "gmail",
+  name: "Emails",
+  icon: "Mail",
+  emoji: "✉️",
+  components: { tab: "gmail:tab" },
+  auth: { integrationId: "google", scope: "user" },
+
+  fieldSchema: [
+    { id: "fromDisplay", label: "From", type: "text", listRole: "title" },
+    { id: "subject", label: "Subject", type: "text", listRole: "subtitle" },
+    { id: "date", label: "Date", type: "date", listRole: "timestamp" },
+    {
+      id: "isUnread", label: "Unread", type: "boolean",
+      badge: { show: "if-set", variant: "default", colorFn: () => "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" },
+    },
+    {
+      id: "isImportant", label: "Important", type: "boolean",
+      badge: { show: "if-set", colorFn: () => "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300" },
+    },
+    {
+      id: "isStarred", label: "Starred", type: "boolean",
+      badge: { show: "if-set", colorFn: () => "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300" },
+    },
+    { id: "body", label: "Body", type: "html", listRole: "hidden" },
+    {
+      id: "flags", label: "Flags", type: "text", listRole: "hidden",
+      filter: { filterable: true, filterOptions: ["important", "starred", "unread", "snoozed"] },
+    },
+    { id: "labels", label: "Labels", type: "text", listRole: "hidden", filter: { filterable: true } },
+  ],
+
+  async query(filters, cursor, ctx) {
+    const accessToken = await requireToken(ctx)
+    const userEmail = ctx!.userEmail
+    const query = filters.q || "in:inbox"
+    const max = 20
+    const pageToken = cursor
+
+    // Incremental sync (first page only)
+    if (!pageToken) {
+      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
+      const syncState = getCached<SyncState>(syncKey)
+
+      if (syncState?.historyId) {
+        try {
+          const history = await gmail.getHistory(accessToken, syncState.historyId)
+          const changedThreadIds = new Set<string>()
+          for (const h of history.history || []) {
+            for (const { message } of h.messagesAdded || []) changedThreadIds.add(message.threadId)
+            for (const { message } of h.messagesDeleted || []) changedThreadIds.add(message.threadId)
+            for (const { message } of h.labelsAdded || []) changedThreadIds.add(message.threadId)
+            for (const { message } of h.labelsRemoved || []) changedThreadIds.add(message.threadId)
+          }
+
+          const newHistoryId = history.historyId || syncState.historyId
+
+          if (changedThreadIds.size === 0) {
+            setCached(syncKey, { ...syncState, historyId: newHistoryId }, SYNC_TTL)
+            return { items: syncState.threads as any[], nextCursor: syncState.nextPageToken ?? undefined }
+          }
+
+          const updatedThreads = await gmail.fetchBatched(
+            [...changedThreadIds],
+            (id) => gmail.getThreadSummary(accessToken, id),
+          )
+          for (const id of changedThreadIds) invalidate(`gmail:thread:${id}`)
+
+          const updatedMap = new Map(updatedThreads.map((t) => [t.id, t]))
+          let threads = syncState.threads
+            .map((t) => updatedMap.get(t.id) || t)
+            .filter((t) => {
+              const updated = updatedMap.get(t.id)
+              return updated ? updated.labelIds.includes("INBOX") : true
+            })
+          for (const t of updatedThreads) {
+            if (!threads.find((m) => m.id === t.id) && t.labelIds.includes("INBOX")) {
+              threads.unshift(t)
+            }
+          }
+
+          setCached(syncKey, { historyId: newHistoryId, threads, nextPageToken: syncState.nextPageToken }, SYNC_TTL)
+          return { items: threads as any[], nextCursor: syncState.nextPageToken ?? undefined }
+        } catch (e: any) {
+          console.warn("Incremental sync failed, falling back to full sync:", e.message)
+          invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
+        }
+      }
+    }
+
+    // Full sync
+    const result = await gmail.searchThreads(accessToken, query, max, pageToken || undefined)
+    if (!pageToken && result.historyId) {
+      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
+      setCached(syncKey, { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken }, SYNC_TTL)
+    }
+    return { items: result.threads as any[], nextCursor: result.nextPageToken ?? undefined }
+  },
+
+  async getItem(threadId, ctx) {
+    const accessToken = await requireToken(ctx)
+    return await gmail.getThread(accessToken, threadId) as any
+  },
+
+  async mutate(id, action, payload, ctx) {
+    const accessToken = await requireToken(ctx)
+    let skipInvalidate = false
+    switch (action) {
+      case "archive":
+        await gmail.modifyThreadLabels(accessToken, id, [], ["INBOX"])
+        break
+      case "trash":
+        await gmail.trashThread(accessToken, id)
+        break
+      case "star":
+        await gmail.modifyThreadLabels(accessToken, id, ["STARRED"], [])
+        break
+      case "unstar":
+        await gmail.modifyThreadLabels(accessToken, id, [], ["STARRED"])
+        break
+      case "mark-important":
+        await gmail.modifyThreadLabels(accessToken, id, ["IMPORTANT"], [])
+        break
+      case "mark-not-important":
+        await gmail.modifyThreadLabels(accessToken, id, [], ["IMPORTANT"])
+        break
+      case "modify-labels": {
+        const { addLabelIds, removeLabelIds } = (payload ?? {}) as { addLabelIds?: string[]; removeLabelIds?: string[] }
+        await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
+        break
+      }
+      case "send": {
+        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
+        const signature = await gmail.getSignature(accessToken)
+        await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
+        if (threadId) invalidate(`gmail:thread:${threadId}`)
+        break
+      }
+      case "save-draft": {
+        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
+        const signature = await gmail.getSignature(accessToken)
+        await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, signature)
+        skipInvalidate = true
+        break
+      }
+      default:
+        throw new Error(`Unknown Gmail action: ${action}`)
+    }
+    if (!skipInvalidate) {
+      invalidate("gmail:sync:")
+      invalidate(`gmail:thread:${id}`)
+    }
+  },
+
+  filterOptions: {
+    labels: async (ctx) => {
+      const accessToken = await requireToken(ctx)
+      const result = await gmail.getLabels(accessToken)
+      return result.labels
+        .filter((l: any) => l.type === "user")
+        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+        .map((l: any) => l.name)
+    },
+  },
+
+  routes(app, { getContext }) {
+    // Attachment proxy
+    app.get("/messages/:id/attachments/:attachmentId", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const messageId = c.req.param("id")
+      const attachmentId = c.req.param("attachmentId")
+      const data = await gmail.getAttachment(accessToken, messageId, attachmentId)
+      const filename = c.req.query("filename")
+      const mime = filename ? mimeFromFilename(filename) : sniffMimeType(data)
+      c.header("Cache-Control", "public, max-age=31536000, immutable")
+      c.header("Content-Type", mime)
+      if (filename) c.header("Content-Disposition", `inline; filename="${filename}"`)
+      return c.body(data)
+    })
+
+    app.get("/signature", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const signature = await gmail.getSignature(accessToken)
+      return c.json({ signature })
+    })
+
+    app.get("/labels", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const result = await gmail.getLabels(accessToken)
+      return c.json(result)
+    })
+
+    app.post("/send", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const { to, subject, body, threadId, inReplyTo } = await c.req.json()
+      const signature = await gmail.getSignature(accessToken)
+      const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
+      invalidate("gmail:sync:")
+      if (threadId) invalidate(`gmail:thread:${threadId}`)
+      return c.json(result)
+    })
+
+    // Drafts
+    app.post("/drafts", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const { to, subject, body, threadId, inReplyTo } = await c.req.json()
+      const signature = await gmail.getSignature(accessToken)
+      const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, signature)
+      return c.json(result)
+    })
+
+    // Trash thread
+    app.post("/threads/:id/trash", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const id = c.req.param("id")
+      await gmail.trashThread(accessToken, id)
+      invalidate("gmail:sync:")
+      invalidate(`gmail:thread:${id}`)
+      return c.json({ ok: true })
+    })
+
+    // Modify thread labels
+    app.patch("/threads/:id/labels", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const id = c.req.param("id")
+      const { addLabelIds, removeLabelIds } = await c.req.json()
+      await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
+      invalidate("gmail:sync:")
+      invalidate(`gmail:thread:${id}`)
+      return c.json({ ok: true })
+    })
+
+    // Modify message labels
+    app.patch("/messages/:id/labels", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const { addLabelIds, removeLabelIds } = await c.req.json()
+      await gmail.modifyLabels(accessToken, c.req.param("id"), addLabelIds || [], removeLabelIds || [])
+      return c.json({ ok: true })
+    })
+
+    // Get single message
+    app.get("/messages/:id", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const id = c.req.param("id")
+      const message = await gmail.getMessage(accessToken, id)
+      return c.json(message)
+    })
+
+    // Get thread (alias for getItem — preserves /threads/:id URL)
+    app.get("/threads/:id", async (c) => {
+      const ctx = getContext(c)
+      const accessToken = await requireToken(ctx)
+      const id = c.req.param("id")
+      const thread = await gmail.getThread(accessToken, id)
+      return c.json(thread)
+    })
+
+    // List messages (alias for query — preserves /messages URL)
+    app.get("/messages", async (c) => {
+      const raw = c.req.query()
+      const ctx = getContext(c)
+      const result = await gmailPlugin.query(
+        { q: raw.q || "in:inbox" },
+        raw.pageToken || undefined,
+        ctx,
+      )
+      return c.json({ messages: result.items, nextPageToken: result.nextCursor ?? null })
+    })
+  },
+}

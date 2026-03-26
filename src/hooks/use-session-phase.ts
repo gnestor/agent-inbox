@@ -75,8 +75,9 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
     prevStreamStatus.current = stream.sessionStatus
   }, [stream.sessionStatus, qc, sessionId])
 
-  // Single derivation — priority order matters
-  const effectiveStatus = stream.sessionStatus ?? queryStatus
+  // Single derivation — priority order matters.
+  // "archived" is a user-initiated terminal state that stream events must not override.
+  const effectiveStatus = queryStatus === "archived" ? "archived" : (stream.sessionStatus ?? queryStatus)
   const phase: SessionPhase =
     isLoading ? { status: "loading" } :
     queryError ? { status: "error", message: queryError.message } :
@@ -102,7 +103,9 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   const resumePrompt = mutations.resume.variables as string | undefined
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
-    if (sessionPrompt && initialMessages.length === 0 && stream.messages.length === 0) {
+    const hasUserMessage = initialMessages.some(m => m.type === "user")
+      || stream.messages.some(m => m.type === "user")
+    if (sessionPrompt && !hasUserMessage) {
       merged.set(-1, {
         id: -1,
         sessionId,

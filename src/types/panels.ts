@@ -5,7 +5,7 @@
  * The server reads these at startup and registers them as custom XML tag → widget tree mappings.
  * The `SessionTranscript` component renders them when the agent emits a matching XML tag.
  *
- * Source plugins use `WidgetDef[]` in `SourcePlugin.detailSchema` to render item detail views.
+ * Plugins use `WidgetDef[]` in `Plugin.detailSchema` to render item detail views.
  *
  * Widget types map to shadcn components and app-provided renderers.
  *

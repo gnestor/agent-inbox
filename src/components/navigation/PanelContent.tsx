@@ -26,7 +26,7 @@ const CodeEditorPanel = lazy(() =>
   import("@/components/session/CodeEditorPanel").then((m) => ({ default: m.CodeEditorPanel })),
 )
 
-function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) {
+function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   const { removePanel, pushPanel } = useNavigation()
   const spec = panel.props.spec
   const { sessionId, sequence } = panel.props
@@ -60,7 +60,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-        <span className="text-sm font-semibold">{spec?.title || spec?.type || "Artifact"}</span>
+        <span className="text-sm font-semibold">{spec?.title || spec?.type || "Output"}</span>
         <div className="flex items-center gap-0.5">
           {spec?.type === "react" && (
             <button
@@ -83,7 +83,7 @@ function ArtifactPanel({ panel }: { panel: PanelState & { type: "artifact" } }) 
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {activeSpec ? (
           <OutputRenderer
             spec={activeSpec}
@@ -172,8 +172,8 @@ export function PanelContent({ panel }: PanelContentProps) {
         </Suspense>
       )
 
-    case "artifact":
-      return <ArtifactPanel panel={panel} />
+    case "output":
+      return <OutputPanel panel={panel} />
 
     case "code_editor":
       return (

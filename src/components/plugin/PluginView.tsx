@@ -1,48 +1,48 @@
-import { useRef, useState } from "react"
-import { useParams } from "react-router-dom"
-import { AnimatePresence, motion } from "motion/react"
-import { PANEL_CARD, EASE, DURATION } from "@/lib/navigation-constants"
+import { useNavigation } from "@/hooks/use-navigation"
+import { Tab } from "@/components/navigation/Tab"
+import { Panel } from "@/components/navigation/Panel"
+import { PanelSlot } from "@/components/navigation/PanelSlot"
+import { PanelContent } from "@/components/navigation/PanelContent"
 import { PluginList } from "@/components/plugin/PluginList"
 import { PluginDetail } from "@/components/plugin/PluginDetail"
+import { SessionView } from "@/components/session/SessionView"
+import { NewSessionPanel } from "@/components/session/NewSessionPanel"
+import type { TabId } from "@/types/navigation"
+import { pluginIdFromTab } from "@/types/navigation"
 
 export function PluginView() {
-  const { id, "*": rest } = useParams<{ id: string; "*": string }>()
-  const itemId = rest ? rest.split("/")[0] : undefined
-
-  const [selectedTitle, setSelectedTitle] = useState("")
-  const directionRef = useRef(1)
-  const prevIndexRef = useRef(-1)
-
-  function handleIndexChange(index: number) {
-    if (prevIndexRef.current >= 0 && index !== prevIndexRef.current) {
-      directionRef.current = index > prevIndexRef.current ? 1 : -1
-    }
-    prevIndexRef.current = index
-  }
+  const { activeTab, getPanels, getSelectedItemId } = useNavigation()
+  const tabId = activeTab as TabId
+  const pluginId = pluginIdFromTab(activeTab)
+  const panels = getPanels(tabId)
+  const listPanel = panels.find((p) => p.type === "list")
+  const detailPanels = panels.filter((p) => p.type !== "list")
+  const selectedId = getSelectedItemId(tabId)
 
   return (
-    <div className="flex flex-row h-full gap-4 shrink-0 overflow-y-hidden overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]">
-      <div className={PANEL_CARD}>
-        <PluginList
-          selectedItemId={itemId}
-          onSelectedIndexChange={handleIndexChange}
-          onSelectedTitleChange={setSelectedTitle}
-        />
-      </div>
-      <AnimatePresence>
-        {itemId && id && (
-          <motion.div
-            key={itemId}
-            className={`${PANEL_CARD} flex flex-col`}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATION, ease: EASE }}
-          >
-            <PluginDetail pluginId={id} itemId={itemId} parentTitle={selectedTitle} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <Tab id={tabId}>
+      {listPanel && (
+        <Panel key="list" id="list" variant="list">
+          <PluginList pluginId={pluginId} selectedItemId={selectedId} />
+        </Panel>
+      )}
+      {detailPanels.length > 0 && (
+        <PanelSlot key="detail-group" panelId={selectedId ?? detailPanels[0].id} group>
+          {detailPanels.map((panel) => (
+            <Panel key={panel.id} id={panel.id} variant={panel.type}>
+              {panel.type === "detail" && pluginId ? (
+                <PluginDetail pluginId={pluginId} itemId={panel.props.itemId} />
+              ) : panel.type === "session" ? (
+                <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
+              ) : panel.type === "new_session" ? (
+                <NewSessionPanel />
+              ) : (
+                <PanelContent panel={panel} />
+              )}
+            </Panel>
+          ))}
+        </PanelSlot>
+      )}
+    </Tab>
   )
 }

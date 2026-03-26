@@ -30,12 +30,6 @@ import { useNavigation } from "@/hooks/use-navigation"
 import { getInitials } from "@/lib/formatters"
 import type { TabId } from "@/types/navigation"
 
-const navItems: { title: string; emoji: string; tab: TabId }[] = [
-  { title: "Emails", emoji: "✉️", tab: "emails" },
-  { title: "Tasks", emoji: "✅", tab: "tasks" },
-  { title: "Calendar", emoji: "📅", tab: "calendar" },
-]
-
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()
   const { isMobile, setOpenMobile } = useSidebar()
@@ -76,9 +70,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     <DropdownMenuGroup>
                       <DropdownMenuLabel className="p-0 font-normal">
                         <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                          <Avatar className="h-8 w-8 rounded-lg">
+                          <Avatar className="h-8 w-8">
                             {user.picture && <AvatarImage src={user.picture} alt={user.name} />}
-                            <AvatarFallback className="rounded-lg">
+                            <AvatarFallback>
                               {getInitials(user.name)}
                             </AvatarFallback>
                           </Avatar>
@@ -114,42 +108,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Sources</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = location.pathname.startsWith(`/${item.tab}`)
-                return (
-                  <SidebarMenuItem key={item.tab}>
-                    <SidebarMenuButton
-                      tooltip={item.title}
-                      className={cn(
-                        isActive
-                          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
-                          : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
-                      )}
-                      onClick={() => {
-                        switchTab(item.tab)
-                        if (isMobile) setOpenMobile(false)
-                      }}
-                    >
-                      <span>{item.emoji}</span>
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
         {plugins && plugins.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Plugins</SidebarGroupLabel>
+            <SidebarGroupLabel>Sources</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {plugins.map((plugin) => {
-                  const isActive = location.pathname.startsWith(`/plugins/${plugin.id}`)
+                  const tabId: TabId = `plugin:${plugin.id}`
+                  const isActive = location.pathname.startsWith(`/${plugin.id}`)
                   return (
                     <SidebarMenuItem key={plugin.id}>
                       <SidebarMenuButton
@@ -160,11 +126,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
                         )}
                         onClick={() => {
-                          switchTab(`plugin:${plugin.id}`)
+                          switchTab(tabId)
                           if (isMobile) setOpenMobile(false)
                         }}
                       >
-                        <span className="text-sm">🔌</span>
+                        <span>{plugin.emoji ?? "🔌"}</span>
                         <span>{plugin.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

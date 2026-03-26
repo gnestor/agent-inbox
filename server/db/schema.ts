@@ -49,14 +49,6 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_session_messages_session
       ON session_messages(session_id, sequence);
 
-    CREATE TABLE IF NOT EXISTS email_task_links (
-      email_id TEXT NOT NULL,
-      email_thread_id TEXT NOT NULL,
-      task_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (email_id, task_id)
-    );
-
     CREATE TABLE IF NOT EXISTS notion_options (
       property TEXT NOT NULL,
       value TEXT NOT NULL,
@@ -79,18 +71,6 @@ export function initializeDatabase() {
       user_email TEXT NOT NULL,
       user_picture TEXT,
       created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS processed_emails (
-      email_id TEXT PRIMARY KEY,
-      thread_id TEXT,
-      from_address TEXT,
-      subject TEXT,
-      processed_at TEXT NOT NULL,
-      notion_task_id TEXT,
-      session_id TEXT,
-      rule_name TEXT,
-      action TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_preferences (
@@ -139,6 +119,19 @@ export function initializeDatabase() {
   }
   if (!sessionCols.includes("linked_source_type")) {
     database.exec("ALTER TABLE sessions ADD COLUMN linked_source_type TEXT")
+  }
+
+  // Migrate existing linked_email_thread_id/linked_task_id to generic linked_source_type/id
+  const needsMigration = database.prepare(
+    "SELECT COUNT(*) as count FROM sessions WHERE linked_source_id IS NULL AND (linked_email_thread_id IS NOT NULL OR linked_task_id IS NOT NULL)"
+  ).get() as { count: number }
+  if (needsMigration.count > 0) {
+    database.prepare(
+      "UPDATE sessions SET linked_source_type = 'gmail', linked_source_id = linked_email_thread_id WHERE linked_email_thread_id IS NOT NULL AND linked_source_id IS NULL"
+    ).run()
+    database.prepare(
+      "UPDATE sessions SET linked_source_type = 'notion-tasks', linked_source_id = linked_task_id WHERE linked_task_id IS NOT NULL AND linked_source_id IS NULL"
+    ).run()
   }
 
   console.log("Database initialized at", DB_PATH)

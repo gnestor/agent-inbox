@@ -40,8 +40,8 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
 
   const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
     pushPanel({
-      id: `artifact:${sessionId}:${sequence}`,
-      type: "artifact",
+      id: `output:${sessionId}:${sequence}`,
+      type: "output",
       props: { sessionId, sequence, outputType: spec.type, spec },
     })
   }, [sessionId, pushPanel])

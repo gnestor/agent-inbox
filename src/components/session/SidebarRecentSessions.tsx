@@ -43,22 +43,25 @@ function getSessionTitle(session: Session): string {
 }
 
 export function getSessionUrl(session: Session): string {
+  if (session.linkedSourceType && session.linkedSourceId) {
+    return `/recent/${session.linkedSourceType}/${encodeURIComponent(session.linkedSourceId)}/session/${session.id}`
+  }
+  // Fallback to legacy fields
   if (session.linkedEmailThreadId) {
-    return `/recent/emails/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
+    return `/recent/gmail/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
   }
   if (session.linkedTaskId) {
-    return `/recent/tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
+    return `/recent/notion-tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
   }
   return `/recent/sessions/${session.id}`
 }
 
-// Extract the active session ID from the current URL:
-//   /recent/emails/{id}/session/{sessionId}  →  sessionId
-//   /recent/tasks/{id}/session/{sessionId}   →  sessionId
-//   /recent/sessions/{sessionId}             →  sessionId
+// Extract the active session ID from the current URL
 function activeSessionIdFromPath(pathname: string): string | null {
-  const m = pathname.match(/^\/recent\/(emails|tasks)\/[^/]+\/session\/([^/]+)/)
-  if (m) return decodeURIComponent(m[2])
+  // /recent/{source}/{id}/session/{sessionId}
+  const m = pathname.match(/^\/recent\/[^/]+\/[^/]+\/session\/([^/]+)/)
+  if (m) return decodeURIComponent(m[1])
+  // /recent/sessions/{sessionId}
   const m2 = pathname.match(/^\/recent\/sessions\/([^/]+)/)
   if (m2) return decodeURIComponent(m2[1])
   return null
@@ -148,16 +151,19 @@ export function SidebarRecentSessions() {
         <SidebarMenu>
           {recent.map((session, i) => {
             const color = getIndicatorColor(session)
-            const linkedTitle = titleLookup.get(session.linkedEmailThreadId ?? session.linkedTaskId ?? "")
+            const linkedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? ""
+            const linkedTitle = titleLookup.get(linkedId)
             const title = linkedTitle || getSessionTitle(session)
             const isActive = isRecentRoute && session.id === activeSessionId
 
-            const sourceTab: TabId = session.linkedEmailThreadId
-              ? "emails"
-              : session.linkedTaskId
-                ? "tasks"
-                : "sessions"
-            const selectedId = session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
+            const sourceTab: TabId = session.linkedSourceType
+              ? `plugin:${session.linkedSourceType}`
+              : session.linkedEmailThreadId
+                ? "plugin:gmail"
+                : session.linkedTaskId
+                  ? "plugin:notion-tasks"
+                  : "sessions"
+            const selectedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
 
             return (
               <SidebarMenuItem key={session.id}>

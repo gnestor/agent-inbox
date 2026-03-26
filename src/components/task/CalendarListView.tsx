@@ -43,7 +43,7 @@ const getId = (item: Record<string, unknown>) => item.id as string
 
 export function CalendarListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter } = useNavigation()
-  const filters = getFilters("calendar")
+  const filters = getFilters("plugin:notion-calendar")
   const { items, loading, error, hasMore, loadMore } = useCalendar(
     Object.keys(filters).length > 0 ? filters : undefined,
   )
@@ -65,7 +65,7 @@ export function CalendarListView() {
       items={items as unknown as Record<string, unknown>[]}
       fieldSchema={calendarFieldSchema}
       getItemId={getId}
-      selectedId={getSelectedItemId("calendar")}
+      selectedId={getSelectedItemId("plugin:notion-calendar")}
       onSelect={selectItem}
     >
       <ListView.Header title="Calendar">

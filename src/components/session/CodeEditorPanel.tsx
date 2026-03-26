@@ -74,7 +74,7 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
       // Update the artifact panel's spec so the saved code persists after editor closes
       const panels = getPanels()
       const artifactPanel = panels.find((p) => p.id === artifactPanelId)
-      if (artifactPanel && artifactPanel.type === "artifact") {
+      if (artifactPanel && artifactPanel.type === "output") {
         const spec = { ...artifactPanel.props.spec } as any
         spec.data = typeof spec.data === "string" ? code : { ...spec.data, code }
         replacePanel(artifactPanelId, {

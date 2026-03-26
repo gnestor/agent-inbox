@@ -9,7 +9,7 @@ export function useTaskDetail(taskId: string) {
   })
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", "task", taskId],
-    queryFn: () => getLinkedSession(undefined, taskId),
+    queryFn: () => getLinkedSession(taskId, "notion-tasks"),
   })
   const { data: statusOpts } = useQuery({
     queryKey: ["notion-options", "Status"],

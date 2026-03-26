@@ -87,7 +87,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     icon: "message-square",
     scope: "workspace",
     authType: "api_key",
-    envVars: { credential: "SLACK_API_TOKEN" },
+    envVars: { credential: "SLACK_API_TOKEN", config: ["SLACK_BOT_TOKEN"] },
   },
   {
     id: "shopify",

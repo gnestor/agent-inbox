@@ -10,25 +10,26 @@ import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { homedir } from "os"
 import { existsSync } from "fs"
-import { gmailRoutes } from "./routes/gmail.js"
-import { notionRoutes } from "./routes/notion.js"
 import { sessionRoutes } from "./routes/sessions.js"
 import { webhookRoutes } from "./routes/webhooks.js"
 import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
-import { pluginRoutes } from "./routes/plugins.js"
+import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase } from "./db/schema.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions } from "./lib/session-manager.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
-import { resolveCredential, seedWorkspaceCredentials } from "./lib/vault.js"
+import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
 import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
-import { loadPlugins } from "./lib/plugin-loader.js"
+import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
 import { loadPanels } from "./lib/panel-registry.js"
+import { gmailPlugin } from "./plugins/gmail-plugin.js"
+import { notionTasksPlugin } from "./plugins/notion-tasks-plugin.js"
+import { notionCalendarPlugin } from "./plugins/notion-calendar-plugin.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -68,12 +69,65 @@ import { getWorkspaceName } from "./lib/session-manager.js"
 import { buildEnvToIntegrationMap } from "./lib/integrations.js"
 seedWorkspaceCredentials(getWorkspaceName(), workspaceEnv, buildEnvToIntegrationMap())
 
+// Auto-refresh an OAuth access token using the stored refresh token.
+// Currently only QBO needs this — access tokens expire after 1 hour.
+async function maybeRefreshToken(
+  userEmail: string,
+  integration: string,
+): Promise<string | null> {
+  const cred = getUserCredential(userEmail, integration)
+  if (!cred) return null
+
+  const isExpired = cred.expiresAt && new Date(cred.expiresAt) <= new Date(Date.now() + 60_000)
+  if (!isExpired || !cred.refreshToken) return cred.token
+
+  if (integration === "quickbooks") {
+    try {
+      const res = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+        method: "POST",
+        headers: {
+          "Authorization": "Basic " + Buffer.from(
+            `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`
+          ).toString("base64"),
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: cred.refreshToken,
+        }),
+      })
+      const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string }
+      if (!res.ok) {
+        console.error("QBO token refresh failed:", data.error_description)
+        return cred.token // Return stale token; QBO will 401 and user must reconnect
+      }
+      const expiresAt = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
+      storeUserCredential(userEmail, integration, {
+        token: data.access_token!,
+        refreshToken: data.refresh_token ?? cred.refreshToken,
+        scopes: cred.scopes,
+        expiresAt,
+      })
+      console.log("QBO access token refreshed, expires:", expiresAt)
+      return data.access_token!
+    } catch (err) {
+      console.error("QBO token refresh error:", err)
+      return cred.token
+    }
+  }
+
+  return cred.token
+}
+
 // Start credential proxy (non-blocking)
 createCredentialProxy({
   resolveToken: async (sessionToken, integration) => {
-    // Look up the user from the session token, then resolve their credential
     const session = getSession(sessionToken)
     if (!session) return null
+    // For integrations with expiring access tokens, auto-refresh if needed
+    const refreshed = await maybeRefreshToken(session.user.email, integration)
+    if (refreshed !== null) return refreshed
     return resolveCredential(session.user.email, workspacePath, integration)
   },
 })
@@ -116,15 +170,19 @@ app.use("/api/*", async (c, next) => {
   await next()
 })
 
-// Protected routes
-app.route("/api/gmail", gmailRoutes)
-app.route("/api/notion", notionRoutes)
+// Register built-in plugins (before workspace plugins are loaded)
+registerPlugin(gmailPlugin)
+registerPlugin(notionTasksPlugin)
+registerPlugin(notionCalendarPlugin)
+
+// Protected routes (static routes first, plugin catch-all last)
 app.route("/api/sessions", sessionRoutes)
 app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
-app.route("/api/plugins", pluginRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
+// Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
+app.route("/api", pluginRoutes)
 
 // User profiles — look up by email for transcript author avatars
 app.get("/api/users", (c) => {
@@ -143,6 +201,10 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500)
 })
 
+// Mount built-in plugin custom routes (gmail attachments, notion options, etc.)
+// Must be before the SPA fallback so /api/gmail/* routes aren't caught by /*
+mountPluginRoutes(app)
+
 // Serve production build if dist/ exists
 const distPath = resolve(__dirname, "../dist")
 if (existsSync(distPath)) {
@@ -153,7 +215,7 @@ if (existsSync(distPath)) {
 
 const port = parseInt(process.env.PORT || "3002", 10)
 
-serve({ fetch: app.fetch, port }, () => {
+const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
   pruneExpired()
@@ -164,8 +226,19 @@ serve({ fetch: app.fetch, port }, () => {
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
-  // Load source plugins and workflow panel schemas (non-blocking)
+  // Load workspace plugins and workflow panel schemas (non-blocking)
   process.env.WORKSPACE_PATH = workspacePath
-  loadPlugins(workspacePath).catch((err) => console.warn("Failed to load plugins:", err.message))
+  loadPlugins(workspacePath).then(() => {
+    // Mount any workspace plugin custom routes
+    mountPluginRoutes(app)
+  }).catch((err) => console.warn("Failed to load plugins:", err.message))
   loadPanels(workspacePath).catch((err) => console.warn("Failed to load panels:", err.message))
 })
+
+// Graceful shutdown — close server and unref timers so tsx can restart cleanly
+function shutdown() {
+  server.close()
+  process.exit(0)
+}
+process.on("SIGTERM", shutdown)
+process.on("SIGINT", shutdown)
