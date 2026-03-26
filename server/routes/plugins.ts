@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
+import type { SkillManifest } from "../../src/types/plugin.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
 import type { PluginContext } from "../../src/types/plugin.js"
@@ -33,22 +34,41 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
 
 export const pluginRoutes = new Hono()
 
-/** GET /api/plugins — list all loaded plugin manifests */
+/** GET /api/plugins — list all loaded plugin manifests (data-source plugins only, excludes skills-only) */
 pluginRoutes.get("/plugins", (c) => {
-  const plugins = getPlugins().map((p) => ({
-    id: p.id,
-    name: p.name,
-    icon: p.icon,
-    emoji: p.emoji,
-    components: p.components,
-    auth: p.auth,
-    fieldSchema: p.fieldSchema,
-    detailSchema: p.detailSchema,
-    hasSubItems: !!p.querySubItems,
-    hasGetItem: !!p.getItem,
-    hasFilterOptions: !!p.filterOptions,
-  }))
+  // Filter out skills-only plugins (those without query) — they don't appear as tabs
+  const plugins = getPlugins()
+    .filter((p) => typeof p.query === "function")
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      icon: p.icon,
+      emoji: p.emoji,
+      components: p.components,
+      auth: p.auth,
+      fieldSchema: p.fieldSchema,
+      detailSchema: p.detailSchema,
+      hasSubItems: !!p.querySubItems,
+      hasGetItem: !!p.getItem,
+      hasFilterOptions: !!p.filterOptions,
+    }))
   return c.json(plugins)
+})
+
+/** GET /api/plugins/skills — list skill manifests across all plugins, with optional ?category= filter */
+pluginRoutes.get("/plugins/skills", (c) => {
+  const categoryFilter = c.req.query("category")
+  const result: (SkillManifest & { pluginId: string })[] = []
+
+  for (const plugin of getPlugins()) {
+    if (!plugin.skillManifest) continue
+    for (const skill of plugin.skillManifest) {
+      if (categoryFilter && skill.category !== categoryFilter) continue
+      result.push({ ...skill, pluginId: plugin.id })
+    }
+  }
+
+  return c.json(result)
 })
 
 /** GET /api/:pluginId/items — query items with optional filters + cursor */
@@ -56,6 +76,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+  if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support query` })
 
   const raw = c.req.query()
   const cursor = raw.cursor
@@ -104,6 +125,7 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+  if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutate` })
 
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })

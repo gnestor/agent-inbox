@@ -6,6 +6,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { getSkillPluginPaths } from "./plugin-loader.js"
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -95,6 +96,8 @@ function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<
 // Legacy compat — default workspace path for callers not yet migrated
 let defaultWorkspacePath = ""
 let defaultWorkspaceName = ""
+/** Fallback path for the standalone workflow-plugin package (used if not already in skill plugin paths) */
+let workflowPluginPath = ""
 
 export function setWorkspacePath(path: string) {
   defaultWorkspacePath = resolve(path)
@@ -107,6 +110,22 @@ export function setWorkspacePath(path: string) {
 
 export function getWorkspacePath() {
   return defaultWorkspacePath
+}
+
+/**
+ * Build the plugins array for agent sessions.
+ * Uses skill plugin paths discovered by plugin-loader, with a fallback to the
+ * standalone workflow-plugin package if it isn't already in the list.
+ */
+function buildPluginsList(): { type: "local"; path: string }[] {
+  const skillPaths = getSkillPluginPaths()
+  // Include standalone workflow-plugin as fallback if not already covered
+  const allPaths = skillPaths.includes(workflowPluginPath)
+    ? skillPaths
+    : [...skillPaths, workflowPluginPath]
+  return allPaths
+    .filter((p) => p.length > 0)
+    .map((path) => ({ type: "local" as const, path }))
 }
 
 /** Workspace name derived from git repo name (e.g., "hammies-agent") */
@@ -538,9 +557,7 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(undefined, options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: workflowPluginPath },
-      ],
+      plugins: buildPluginsList(),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
@@ -668,9 +685,7 @@ export async function resumeSessionQuery(
       abortController,
       env: buildAgentEnv(undefined, userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: resumeWorkflowPluginPath },
-      ],
+      plugins: buildPluginsList(),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
