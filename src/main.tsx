@@ -37,10 +37,12 @@ const persister = createAsyncStoragePersister({
       // Safe to remove once all users have reloaded with the updated shouldDehydrateQuery.
       if (parsed?.clientState?.queries) {
         parsed.clientState.queries = parsed.clientState.queries.filter(
-          (q: { queryKey?: unknown[]; state?: { data?: unknown } }) => {
+          (q: { queryKey?: unknown[]; state?: { data?: unknown; status?: string } }) => {
             const key = q.queryKey?.[0]
             // Strip session lists (status changes frequently)
             if (key === "sessions") return false
+            // Strip pending queries (Promise serializes to plain object, breaks restore)
+            if (q.state?.status === "pending") return false
             // Strip infinite queries (fragile pages/pageParams state)
             const data = q.state?.data as Record<string, unknown> | undefined
             if (data && "pages" in data) return false
@@ -67,8 +69,10 @@ createRoot(document.getElementById("root")!).render(
             dehydrateOptions: {
               shouldDehydrateQuery: (query) => {
                 const key = query.queryKey[0]
-                // Never persist plugin manifests or errored queries
-                if (key === "plugins" || query.state.status === "error") return false
+                // Never persist plugin manifests, errored, or pending queries.
+                // Pending queries serialize a Promise that becomes a plain object on restore,
+                // causing "promise.then is not a function" in persistQueryClientRestore.
+                if (key === "plugins" || query.state.status === "error" || query.state.status === "pending") return false
                 // Never persist session lists — status changes frequently (archive, complete)
                 // and stale cached statuses cause UI inconsistencies
                 if (key === "sessions") return false
