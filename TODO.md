@@ -23,7 +23,7 @@
 - [x] Combobox filters (status, tags, priority, assignee, labels, project)
 - [x] Infinite scroll pagination (emails, tasks)
 - [x] Notion block renderer (headings, lists, code, callout, toggle, table, divider)
-- [x] HTML email rendering (server-side HTML→markdown via turndown, native react-markdown rendering with prose styles)
+- [x] HTML email rendering (sandboxed iframe with theme-matched styles)
 - [x] Server-side email body cleaning (strip quoted replies, Outlook/Apple Mail headers, Chinese headers, app signatures before caching)
 - [x] User preferences (persisted filter/badge settings via SQLite)
 - [x] Auth flow (Google Sign-In, session cookies, login page)
@@ -139,7 +139,12 @@
 - [ ] Open Notion links in panels vs. Notion
 - [ ] Add support for slash commands?
 - [ ] Add compact/clear context?
-- [ ] Pin sessions?
+- [ ] Pin sessions? Add to folder/project?
+- [ ] Plugins for source, workflows, commponents
+  - [ ] Gmail plugin can provide a source/input, list and detail view components, email editor component, process email workflow, triage emails workflow
+  - [ ] Notion plugin for databases (list view), pages (detail view), page editor component, skills for research?, process page workflow
+- [ ] Context menu that includes toolbar actions (list view items, detail view content area, session panel body, output panel body)
+- [ ] Add playwright for browser verification
 
 ## Phase 3: Workflow App (current)
 
