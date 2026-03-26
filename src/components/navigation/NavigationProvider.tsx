@@ -127,7 +127,7 @@ export type NavAction =
   | { type: "REMOVE_PANEL"; panelId: string }
   | { type: "REPLACE_PANEL"; panelId: string; newPanel: PanelState; selectedItemId?: string }
   | { type: "OPEN_SESSION"; sessionId?: string }
-  | { type: "OPEN_NEW_SESSION"; source?: { type: string; id: string } }
+  | { type: "OPEN_NEW_SESSION"; source?: { type: string; id: string; content?: string } }
   | { type: "OPEN_RECENT"; sessionId: string; sourceTab: TabId; selectedId?: string; sidebarIndex: number }
   | { type: "SET_FILTER"; key: string; value: string }
   | { type: "CLEAR_FILTERS" }

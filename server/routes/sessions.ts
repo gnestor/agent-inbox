@@ -12,7 +12,7 @@ type UserProfile = { name: string; email: string; picture?: string }
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
-  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId, linkedSourceType, linkedSourceId } = await c.req.json()
+  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId, linkedSourceType, linkedSourceId, linkedSourceContent } = await c.req.json()
 
   if (!prompt) {
     return c.json({ error: "prompt is required" }, 400)
@@ -27,6 +27,7 @@ sessionRoutes.post("/", async (c) => {
       linkedTaskId,
       linkedSourceType,
       linkedSourceId,
+      linkedSourceContent,
       triggerSource: "manual",
       userSessionToken,
     })

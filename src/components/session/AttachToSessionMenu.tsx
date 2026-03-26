@@ -78,7 +78,7 @@ export function SessionActionMenu({
             if (linkedSessionId) {
               openSession(linkedSessionId)
             } else {
-              openNewSession({ type: source.type, id: source.id })
+              openNewSession({ type: source.type, id: source.id, content: source.content })
             }
           }}
         >
@@ -89,7 +89,7 @@ export function SessionActionMenu({
           <DropdownMenuItem
             onClick={() => {
               setOpen(false)
-              openNewSession({ type: source.type, id: source.id })
+              openNewSession({ type: source.type, id: source.id, content: source.content })
             }}
           >
             <Sparkles className="h-4 w-4 mr-2" />

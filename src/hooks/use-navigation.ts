@@ -53,7 +53,7 @@ export function useNavigation() {
   )
 
   const openNewSession = useCallback(
-    (source?: { type: string; id: string }) => dispatch({ type: "OPEN_NEW_SESSION", source }),
+    (source?: { type: string; id: string; content?: string }) => dispatch({ type: "OPEN_NEW_SESSION", source }),
     [dispatch],
   )
 

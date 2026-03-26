@@ -221,6 +221,7 @@ export async function createSession(body: {
   linkedTaskId?: string
   linkedSourceType?: string
   linkedSourceId?: string
+  linkedSourceContent?: string
 }) {
   return request<{ sessionId: string }>(`/sessions`, {
     method: "POST",

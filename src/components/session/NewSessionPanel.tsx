@@ -28,18 +28,19 @@ interface NewSessionPanelProps {
   autoStart?: boolean
   sourceType?: string
   sourceId?: string
+  sourceContent?: string
 }
 
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart, sourceType, sourceId }: NewSessionPanelProps) {
+export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart, sourceType, sourceId, sourceContent }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
   if (autoStart && (threadId || taskId)) {
     return <AutoStartPanel threadId={threadId} taskId={taskId} />
   }
-  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} sourceType={sourceType} sourceId={sourceId} />
+  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} sourceType={sourceType} sourceId={sourceId} sourceContent={sourceContent} />
 }
 
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
@@ -93,7 +94,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 
 // ── Compose panel ────────────────────────────────────────────────────────────
 
-function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId }: { panelId?: string; threadId?: string; taskId?: string; sourceType?: string; sourceId?: string }) {
+function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId, sourceContent }: { panelId?: string; threadId?: string; taskId?: string; sourceType?: string; sourceId?: string; sourceContent?: string }) {
   const { popPanel, replacePanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
@@ -145,6 +146,7 @@ function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId }: { pan
         linkedTaskId: task?.id,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
+        linkedSourceContent: sourceContent,
       }),
     onSuccess: ({ sessionId }) => {
       if (draftKey) try { localStorage.removeItem(draftKey) } catch {}

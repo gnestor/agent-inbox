@@ -480,13 +480,17 @@ function buildSourceContext(
   taskId?: string | null,
   sourceType?: string | null,
   sourceId?: string | null,
+  sourceContent?: string | null,
 ): string | null {
   if (emailThreadId) {
     return `Source context: Email thread ${emailThreadId}` +
       (emailId ? ` (message: ${emailId})` : "")
   }
   if (taskId) return `Source context: Notion task ${taskId}`
-  if (sourceType && sourceId) return `Source context: ${sourceType} item ${sourceId}`
+  if (sourceType && sourceId) {
+    const header = `Source context: ${sourceType} item ${sourceId}`
+    return sourceContent ? `${header}\n\n${sourceContent}` : header
+  }
   return null
 }
 
@@ -505,6 +509,7 @@ export async function startSession(
     linkedTaskId?: string
     linkedSourceType?: string
     linkedSourceId?: string
+    linkedSourceContent?: string
     triggerSource?: string
     userSessionToken?: string
   },
@@ -517,7 +522,7 @@ export async function startSession(
 
   const sourceContext = buildSourceContext(
     options?.linkedEmailThreadId, options?.linkedEmailId, options?.linkedTaskId,
-    options?.linkedSourceType, options?.linkedSourceId,
+    options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
 
   const q = query({
