@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom"
+
+// jsdom doesn't provide ResizeObserver
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver
+
 import React from "react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"

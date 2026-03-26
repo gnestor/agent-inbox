@@ -96,7 +96,7 @@ describe("sessionStatusLabel", () => {
     ["running", "Running"],
     ["complete", "Complete"],
     ["needs_attention", "Needs Attention"],
-    ["errored", "Error"],
+    ["errored", "Errored"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(sessionStatusLabel(input)).toBe(expected)
   })
