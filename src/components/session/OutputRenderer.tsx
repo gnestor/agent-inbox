@@ -74,7 +74,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
     case "markdown":
       return <MarkdownOutput data={spec.data} />
     case "html":
-      return <HtmlOutput data={spec.data} />
+      return <HtmlOutput data={spec.data} fillPanel={fillPanel} />
     case "table":
       return <TableOutput data={spec.data} />
     case "json":
@@ -89,7 +89,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
       const fileData: FileData = typeof spec.data === "string"
         ? { name: "", path: spec.data }
         : spec.data
-      return <FileOutput data={fileData} sessionId={sessionId} />
+      return <FileOutput data={fileData} sessionId={sessionId} fillPanel={fillPanel} />
     }
     case "conversation":
       return <ConversationOutput data={spec.data} />
@@ -131,12 +131,12 @@ function MarkdownOutput({ data }: { data: string }) {
 
 // --- HTML ---
 
-function HtmlOutput({ data }: { data: string }) {
+function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) {
   return (
     <iframe
       srcDoc={data}
-      sandbox="allow-scripts"
-      className="w-full border-0 h-[300px]"
+      sandbox="allow-scripts allow-popups"
+      className={cn("w-full border-0", fillPanel ? "h-full" : "h-[300px]")}
       title="HTML output"
     />
   )
@@ -358,7 +358,7 @@ function fileIcon(ext: string) {
   return <FileText className={ICON_CLS} />
 }
 
-function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) {
+function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId: string; fillPanel?: boolean }) {
   const name = resolveFileName(data)
   const ext = getFileExt(name)
   const downloadUrl = getSessionFileUrl(sessionId, name, data.path)
@@ -368,7 +368,7 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
   const isInline = isImage || isVideo || isHtml
 
   return (
-    <div className="space-y-0">
+    <div className={cn(fillPanel && isHtml ? "flex flex-col h-full" : "space-y-0")}>
       {/* Inline preview for browser-native types */}
       {isImage && (
         <div className="flex justify-center bg-muted/30">
@@ -391,8 +391,8 @@ function FileOutput({ data, sessionId }: { data: FileData; sessionId: string }) 
       {isHtml && (
         <iframe
           src={downloadUrl}
-          sandbox="allow-scripts"
-          className="w-full border-0 h-[300px]"
+          sandbox="allow-scripts allow-popups"
+          className={cn("w-full border-0", fillPanel ? "flex-1 min-h-0" : "h-[300px]")}
           title={name}
         />
       )}

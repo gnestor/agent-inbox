@@ -148,7 +148,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts allow-same-origin allow-popups"
         className={className ?? `w-full border-0 rounded-md ${showIframe ? "" : "opacity-0 absolute inset-0"}`}
         style={!className ? { height: iframeHeight } : undefined}
         title={title || "React Artifact"}
