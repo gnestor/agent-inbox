@@ -1,6 +1,5 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
 import { htmlToMarkdown } from "./email-to-markdown.js"
-import { googleApiRequest } from "./google-auth.js"
 import type {
   GmailApiMessage,
   GmailApiThread,
@@ -14,8 +13,22 @@ import type {
 } from "./types/gmail-api.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
-const gmailRequest = (accessToken: string, path: string, options?: RequestInit) =>
-  googleApiRequest(GMAIL_BASE, "Gmail API", accessToken, path, options)
+
+async function gmailRequest(accessToken: string, path: string, options?: RequestInit) {
+  const res = await fetch(`${GMAIL_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Gmail API ${res.status}: ${text}`)
+  }
+  return res.json()
+}
 
 export function decodeBase64Url(data: string): string {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
@@ -170,7 +183,6 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
     subject: getHeader(message, "subject"),
     date: getHeader(message, "date"),
     body: cleanedBody,
-    bodyIsHtml: false,
     bodyFormat,
     isUnread: (message.labelIds || []).includes("UNREAD"),
     attachments: message.payload ? getAttachments(message.payload) : [],
@@ -204,7 +216,6 @@ export interface ThreadSummary {
   isUnread: boolean
   labelIds: string[]
   body: string
-  bodyIsHtml: boolean
 }
 
 function parseThreadSummary(thread: GmailApiThread): ThreadSummary {
@@ -225,7 +236,6 @@ function parseThreadSummary(thread: GmailApiThread): ThreadSummary {
     isUnread: allLabelIds.includes("UNREAD"),
     labelIds: allLabelIds,
     body: "",
-    bodyIsHtml: false,
   }
 }
 
