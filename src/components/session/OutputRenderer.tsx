@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -131,12 +131,36 @@ function MarkdownOutput({ data }: { data: string }) {
 
 // --- HTML ---
 
+const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
+
 function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [height, setHeight] = useState(300)
+
+  const srcDoc = useMemo(() => {
+    if (data.includes('</body>')) return data.replace('</body>', HEIGHT_SCRIPT + '</body>')
+    if (data.includes('</html>')) return data.replace('</html>', HEIGHT_SCRIPT + '</html>')
+    return data + HEIGHT_SCRIPT
+  }, [data])
+
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.source !== iframeRef.current?.contentWindow) return
+      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
+        setHeight(Math.min(e.data.height, 600))
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
   return (
     <iframe
-      srcDoc={data}
+      ref={iframeRef}
+      srcDoc={srcDoc}
       sandbox="allow-scripts allow-popups"
-      className={cn("w-full border-0", fillPanel ? "h-full" : "h-[300px]")}
+      className={cn("w-full border-0 transition-[height]", fillPanel ? "h-full" : "")}
+      style={!fillPanel ? { height } : undefined}
       title="HTML output"
     />
   )
@@ -367,6 +391,13 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
   const isHtml = INLINE_HTML_EXTS.has(ext)
   const isInline = isImage || isVideo || isHtml
 
+  const htmlRef = useRef<HTMLIFrameElement>(null)
+  const [htmlHeight, setHtmlHeight] = useState(300)
+  const handleHtmlLoad = useCallback(() => {
+    const h = htmlRef.current?.contentDocument?.body.scrollHeight
+    if (h) setHtmlHeight(Math.min(h, 600))
+  }, [])
+
   return (
     <div className={cn(fillPanel && isHtml ? "flex flex-col h-full" : "space-y-0")}>
       {/* Inline preview for browser-native types */}
@@ -390,9 +421,12 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
       )}
       {isHtml && (
         <iframe
+          ref={htmlRef}
           src={downloadUrl}
-          sandbox="allow-scripts allow-popups"
-          className={cn("w-full border-0", fillPanel ? "flex-1 min-h-0" : "h-[300px]")}
+          sandbox="allow-scripts allow-popups allow-same-origin"
+          className={cn("w-full border-0 transition-[height]", fillPanel ? "flex-1 min-h-0" : "")}
+          style={!fillPanel ? { height: htmlHeight } : undefined}
+          onLoad={handleHtmlLoad}
           title={name}
         />
       )}
