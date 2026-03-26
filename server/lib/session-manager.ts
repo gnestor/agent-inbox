@@ -490,6 +490,12 @@ function buildSourceContext(
   return null
 }
 
+function buildSystemPrompt(context: string | null) {
+  return context
+    ? { type: "preset" as const, preset: "claude_code" as const, append: context }
+    : { type: "preset" as const, preset: "claude_code" as const }
+}
+
 // Session execution using Agent SDK
 export async function startSession(
   prompt: string,
@@ -518,7 +524,7 @@ export async function startSession(
     prompt,
     options: {
       cwd: workspacePath,
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: buildSystemPrompt(sourceContext),
       settingSources: ["project"],
       allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
       permissionMode: "bypassPermissions",
@@ -636,7 +642,7 @@ export async function resumeSessionQuery(
     options: {
       resume: sessionId,
       cwd: workspacePath,
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: buildSystemPrompt(resumeSourceContext),
       settingSources: ["project"],
       allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
       permissionMode: "bypassPermissions",
@@ -709,22 +715,25 @@ export function attachSourceToSession(
   const db = getDb()
   const now = new Date().toISOString()
 
-  // Persist title in metadata so listSessionRecords can surface it without joins
-  const existing = db.prepare("SELECT metadata FROM sessions WHERE id = ?").get(sessionId) as { metadata: string | null } | undefined
-  const meta = existing?.metadata ? JSON.parse(existing.metadata) : {}
-  meta.linkedItemTitle = source.title
-  db.prepare(
-    "UPDATE sessions SET linked_source_id = ?, linked_source_type = ?, metadata = ?, updated_at = ? WHERE id = ?",
-  ).run(source.id, source.type, JSON.stringify(meta), now, sessionId)
-
-  // Also set legacy columns for backward compat
-  if (source.type === "email" || source.type === "gmail") {
-    db.prepare("UPDATE sessions SET linked_email_thread_id = ?, updated_at = ? WHERE id = ?")
-      .run(source.id, now, sessionId)
-  } else if (source.type === "task" || source.type === "notion-tasks") {
-    db.prepare("UPDATE sessions SET linked_task_id = ?, updated_at = ? WHERE id = ?")
-      .run(source.id, now, sessionId)
-  }
+  // Persist title in metadata so listSessionRecords can surface it without joins.
+  // Uses json_set so we don't need a SELECT + parse + re-serialize round-trip.
+  const isEmail = source.type === "email" || source.type === "gmail"
+  const isTask = source.type === "task" || source.type === "notion-tasks"
+  db.prepare(`
+    UPDATE sessions
+    SET linked_source_id = ?,
+        linked_source_type = ?,
+        metadata = json_set(COALESCE(metadata, '{}'), '$.linkedItemTitle', ?),
+        linked_email_thread_id = CASE WHEN ? THEN ? ELSE linked_email_thread_id END,
+        linked_task_id = CASE WHEN ? THEN ? ELSE linked_task_id END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    source.id, source.type, source.title,
+    isEmail ? 1 : 0, isEmail ? source.id : null,
+    isTask ? 1 : 0, isTask ? source.id : null,
+    now, sessionId,
+  )
 }
 
 /** Check if a session has an active agent process (in-memory query) */

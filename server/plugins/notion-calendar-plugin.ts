@@ -5,7 +5,7 @@
  */
 
 import * as notion from "../lib/notion.js"
-import { handleNotionMutation } from "./notion-shared.js"
+import { handleNotionMutation, mountNotionOptionsRoute } from "./notion-shared.js"
 import type { Plugin } from "../../src/types/plugin.js"
 
 export const notionCalendarPlugin: Plugin = {
@@ -69,17 +69,11 @@ export const notionCalendarPlugin: Plugin = {
   },
 
   routes(app, { getContext }) {
-    // Property options (calendar-prefixed)
-    app.get("/options/:property", (c) => {
-      const property = c.req.param("property")
-      const options = notion.getPropertyOptions(property)
-      return c.json({ options })
-    })
+    mountNotionOptionsRoute(app)
 
     // Assignees
     app.get("/calendar-assignees", async (c) => {
-      const result = await notion.queryCalendarItems({})
-      const assignees = [...new Set(result.items.map((i) => i.assignee).filter(Boolean))].sort()
+      const assignees = await notionCalendarPlugin.filterOptions!.assignee!()
       return c.json({ assignees })
     })
 

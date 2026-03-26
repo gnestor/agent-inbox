@@ -27,6 +27,22 @@ async function requireToken(ctx?: PluginContext): Promise<string> {
   return token
 }
 
+async function sendWithSignature(
+  accessToken: string,
+  params: { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string },
+) {
+  const signature = await gmail.getSignature(accessToken)
+  return gmail.sendMessage(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
+}
+
+async function createDraftWithSignature(
+  accessToken: string,
+  params: { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string },
+) {
+  const signature = await gmail.getSignature(accessToken)
+  return gmail.createDraft(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
+}
+
 const MIME_MAP: Record<string, string> = {
   pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
   gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
@@ -127,8 +143,9 @@ export const gmailPlugin: Plugin = {
               const updated = updatedMap.get(t.id)
               return updated ? updated.labelIds.includes("INBOX") : true
             })
+          const existingIds = new Set(threads.map((t) => t.id))
           for (const t of updatedThreads) {
-            if (!threads.find((m) => m.id === t.id) && t.labelIds.includes("INBOX")) {
+            if (!existingIds.has(t.id) && t.labelIds.includes("INBOX")) {
               threads.unshift(t)
             }
           }
@@ -185,15 +202,13 @@ export const gmailPlugin: Plugin = {
       }
       case "send": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
-        const signature = await gmail.getSignature(accessToken)
-        await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
+        await sendWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
         if (threadId) invalidate(`gmail:thread:${threadId}`)
         break
       }
       case "save-draft": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
-        const signature = await gmail.getSignature(accessToken)
-        await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, signature)
+        await createDraftWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
         skipInvalidate = true
         break
       }
@@ -251,8 +266,7 @@ export const gmailPlugin: Plugin = {
       const ctx = getContext(c)
       const accessToken = await requireToken(ctx)
       const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const signature = await gmail.getSignature(accessToken)
-      const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
+      const result = await sendWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
       invalidate("gmail:sync:")
       if (threadId) invalidate(`gmail:thread:${threadId}`)
       return c.json(result)
@@ -263,8 +277,7 @@ export const gmailPlugin: Plugin = {
       const ctx = getContext(c)
       const accessToken = await requireToken(ctx)
       const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const signature = await gmail.getSignature(accessToken)
-      const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, signature)
+      const result = await createDraftWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
       return c.json(result)
     })
 

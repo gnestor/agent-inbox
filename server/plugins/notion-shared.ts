@@ -1,8 +1,18 @@
 /**
- * Shared mutation handler for Notion-backed plugins (tasks + calendar).
+ * Shared handlers for Notion-backed plugins (tasks + calendar).
  */
 
+import type { Hono } from "hono"
 import * as notion from "../lib/notion.js"
+
+/** Mount a GET /options/:property route that returns cached Notion property options. */
+export function mountNotionOptionsRoute(app: Hono): void {
+  app.get("/options/:property", (c) => {
+    const property = c.req.param("property")
+    const options = notion.getPropertyOptions(property)
+    return c.json({ options })
+  })
+}
 
 /** Handle common Notion property mutation actions. Returns true if handled. */
 export async function handleNotionMutation(id: string, action: string, payload: unknown): Promise<boolean> {

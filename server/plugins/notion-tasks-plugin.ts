@@ -5,7 +5,7 @@
  */
 
 import * as notion from "../lib/notion.js"
-import { handleNotionMutation } from "./notion-shared.js"
+import { handleNotionMutation, mountNotionOptionsRoute } from "./notion-shared.js"
 import type { Plugin } from "../../src/types/plugin.js"
 
 export const notionTasksPlugin: Plugin = {
@@ -81,17 +81,11 @@ export const notionTasksPlugin: Plugin = {
   },
 
   routes(app, { getContext }) {
-    // Property options
-    app.get("/options/:property", (c) => {
-      const property = c.req.param("property")
-      const options = notion.getPropertyOptions(property)
-      return c.json({ options })
-    })
+    mountNotionOptionsRoute(app)
 
     // Assignees
     app.get("/assignees", async (c) => {
-      const result = await notion.queryTasks({})
-      const assignees = [...new Set(result.tasks.map((t) => t.assignee).filter(Boolean))].sort()
+      const assignees = await notionTasksPlugin.filterOptions!.assignee!()
       return c.json({ assignees })
     })
 
