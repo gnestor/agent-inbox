@@ -85,6 +85,17 @@ export function SessionActionMenu({
           <Sparkles className="h-4 w-4 mr-2" />
           {linkedSessionId ? "Open session" : "New session"}
         </DropdownMenuItem>
+        {linkedSessionId && (
+          <DropdownMenuItem
+            onClick={() => {
+              setOpen(false)
+              openNewSession({ type: source.type, id: source.id })
+            }}
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            New session
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add to existing session</div>
         <div className="px-2 pb-1.5">
