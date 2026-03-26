@@ -1,4 +1,4 @@
-import { readdir, readFile, access } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Plugin, SkillManifest } from "../../src/types/plugin.js"
 
@@ -18,17 +18,16 @@ function isValidPlugin(p: unknown): p is Plugin {
   if (!p || typeof p !== "object") return false
   const plugin = p as Record<string, unknown>
   if (typeof plugin.id !== "string" || plugin.id.length === 0) return false
-  // Valid if it has a query function (data source) OR hasSkills (skills-only)
   return typeof plugin.query === "function" || plugin.hasSkills === true
 }
 
-/** Check whether a directory contains a .claude-plugin/plugin.json file. */
-async function hasClaudePlugin(dirPath: string): Promise<boolean> {
+/** Try to read .claude-plugin/plugin.json. Returns parsed manifest or null. */
+async function readClaudePluginManifest(dirPath: string): Promise<Record<string, unknown> | null> {
   try {
-    await access(join(dirPath, ".claude-plugin", "plugin.json"))
-    return true
+    const content = await readFile(join(dirPath, ".claude-plugin", "plugin.json"), "utf-8")
+    return JSON.parse(content) as Record<string, unknown>
   } catch {
-    return false
+    return null
   }
 }
 
@@ -72,7 +71,7 @@ function parseSkillFrontmatter(content: string, filePath: string): SkillManifest
       }
       currentKey = kvMatch[1]
       const value = kvMatch[2].trim()
-      if (value === "" || value === null) {
+      if (value === "") {
         // Value on next lines (list or block)
         currentList = null
       } else {
@@ -208,12 +207,12 @@ export async function loadPlugins(
       if (!entry.isDirectory()) continue
       const dirPath = join(pluginsDir, entry.name)
 
-      // Check if this directory has a .claude-plugin/
-      const hasSkillsDir = await hasClaudePlugin(dirPath)
-
-      let plugin: Plugin | undefined
+      // Check for .claude-plugin/plugin.json (single read, no separate access check)
+      const claudeManifest = await readClaudePluginManifest(dirPath)
+      const hasSkills = claudeManifest !== null
 
       // Try to load plugin.ts / plugin.js
+      let plugin: Plugin | undefined
       for (const filename of ["plugin.ts", "plugin.js"]) {
         const fullPath = join(dirPath, filename)
         try {
@@ -221,7 +220,6 @@ export async function loadPlugins(
           plugin = mod.default
           break
         } catch (err: unknown) {
-          // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
           if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
               (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
           console.error(`plugin-loader: failed to load ${entry.name}/${filename}:`, err)
@@ -231,41 +229,23 @@ export async function loadPlugins(
 
       if (plugin) {
         // Data-source plugin (with or without skills)
-        if (hasSkillsDir) {
-          plugin.hasSkills = true
-        }
-        if (hasSkillsDir || isValidPlugin(plugin)) {
-          if (hasSkillsDir) {
-            plugin.skillManifest = await loadSkillManifests(dirPath)
-            pluginDirMap.set(plugin.id, dirPath)
-          }
-          if (!isValidPlugin(plugin)) {
-            console.warn(`plugin-loader: skipping ${entry.name} — missing id or query`)
-            continue
-          }
-          if (!builtinIds.has(plugin.id)) {
-            registry.set(plugin.id, plugin)
-          }
-          if (hasSkillsDir) {
-            pluginDirMap.set(plugin.id, dirPath)
-          }
-        } else {
+        if (hasSkills) plugin.hasSkills = true
+        if (!isValidPlugin(plugin)) {
           console.warn(`plugin-loader: skipping ${entry.name} — missing id or query`)
+          continue
         }
-      } else if (hasSkillsDir) {
+        if (!builtinIds.has(plugin.id)) {
+          registry.set(plugin.id, plugin)
+        }
+        if (hasSkills) {
+          plugin.skillManifest = await loadSkillManifests(dirPath)
+          pluginDirMap.set(plugin.id, dirPath)
+        }
+      } else if (hasSkills) {
         // Skills-only plugin: no plugin.ts but has .claude-plugin/
-        // Read plugin.json to get the name
-        let pluginName = entry.name
-        try {
-          const manifestContent = await readFile(join(dirPath, ".claude-plugin", "plugin.json"), "utf-8")
-          const manifest = JSON.parse(manifestContent) as Record<string, unknown>
-          if (typeof manifest.name === "string" && manifest.name) {
-            pluginName = manifest.name
-          }
-        } catch {
-          // Use directory name as fallback
-        }
-
+        const pluginName = (typeof claudeManifest.name === "string" && claudeManifest.name)
+          ? claudeManifest.name
+          : entry.name
         const skillsOnlyPlugin: Plugin = {
           id: entry.name,
           name: pluginName,

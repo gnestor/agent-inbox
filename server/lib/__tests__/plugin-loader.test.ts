@@ -106,10 +106,11 @@ function mockWorkspacePlugins(
   })
 
   readFileImpl.mockImplementation(async (path: string) => {
-    // plugin.json reads
+    // plugin.json reads — only return content if hasClaudePlugin is true
     for (const dir of pluginDirs) {
       if (typeof path === "string" && path.includes(`/${dir.name}/.claude-plugin/plugin.json`)) {
-        return JSON.stringify({ name: dir.pluginJsonName ?? dir.name })
+        if (dir.hasClaudePlugin) return JSON.stringify({ name: dir.pluginJsonName ?? dir.name })
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
       }
     }
     // SKILL.md reads

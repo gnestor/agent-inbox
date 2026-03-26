@@ -1,10 +1,9 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
-import type { SkillManifest } from "../../src/types/plugin.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
-import type { PluginContext } from "../../src/types/plugin.js"
+import type { PluginContext, SkillManifest } from "../../src/types/plugin.js"
 
 /**
  * Build a PluginContext from the Hono request context.
