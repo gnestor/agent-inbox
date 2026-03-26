@@ -11,7 +11,7 @@ All list views and the session transcript use `@tanstack/react-virtual` for virt
 | `SessionList` | `useVirtualizer` | 76px | Fixed-height items |
 | `SessionTranscript` | `useVirtualizerSafe` | 44px | Variable height, uses `measureElement` |
 
-`EmailThread` is **not** virtualized — threads typically have <20 messages, and each contains an auto-resizing iframe.
+`EmailThread` is **not** virtualized — threads typically have <20 messages.
 
 ## Pattern
 

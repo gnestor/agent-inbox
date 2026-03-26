@@ -1,4 +1,5 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
+import { htmlToMarkdown } from "./email-to-markdown.js"
 import type {
   GmailApiMessage,
   GmailApiThread,
@@ -165,11 +166,12 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
   const { body, bodyIsHtml } = getEmailBody(message)
   let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
 
-  // Replace cid: inline image references with proxy URLs
   if (bodyIsHtml && message.payload) {
     const cidMap = getInlineAttachments(message.payload)
     cleanedBody = replaceCidReferences(cleanedBody, message.id, cidMap)
+    cleanedBody = htmlToMarkdown(cleanedBody)
   }
+  const bodyFormat: 'markdown' | 'plain' = bodyIsHtml ? 'markdown' : 'plain'
 
   return {
     id: message.id,
@@ -181,7 +183,7 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
     subject: getHeader(message, "subject"),
     date: getHeader(message, "date"),
     body: cleanedBody,
-    bodyIsHtml,
+    bodyFormat,
     isUnread: (message.labelIds || []).includes("UNREAD"),
     attachments: message.payload ? getAttachments(message.payload) : [],
   }
@@ -214,7 +216,6 @@ export interface ThreadSummary {
   isUnread: boolean
   labelIds: string[]
   body: string
-  bodyIsHtml: boolean
 }
 
 function parseThreadSummary(thread: GmailApiThread): ThreadSummary {
@@ -235,7 +236,6 @@ function parseThreadSummary(thread: GmailApiThread): ThreadSummary {
     isUnread: allLabelIds.includes("UNREAD"),
     labelIds: allLabelIds,
     body: "",
-    bodyIsHtml: false,
   }
 }
 

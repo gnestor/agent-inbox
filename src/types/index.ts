@@ -31,7 +31,7 @@ export interface GmailMessage {
   subject: string
   date: string
   body: string
-  bodyIsHtml: boolean
+  bodyFormat: 'markdown' | 'plain'
   isUnread: boolean
   attachments: GmailAttachment[]
 }
