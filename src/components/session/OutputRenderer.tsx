@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -391,11 +391,32 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
   const isHtml = INLINE_HTML_EXTS.has(ext)
   const isInline = isImage || isVideo || isHtml
 
+  // Fetch HTML content and inject height script — avoids allow-same-origin
+  // (which would trigger CORS on external images like Klaviyo CDN assets)
+  const [htmlSrcDoc, setHtmlSrcDoc] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isHtml) return
+    fetch(downloadUrl)
+      .then(r => r.text())
+      .then(html => {
+        if (html.includes('</body>')) setHtmlSrcDoc(html.replace('</body>', HEIGHT_SCRIPT + '</body>'))
+        else if (html.includes('</html>')) setHtmlSrcDoc(html.replace('</html>', HEIGHT_SCRIPT + '</html>'))
+        else setHtmlSrcDoc(html + HEIGHT_SCRIPT)
+      })
+      .catch(() => {})
+  }, [downloadUrl, isHtml])
+
   const htmlRef = useRef<HTMLIFrameElement>(null)
   const [htmlHeight, setHtmlHeight] = useState(300)
-  const handleHtmlLoad = useCallback(() => {
-    const h = htmlRef.current?.contentDocument?.body.scrollHeight
-    if (h) setHtmlHeight(Math.min(h, 600))
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.source !== htmlRef.current?.contentWindow) return
+      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
+        setHtmlHeight(Math.min(e.data.height, 600))
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
   }, [])
 
   return (
@@ -419,14 +440,13 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
           />
         </div>
       )}
-      {isHtml && (
+      {isHtml && htmlSrcDoc && (
         <iframe
           ref={htmlRef}
-          src={downloadUrl}
-          sandbox="allow-scripts allow-popups allow-same-origin"
+          srcDoc={htmlSrcDoc}
+          sandbox="allow-scripts allow-popups"
           className={cn("w-full border-0 transition-[height]", fillPanel ? "flex-1 min-h-0" : "")}
           style={!fillPanel ? { height: htmlHeight } : undefined}
-          onLoad={handleHtmlLoad}
           title={name}
         />
       )}
