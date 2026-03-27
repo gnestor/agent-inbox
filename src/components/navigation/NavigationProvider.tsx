@@ -112,6 +112,7 @@ function createRecentTabState(parsed: ParsedUrl): TabState {
     panelScrollOffset: 0,
     panels,
     sourceTab: parsed.sourceTab,
+    selectedItemId: parsed.selectedId,
   }
 }
 
