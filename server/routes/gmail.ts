@@ -26,7 +26,7 @@ type ListResult = {
 async function getUserGoogleToken(c: { get: <K extends keyof AppEnv["Variables"]>(key: K) => AppEnv["Variables"][K] }): Promise<string | null> {
   const userEmail = c.get("userEmail")
   if (!userEmail) return null
-  const cred = getUserCredential(userEmail, "google")
+  const cred = await getUserCredential(userEmail, "google")
   if (!cred?.refreshToken) return null
   return refreshGoogleToken(cred.refreshToken)
 }
@@ -58,7 +58,7 @@ gmailRoutes.get("/messages", async (c) => {
   // Scope cache key per user so different users don't share cached email lists
   if (!pageToken) {
     const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
-    const syncState = getCached<SyncState>(syncKey)
+    const syncState = await getCached<SyncState>(syncKey)
 
     if (syncState?.historyId) {
       try {
@@ -80,7 +80,7 @@ gmailRoutes.get("/messages", async (c) => {
             messages: syncState.threads,
             nextPageToken: syncState.nextPageToken,
           }
-          setCached(syncKey, { ...syncState, historyId: newHistoryId }, SYNC_TTL)
+          await setCached(syncKey, { ...syncState, historyId: newHistoryId }, SYNC_TTL)
           return c.json(result)
         }
 
@@ -88,7 +88,7 @@ gmailRoutes.get("/messages", async (c) => {
         const updatedThreads = await gmail.fetchBatched([...changedThreadIds], (id) => gmail.getThreadSummary(accessToken, id))
 
         // Invalidate full thread caches so next thread open gets fresh data
-        for (const id of changedThreadIds) invalidate(`gmail:thread:${id}`)
+        for (const id of changedThreadIds) await invalidate(`gmail:thread:${id}`)
 
         const updatedMap = new Map(updatedThreads.map((t) => [t.id, t]))
 
@@ -109,7 +109,7 @@ gmailRoutes.get("/messages", async (c) => {
         }
 
         const result: ListResult = { messages: threads, nextPageToken: syncState.nextPageToken }
-        setCached(
+        await setCached(
           syncKey,
           { historyId: newHistoryId, threads, nextPageToken: syncState.nextPageToken },
           SYNC_TTL,
@@ -118,7 +118,7 @@ gmailRoutes.get("/messages", async (c) => {
       } catch (e: any) {
         // 410 Gone = historyId too old; other errors → fall through to full sync
         console.warn("Incremental sync failed, falling back to full sync:", e.message)
-        invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
+        await invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
       }
     }
   }
@@ -129,7 +129,7 @@ gmailRoutes.get("/messages", async (c) => {
 
   if (!pageToken && result.historyId) {
     const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
-    setCached(
+    await setCached(
       syncKey,
       { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken },
       SYNC_TTL,
@@ -217,8 +217,8 @@ gmailRoutes.post("/send", async (c) => {
   const { to, subject, body, threadId, inReplyTo } = await c.req.json()
   const signature = await gmail.getSignature(accessToken)
   const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, signature)
-  invalidate("gmail:sync:")
-  if (threadId) invalidate(`gmail:thread:${threadId}`)
+  await invalidate("gmail:sync:")
+  if (threadId) await invalidate(`gmail:thread:${threadId}`)
   return c.json(result)
 })
 
@@ -226,8 +226,8 @@ gmailRoutes.post("/threads/:id/trash", async (c) => {
   const accessToken = c.get("googleAccessToken")
   const id = c.req.param("id")
   await gmail.trashThread(accessToken, id)
-  invalidate("gmail:sync:")
-  invalidate(`gmail:thread:${id}`)
+  await invalidate("gmail:sync:")
+  await invalidate(`gmail:thread:${id}`)
   return c.json({ ok: true })
 })
 
@@ -236,8 +236,8 @@ gmailRoutes.patch("/threads/:id/labels", async (c) => {
   const id = c.req.param("id")
   const { addLabelIds, removeLabelIds } = await c.req.json()
   await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
-  invalidate("gmail:sync:")
-  invalidate(`gmail:thread:${id}`)
+  await invalidate("gmail:sync:")
+  await invalidate(`gmail:thread:${id}`)
   return c.json({ ok: true })
 })
 

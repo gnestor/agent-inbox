@@ -1,12 +1,91 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import Database from "better-sqlite3"
 
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
-const dbHolder: { db: Database.Database | null } = { db: null }
+// In-memory stores to simulate DB tables
+const userCredentials = new Map<string, any>()
+const workspaceCredentials = new Map<string, any>()
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => dbHolder.db!,
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM user_credentials") && sql.includes("WHERE user_email")) {
+      const email = params![0] as string
+      const results: any[] = []
+      for (const [key, row] of userCredentials.entries()) {
+        if (key.startsWith(email + ":")) {
+          results.push(row)
+        }
+      }
+      results.sort((a, b) => a.integration.localeCompare(b.integration))
+      return results
+    }
+    if (sql.includes("FROM workspace_credentials") && sql.includes("WHERE workspace")) {
+      const workspace = params![0] as string
+      const results: any[] = []
+      for (const [key, row] of workspaceCredentials.entries()) {
+        if (key.startsWith(workspace + ":")) {
+          results.push(row)
+        }
+      }
+      results.sort((a, b) => a.integration.localeCompare(b.integration))
+      return results
+    }
+    return []
+  }),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM user_credentials") && params!.length >= 2) {
+      const email = params![0] as string
+      const integration = params![1] as string
+      return userCredentials.get(`${email}:${integration}`) || undefined
+    }
+    if (sql.includes("FROM workspace_credentials") && params!.length >= 2) {
+      const workspace = params![0] as string
+      const integration = params![1] as string
+      return workspaceCredentials.get(`${workspace}:${integration}`) || undefined
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO user_credentials")) {
+      const userEmail = params![0] as string
+      const integration = params![1] as string
+      const encrypted_token = params![2] as string
+      const refresh_token = params![3]
+      const scopes = params![4]
+      const expires_at = params![5]
+      const created_at = params![6] as string
+      const updated_at = params![7] as string
+      userCredentials.set(`${userEmail}:${integration}`, {
+        encrypted_token,
+        refresh_token,
+        scopes,
+        expires_at,
+        integration,
+        updated_at,
+      })
+      return { rowCount: 1 }
+    }
+    if (sql.includes("DELETE FROM user_credentials")) {
+      const email = params![0] as string
+      const integration = params![1] as string
+      userCredentials.delete(`${email}:${integration}`)
+      return { rowCount: 1 }
+    }
+    if (sql.includes("INSERT INTO workspace_credentials")) {
+      const workspace = params![0] as string
+      const integration = params![1] as string
+      const encrypted_token = params![2] as string
+      const created_at = params![3] as string
+      const updated_at = params![4] as string
+      workspaceCredentials.set(`${workspace}:${integration}`, {
+        encrypted_token,
+        integration,
+        updated_at,
+      })
+      return { rowCount: 1 }
+    }
+    return { rowCount: 0 }
+  }),
 }))
 
 const {
@@ -21,41 +100,10 @@ const {
   listWorkspaceCredentials,
 } = await import("../vault.js")
 
-function createSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      email TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      picture TEXT,
-      created_at TEXT NOT NULL,
-      last_login_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS user_credentials (
-      user_email TEXT NOT NULL REFERENCES users(email),
-      integration TEXT NOT NULL,
-      encrypted_token TEXT NOT NULL,
-      refresh_token TEXT,
-      scopes TEXT,
-      expires_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (user_email, integration)
-    );
-    CREATE TABLE IF NOT EXISTS workspace_credentials (
-      workspace TEXT NOT NULL,
-      integration TEXT NOT NULL,
-      encrypted_token TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (workspace, integration)
-    );
-  `)
-}
-
 describe("vault", () => {
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    createSchema(dbHolder.db)
+    userCredentials.clear()
+    workspaceCredentials.clear()
   })
 
   describe("encrypt/decrypt", () => {
@@ -84,40 +132,34 @@ describe("vault", () => {
   describe("user credential CRUD", () => {
     const testEmail = "test@hammies.com"
     const integration = "notion"
-    beforeEach(() => {
-      const db = dbHolder.db!
-      db.prepare("DELETE FROM user_credentials WHERE user_email = ?").run(testEmail)
-      db.prepare(
-        "INSERT OR IGNORE INTO users (email, name, created_at, last_login_at) VALUES (?, ?, ?, ?)"
-      ).run(testEmail, "Test", new Date().toISOString(), new Date().toISOString())
-    })
-    it("stores and retrieves a credential", () => {
-      storeUserCredential(testEmail, integration, { token: "xoxb-test-token", scopes: "read,write" })
-      const cred = getUserCredential(testEmail, integration)
+
+    it("stores and retrieves a credential", async () => {
+      await storeUserCredential(testEmail, integration, { token: "xoxb-test-token", scopes: "read,write" })
+      const cred = await getUserCredential(testEmail, integration)
       expect(cred).not.toBeNull()
       expect(cred!.token).toBe("xoxb-test-token")
       expect(cred!.scopes).toBe("read,write")
     })
-    it("returns null for missing credential", () => {
-      expect(getUserCredential(testEmail, "nonexistent")).toBeNull()
+    it("returns null for missing credential", async () => {
+      expect(await getUserCredential(testEmail, "nonexistent")).toBeNull()
     })
-    it("lists all credentials for a user", () => {
-      storeUserCredential(testEmail, "notion", { token: "notion-tok" })
-      storeUserCredential(testEmail, "slack", { token: "slack-tok" })
-      const list = listUserCredentials(testEmail)
+    it("lists all credentials for a user", async () => {
+      await storeUserCredential(testEmail, "notion", { token: "notion-tok" })
+      await storeUserCredential(testEmail, "slack", { token: "slack-tok" })
+      const list = await listUserCredentials(testEmail)
       expect(list).toHaveLength(2)
       expect(list.map((c) => c.integration).sort()).toEqual(["notion", "slack"])
     })
-    it("deletes a credential", () => {
-      storeUserCredential(testEmail, integration, { token: "to-delete" })
-      expect(getUserCredential(testEmail, integration)).not.toBeNull()
-      deleteUserCredential(testEmail, integration)
-      expect(getUserCredential(testEmail, integration)).toBeNull()
+    it("deletes a credential", async () => {
+      await storeUserCredential(testEmail, integration, { token: "to-delete" })
+      expect(await getUserCredential(testEmail, integration)).not.toBeNull()
+      await deleteUserCredential(testEmail, integration)
+      expect(await getUserCredential(testEmail, integration)).toBeNull()
     })
-    it("upserts on duplicate (user_email, integration)", () => {
-      storeUserCredential(testEmail, integration, { token: "old" })
-      storeUserCredential(testEmail, integration, { token: "new" })
-      const cred = getUserCredential(testEmail, integration)
+    it("upserts on duplicate (user_email, integration)", async () => {
+      await storeUserCredential(testEmail, integration, { token: "old" })
+      await storeUserCredential(testEmail, integration, { token: "new" })
+      const cred = await getUserCredential(testEmail, integration)
       expect(cred!.token).toBe("new")
     })
   })
@@ -125,22 +167,18 @@ describe("vault", () => {
   describe("workspace credential CRUD", () => {
     const workspace = "hammies-agent"
     const integration = "air"
-    beforeEach(() => {
-      const db = dbHolder.db!
-      db.prepare("DELETE FROM workspace_credentials WHERE workspace = ?").run(workspace)
-    })
-    it("stores and retrieves a workspace credential", () => {
-      storeWorkspaceCredential(workspace, integration, "ws-secret-token")
-      const token = getWorkspaceCredential(workspace, integration)
+    it("stores and retrieves a workspace credential", async () => {
+      await storeWorkspaceCredential(workspace, integration, "ws-secret-token")
+      const token = await getWorkspaceCredential(workspace, integration)
       expect(token).toBe("ws-secret-token")
     })
-    it("returns null for missing workspace credential", () => {
-      expect(getWorkspaceCredential(workspace, "nonexistent")).toBeNull()
+    it("returns null for missing workspace credential", async () => {
+      expect(await getWorkspaceCredential(workspace, "nonexistent")).toBeNull()
     })
-    it("lists all workspace credentials", () => {
-      storeWorkspaceCredential(workspace, "air", "air-tok")
-      storeWorkspaceCredential(workspace, "shopify", "shop-tok")
-      const list = listWorkspaceCredentials(workspace)
+    it("lists all workspace credentials", async () => {
+      await storeWorkspaceCredential(workspace, "air", "air-tok")
+      await storeWorkspaceCredential(workspace, "shopify", "shop-tok")
+      const list = await listWorkspaceCredentials(workspace)
       expect(list).toHaveLength(2)
       expect(list.map((c) => c.integration).sort()).toEqual(["air", "shopify"])
     })

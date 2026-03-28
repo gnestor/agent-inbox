@@ -84,7 +84,7 @@ notionRoutes.get("/assignees", async (c) => {
 
 notionRoutes.get("/options/:property", async (c) => {
   const property = c.req.param("property")
-  const options = notion.getPropertyOptions(property)
+  const options = await notion.getPropertyOptions(property)
   return c.json({ options })
 })
 

@@ -7,9 +7,9 @@ import * as notion from "../lib/notion.js"
 
 /** Mount a GET /options/:property route that returns cached Notion property options. */
 export function mountNotionOptionsRoute(app: Hono): void {
-  app.get("/options/:property", (c) => {
+  app.get("/options/:property", async (c) => {
     const property = c.req.param("property")
-    const options = notion.getPropertyOptions(property)
+    const options = await notion.getPropertyOptions(property)
     return c.json({ options })
   })
 }

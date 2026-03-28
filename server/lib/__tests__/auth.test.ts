@@ -1,10 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import Database from "better-sqlite3"
 
-const dbHolder: { db: Database.Database | null } = { db: null }
+// In-memory stores to simulate DB tables
+const users = new Map<string, any>()
+const sessions = new Map<string, any>()
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => dbHolder.db!,
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async () => []),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("auth_sessions") && sql.includes("token")) {
+      const token = params![0] as string
+      return sessions.get(token)
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO users")) {
+      const email = params![0] as string
+      const name = params![1] as string
+      const picture = params![2]
+      const created_at = params![3] as string
+      const last_login_at = params![4] as string
+      users.set(email, { email, name, picture, created_at, last_login_at })
+      return { rowCount: 1 }
+    }
+    if (sql.includes("INSERT INTO auth_sessions")) {
+      const token = params![0] as string
+      const user_name = params![1] as string
+      const user_email = params![2] as string
+      const user_picture = params![3]
+      sessions.set(token, { user_name, user_email, user_picture })
+      return { rowCount: 1 }
+    }
+    if (sql.includes("DELETE FROM auth_sessions")) {
+      const token = params![0] as string
+      sessions.delete(token)
+      return { rowCount: 1 }
+    }
+    return { rowCount: 0 }
+  }),
 }))
 
 const mockFetch = vi.fn()
@@ -18,23 +51,8 @@ const { getClientId, verifyIdToken, getSession, deleteSession } = await import("
 
 describe("auth", () => {
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    dbHolder.db.exec(`
-      CREATE TABLE users (
-        email TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        picture TEXT,
-        created_at TEXT NOT NULL,
-        last_login_at TEXT NOT NULL
-      );
-      CREATE TABLE auth_sessions (
-        token TEXT PRIMARY KEY,
-        user_name TEXT NOT NULL,
-        user_email TEXT NOT NULL,
-        user_picture TEXT,
-        created_at TEXT NOT NULL
-      );
-    `)
+    users.clear()
+    sessions.clear()
     mockFetch.mockReset()
   })
 
@@ -74,12 +92,12 @@ describe("auth", () => {
         picture: "https://pic.test/alice.jpg",
       })
 
-      // Verify user was created in DB
-      const user = dbHolder.db!.prepare("SELECT * FROM users WHERE email = ?").get("alice@test.com") as any
+      // Verify user was created in store
+      const user = users.get("alice@test.com")
       expect(user.name).toBe("Alice")
 
       // Verify session was created
-      const session = dbHolder.db!.prepare("SELECT * FROM auth_sessions WHERE token = ?").get(result.sessionToken) as any
+      const session = sessions.get(result.sessionToken)
       expect(session.user_email).toBe("alice@test.com")
     })
 
@@ -112,9 +130,9 @@ describe("auth", () => {
       )
       await verifyIdToken("cred2")
 
-      const users = dbHolder.db!.prepare("SELECT * FROM users").all() as any[]
-      expect(users).toHaveLength(1)
-      expect(users[0].name).toBe("Alice Updated")
+      // ON CONFLICT DO UPDATE overwrites the name
+      expect(users.size).toBe(1)
+      expect(users.get("alice@test.com").name).toBe("Alice Updated")
     })
   })
 
@@ -126,15 +144,15 @@ describe("auth", () => {
       )
 
       const { sessionToken } = await verifyIdToken("cred")
-      const session = getSession(sessionToken)
+      const session = await getSession(sessionToken)
 
       expect(session).toBeDefined()
       expect(session!.user.name).toBe("Bob")
       expect(session!.user.email).toBe("bob@test.com")
     })
 
-    it("returns undefined for invalid token", () => {
-      expect(getSession("nonexistent-token")).toBeUndefined()
+    it("returns undefined for invalid token", async () => {
+      expect(await getSession("nonexistent-token")).toBeUndefined()
     })
   })
 
@@ -146,10 +164,10 @@ describe("auth", () => {
       )
 
       const { sessionToken } = await verifyIdToken("cred")
-      expect(getSession(sessionToken)).toBeDefined()
+      expect(await getSession(sessionToken)).toBeDefined()
 
-      deleteSession(sessionToken)
-      expect(getSession(sessionToken)).toBeUndefined()
+      await deleteSession(sessionToken)
+      expect(await getSession(sessionToken)).toBeUndefined()
     })
   })
 })

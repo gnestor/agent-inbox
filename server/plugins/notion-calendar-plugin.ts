@@ -60,8 +60,8 @@ export const notionCalendarPlugin: Plugin = {
   },
 
   filterOptions: {
-    status: async () => notion.getPropertyOptions("calendar:Status").map((o) => o.value),
-    tags: async () => notion.getPropertyOptions("calendar:Tags").map((o) => o.value),
+    status: async () => (await notion.getPropertyOptions("calendar:Status")).map((o) => o.value),
+    tags: async () => (await notion.getPropertyOptions("calendar:Tags")).map((o) => o.value),
     assignee: async () => {
       const result = await notion.queryCalendarItems({})
       return [...new Set(result.items.map((i) => i.assignee).filter(Boolean))].sort()

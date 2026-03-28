@@ -29,22 +29,22 @@ setInterval(() => {
   }
 }, 60_000)
 
-function getCurrentUser(c: any): { email: string; name: string } | null {
+async function getCurrentUser(c: any): Promise<{ email: string; name: string } | null> {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return null
-  const session = getSession(token)
+  const session = await getSession(token)
   return session?.user ? { email: session.user.email, name: session.user.name } : null
 }
 
 /**
  * GET /connections — list all integrations with connection status
  */
-connectionRoutes.get("/", (c) => {
-  const user = getCurrentUser(c)
+connectionRoutes.get("/", async (c) => {
+  const user = await getCurrentUser(c)
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
-  const userCreds = listUserCredentials(user.email)
-  const workspaceCreds = listWorkspaceCredentials(getWorkspaceName())
+  const userCreds = await listUserCredentials(user.email)
+  const workspaceCreds = await listWorkspaceCredentials(getWorkspaceName())
 
   const connectedUserIntegrations = new Set(userCreds.map((cr) => cr.integration))
   const connectedWorkspaceIntegrations = new Set(workspaceCreds.map((cr) => cr.integration))
@@ -69,8 +69,8 @@ connectionRoutes.get("/", (c) => {
  * GET /connections/connect/:integration — start OAuth flow
  * Redirects the user to the OAuth provider's authorization URL.
  */
-connectionRoutes.get("/connect/:integration", (c) => {
-  const user = getCurrentUser(c)
+connectionRoutes.get("/connect/:integration", async (c) => {
+  const user = await getCurrentUser(c)
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
   const integrationId = c.req.param("integration")
@@ -231,7 +231,7 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
     return c.redirect(`/settings/integrations?error=${encodeURIComponent("No access token returned")}`)
   }
 
-  storeUserCredential(oauthState.userEmail, integrationId, {
+  await storeUserCredential(oauthState.userEmail, integrationId, {
     token: accessToken,
     refreshToken: tokenData.refresh_token,
     scopes: tokenData.scope || config.scopes?.join(","),
@@ -247,8 +247,8 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
 /**
  * DELETE /connections/:integration — disconnect an integration
  */
-connectionRoutes.delete("/:integration", (c) => {
-  const user = getCurrentUser(c)
+connectionRoutes.delete("/:integration", async (c) => {
+  const user = await getCurrentUser(c)
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
   const integrationId = c.req.param("integration")
@@ -258,6 +258,6 @@ connectionRoutes.delete("/:integration", (c) => {
     return c.json({ error: "Workspace integrations cannot be disconnected from the UI" }, 403)
   }
 
-  deleteUserCredential(user.email, integrationId)
+  await deleteUserCredential(user.email, integrationId)
   return c.json({ ok: true })
 })

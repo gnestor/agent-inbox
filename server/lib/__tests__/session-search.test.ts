@@ -4,7 +4,6 @@ import * as path from "path"
 import * as os from "os"
 
 // We need to control homedir() so tests use a temp directory.
-// ESM native modules can't be spied on directly; use vi.mock instead.
 let _tmpDir = ""
 vi.mock("os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("os")>()
@@ -15,14 +14,13 @@ vi.mock("os", async (importOriginal) => {
 })
 
 // Mock DB and credentials (required by the module but not exercised here)
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => ({
-    prepare: () => ({
-      get: vi.fn(),
-      run: vi.fn(),
-      all: vi.fn(() => []),
-    }),
-  }),
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async () => []),
+  queryOne: vi.fn(async () => undefined),
+  execute: vi.fn(async () => ({ rowCount: 0 })),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -72,12 +70,10 @@ describe("searchAgentSessions", () => {
     const projectDir = path.join(projectsDir, cwd.replace(/\//g, "-"))
     fs.mkdirSync(projectDir, { recursive: true })
 
-    // Build a prompt where "Hammies End to End Supply Chain 2024" appears after position 200
     const longPrefix =
       "I want to get realistic quotes from 2-3 other 3PLs so that I can present them to DM and negotiate better rates. I tried this once before but the quote that I received was too difficult to compare with DM's pricing (see the spreadsheet for reference), so I'd like to format DM's pricing and quotes from other vendors in a spreadsheet with columns for billing line item and columns for vendors.\n\nI have a couple email threads going with different 3PLs:\n"
     const promptText = longPrefix + '- Flexport: "Hammies End to End Supply Chain 2024"'
 
-    // Confirm the search term is beyond 200 chars
     expect(longPrefix.length).toBeGreaterThan(200)
     expect(promptText.slice(0, 200)).not.toContain("Hammies End to End Supply Chain 2024")
     expect(promptText).toContain("Hammies End to End Supply Chain 2024")

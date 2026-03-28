@@ -24,20 +24,20 @@ authRoutes.post("/callback", async (c) => {
   return c.json(user)
 })
 
-authRoutes.get("/session", (c) => {
+authRoutes.get("/session", async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return c.json({ user: null })
 
-  const session = getSession(token)
+  const session = await getSession(token)
   if (!session) return c.json({ user: null })
 
   return c.json({ user: session.user })
 })
 
-authRoutes.post("/logout", (c) => {
+authRoutes.post("/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
   if (token) {
-    deleteSession(token)
+    await deleteSession(token)
     deleteCookie(c, SESSION_COOKIE, { path: "/" })
   }
   return c.json({ ok: true })
