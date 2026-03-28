@@ -7,13 +7,45 @@
  * fresh fetch runs in the background to update the cache.
  */
 
-import { get, set } from "idb-keyval"
-
 const BASE = "/api"
 const CACHE_PREFIX = "api:"
 
 // In-memory cache (survives within a session, instant access)
 const memCache = new Map<string, unknown>()
+
+// Direct IndexedDB access (avoids idb-keyval import issues)
+function idbGet<T>(key: string): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open("keyval-store")
+      req.onsuccess = () => {
+        const db = req.result
+        try {
+          const tx = db.transaction("keyval", "readonly")
+          const store = tx.objectStore("keyval")
+          const getReq = store.get(key)
+          getReq.onsuccess = () => resolve(getReq.result as T | undefined)
+          getReq.onerror = () => resolve(undefined)
+        } catch { resolve(undefined) }
+      }
+      req.onerror = () => resolve(undefined)
+    } catch { resolve(undefined) }
+  })
+}
+
+function idbSet(key: string, value: unknown): void {
+  try {
+    const req = indexedDB.open("keyval-store")
+    req.onsuccess = () => {
+      const db = req.result
+      try {
+        const tx = db.transaction("keyval", "readwrite")
+        const store = tx.objectStore("keyval")
+        store.put(value, key)
+      } catch {}
+    }
+  } catch {}
+}
 
 async function fetchFromNetwork<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -57,7 +89,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     fetchFromNetwork<T>(url, options)
       .then((fresh) => {
         memCache.set(cacheKey, fresh)
-        set(cacheKey, fresh).catch(() => {})
+        idbSet(cacheKey, fresh)
       })
       .catch(() => {})
     return mem
@@ -65,14 +97,14 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
   // 2. IndexedDB cache (fast async)
   try {
-    const cached = await get<T>(cacheKey)
+    const cached = await idbGet<T>(cacheKey)
     if (cached !== undefined && cached !== null) {
       memCache.set(cacheKey, cached)
       // Revalidate in background
       fetchFromNetwork<T>(url, options)
         .then((fresh) => {
           memCache.set(cacheKey, fresh)
-          set(cacheKey, fresh).catch(() => {})
+          idbSet(cacheKey, fresh)
         })
         .catch(() => {})
       return cached
@@ -82,7 +114,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   // 3. Network fetch (slow)
   const data = await fetchFromNetwork<T>(url, options)
   memCache.set(cacheKey, data)
-  set(cacheKey, data).catch(() => {})
+  idbSet(cacheKey, data)
   return data
 }
 
