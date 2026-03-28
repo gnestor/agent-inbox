@@ -45,7 +45,7 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
           </Badge>
         ) : integration.connected ? (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handleDisconnect}
             disabled={disconnect.isPending}

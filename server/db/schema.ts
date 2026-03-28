@@ -110,6 +110,22 @@ export function initializeDatabase() {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (workspace, integration)
     );
+
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS workspace_members (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      user_email TEXT NOT NULL REFERENCES users(email),
+      role TEXT NOT NULL DEFAULT 'member',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, user_email)
+    );
   `)
 
   // Migrations for existing tables
@@ -120,7 +136,6 @@ export function initializeDatabase() {
   if (!sessionCols.includes("linked_source_type")) {
     database.exec("ALTER TABLE sessions ADD COLUMN linked_source_type TEXT")
   }
-
   // Migrate existing linked_email_thread_id/linked_task_id to generic linked_source_type/id
   const needsMigration = database.prepare(
     "SELECT COUNT(*) as count FROM sessions WHERE linked_source_id IS NULL AND (linked_email_thread_id IS NOT NULL OR linked_task_id IS NOT NULL)"

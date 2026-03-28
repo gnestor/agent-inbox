@@ -12,6 +12,23 @@ export interface PresenceUser {
   picture?: string
 }
 
+// Workspace types
+
+export interface Workspace {
+  id: string
+  name: string
+  role: "admin" | "member"
+}
+
+export interface WorkspaceMember {
+  workspace_id: string
+  user_email: string
+  role: "admin" | "member"
+  created_at: string
+  name: string
+  picture?: string
+}
+
 // Gmail types
 
 export interface GmailAttachment {

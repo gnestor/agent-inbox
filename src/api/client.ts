@@ -37,7 +37,11 @@ export async function authCallback(credential: string) {
 }
 
 export async function getAuthSession() {
-  return request<{ user: import("@/types").UserProfile | null }>(`/auth/session`)
+  return request<{
+    user: import("@/types").UserProfile | null
+    workspaces?: import("@/types").Workspace[]
+    activeWorkspace?: import("@/types").Workspace | null
+  }>(`/auth/session`)
 }
 
 export async function logout() {
@@ -423,4 +427,58 @@ export async function setPreference(key: string, value: unknown) {
 
 export async function getUserProfiles(emails: string[]): Promise<{ users: { email: string; name: string; picture?: string }[] }> {
   return request(`/users?emails=${emails.map(encodeURIComponent).join(",")}`)
+}
+
+// Workspaces
+
+export async function getWorkspaces() {
+  return request<{ workspaces: import("@/types").Workspace[]; activeWorkspaceId: string | null }>(`/workspaces`)
+}
+
+export async function setActiveWorkspace(workspaceId: string) {
+  return request<{ id: string; name: string }>(`/workspaces/active`, {
+    method: "PUT",
+    body: JSON.stringify({ workspaceId }),
+  })
+}
+
+export async function getWorkspaceDetails(workspaceId: string) {
+  return request<{ workspace: unknown; members: import("@/types").WorkspaceMember[] }>(`/workspaces/${workspaceId}`)
+}
+
+export async function renameWorkspace(workspaceId: string, name: string) {
+  return request<{ ok: boolean }>(`/workspaces/${workspaceId}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function getWorkspaceGitInfo(workspaceId: string) {
+  return request<{ branch: string | null; remote: string | null; remoteUrl: string | null; status: string[] }>(
+    `/workspaces/${workspaceId}/git`,
+  )
+}
+
+export async function addWorkspaceMember(workspaceId: string, email: string, role?: string) {
+  return request<{ ok: boolean }>(`/workspaces/${workspaceId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  })
+}
+
+export async function removeWorkspaceMember(workspaceId: string, email: string) {
+  return request<{ ok: boolean }>(`/workspaces/${workspaceId}/members/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+  })
+}
+
+export async function updateMemberRole(workspaceId: string, email: string, role: string) {
+  return request<{ ok: boolean }>(`/workspaces/${workspaceId}/members/${encodeURIComponent(email)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  })
+}
+
+export async function getAvailableUsers(workspaceId: string) {
+  return request<{ users: import("@/types").UserProfile[] }>(`/workspaces/${workspaceId}/available-users`)
 }

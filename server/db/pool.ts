@@ -68,11 +68,14 @@ export async function withTransaction<T>(
 }
 
 export async function initializeDatabase(): Promise<void> {
-  const migrationSql = readFileSync(
-    resolve(__dirname, "migrations/001_initial_schema.sql"),
-    "utf-8",
-  )
-  await getPool().query(migrationSql)
+  const migrations = [
+    "001_initial_schema.sql",
+    "002_workspaces.sql",
+  ]
+  for (const file of migrations) {
+    const sql = readFileSync(resolve(__dirname, "migrations", file), "utf-8")
+    await getPool().query(sql)
+  }
 
   console.log("Database initialized (PostgreSQL)")
 }

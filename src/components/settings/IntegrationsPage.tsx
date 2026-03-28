@@ -4,9 +4,11 @@ import { IntegrationCard } from "./IntegrationCard"
 import { useSearchParams } from "react-router-dom"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { useUser } from "@/hooks/use-user"
 import { toast } from "sonner"
 
 export function IntegrationsPage() {
+  const { user } = useUser()
   const { data: integrations, isLoading } = useConnections()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -25,7 +27,6 @@ export function IntegrationsPage() {
   }, [searchParams, integrations, setSearchParams])
 
   const userIntegrations = integrations?.filter((i) => i.scope === "user") || []
-  const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace") || []
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -33,7 +34,7 @@ export function IntegrationsPage() {
         left={
           <>
             <SidebarButton />
-            <h2 className="font-semibold text-sm">Integrations</h2>
+            <h2 className="font-semibold text-sm">{user?.name || "Settings"}</h2>
           </>
         }
       />
@@ -42,29 +43,14 @@ export function IntegrationsPage() {
         <PanelSkeleton />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl">
-
           {userIntegrations.length > 0 && (
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold">User</h2>
+              <h2 className="text-sm font-semibold">Integrations</h2>
               <p className="text-xs text-muted-foreground">
                 Connect your personal accounts. Only you can access these credentials.
               </p>
               <div className="space-y-2">
                 {userIntegrations.map((integration) => (
-                  <IntegrationCard key={integration.id} integration={integration} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {workspaceIntegrations.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold">Workspace</h2>
-              <p className="text-xs text-muted-foreground">
-                Shared service accounts managed by the workspace admin via CLI.
-              </p>
-              <div className="space-y-2">
-                {workspaceIntegrations.map((integration) => (
                   <IntegrationCard key={integration.id} integration={integration} />
                 ))}
               </div>

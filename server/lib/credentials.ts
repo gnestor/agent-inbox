@@ -1,34 +1,45 @@
 import { config } from "dotenv"
 import { resolve } from "path"
 
-let credentials: Record<string, string> = {}
+// Per-workspace credential stores keyed by workspace ID
+const workspaceCredentials = new Map<string, Record<string, string>>()
+let defaultWorkspaceId = ""
 
-export function loadCredentials(workspacePath: string) {
+export function setDefaultWorkspaceId(id: string) {
+  defaultWorkspaceId = id
+}
+
+export function loadCredentials(workspacePath: string, workspaceId: string) {
   const result = config({ path: resolve(workspacePath, ".env") })
   if (result.error) {
     console.warn(`Warning: Could not load .env from ${workspacePath}: ${result.error.message}`)
   }
-  credentials = result.parsed || {}
-  return credentials
+  const creds = result.parsed || {}
+  workspaceCredentials.set(workspaceId, creds)
+  return creds
 }
 
-export function getCredential(key: string): string {
-  const value = credentials[key]
-  if (!value) throw new Error(`Missing credential: ${key}`)
+export function getCredential(key: string, workspaceId?: string): string {
+  const id = workspaceId || defaultWorkspaceId
+  const creds = workspaceCredentials.get(id) || {}
+  const value = creds[key]
+  if (!value) throw new Error(`Missing credential: ${key} (workspace: ${id})`)
   return value
 }
 
-export function getCredentials() {
-  return credentials
+export function getCredentials(workspaceId?: string) {
+  const id = workspaceId || defaultWorkspaceId
+  return workspaceCredentials.get(id) || {}
 }
 
 /**
  * Returns env vars to pass to the Agent SDK, excluding ANTHROPIC_API_KEY
  * so that Claude Code uses the user's subscription instead of API credits.
  */
-export function getAgentEnv(): Record<string, string> {
+export function getAgentEnv(workspaceId?: string): Record<string, string> {
+  const creds = getCredentials(workspaceId)
   const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(credentials)) {
+  for (const [key, value] of Object.entries(creds)) {
     if (key === "ANTHROPIC_API_KEY") continue
     env[key] = value
   }
@@ -41,14 +52,14 @@ export function getAgentEnv(): Record<string, string> {
  */
 const tokenCache = new Map<string, { token: string; expiry: number }>()
 
-export async function refreshGoogleToken(refreshToken: string): Promise<string> {
+export async function refreshGoogleToken(refreshToken: string, workspaceId?: string): Promise<string> {
   const cached = tokenCache.get(refreshToken)
   if (cached && Date.now() < cached.expiry - 60_000) {
     return cached.token
   }
 
-  const clientId = getCredential("GOOGLE_CLIENT_ID")
-  const clientSecret = getCredential("GOOGLE_CLIENT_SECRET")
+  const clientId = getCredential("GOOGLE_CLIENT_ID", workspaceId)
+  const clientSecret = getCredential("GOOGLE_CLIENT_SECRET", workspaceId)
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -78,14 +89,14 @@ export async function refreshGoogleToken(refreshToken: string): Promise<string> 
 /**
  * Returns a Google OAuth access token using the workspace-level refresh token.
  */
-export async function getGoogleAccessToken(): Promise<string> {
-  const refreshToken = getCredential("GOOGLE_REFRESH_TOKEN")
-  return refreshGoogleToken(refreshToken)
+export async function getGoogleAccessToken(workspaceId?: string): Promise<string> {
+  const refreshToken = getCredential("GOOGLE_REFRESH_TOKEN", workspaceId)
+  return refreshGoogleToken(refreshToken, workspaceId)
 }
 
 /**
  * Returns the Notion API token.
  */
-export function getNotionToken(): string {
-  return getCredential("NOTION_API_TOKEN")
+export function getNotionToken(workspaceId?: string): string {
+  return getCredential("NOTION_API_TOKEN", workspaceId)
 }

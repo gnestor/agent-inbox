@@ -1,4 +1,3 @@
-import { execFileSync } from "child_process"
 import { resolve } from "path"
 
 const INITIAL_SUMMARY_LENGTH = 80
@@ -65,7 +64,7 @@ function makeCanUseTool(getSessionId: () => string | null) {
 
 // Build env for agent, excluding sensitive keys. When the credential proxy
 // is running, route traffic through it instead of passing raw API tokens.
-function buildAgentEnv(userSessionToken?: string): Record<string, string> {
+function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<string, string> {
   const env: Record<string, string> = {}
 
   // Base env: inherit process env minus sensitive keys
@@ -87,36 +86,32 @@ function buildAgentEnv(userSessionToken?: string): Record<string, string> {
     Object.assign(env, credentialProxy.getProxyEnv(userSessionToken))
   } else {
     // Fallback: pass workspace credentials directly (pre-proxy migration)
-    Object.assign(env, getAgentEnv())
+    Object.assign(env, getAgentEnv(workspaceId))
   }
 
   return env
 }
 
-let workspacePath = ""
-let workspaceName = ""
-let workflowPluginPath = ""
+// Legacy compat — default workspace path for callers not yet migrated
+let defaultWorkspacePath = ""
+let defaultWorkspaceName = ""
 
 export function setWorkspacePath(path: string) {
-  workspacePath = resolve(path)
-  workflowPluginPath = resolve(workspacePath, "../workflow-plugin")
-  // Derive workspace name from git remote (repo name), fallback to dir basename
-  try {
-    const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], { cwd: path, encoding: "utf-8" }).trim()
-    // https://github.com/user/repo-name.git → repo-name
-    workspaceName = remoteUrl.replace(/\.git$/, "").split("/").pop() || path.split("/").pop() || path
-  } catch {
-    workspaceName = path.split("/").pop() || path
-  }
+  defaultWorkspacePath = resolve(path)
+  import("./workspace-scanner.js").then(({ deriveWorkspaceName }) => {
+    defaultWorkspaceName = deriveWorkspaceName(path)
+  }).catch(() => {
+    defaultWorkspaceName = path.split("/").pop() || path
+  })
 }
 
 export function getWorkspacePath() {
-  return workspacePath
+  return defaultWorkspacePath
 }
 
 /** Workspace name derived from git repo name (e.g., "hammies-agent") */
 export function getWorkspaceName() {
-  return workspaceName
+  return defaultWorkspaceName
 }
 
 export async function createSessionRecord(
@@ -513,11 +508,13 @@ export async function startSession(
     linkedSourceContent?: string
     triggerSource?: string
     userSessionToken?: string
+    workspacePath?: string
   },
 ): Promise<string> {
   // Dynamic import to avoid issues at startup
   const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
+  const wsPath = options?.workspacePath || defaultWorkspacePath
   const abortController = new AbortController()
   let sessionId: string | null = null
 
@@ -526,10 +523,12 @@ export async function startSession(
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
 
+  const workflowPluginPath = resolve(wsPath, "../workflow-plugin")
+
   const q = agentQuery({
     prompt,
     options: {
-      cwd: workspacePath,
+      cwd: wsPath,
       systemPrompt: buildSystemPrompt(sourceContext),
       settingSources: ["project"],
       allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
@@ -537,7 +536,7 @@ export async function startSession(
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
       abortController,
-      env: buildAgentEnv(options?.userSessionToken),
+      env: buildAgentEnv(undefined, options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
       plugins: [
         { type: "local" as const, path: workflowPluginPath },
@@ -652,11 +651,14 @@ export async function resumeSessionQuery(
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
+  const wsPath = defaultWorkspacePath
+  const resumeWorkflowPluginPath = resolve(wsPath, "../workflow-plugin")
+
   const q = agentQuery({
     prompt,
     options: {
       resume: sessionId,
-      cwd: workspacePath,
+      cwd: wsPath,
       systemPrompt: buildSystemPrompt(resumeSourceContext),
       settingSources: ["project"],
       allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
@@ -664,10 +666,10 @@ export async function resumeSessionQuery(
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
       abortController,
-      env: buildAgentEnv(userSessionToken),
+      env: buildAgentEnv(undefined, userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
       plugins: [
-        { type: "local" as const, path: workflowPluginPath },
+        { type: "local" as const, path: resumeWorkflowPluginPath },
       ],
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
@@ -855,10 +857,66 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
   )
 }
 
+/**
+ * Watch the ~/.claude/projects/ directory for new/changed JSONL session files.
+ * When a change is detected, indexes the new session into the DB so that
+ * metadata (summaries, linked items) stays up-to-date without a server restart.
+ */
+export async function watchProjectsDir(): Promise<void> {
+  const fs = await import("fs")
+  const { join } = await import("path")
+  const { homedir } = await import("os")
+
+  const projectsDir = join(homedir(), ".claude", "projects")
+  if (!fs.existsSync(projectsDir)) return
+
+  // Debounce: collect changed files for 2s before indexing
+  let pending = new Set<string>()
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  function flush() {
+    timer = null
+    const files = [...pending]
+    pending = new Set()
+    indexNewSessions(files).catch((err) =>
+      console.warn("[watcher] Failed to index sessions:", err)
+    )
+  }
+
+  async function indexNewSessions(filePaths: string[]) {
+    for (const filePath of filePaths) {
+      try {
+        const stat = fs.statSync(filePath)
+        const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
+        const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+        if (!cwd) continue
+
+        const sessionId = filePath.split("/").pop()!.replace(".jsonl", "")
+        await importAgentSession(sessionId, {
+          firstPrompt,
+          summary,
+          lastModified: stat.mtimeMs,
+        })
+      } catch { /* skip unreadable files */ }
+    }
+  }
+
+  // Watch recursively — new subdirs (new workspaces) will be picked up
+  fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
+    if (!filename || !filename.endsWith(".jsonl")) return
+    const filePath = join(projectsDir, filename)
+    pending.add(filePath)
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(flush, 2000)
+  })
+
+  console.log(`[watcher] Watching ${projectsDir} for new sessions`)
+}
+
 export async function listAgentSessions() {
   try {
     const { listSessions } = await import("@anthropic-ai/claude-agent-sdk")
-    return listSessions({ dir: workspacePath })
+    return listSessions({ dir: defaultWorkspacePath })
   } catch {
     return []
   }
@@ -897,7 +955,7 @@ export async function findAgentSession(sessionId: string) {
   }
 
   // Try the current workspace directory first (most common case)
-  const primaryDir = join(projectsDir, workspacePath.replace(/\//g, "-"))
+  const primaryDir = join(projectsDir, defaultWorkspacePath.replace(/\//g, "-"))
   const primary = tryDir(primaryDir)
   if (primary) return primary
 
@@ -1002,7 +1060,7 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
  * the truncated firstPrompt metadata, so terms that appear deep in a prompt
  * are still found.
  */
-export async function searchAgentSessions(q: string) {
+export async function searchAgentSessions(q: string, wsPath?: string) {
   const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
@@ -1021,10 +1079,12 @@ export async function searchAgentSessions(q: string) {
     project: string
   }> = []
 
-  const dirs = fs
-    .readdirSync(projectsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
+  // If workspace path provided, only scan its specific directory
+  const dirs = wsPath
+    ? [wsPath.replace(/\//g, "-")]
+    : fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
 
   for (const dirName of dirs) {
     const dirPath = join(projectsDir, dirName)
@@ -1073,7 +1133,13 @@ export async function searchAgentSessions(q: string) {
   return [...byId.values()]
 }
 
-export async function listAllAgentSessions() {
+/**
+ * List agent SDK sessions for a specific workspace path.
+ * Sessions are stored in ~/.claude/projects/{encoded-path}/ where
+ * the encoded path is the workspace path with / replaced by -.
+ * If no workspace path is given, falls back to scanning all directories.
+ */
+export async function listAllAgentSessions(wsPath?: string) {
   const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
@@ -1081,10 +1147,12 @@ export async function listAllAgentSessions() {
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
 
-  const dirs = fs
-    .readdirSync(projectsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
+  // If workspace path provided, only scan its specific directory
+  const dirs = wsPath
+    ? [wsPath.replace(/\//g, "-")]
+    : fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
 
   const results: Array<{
     sessionId: string
@@ -1097,6 +1165,7 @@ export async function listAllAgentSessions() {
 
   for (const dirName of dirs) {
     const dirPath = join(projectsDir, dirName)
+    if (!fs.existsSync(dirPath)) continue
     try {
       const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"))
       for (const fileName of files) {
@@ -1181,7 +1250,7 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
   const { homedir } = await import("os")
 
   // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
-  const encodedDir = (cwd || workspacePath).replace(/\//g, "-")
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
   const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
 
   try {
@@ -1305,7 +1374,7 @@ async function patchArtifactInJsonl(sessionId: string, sequence: number, code: s
   const { join } = await import("path")
   const { homedir } = await import("os")
 
-  const encodedDir = (cwd || workspacePath).replace(/\//g, "-")
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
   const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
 
   try {
