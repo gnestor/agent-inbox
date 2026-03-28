@@ -97,8 +97,8 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   const method = options?.method ?? "GET"
   const url = `${BASE}${path}`
 
-  // Only cache GET requests
-  if (method !== "GET") {
+  // Skip cache for non-GET requests and auth endpoints (always check server)
+  if (method !== "GET" || path.startsWith("/auth/")) {
     return fetchFromNetwork<T>(url, options)
   }
 
