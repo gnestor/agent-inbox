@@ -13,28 +13,33 @@ const CACHE_PREFIX = "api:"
 // In-memory cache (survives within a session, instant access)
 const memCache = new Map<string, unknown>()
 
-// Preload all api: entries from IndexedDB into memory on module load
-// so the first request() call can hit the memory cache instantly
-try {
-  const req = indexedDB.open("keyval-store")
-  req.onsuccess = () => {
-    const db = req.result
-    try {
-      const tx = db.transaction("keyval", "readonly")
-      const store = tx.objectStore("keyval")
-      const cursorReq = store.openCursor()
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result
-        if (!cursor) return
-        const key = String(cursor.key)
-        if (key.startsWith(CACHE_PREFIX)) {
-          memCache.set(key, cursor.value)
+// Preload all api: entries from IndexedDB into memory on module load.
+// request() awaits this before checking cache, ensuring the first call
+// on reload gets cached data instead of falling through to network.
+const preloadDone: Promise<void> = new Promise((resolve) => {
+  try {
+    const req = indexedDB.open("keyval-store")
+    req.onsuccess = () => {
+      const db = req.result
+      try {
+        const tx = db.transaction("keyval", "readonly")
+        const store = tx.objectStore("keyval")
+        const cursorReq = store.openCursor()
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result
+          if (!cursor) { resolve(); return }
+          const key = String(cursor.key)
+          if (key.startsWith(CACHE_PREFIX)) {
+            memCache.set(key, cursor.value)
+          }
+          cursor.continue()
         }
-        cursor.continue()
-      }
-    } catch {}
-  }
-} catch {}
+        cursorReq.onerror = () => resolve()
+      } catch { resolve() }
+    }
+    req.onerror = () => resolve()
+  } catch { resolve() }
+})
 
 // Direct IndexedDB access (avoids idb-keyval import issues)
 function idbGet<T>(key: string): Promise<T | undefined> {
@@ -101,6 +106,9 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   if (method !== "GET" || path.startsWith("/auth/")) {
     return fetchFromNetwork<T>(url, options)
   }
+
+  // Wait for IndexedDB preload to finish so memCache is populated
+  await preloadDone
 
   const cacheKey = `${CACHE_PREFIX}${path}`
 
