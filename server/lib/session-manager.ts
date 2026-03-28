@@ -6,7 +6,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
-import { getSkillPluginPaths } from "./plugin-loader.js"
+// Plugin paths for agent sessions built from workspace path
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -118,14 +118,8 @@ export function getWorkspacePath() {
  * standalone workflow-plugin package if it isn't already in the list.
  */
 function buildPluginsList(): { type: "local"; path: string }[] {
-  const skillPaths = getSkillPluginPaths()
-  // Include standalone workflow-plugin as fallback if not already covered
-  const allPaths = skillPaths.includes(workflowPluginPath)
-    ? skillPaths
-    : [...skillPaths, workflowPluginPath]
-  return allPaths
-    .filter((p) => p.length > 0)
-    .map((path) => ({ type: "local" as const, path }))
+  if (!workflowPluginPath) return []
+  return [{ type: "local" as const, path: workflowPluginPath }]
 }
 
 /** Workspace name derived from git repo name (e.g., "hammies-agent") */
