@@ -133,26 +133,30 @@ function MarkdownOutput({ data }: { data: string }) {
 
 const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
 
-function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
+function useIframeAutoHeight(max = 600) {
+  const ref = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(300)
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.source !== ref.current?.contentWindow) return
+      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
+        setHeight(Math.min(e.data.height, max))
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [max])
+  return { ref, height }
+}
+
+function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) {
+  const { ref: iframeRef, height } = useIframeAutoHeight()
 
   const srcDoc = useMemo(() => {
     if (data.includes('</body>')) return data.replace('</body>', HEIGHT_SCRIPT + '</body>')
     if (data.includes('</html>')) return data.replace('</html>', HEIGHT_SCRIPT + '</html>')
     return data + HEIGHT_SCRIPT
   }, [data])
-
-  useEffect(() => {
-    function handleMessage(e: MessageEvent) {
-      if (e.source !== iframeRef.current?.contentWindow) return
-      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
-        setHeight(Math.min(e.data.height, 600))
-      }
-    }
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
 
   return (
     <iframe
@@ -406,18 +410,7 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
       .catch(() => {})
   }, [downloadUrl, isHtml])
 
-  const htmlRef = useRef<HTMLIFrameElement>(null)
-  const [htmlHeight, setHtmlHeight] = useState(300)
-  useEffect(() => {
-    function handleMessage(e: MessageEvent) {
-      if (e.source !== htmlRef.current?.contentWindow) return
-      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
-        setHtmlHeight(Math.min(e.data.height, 600))
-      }
-    }
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  const { ref: htmlRef, height: htmlHeight } = useIframeAutoHeight()
 
   return (
     <div className={cn(fillPanel && isHtml ? "flex flex-col h-full" : "space-y-0")}>

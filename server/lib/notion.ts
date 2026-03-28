@@ -345,6 +345,9 @@ async function syncSchemaPropertyOptions(dbId: string, prefix?: string) {
 
   await withTransaction(async (client) => {
     const props = schema.properties || {}
+    const propertiesToSync: string[] = []
+    const rows: [string, string, string | null, string][] = []
+
     for (const [name, prop] of Object.entries(props) as [string, any][]) {
       const property = prefix ? `${prefix}${name}` : name
       let options: { name: string; color?: string }[] | undefined
@@ -353,14 +356,30 @@ async function syncSchemaPropertyOptions(dbId: string, prefix?: string) {
       else if (prop.type === "multi_select" && prop.multi_select?.options) options = prop.multi_select.options
       if (!options) continue
 
-      await client.query(`DELETE FROM notion_options WHERE property = $1`, [property])
+      propertiesToSync.push(property)
       for (const opt of options) {
-        await client.query(
-          `INSERT INTO notion_options (property, value, color, updated_at) VALUES ($1, $2, $3, $4)
-           ON CONFLICT (property, value) DO UPDATE SET color = EXCLUDED.color, updated_at = EXCLUDED.updated_at`,
-          [property, opt.name, opt.color || null, now],
-        )
+        rows.push([property, opt.name, opt.color || null, now])
       }
+    }
+
+    if (propertiesToSync.length === 0) return
+
+    // Bulk delete + bulk insert instead of per-option queries
+    const delPlaceholders = propertiesToSync.map((_, i) => `$${i + 1}`).join(",")
+    await client.query(`DELETE FROM notion_options WHERE property IN (${delPlaceholders})`, propertiesToSync)
+
+    if (rows.length > 0) {
+      const values: unknown[] = []
+      const placeholders = rows.map((row, i) => {
+        const base = i * 4
+        values.push(...row)
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`
+      })
+      await client.query(
+        `INSERT INTO notion_options (property, value, color, updated_at) VALUES ${placeholders.join(", ")}
+         ON CONFLICT (property, value) DO UPDATE SET color = EXCLUDED.color, updated_at = EXCLUDED.updated_at`,
+        values,
+      )
     }
   })
 }

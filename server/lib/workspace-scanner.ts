@@ -58,6 +58,7 @@ export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[
     await execute(`DELETE FROM workspaces WHERE id NOT IN (${placeholders})`, ids)
   }
 
+  claimedUsers.clear() // new workspaces may need claiming
   console.log(`[workspace] Registered ${paths.length} workspace(s)`)
   return await query<WorkspaceRow>("SELECT * FROM workspaces")
 }
@@ -69,7 +70,7 @@ export async function updateWorkspaceName(id: string, name: string): Promise<boo
     "UPDATE workspaces SET name = $1, updated_at = $2 WHERE id = $3",
     [name, now, id],
   )
-  return (result as any).rowCount > 0
+  return result.rowCount > 0
 }
 
 /** Get all workspaces from the DB. */
@@ -121,7 +122,7 @@ export async function removeWorkspaceMember(workspaceId: string, email: string):
     "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_email = $2",
     [workspaceId, email],
   )
-  return (result as any).rowCount > 0
+  return result.rowCount > 0
 }
 
 /** Update a member's role. */
@@ -130,7 +131,7 @@ export async function updateWorkspaceMemberRole(workspaceId: string, email: stri
     "UPDATE workspace_members SET role = $1 WHERE workspace_id = $2 AND user_email = $3",
     [role, workspaceId, email],
   )
-  return (result as any).rowCount > 0
+  return result.rowCount > 0
 }
 
 /** Get a user's role in a workspace, or null if not a member. */
@@ -168,32 +169,43 @@ export async function ensureWorkspaceAccess(workspaceId: string, email: string):
 
 /** Returns true if removing/demoting `email` would leave the workspace with no admins. */
 export async function isLastAdmin(workspaceId: string, email: string): Promise<boolean> {
-  const members = await getWorkspaceMembers(workspaceId)
-  const admins = members.filter((m) => m.role === "admin")
-  return admins.length === 1 && admins[0].user_email === email
+  const row = await queryOne<{ count: string }>(
+    "SELECT COUNT(*)::int AS count FROM workspace_members WHERE workspace_id = $1 AND role = 'admin' AND user_email != $2",
+    [workspaceId, email],
+  )
+  return parseInt(row?.count || "0", 10) === 0
 }
+
+// Track which users have already been through the auto-claim pass this process lifetime
+const claimedUsers = new Set<string>()
 
 /**
  * Auto-claim all unclaimed workspaces for a user (first user becomes admin).
- * Called during workspace resolution so new workspaces are picked up automatically.
+ * Only runs once per user per process lifetime — subsequent calls are no-ops.
  */
 async function claimUnclaimedWorkspaces(email: string): Promise<void> {
+  if (claimedUsers.has(email)) return
   const allWs = await getAllWorkspaces()
   for (const ws of allWs) {
     await ensureWorkspaceAccess(ws.id, email)
   }
+  claimedUsers.add(email)
+}
+
+/** Reset the claim cache (e.g. when workspaces are added/removed). */
+export function resetClaimCache(): void {
+  claimedUsers.clear()
 }
 
 /**
  * Resolve the active workspace for a user.
  * Priority: cookie workspace → first user workspace.
- * Also claims any unclaimed workspaces as a side effect.
+ * Also claims any unclaimed workspaces as a side effect (once per process).
  */
 export async function resolveActiveWorkspace(
   email: string,
   cookieWorkspaceId: string | undefined,
 ): Promise<(WorkspaceRow & { role: "admin" | "member" }) | null> {
-  // Auto-claim any unclaimed workspaces first
   await claimUnclaimedWorkspaces(email)
 
   // 1. Try cookie workspace
