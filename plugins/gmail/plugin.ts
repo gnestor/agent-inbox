@@ -73,7 +73,7 @@ export const gmailPlugin: Plugin = {
   name: "Emails",
   icon: "Mail",
   emoji: "✉️",
-  components: { tab: "./app/components/EmailTab.tsx" },
+  components: { tab: "./app/components/GmailTab.tsx" },
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [
