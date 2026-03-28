@@ -42,9 +42,12 @@ function idbSet(key: string, value: unknown): void {
         const tx = db.transaction("keyval", "readwrite")
         const store = tx.objectStore("keyval")
         store.put(value, key)
-      } catch {}
+        tx.oncomplete = () => console.log(`[cache] saved ${key}`)
+        tx.onerror = () => console.error(`[cache] write failed ${key}:`, tx.error)
+      } catch (e) { console.error(`[cache] tx error ${key}:`, e) }
     }
-  } catch {}
+    req.onerror = () => console.error(`[cache] open failed:`, req.error)
+  } catch (e) { console.error(`[cache] idb error:`, e) }
 }
 
 async function fetchFromNetwork<T>(url: string, options?: RequestInit): Promise<T> {
