@@ -670,15 +670,6 @@ export async function resumeSessionQuery(
 
   const wsPath = defaultWorkspacePath
 
-  const sessionRecord = getSessionRecord(sessionId)
-  const resumeSourceContext = buildSourceContext(
-    sessionRecord?.linked_email_thread_id as string | undefined,
-    sessionRecord?.linked_email_id as string | undefined,
-    sessionRecord?.linked_task_id as string | undefined,
-    sessionRecord?.linked_source_type as string | undefined,
-    sessionRecord?.linked_source_id as string | undefined,
-  )
-
   const q = agentQuery({
     prompt,
     options: {

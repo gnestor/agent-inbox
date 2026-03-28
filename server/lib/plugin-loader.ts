@@ -1,183 +1,80 @@
-import { readdir, readFile } from "node:fs/promises"
+import { readdir } from "node:fs/promises"
 import { join } from "node:path"
-import type { Plugin, SkillManifest } from "../../src/types/plugin.js"
+import type { Plugin } from "../../src/types/plugin.js"
 
-type Importer = (path: string) => Promise<{ default: Plugin }>
+type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
 
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
 
-/** Maps plugin id → absolute directory path (populated during loadPlugins) */
-const pluginDirMap = new Map<string, string>()
-
 // Per-workspace plugin registries (workspace ID → plugin map)
 const workspacePluginRegistries = new Map<string, Map<string, Plugin>>()
-const workspacePluginDirs = new Map<string, Map<string, string>>()
 
 function isValidPlugin(p: unknown): p is Plugin {
   if (!p || typeof p !== "object") return false
   const plugin = p as Record<string, unknown>
-  if (typeof plugin.id !== "string" || plugin.id.length === 0) return false
-  return typeof plugin.query === "function" || plugin.hasSkills === true
-}
-
-/** Try to read .claude-plugin/plugin.json. Returns parsed manifest or null. */
-async function readClaudePluginManifest(dirPath: string): Promise<Record<string, unknown> | null> {
-  try {
-    const content = await readFile(join(dirPath, ".claude-plugin", "plugin.json"), "utf-8")
-    return JSON.parse(content) as Record<string, unknown>
-  } catch {
-    return null
-  }
+  return (
+    typeof plugin.id === "string" &&
+    plugin.id.length > 0 &&
+    (
+      typeof plugin.query === "function" ||
+      plugin.hasSkills === true ||
+      typeof plugin.itemToContext === "function"
+    )
+  )
 }
 
 /**
- * Parse YAML frontmatter from a SKILL.md file.
- * Frontmatter is delimited by `---` at the start and end of the block.
- * Uses simple string parsing — no external YAML dependency.
+ * Merge a workspace plugin over a built-in plugin.
+ * Workspace fields replace built-in fields when present.
+ * Skills are merged (workspace additions/overrides by name).
+ * Components are merged (workspace overrides by key).
  */
-function parseSkillFrontmatter(content: string, filePath: string): SkillManifest | null {
-  const trimmed = content.trimStart()
-  if (!trimmed.startsWith("---")) return null
-
-  const afterFirst = trimmed.slice(3)
-  const endIdx = afterFirst.indexOf("\n---")
-  if (endIdx === -1) return null
-
-  const yamlBlock = afterFirst.slice(0, endIdx).trim()
-
-  // Simple line-by-line YAML parser for the subset we need
-  const result: Record<string, unknown> = {}
-  const lines = yamlBlock.split("\n")
-
-  let currentKey: string | null = null
-  let currentList: string[] | null = null
-  let currentObjList: Record<string, unknown>[] | null = null
-  let currentObjListKey: string | null = null
-
-  for (const line of lines) {
-    // Top-level key: value
-    const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$/)
-    if (kvMatch && !line.startsWith(" ") && !line.startsWith("\t")) {
-      // Flush previous list
-      if (currentKey && currentList) {
-        result[currentKey] = currentList
-        currentList = null
-      }
-      if (currentObjListKey && currentObjList) {
-        result[currentObjListKey] = currentObjList
-        currentObjList = null
-        currentObjListKey = null
-      }
-      currentKey = kvMatch[1]
-      const value = kvMatch[2].trim()
-      if (value === "") {
-        // Value on next lines (list or block)
-        currentList = null
-      } else {
-        // Inline value — strip surrounding quotes
-        result[currentKey] = value.replace(/^["']|["']$/g, "")
-        currentKey = null
-      }
-      continue
-    }
-
-    // Object list item key (e.g. "  - name: foo"): check BEFORE plain list items
-    // since "  - name: foo" would also match the plain list item pattern
-    const objItemMatch = line.match(/^\s{2,}-\s+([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$/)
-    if (objItemMatch && currentKey) {
-      // Flush simple list if we switch to object list
-      if (currentList) {
-        result[currentKey] = currentList
-        currentList = null
-      }
-      if (!currentObjList) {
-        currentObjList = []
-        currentObjListKey = currentKey
-      }
-      const obj: Record<string, unknown> = { [objItemMatch[1]]: objItemMatch[2].replace(/^["']|["']$/g, "") }
-      currentObjList.push(obj)
-      continue
-    }
-
-    // Plain list item under current key: "  - value"
-    const listItemMatch = line.match(/^\s{2,}-\s+(.+)$/)
-    if (listItemMatch && currentKey) {
-      if (!currentList) currentList = []
-      currentList.push(listItemMatch[1].replace(/^["']|["']$/g, ""))
-      continue
-    }
-
-    // Nested key inside an object list item (e.g. "    description: foo")
-    const nestedKvMatch = line.match(/^\s{4,}([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$/)
-    if (nestedKvMatch && currentObjList && currentObjList.length > 0) {
-      const last = currentObjList[currentObjList.length - 1]
-      last[nestedKvMatch[1]] = nestedKvMatch[2].replace(/^["']|["']$/g, "")
-      continue
-    }
+function mergeWorkspaceOverBuiltin(builtin: Plugin, workspace: Partial<Plugin>): Plugin {
+  return {
+    ...builtin,
+    // Workspace plugin.ts fields override built-in (if workspace has them)
+    ...(workspace.query !== undefined && { query: workspace.query }),
+    ...(workspace.mutate !== undefined && { mutate: workspace.mutate }),
+    ...(workspace.fieldSchema !== undefined && { fieldSchema: workspace.fieldSchema }),
+    ...(workspace.routes !== undefined && { routes: workspace.routes }),
+    ...(workspace.itemToContext !== undefined && { itemToContext: workspace.itemToContext }),
+    // Components: workspace overrides by key
+    components: builtin.components || workspace.components
+      ? { ...(builtin.components ?? {}), ...(workspace.components ?? {}) }
+      : undefined,
+    // Skills: mark as merged (actual skill merge happens in loadSkillManifests)
+    hasSkills: builtin.hasSkills || workspace.hasSkills || false,
   }
-
-  // Flush remaining
-  if (currentKey && currentList) {
-    result[currentKey] = currentList
-  }
-  if (currentObjListKey && currentObjList) {
-    result[currentObjListKey] = currentObjList
-  }
-
-  if (typeof result.name !== "string" || !result.name) return null
-  if (typeof result.description !== "string" || !result.description) return null
-
-  const manifest: SkillManifest = {
-    name: result.name,
-    description: result.description,
-    path: filePath,
-  }
-
-  if (result.category) manifest.category = result.category as string
-  if (Array.isArray(result.triggers)) manifest.triggers = result.triggers as string[]
-  if (Array.isArray(result.parameters)) {
-    manifest.parameters = (result.parameters as Record<string, unknown>[]).map(p => ({
-      name: String(p.name ?? ""),
-      description: String(p.description ?? ""),
-      ...(p.default !== undefined ? { default: p.default } : {}),
-    }))
-  }
-
-  return manifest
-}
-
-/**
- * Scan a plugin directory's skills subdirectories for SKILL.md files and return parsed manifests.
- */
-async function loadSkillManifests(pluginDir: string): Promise<SkillManifest[]> {
-  const skillsDir = join(pluginDir, "skills")
-  const manifests: SkillManifest[] = []
-
-  try {
-    const skillDirs = await readdir(skillsDir, { withFileTypes: true })
-    for (const entry of skillDirs) {
-      if (!entry.isDirectory()) continue
-      const skillMdPath = join(skillsDir, entry.name, "SKILL.md")
-      try {
-        const content = await readFile(skillMdPath, "utf-8")
-        const manifest = parseSkillFrontmatter(content, skillMdPath)
-        if (manifest) manifests.push(manifest)
-      } catch {
-        // SKILL.md doesn't exist or can't be read — skip
-      }
-    }
-  } catch {
-    // skills/ directory doesn't exist — fine
-  }
-
-  return manifests
 }
 
 /** Register a built-in plugin (survives loadPlugins reloads). */
-export function registerPlugin(plugin: Plugin): void {
+export function registerPlugin(plugin: Plugin, _pluginDirPath?: string): void {
   registry.set(plugin.id, plugin)
   builtinIds.add(plugin.id)
+}
+
+/**
+ * Register a single plugin entry into the target registry.
+ * If the plugin ID matches a built-in, merge the workspace plugin over the built-in.
+ */
+function registerPluginEntry(
+  plugin: Plugin,
+  targetRegistry: Map<string, Plugin>,
+  isWorkspace: boolean,
+): void {
+  if (isWorkspace && builtinIds.has(plugin.id)) {
+    // Workspace extends built-in: merge
+    const builtin = registry.get(plugin.id)!
+    const merged = mergeWorkspaceOverBuiltin(builtin, plugin)
+    targetRegistry.set(plugin.id, merged)
+    return
+  }
+  // Duplicate IDs within a load: last wins (logged as warning)
+  if (targetRegistry.has(plugin.id)) {
+    console.warn(`plugin-loader: duplicate plugin id "${plugin.id}" — last wins`)
+  }
+  targetRegistry.set(plugin.id, plugin)
 }
 
 export async function loadPlugins(
@@ -187,16 +84,13 @@ export async function loadPlugins(
 ): Promise<void> {
   // If workspace ID provided, load into per-workspace registry
   const targetRegistry = workspaceId ? new Map<string, Plugin>() : registry
+  const isWorkspace = !!workspaceId
 
   if (!workspaceId) {
     // Clear only non-builtin plugins (workspace plugins may change on reload)
     for (const id of registry.keys()) {
       if (!builtinIds.has(id)) registry.delete(id)
     }
-  }
-  // Clear directory map (will be repopulated below)
-  for (const id of pluginDirMap.keys()) {
-    if (!builtinIds.has(id)) pluginDirMap.delete(id)
   }
 
   // Scan {workspace}/plugins/*/plugin.ts (new convention)
@@ -205,58 +99,35 @@ export async function loadPlugins(
     const entries = await readdir(pluginsDir, { withFileTypes: true })
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
-      const dirPath = join(pluginsDir, entry.name)
-
-      // Check for .claude-plugin/plugin.json (single read, no separate access check)
-      const claudeManifest = await readClaudePluginManifest(dirPath)
-      const hasSkills = claudeManifest !== null
-
-      // Try to load plugin.ts / plugin.js
-      let plugin: Plugin | undefined
       for (const filename of ["plugin.ts", "plugin.js"]) {
-        const fullPath = join(dirPath, filename)
+        const fullPath = join(pluginsDir, entry.name, filename)
         try {
           const mod = await importer(fullPath)
-          plugin = mod.default
-          break
+          const defaultExport = mod.default
+
+          // Array exports: each entry is a separate plugin
+          if (Array.isArray(defaultExport)) {
+            for (const item of defaultExport) {
+              if (!isValidPlugin(item)) {
+                console.warn(`plugin-loader: skipping array entry in ${entry.name}/${filename} — invalid plugin (id: ${(item as any)?.id ?? "missing"})`)
+                continue
+              }
+              registerPluginEntry(item, targetRegistry, isWorkspace)
+            }
+          } else {
+            if (!isValidPlugin(defaultExport)) {
+              console.warn(`plugin-loader: skipping ${entry.name}/${filename} — missing id or no data source/skills`)
+              continue
+            }
+            registerPluginEntry(defaultExport, targetRegistry, isWorkspace)
+          }
         } catch (err: unknown) {
+          // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
           if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
               (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
           console.error(`plugin-loader: failed to load ${entry.name}/${filename}:`, err)
-          break
         }
-      }
-
-      if (plugin) {
-        // Data-source plugin (with or without skills)
-        if (hasSkills) plugin.hasSkills = true
-        if (!isValidPlugin(plugin)) {
-          console.warn(`plugin-loader: skipping ${entry.name} — missing id or query`)
-          continue
-        }
-        if (!builtinIds.has(plugin.id)) {
-          registry.set(plugin.id, plugin)
-        }
-        if (hasSkills) {
-          plugin.skillManifest = await loadSkillManifests(dirPath)
-          pluginDirMap.set(plugin.id, dirPath)
-        }
-      } else if (hasSkills) {
-        // Skills-only plugin: no plugin.ts but has .claude-plugin/
-        const pluginName = (typeof claudeManifest.name === "string" && claudeManifest.name)
-          ? claudeManifest.name
-          : entry.name
-        const skillsOnlyPlugin: Plugin = {
-          id: entry.name,
-          name: pluginName,
-          icon: "Puzzle",
-          hasSkills: true,
-          skillManifest: await loadSkillManifests(dirPath),
-        }
-        if (!builtinIds.has(skillsOnlyPlugin.id)) {
-          registry.set(skillsOnlyPlugin.id, skillsOnlyPlugin)
-          pluginDirMap.set(skillsOnlyPlugin.id, dirPath)
-        }
+        break
       }
     }
   } catch (err: unknown) {
@@ -272,13 +143,22 @@ export async function loadPlugins(
       const fullPath = join(legacyDir, file)
       try {
         const mod = await importer(fullPath)
-        const plugin = mod.default
-        if (!isValidPlugin(plugin)) {
-          console.warn(`plugin-loader: skipping ${file} — missing id or query`)
-          continue
-        }
-        if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
-          targetRegistry.set(plugin.id, plugin)
+        const defaultExport = mod.default
+
+        if (Array.isArray(defaultExport)) {
+          for (const item of defaultExport) {
+            if (!isValidPlugin(item)) {
+              console.warn(`plugin-loader: skipping array entry in ${file} — invalid plugin`)
+              continue
+            }
+            registerPluginEntry(item, targetRegistry, isWorkspace)
+          }
+        } else {
+          if (!isValidPlugin(defaultExport)) {
+            console.warn(`plugin-loader: skipping ${file} — missing id or no data source/skills`)
+            continue
+          }
+          registerPluginEntry(defaultExport, targetRegistry, isWorkspace)
         }
       } catch (err: unknown) {
         console.error(`plugin-loader: failed to load ${file}:`, err)
@@ -301,6 +181,7 @@ export function getPlugins(workspaceId?: string): Plugin[] {
   if (!wsPlugins) return builtins
   const merged = new Map<string, Plugin>()
   for (const p of builtins) merged.set(p.id, p)
+  // Workspace plugins override or extend built-ins
   for (const [id, p] of wsPlugins) merged.set(id, p)
   return [...merged.values()]
 }
@@ -313,24 +194,8 @@ export function getPlugin(id: string, workspaceId?: string): Plugin | undefined 
   return registry.get(id)
 }
 
-/**
- * Returns absolute paths of all plugin directories that have `.claude-plugin/`.
- * Used by session-manager to pass skill plugins into agent sessions.
- */
-export function getSkillPluginPaths(): string[] {
-  return [...pluginDirMap.values()]
-}
-
-/**
- * Returns the directory path for the plugin with the given id, if it has `.claude-plugin/`.
- */
-export function getPluginDir(id: string): string | undefined {
-  return pluginDirMap.get(id)
-}
-
 // Exposed for test isolation only — do not call in production
 ;(loadPlugins as unknown as Record<string, unknown>).__resetForTest = () => {
   registry.clear()
   builtinIds.clear()
-  pluginDirMap.clear()
 }

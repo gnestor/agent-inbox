@@ -1,5 +1,5 @@
 /**
- * Gmail built-in plugin — wraps server/lib/gmail.ts and the incremental sync
+ * Gmail built-in plugin — wraps app/lib/gmail.ts and the incremental sync
  * logic formerly in server/routes/gmail.ts.
  *
  * Auth: per-user OAuth (Google). The plugin uses PluginContext.getCredential("google")
@@ -7,9 +7,9 @@
  */
 
 import { Hono } from "hono"
-import * as gmail from "../lib/gmail.js"
-import type { ThreadSummary } from "../lib/gmail.js"
-import { get as getCached, set as setCached, invalidate } from "../lib/cache.js"
+import * as gmail from "./app/lib/gmail.js"
+import type { ThreadSummary } from "./app/lib/gmail.js"
+import { get as getCached, set as setCached, invalidate } from "../../server/lib/cache.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
 const SYNC_TTL = 86_400_000 // 24h
@@ -73,7 +73,7 @@ export const gmailPlugin: Plugin = {
   name: "Emails",
   icon: "Mail",
   emoji: "✉️",
-  components: { tab: "gmail:tab" },
+  components: { tab: "./app/components/GmailTab.tsx" },
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [
@@ -103,13 +103,13 @@ export const gmailPlugin: Plugin = {
   async query(filters, cursor, ctx) {
     const accessToken = await requireToken(ctx)
     const userEmail = ctx!.userEmail
-    const query = filters.q || "in:inbox"
+    const q = filters.q || "in:inbox"
     const max = 20
     const pageToken = cursor
 
     // Incremental sync (first page only)
     if (!pageToken) {
-      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
+      const syncKey = `gmail:sync:${userEmail}:${q}:${max}`
       const syncState = await getCached<SyncState>(syncKey)
 
       if (syncState?.historyId) {
@@ -154,15 +154,15 @@ export const gmailPlugin: Plugin = {
           return { items: threads as any[], nextCursor: syncState.nextPageToken ?? undefined }
         } catch (e: any) {
           console.warn("Incremental sync failed, falling back to full sync:", e.message)
-          await invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
+          await invalidate(`gmail:sync:${userEmail}:${q}:${max}`)
         }
       }
     }
 
     // Full sync
-    const result = await gmail.searchThreads(accessToken, query, max, pageToken || undefined)
+    const result = await gmail.searchThreads(accessToken, q, max, pageToken || undefined)
     if (!pageToken && result.historyId) {
-      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
+      const syncKey = `gmail:sync:${userEmail}:${q}:${max}`
       await setCached(syncKey, { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken }, SYNC_TTL)
     }
     return { items: result.threads as any[], nextCursor: result.nextPageToken ?? undefined }
@@ -221,6 +221,32 @@ export const gmailPlugin: Plugin = {
     }
   },
 
+  itemToContext(item) {
+    // Skip automated/no-reply senders
+    const from = (item.from as string) || (item.fromDisplay as string) || ""
+    const automatedPatterns = [
+      /noreply@/i, /no-reply@/i, /notifications?@/i, /do-?not-?reply@/i,
+      /automated?@/i, /support@/i, /info@/i, /hello@/i, /team@/i,
+      /newsletter@/i, /marketing@/i, /updates?@/i,
+    ]
+    if (automatedPatterns.some((p) => p.test(from))) return null
+
+    // Skip empty threads
+    const body = (item.body as string) || (item.snippet as string) || ""
+    if (!body.trim()) return null
+
+    const subject = (item.subject as string) || "(no subject)"
+    const date = (item.date as string) || ""
+
+    return [
+      `# ${subject}`,
+      `From: ${from}`,
+      date && `Date: ${date}`,
+      "",
+      body.slice(0, 2000),
+    ].filter(Boolean).join("\n")
+  },
+
   filterOptions: {
     labels: async (ctx) => {
       const accessToken = await requireToken(ctx)
@@ -232,7 +258,7 @@ export const gmailPlugin: Plugin = {
     },
   },
 
-  routes(app, { getContext }) {
+  routes(app: Hono, { getContext }: { getContext: (c: unknown) => Promise<PluginContext> }) {
     // Attachment proxy
     app.get("/messages/:id/attachments/:attachmentId", async (c) => {
       const ctx = await getContext(c)
@@ -245,7 +271,7 @@ export const gmailPlugin: Plugin = {
       c.header("Cache-Control", "public, max-age=31536000, immutable")
       c.header("Content-Type", mime)
       if (filename) c.header("Content-Disposition", `inline; filename="${filename}"`)
-      return c.body(data)
+      return c.body(data as unknown as ReadableStream)
     })
 
     app.get("/signature", async (c) => {
@@ -335,7 +361,7 @@ export const gmailPlugin: Plugin = {
     app.get("/messages", async (c) => {
       const raw = c.req.query()
       const ctx = await getContext(c)
-      const result = await gmailPlugin.query(
+      const result = await gmailPlugin.query!(
         { q: raw.q || "in:inbox" },
         raw.pageToken || undefined,
         ctx,
@@ -344,3 +370,5 @@ export const gmailPlugin: Plugin = {
     })
   },
 }
+
+export default gmailPlugin

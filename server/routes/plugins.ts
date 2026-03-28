@@ -3,7 +3,23 @@ import { HTTPException } from "hono/http-exception"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
-import type { PluginContext, SkillManifest } from "../../src/types/plugin.js"
+import { get as cacheGet, set as cacheSet, invalidate as cacheInvalidate } from "../lib/cache.js"
+import type { PluginContext } from "../../src/types/plugin.js"
+import { stat } from "node:fs/promises"
+import { join, resolve, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
+import { build } from "esbuild"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Built-in plugins root (packages/inbox/plugins/)
+const BUILTIN_PLUGINS_ROOT = resolve(__dirname, "../../plugins")
+
+// Cache: pluginId:componentName:path → { js, mtime }. Capped at 100 entries (LRU-ish eviction).
+const componentCache = new Map<string, { js: string; mtime: number }>()
+const COMPONENT_CACHE_MAX = 100
+
+const PLUGIN_CACHE_TTL = 24 * 60 * 60 * 1000 // 24h default
 
 /**
  * Build a PluginContext from the Hono request context.
@@ -24,6 +40,17 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
       }
       return null
     },
+    cache: {
+      async get<T>(key: string): Promise<T | null> {
+        return cacheGet<T>(key)
+      },
+      async set<T>(key: string, value: T, ttlMs = PLUGIN_CACHE_TTL): Promise<void> {
+        return cacheSet(key, value, ttlMs)
+      },
+      async invalidate(key: string): Promise<void> {
+        return cacheInvalidate(key)
+      },
+    },
   }
 }
 
@@ -33,11 +60,10 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
 
 export const pluginRoutes = new Hono()
 
-/** GET /api/plugins — list all loaded plugin manifests (data-source plugins only, excludes skills-only) */
+/** GET /api/plugins — list all loaded plugin manifests that have a UI (fieldSchema present) */
 pluginRoutes.get("/plugins", (c) => {
-  // Filter out skills-only plugins (those without query) — they don't appear as tabs
   const plugins = getPlugins()
-    .filter((p) => typeof p.query === "function")
+    .filter((p) => p.fieldSchema && p.fieldSchema.length > 0)
     .map((p) => ({
       id: p.id,
       name: p.name,
@@ -54,20 +80,72 @@ pluginRoutes.get("/plugins", (c) => {
   return c.json(plugins)
 })
 
-/** GET /api/plugins/skills — list skill manifests across all plugins, with optional ?category= filter */
-pluginRoutes.get("/plugins/skills", (c) => {
-  const categoryFilter = c.req.query("category")
-  const result: (SkillManifest & { pluginId: string })[] = []
+/**
+ * GET /api/:pluginId/components/:name
+ * Serve a plugin's TSX component as an ES module (esbuild-transformed).
+ * Used by PluginFrame to load component scripts inside sandboxed iframes.
+ */
+pluginRoutes.get("/:pluginId/components/:name", async (c) => {
+  const { pluginId, name } = c.req.param()
+  const workspace = c.get("workspace") as { id: string; path: string } | undefined
 
-  for (const plugin of getPlugins()) {
-    if (!plugin.skillManifest) continue
-    for (const skill of plugin.skillManifest) {
-      if (categoryFilter && skill.category !== categoryFilter) continue
-      result.push({ ...skill, pluginId: plugin.id })
+  // Resolve component path and mtime in one pass — workspace takes priority over built-in
+  let componentPath: string
+  let mtime: number
+
+  const candidates = [
+    workspace && join(workspace.path, "plugins", pluginId, "app", "components", `${name}.tsx`),
+    join(BUILTIN_PLUGINS_ROOT, pluginId, "app", "components", `${name}.tsx`),
+  ].filter(Boolean) as string[]
+
+  let resolved = false
+  for (const candidate of candidates) {
+    try {
+      const s = await stat(candidate)
+      componentPath = candidate
+      mtime = s.mtimeMs
+      resolved = true
+      break
+    } catch {
+      // Not found — try next candidate
     }
   }
 
-  return c.json(result)
+  if (!resolved) {
+    throw new HTTPException(404, { message: `Component "${name}" not found for plugin "${pluginId}"` })
+  }
+
+  const cacheKey = `${pluginId}:${name}:${componentPath!}`
+  const cached = componentCache.get(cacheKey)
+
+  if (cached && cached.mtime === mtime) {
+    c.header("Content-Type", "application/javascript")
+    c.header("Cache-Control", "no-cache")
+    return c.text(cached.js)
+  }
+
+  // Transform with esbuild
+  const result = await build({
+    entryPoints: [componentPath],
+    bundle: true,
+    format: "esm",
+    jsx: "automatic",
+    external: ["react", "react-dom", "react-dom/client", "@hammies/frontend/*"],
+    platform: "browser",
+    target: "es2020",
+    write: false,
+  })
+
+  const js = result.outputFiles[0].text
+  if (componentCache.size >= COMPONENT_CACHE_MAX) {
+    const first = componentCache.keys().next().value
+    if (first) componentCache.delete(first)
+  }
+  componentCache.set(cacheKey, { js, mtime })
+
+  c.header("Content-Type", "application/javascript")
+  c.header("Cache-Control", "no-cache")
+  return c.text(js)
 })
 
 /** GET /api/:pluginId/items — query items with optional filters + cursor */
@@ -75,7 +153,6 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
-  if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support query` })
 
   const raw = c.req.query()
   const cursor = raw.cursor
@@ -83,6 +160,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
     Object.entries(raw).filter(([k]) => k !== "cursor")
   )
 
+  if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support querying items` })
   const ctx = await buildPluginContext(c)
   const result = await plugin.query(filters, cursor, ctx)
   return c.json(result)
@@ -124,7 +202,8 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
-  if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutate` })
+
+  if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutations` })
 
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })

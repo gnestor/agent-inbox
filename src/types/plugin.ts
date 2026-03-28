@@ -1,22 +1,14 @@
 /**
  * Inbox Plugin — interface spec for integrations with external services.
  *
- * A plugin is a directory that can provide any combination of:
- *   - A **data source** (`plugin.ts`) — query/mutate/UI for an external service (appears as a tab)
- *   - **Skills** (`.claude-plugin/plugin.json` + `skills/`) — Claude Code skills loaded into agent sessions
- *
- * Plugin directories can live in:
- *   - `{workspace}/plugins/{id}/` (workspace plugins — new convention)
+ * A plugin is a TypeScript/JS file that exports a default object implementing `Plugin`.
+ * Plugins can live in:
+ *   - `{workspace}/plugins/{id}/plugin.ts` (workspace plugins)
  *   - `{workspace}/inbox-plugins/*.ts` (legacy, backward compat)
  *   - `packages/inbox/server/plugins/` (built-in plugins)
  *
  * The server loads all plugins at startup via dynamic import and auto-generates
  * REST routes at `/api/{pluginId}/*`.
- *
- * Plugin types:
- *   - **Data source only** (`plugin.ts`, no `.claude-plugin/`) — appears as a sidebar tab
- *   - **Skills only** (`.claude-plugin/`, no `plugin.ts`) — provides agent skills, NOT shown as tab
- *   - **Full-stack** (both) — appears as tab AND provides agent skills
  *
  * Auth: plugins receive a `PluginContext` with credential resolution, or can
  * read credentials directly from `process.env` (set in workspace `.env`).
@@ -119,6 +111,12 @@ export interface PluginContext {
   userEmail: string
   /** Resolve a credential for an integration (per-user OAuth or workspace API key) */
   getCredential(integration: string): Promise<string | null>
+  /** Cache interface for storing plugin-specific data */
+  cache: {
+    get<T>(key: string): Promise<T | null>
+    set<T>(key: string, value: T, ttlMs?: number): Promise<void>
+    invalidate(key: string): Promise<void>
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -154,29 +152,6 @@ export interface QueryResult {
 }
 
 // ---------------------------------------------------------------------------
-// Skill manifest (auto-populated by plugin-loader from SKILL.md frontmatter)
-// ---------------------------------------------------------------------------
-
-/**
- * Metadata parsed from a SKILL.md frontmatter block.
- * Describes a single skill within a plugin's `.claude-plugin/skills/` directory.
- */
-export interface SkillManifest {
-  /** Skill name (e.g. "process-email") */
-  name: string
-  /** Human-readable description */
-  description: string
-  /** Grouping category, e.g. "process" | "fetch" | "manage" — used by triage-sources to discover process-* skills */
-  category?: string
-  /** Natural language phrases that trigger this skill */
-  triggers?: string[]
-  /** Named parameters this skill accepts */
-  parameters?: { name: string; description: string; default?: unknown }[]
-  /** Absolute path to the SKILL.md file */
-  path: string
-}
-
-// ---------------------------------------------------------------------------
 // Plugin interface
 // ---------------------------------------------------------------------------
 
@@ -198,8 +173,7 @@ export interface Plugin {
    * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
-   *
-   * Optional — skills-only plugins that don't provide a data source can omit this.
+   * Optional — skills-only and context-only plugins may omit this.
    */
   query?(
     filters: Record<string, string>,
@@ -211,8 +185,6 @@ export interface Plugin {
    * Perform a mutation on an item.
    * Actions are plugin-defined strings (e.g. "archive", "reply", "mark-done").
    * Payload shape is action-specific.
-   *
-   * Optional — skills-only plugins that don't provide a data source can omit this.
    */
   mutate?(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
 
@@ -226,10 +198,22 @@ export interface Plugin {
   /**
    * Combined schema for filter UI, list badge rendering, and detail view layout.
    * Fields are rendered in the order they appear in this array.
-   *
-   * Optional — skills-only plugins that don't provide a data source can omit this.
+   * Omit for skills-only or context-only plugins (no tab appears in sidebar).
    */
   fieldSchema?: FieldDef[]
+
+  /**
+   * True if this plugin has Claude Code skills (populated by plugin-loader from disk).
+   * Skills-only plugins use this as their validity marker.
+   */
+  hasSkills?: boolean
+
+  /**
+   * Convert a plugin item to a markdown document for the context index.
+   * The backfill route uses query() to paginate and this method to convert.
+   * Return null to skip an item (filtered out).
+   */
+  itemToContext?(item: PluginItem): string | null
 
   /**
    * Optional detail widget tree. If omitted, the detail view is auto-generated
@@ -268,23 +252,6 @@ export interface Plugin {
    * file upload, OAuth callback).
    */
   routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => Promise<PluginContext> }): void
-
-  // -------------------------------------------------------------------------
-  // Auto-populated by plugin-loader (do not set manually)
-  // -------------------------------------------------------------------------
-
-  /**
-   * True if this plugin's directory contains a .claude-plugin/ folder,
-   * meaning it provides Claude Code skills for agent sessions.
-   * Auto-populated by plugin-loader.
-   */
-  hasSkills?: boolean
-
-  /**
-   * Parsed metadata from all skills frontmatter blocks (skills/*\/SKILL.md).
-   * Auto-populated by plugin-loader when a .claude-plugin/ directory is present.
-   */
-  skillManifest?: SkillManifest[]
 }
 
 /** @deprecated Use Plugin instead */
