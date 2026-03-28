@@ -30,6 +30,7 @@ import { pruneExpired } from "./lib/cache.js"
 import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
 import { loadPanels } from "./lib/panel-registry.js"
 import { gmailPlugin } from "../plugins/gmail/plugin.js"
+import { corePlugin } from "../plugins/core/plugin.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -216,6 +217,7 @@ app.use("/api/*", async (c, next) => {
 
 // Register built-in plugins (before workspace plugins are loaded)
 registerPlugin(gmailPlugin)
+registerPlugin(corePlugin)
 
 // Protected routes (static routes first, plugin catch-all last)
 app.route("/api/workspaces", workspaceRoutes)
