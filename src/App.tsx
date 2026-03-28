@@ -113,13 +113,18 @@ function TabContainer() {
 
   const keys = useMemo(() => {
     const sessionsIdx = STATIC_SLOTS.indexOf("sessions")
+    const allPluginKeys = [...pluginIds]
+    // Ensure the active tab is always in keys, even before plugins load
+    if (activeTab.startsWith("plugin:") && !allPluginKeys.includes(activeTab)) {
+      allPluginKeys.unshift(activeTab)
+    }
     return [
       ...STATIC_SLOTS.slice(0, sessionsIdx),
-      ...pluginIds,
+      ...allPluginKeys,
       ...recentKeys,
       ...STATIC_SLOTS.slice(sessionsIdx),
     ]
-  }, [pluginIds, recentKeys])
+  }, [pluginIds, recentKeys, activeTab])
 
   return (
     <SlotStack
