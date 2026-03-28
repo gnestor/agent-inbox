@@ -13,6 +13,29 @@ const CACHE_PREFIX = "api:"
 // In-memory cache (survives within a session, instant access)
 const memCache = new Map<string, unknown>()
 
+// Preload all api: entries from IndexedDB into memory on module load
+// so the first request() call can hit the memory cache instantly
+try {
+  const req = indexedDB.open("keyval-store")
+  req.onsuccess = () => {
+    const db = req.result
+    try {
+      const tx = db.transaction("keyval", "readonly")
+      const store = tx.objectStore("keyval")
+      const cursorReq = store.openCursor()
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result
+        if (!cursor) return
+        const key = String(cursor.key)
+        if (key.startsWith(CACHE_PREFIX)) {
+          memCache.set(key, cursor.value)
+        }
+        cursor.continue()
+      }
+    } catch {}
+  }
+} catch {}
+
 // Direct IndexedDB access (avoids idb-keyval import issues)
 function idbGet<T>(key: string): Promise<T | undefined> {
   return new Promise((resolve) => {
