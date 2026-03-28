@@ -193,17 +193,18 @@ export async function appendSessionMessage(
 ) {
   const now = new Date().toISOString()
 
-  await execute(
-    `INSERT INTO session_messages (session_id, sequence, type, message, created_at)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT DO NOTHING`,
-    [sessionId, sequence, type, JSON.stringify(message), now],
-  )
-
-  await execute(
-    `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
-    [now, sessionId],
-  )
+  await Promise.all([
+    execute(
+      `INSERT INTO session_messages (session_id, sequence, type, message, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT DO NOTHING`,
+      [sessionId, sequence, type, JSON.stringify(message), now],
+    ),
+    execute(
+      `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
+      [now, sessionId],
+    ),
+  ])
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {

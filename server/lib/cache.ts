@@ -30,12 +30,7 @@ export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>
   }
 
   const data = await fn()
-  const expiresAt = new Date(Date.now() + ttlMs).toISOString()
-  await execute(
-    `INSERT INTO api_cache (key, data, expires_at) VALUES ($1, $2, $3)
-     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at`,
-    [key, JSON.stringify(data), expiresAt],
-  )
+  await set(key, data, ttlMs)
   return data
 }
 

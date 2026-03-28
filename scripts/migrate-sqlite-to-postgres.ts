@@ -50,8 +50,6 @@ const tables = [
   "notion_options",
 ]
 
-const BATCH_SIZE = 100
-
 for (const table of tables) {
   const rows = sqlite.prepare(`SELECT * FROM ${table}`).all() as Record<string, unknown>[]
   if (rows.length === 0) {

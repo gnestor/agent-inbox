@@ -254,7 +254,7 @@ sessionRoutes.patch("/:id", async (c) => {
     if (!agentSession) {
       return c.json({ error: "Session not found" }, 404)
     }
-    sessions.importAgentSession(sessionId, agentSession)
+    await sessions.importAgentSession(sessionId, agentSession)
   }
 
   await sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
@@ -301,7 +301,7 @@ sessionRoutes.post("/:id/resume", async (c) => {
     const { getAgentSession } = await import("../lib/session-files.js")
     const agentSession = getAgentSession(sessionId)
     if (!agentSession) return c.json({ error: "Session not found" }, 404)
-    sessions.importAgentSession(sessionId, agentSession)
+    await sessions.importAgentSession(sessionId, agentSession)
   }
 
   const userSessionToken = getCookie(c, SESSION_COOKIE)
@@ -325,7 +325,7 @@ sessionRoutes.post("/:id/attach", async (c) => {
     if (!agentSession) {
       return c.json({ error: "Session not found" }, 404)
     }
-    sessions.importAgentSession(sessionId, agentSession)
+    await sessions.importAgentSession(sessionId, agentSession)
   }
 
   await sessions.attachSourceToSession(sessionId, {
@@ -383,7 +383,7 @@ sessionRoutes.post("/:id/archive", async (c) => {
     if (!agentSession) {
       return c.json({ error: "Session not found" }, 404)
     }
-    sessions.importAgentSession(sessionId, agentSession)
+    await sessions.importAgentSession(sessionId, agentSession)
   }
   const archived = await sessions.archiveSession(sessionId)
   return c.json({ ok: archived })

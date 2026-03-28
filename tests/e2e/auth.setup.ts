@@ -9,20 +9,24 @@ setup("authenticate", async ({ page }) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await client.connect()
 
-  await client.query(`
-    INSERT INTO users (email, name, created_at, last_login_at)
-    VALUES ('test@hammies.com', 'Test User', NOW()::text, NOW()::text)
-    ON CONFLICT (email) DO NOTHING
-  `)
+  const now = new Date().toISOString()
 
-  await client.query(`
-    INSERT INTO auth_sessions (token, user_name, user_email, user_picture, created_at)
-    VALUES ('test-e2e-token', 'Test User', 'test@hammies.com', NULL, NOW()::text)
-    ON CONFLICT (token) DO UPDATE SET
-      user_name = EXCLUDED.user_name,
-      user_email = EXCLUDED.user_email,
-      created_at = EXCLUDED.created_at
-  `)
+  await client.query(
+    `INSERT INTO users (email, name, created_at, last_login_at)
+     VALUES ($1, $2, $3, $3)
+     ON CONFLICT (email) DO NOTHING`,
+    ["test@hammies.com", "Test User", now],
+  )
+
+  await client.query(
+    `INSERT INTO auth_sessions (token, user_name, user_email, user_picture, created_at)
+     VALUES ($1, $2, $3, NULL, $4)
+     ON CONFLICT (token) DO UPDATE SET
+       user_name = EXCLUDED.user_name,
+       user_email = EXCLUDED.user_email,
+       created_at = EXCLUDED.created_at`,
+    ["test-e2e-token", "Test User", "test@hammies.com", now],
+  )
 
   await client.end()
 

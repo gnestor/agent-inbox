@@ -339,13 +339,20 @@ export async function getCalendarItemDetail(itemId: string) {
   }
 }
 
-// Fetch calendar database schema and cache property options in Postgres (prefixed with "calendar:")
-export async function syncCalendarPropertyOptions() {
-  const schema = await notionRequest(`/databases/${CALENDAR_DB}`)
+async function syncSchemaPropertyOptions(dbId: string, prefix?: string) {
+  const schema = await notionRequest(`/databases/${dbId}`)
   const now = new Date().toISOString()
 
-  const syncProperty = async (property: string, options: { name: string; color?: string }[]) => {
-    await withTransaction(async (client) => {
+  await withTransaction(async (client) => {
+    const props = schema.properties || {}
+    for (const [name, prop] of Object.entries(props) as [string, any][]) {
+      const property = prefix ? `${prefix}${name}` : name
+      let options: { name: string; color?: string }[] | undefined
+      if (prop.type === "status" && prop.status?.options) options = prop.status.options
+      else if (prop.type === "select" && prop.select?.options) options = prop.select.options
+      else if (prop.type === "multi_select" && prop.multi_select?.options) options = prop.multi_select.options
+      if (!options) continue
+
       await client.query(`DELETE FROM notion_options WHERE property = $1`, [property])
       for (const opt of options) {
         await client.query(
@@ -354,53 +361,17 @@ export async function syncCalendarPropertyOptions() {
           [property, opt.name, opt.color || null, now],
         )
       }
-    })
-  }
-
-  const props = schema.properties || {}
-  for (const [name, prop] of Object.entries(props) as [string, any][]) {
-    const prefixedName = `calendar:${name}`
-    if (prop.type === "status" && prop.status?.options) {
-      await syncProperty(prefixedName, prop.status.options)
-    } else if (prop.type === "select" && prop.select?.options) {
-      await syncProperty(prefixedName, prop.select.options)
-    } else if (prop.type === "multi_select" && prop.multi_select?.options) {
-      await syncProperty(prefixedName, prop.multi_select.options)
     }
-  }
+  })
+}
 
+export async function syncCalendarPropertyOptions() {
+  await syncSchemaPropertyOptions(CALENDAR_DB, "calendar:")
   console.log("Synced Calendar property options")
 }
 
-// Fetch database schema and cache property options in Postgres
 export async function syncPropertyOptions() {
-  const schema = await notionRequest(`/databases/${TASKS_DB}`)
-  const now = new Date().toISOString()
-
-  const syncProperty = async (property: string, options: { name: string; color?: string }[]) => {
-    await withTransaction(async (client) => {
-      await client.query(`DELETE FROM notion_options WHERE property = $1`, [property])
-      for (const opt of options) {
-        await client.query(
-          `INSERT INTO notion_options (property, value, color, updated_at) VALUES ($1, $2, $3, $4)
-           ON CONFLICT (property, value) DO UPDATE SET color = EXCLUDED.color, updated_at = EXCLUDED.updated_at`,
-          [property, opt.name, opt.color || null, now],
-        )
-      }
-    })
-  }
-
-  const props = schema.properties || {}
-  for (const [name, prop] of Object.entries(props) as [string, any][]) {
-    if (prop.type === "status" && prop.status?.options) {
-      await syncProperty(name, prop.status.options)
-    } else if (prop.type === "select" && prop.select?.options) {
-      await syncProperty(name, prop.select.options)
-    } else if (prop.type === "multi_select" && prop.multi_select?.options) {
-      await syncProperty(name, prop.multi_select.options)
-    }
-  }
-
+  await syncSchemaPropertyOptions(TASKS_DB)
   console.log("Synced Notion property options")
 }
 

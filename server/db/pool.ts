@@ -13,13 +13,14 @@ export function getPool(): pg.Pool {
     const connectionString = process.env.DATABASE_URL
     if (!connectionString) {
       throw new Error(
-        "DATABASE_URL must be set (e.g. postgresql://inbox:pass@grants-mac-mini.tail21f7c3.ts.net:5432/inbox)"
+        "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
       )
     }
     pool = new pg.Pool({
       connectionString,
       max: 10,
       idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
     })
   }
   return pool
