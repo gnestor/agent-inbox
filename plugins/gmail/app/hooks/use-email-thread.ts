@@ -6,7 +6,8 @@ export function useEmailThread(threadId: string | undefined) {
     queryKey: ["thread", threadId],
     queryFn: () => getEmailThread(threadId!),
     enabled: !!threadId,
-    staleTime: 5 * 60 * 1000, // 5 minutes — cached thread data is reused, not refetched on every mount
+    staleTime: 0, // Show cached data immediately, refetch in background (stale-while-revalidate)
+    placeholderData: (prev: any) => prev, // Keep previous data visible during refetch
   })
   return {
     thread: thread ?? undefined,
