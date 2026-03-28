@@ -1,13 +1,80 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import Database from "better-sqlite3"
 import { Hono } from "hono"
 
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
-const dbHolder: { db: Database.Database | null } = { db: null }
+// In-memory store for sessions
+const sessionsStore = new Map<string, any>()
+const messagesStore = new Map<string, any[]>()
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => dbHolder.db!,
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM session_messages")) {
+      const sessionId = params![0] as string
+      return messagesStore.get(sessionId) || []
+    }
+    if (sql.includes("FROM sessions")) {
+      return [...sessionsStore.values()]
+    }
+    return []
+  }),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM sessions") && sql.includes("WHERE id")) {
+      const id = params![0] as string
+      return sessionsStore.get(id) || undefined
+    }
+    if (sql.includes("SELECT status FROM sessions")) {
+      const id = params![0] as string
+      const s = sessionsStore.get(id)
+      return s ? { status: s.status } : undefined
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO sessions")) {
+      // importAgentSession: ON CONFLICT DO NOTHING
+      const id = params![0] as string
+      if (!sessionsStore.has(id)) {
+        sessionsStore.set(id, {
+          id,
+          status: "complete",
+          prompt: params![1],
+          summary: params![2],
+          started_at: params![3],
+          updated_at: params![4],
+          completed_at: params![5],
+          trigger_source: "manual",
+        })
+      }
+      return { rowCount: 1 }
+    }
+    if (sql.includes("UPDATE sessions SET status")) {
+      // updateSessionStatus
+      const id = params![params!.length - 1] as string
+      const status = params![0] as string
+      const session = sessionsStore.get(id)
+      if (session) {
+        session.status = status
+        if (params![1]) session.summary = params![1]
+        session.updated_at = new Date().toISOString()
+      }
+      return { rowCount: 1 }
+    }
+    if (sql.includes("UPDATE sessions SET summary")) {
+      const summary = params![0] as string
+      const id = params![2] as string
+      const session = sessionsStore.get(id)
+      if (session) {
+        session.summary = summary
+        session.updated_at = params![1] as string
+      }
+      return { rowCount: 1 }
+    }
+    return { rowCount: 0 }
+  }),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 // Mock credentials (required by session-manager)
@@ -38,46 +105,19 @@ const {
   getSessionRecord,
 } = await import("../session-manager.js")
 
-function createSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'running',
-      prompt TEXT,
-      summary TEXT,
-      started_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      completed_at TEXT,
-      linked_email_id TEXT,
-      linked_email_thread_id TEXT,
-      linked_task_id TEXT,
-      trigger_source TEXT DEFAULT 'manual',
-      metadata TEXT,
-      linked_item_title TEXT,
-      linked_source_id TEXT,
-      linked_source_type TEXT
-    );
-    CREATE TABLE IF NOT EXISTS session_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      sequence INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-  `)
-}
-
 function insertSession(
-  db: Database.Database,
   id: string,
   status: string = "complete",
 ) {
   const now = new Date().toISOString()
-  db.prepare(
-    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, status, "Test prompt", "Test summary", now, now)
+  sessionsStore.set(id, {
+    id,
+    status,
+    prompt: "Test prompt",
+    summary: "Test summary",
+    started_at: now,
+    updated_at: now,
+  })
 }
 
 function createTestApp() {
@@ -88,105 +128,92 @@ function createTestApp() {
 
 describe("archiveSession", () => {
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    createSchema(dbHolder.db)
+    sessionsStore.clear()
+    messagesStore.clear()
     mockFindAgentSession.mockReset()
     mockGetAgentSessionTranscript.mockReset()
   })
 
-  it("returns false for unknown session", () => {
-    const result = archiveSession("nonexistent-id")
+  it("returns false for unknown session", async () => {
+    const result = await archiveSession("nonexistent-id")
     expect(result).toBe(false)
   })
 
-  it("sets status to 'archived' for a non-running session", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-complete", "complete")
+  it("sets status to 'archived' for a non-running session", async () => {
+    insertSession("sess-complete", "complete")
 
-    const result = archiveSession("sess-complete")
+    const result = await archiveSession("sess-complete")
     expect(result).toBe(true)
 
-    const row = getSessionRecord("sess-complete")
+    const row = await getSessionRecord("sess-complete")
     expect(row).toBeDefined()
     expect(row!.status).toBe("archived")
   })
 
-  it("sets status to 'archived' for a running session and cleans up running state", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-running", "running")
+  it("sets status to 'archived' for a running session and cleans up running state", async () => {
+    insertSession("sess-running", "running")
 
-    // archiveSession should handle a non-running session gracefully
-    // (no abort controller in map, but should still archive)
-    const result = archiveSession("sess-running")
+    const result = await archiveSession("sess-running")
     expect(result).toBe(true)
 
-    const row = getSessionRecord("sess-running")
+    const row = await getSessionRecord("sess-running")
     expect(row!.status).toBe("archived")
   })
 })
 
 describe("updateSessionStatus race condition guard", () => {
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    createSchema(dbHolder.db)
+    sessionsStore.clear()
+    messagesStore.clear()
   })
 
-  it("does not overwrite 'archived' status when 'complete' is applied", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-archived", "archived")
+  it("does not overwrite 'archived' status when 'complete' is applied", async () => {
+    insertSession("sess-archived", "archived")
 
-    // Try to set to 'complete' -- should be a no-op because current status is 'archived'
-    updateSessionStatus("sess-archived", "complete")
+    await updateSessionStatus("sess-archived", "complete")
 
-    const row = getSessionRecord("sess-archived")
+    const row = await getSessionRecord("sess-archived")
     expect(row!.status).toBe("archived")
   })
 
-  it("does not overwrite 'archived' status when 'errored' is applied", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-archived2", "archived")
+  it("does not overwrite 'archived' status when 'errored' is applied", async () => {
+    insertSession("sess-archived2", "archived")
 
-    // Try to set to 'errored' -- should be a no-op
-    updateSessionStatus("sess-archived2", "errored", "some error")
+    await updateSessionStatus("sess-archived2", "errored", "some error")
 
-    const row = getSessionRecord("sess-archived2")
+    const row = await getSessionRecord("sess-archived2")
     expect(row!.status).toBe("archived")
   })
 
-  it("allows setting 'complete' when current status is 'running'", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-running", "running")
+  it("allows setting 'complete' when current status is 'running'", async () => {
+    insertSession("sess-running", "running")
 
-    updateSessionStatus("sess-running", "complete")
+    await updateSessionStatus("sess-running", "complete")
 
-    const row = getSessionRecord("sess-running")
+    const row = await getSessionRecord("sess-running")
     expect(row!.status).toBe("complete")
   })
 
-  it("allows setting other statuses when current status is 'archived'", () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-archived3", "archived")
+  it("allows setting other statuses when current status is 'archived'", async () => {
+    insertSession("sess-archived3", "archived")
 
-    // Non-terminal statuses (e.g., 'running') should still be settable
-    // (edge case: only 'complete' and 'errored' are guarded)
-    updateSessionStatus("sess-archived3", "running")
+    await updateSessionStatus("sess-archived3", "running")
 
-    const row = getSessionRecord("sess-archived3")
+    const row = await getSessionRecord("sess-archived3")
     expect(row!.status).toBe("running")
   })
 })
 
 describe("POST /sessions/:id/archive", () => {
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    createSchema(dbHolder.db)
+    sessionsStore.clear()
+    messagesStore.clear()
     mockFindAgentSession.mockReset()
     mockGetAgentSessionTranscript.mockReset()
   })
 
   it("returns { ok: true } and archives a known session", async () => {
-    const db = dbHolder.db!
-    insertSession(db, "sess-to-archive", "complete")
+    insertSession("sess-to-archive", "complete")
 
     const app = createTestApp()
     const res = await app.request("http://localhost/api/sessions/sess-to-archive/archive", {
@@ -197,7 +224,7 @@ describe("POST /sessions/:id/archive", () => {
     const data = await res.json()
     expect(data.ok).toBe(true)
 
-    const row = getSessionRecord("sess-to-archive")
+    const row = await getSessionRecord("sess-to-archive")
     expect(row!.status).toBe("archived")
   })
 
@@ -233,7 +260,7 @@ describe("POST /sessions/:id/archive", () => {
     const data = await res.json()
     expect(data.ok).toBe(true)
 
-    const row = getSessionRecord("agent-only-session")
+    const row = await getSessionRecord("agent-only-session")
     expect(row).toBeDefined()
     expect(row!.status).toBe("archived")
   })

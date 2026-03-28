@@ -1,5 +1,5 @@
 import { getNotionToken } from "./credentials.js"
-import { getDb } from "../db/schema.js"
+import { execute, query, withTransaction } from "../db/pool.js"
 
 const NOTION_BASE = "https://api.notion.com/v1"
 const NOTION_VERSION = "2022-06-28"
@@ -339,78 +339,45 @@ export async function getCalendarItemDetail(itemId: string) {
   }
 }
 
-// Fetch calendar database schema and cache property options in SQLite (prefixed with "calendar:")
-export async function syncCalendarPropertyOptions() {
-  const schema = await notionRequest(`/databases/${CALENDAR_DB}`)
-  const db = getDb()
+async function syncSchemaPropertyOptions(dbId: string, prefix?: string) {
+  const schema = await notionRequest(`/databases/${dbId}`)
   const now = new Date().toISOString()
 
-  const insert = db.prepare(
-    `INSERT OR REPLACE INTO notion_options (property, value, color, updated_at)
-     VALUES (?, ?, ?, ?)`,
-  )
+  await withTransaction(async (client) => {
+    const props = schema.properties || {}
+    for (const [name, prop] of Object.entries(props) as [string, any][]) {
+      const property = prefix ? `${prefix}${name}` : name
+      let options: { name: string; color?: string }[] | undefined
+      if (prop.type === "status" && prop.status?.options) options = prop.status.options
+      else if (prop.type === "select" && prop.select?.options) options = prop.select.options
+      else if (prop.type === "multi_select" && prop.multi_select?.options) options = prop.multi_select.options
+      if (!options) continue
 
-  const syncProperty = db.transaction(
-    (property: string, options: { name: string; color?: string }[]) => {
-      db.prepare(`DELETE FROM notion_options WHERE property = ?`).run(property)
+      await client.query(`DELETE FROM notion_options WHERE property = $1`, [property])
       for (const opt of options) {
-        insert.run(property, opt.name, opt.color || null, now)
+        await client.query(
+          `INSERT INTO notion_options (property, value, color, updated_at) VALUES ($1, $2, $3, $4)
+           ON CONFLICT (property, value) DO UPDATE SET color = EXCLUDED.color, updated_at = EXCLUDED.updated_at`,
+          [property, opt.name, opt.color || null, now],
+        )
       }
-    },
-  )
-
-  const props = schema.properties || {}
-  for (const [name, prop] of Object.entries(props) as [string, any][]) {
-    const prefixedName = `calendar:${name}`
-    if (prop.type === "status" && prop.status?.options) {
-      syncProperty(prefixedName, prop.status.options)
-    } else if (prop.type === "select" && prop.select?.options) {
-      syncProperty(prefixedName, prop.select.options)
-    } else if (prop.type === "multi_select" && prop.multi_select?.options) {
-      syncProperty(prefixedName, prop.multi_select.options)
     }
-  }
+  })
+}
 
+export async function syncCalendarPropertyOptions() {
+  await syncSchemaPropertyOptions(CALENDAR_DB, "calendar:")
   console.log("Synced Calendar property options")
 }
 
-// Fetch database schema and cache property options in SQLite
 export async function syncPropertyOptions() {
-  const schema = await notionRequest(`/databases/${TASKS_DB}`)
-  const db = getDb()
-  const now = new Date().toISOString()
-
-  const insert = db.prepare(
-    `INSERT OR REPLACE INTO notion_options (property, value, color, updated_at)
-     VALUES (?, ?, ?, ?)`,
-  )
-
-  const syncProperty = db.transaction(
-    (property: string, options: { name: string; color?: string }[]) => {
-      db.prepare(`DELETE FROM notion_options WHERE property = ?`).run(property)
-      for (const opt of options) {
-        insert.run(property, opt.name, opt.color || null, now)
-      }
-    },
-  )
-
-  const props = schema.properties || {}
-  for (const [name, prop] of Object.entries(props) as [string, any][]) {
-    if (prop.type === "status" && prop.status?.options) {
-      syncProperty(name, prop.status.options)
-    } else if (prop.type === "select" && prop.select?.options) {
-      syncProperty(name, prop.select.options)
-    } else if (prop.type === "multi_select" && prop.multi_select?.options) {
-      syncProperty(name, prop.multi_select.options)
-    }
-  }
-
+  await syncSchemaPropertyOptions(TASKS_DB)
   console.log("Synced Notion property options")
 }
 
-export function getPropertyOptions(property: string) {
-  const db = getDb()
-  return db
-    .prepare(`SELECT value, color FROM notion_options WHERE property = ? ORDER BY rowid`)
-    .all(property) as { value: string; color: string | null }[]
+export async function getPropertyOptions(property: string) {
+  return query<{ value: string; color: string | null }>(
+    `SELECT value, color FROM notion_options WHERE property = $1 ORDER BY value`,
+    [property],
+  )
 }

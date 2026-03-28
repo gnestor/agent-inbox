@@ -230,7 +230,7 @@ export interface Plugin {
    * Use for endpoints that don't fit query/mutate (e.g. attachment proxy,
    * file upload, OAuth callback).
    */
-  routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => PluginContext }): void
+  routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => Promise<PluginContext> }): void
 }
 
 /** @deprecated Use Plugin instead */

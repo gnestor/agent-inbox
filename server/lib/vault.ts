@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto"
-import { getDb } from "../db/schema.js"
+import { execute, query, queryOne } from "../db/pool.js"
 
 const ALGORITHM = "aes-256-gcm"
 const IV_LENGTH = 16
@@ -48,39 +48,44 @@ export interface StoredCredential {
   expiresAt?: string
 }
 
-export function storeUserCredential(
+export async function storeUserCredential(
   userEmail: string,
   integration: string,
   cred: { token: string; refreshToken?: string; scopes?: string; expiresAt?: string }
 ) {
-  const db = getDb()
   const now = new Date().toISOString()
-  db.prepare(
+  await execute(
     `INSERT INTO user_credentials (user_email, integration, encrypted_token, refresh_token, scopes, expires_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT(user_email, integration) DO UPDATE SET
-       encrypted_token = excluded.encrypted_token,
-       refresh_token = excluded.refresh_token,
-       scopes = excluded.scopes,
-       expires_at = excluded.expires_at,
-       updated_at = excluded.updated_at`
-  ).run(
-    userEmail,
-    integration,
-    encrypt(cred.token),
-    cred.refreshToken ? encrypt(cred.refreshToken) : null,
-    cred.scopes || null,
-    cred.expiresAt || null,
-    now,
-    now
+       encrypted_token = EXCLUDED.encrypted_token,
+       refresh_token = EXCLUDED.refresh_token,
+       scopes = EXCLUDED.scopes,
+       expires_at = EXCLUDED.expires_at,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      userEmail,
+      integration,
+      encrypt(cred.token),
+      cred.refreshToken ? encrypt(cred.refreshToken) : null,
+      cred.scopes || null,
+      cred.expiresAt || null,
+      now,
+      now,
+    ],
   )
 }
 
-export function getUserCredential(userEmail: string, integration: string): StoredCredential | null {
-  const db = getDb()
-  const row = db.prepare(
-    "SELECT encrypted_token, refresh_token, scopes, expires_at FROM user_credentials WHERE user_email = ? AND integration = ?"
-  ).get(userEmail, integration) as { encrypted_token: string; refresh_token: string | null; scopes: string | null; expires_at: string | null } | undefined
+export async function getUserCredential(userEmail: string, integration: string): Promise<StoredCredential | null> {
+  const row = await queryOne<{
+    encrypted_token: string
+    refresh_token: string | null
+    scopes: string | null
+    expires_at: string | null
+  }>(
+    "SELECT encrypted_token, refresh_token, scopes, expires_at FROM user_credentials WHERE user_email = $1 AND integration = $2",
+    [userEmail, integration],
+  )
   if (!row) return null
   return {
     integration,
@@ -91,52 +96,70 @@ export function getUserCredential(userEmail: string, integration: string): Store
   }
 }
 
-export function listUserCredentials(userEmail: string): Array<{ integration: string; scopes: string | null; expiresAt: string | null; updatedAt: string }> {
-  const db = getDb()
-  return (db.prepare("SELECT integration, scopes, expires_at, updated_at FROM user_credentials WHERE user_email = ? ORDER BY integration").all(userEmail) as Array<{ integration: string; scopes: string | null; expires_at: string | null; updated_at: string }>)
-    .map((row) => ({ integration: row.integration, scopes: row.scopes, expiresAt: row.expires_at, updatedAt: row.updated_at }))
+export async function listUserCredentials(userEmail: string): Promise<Array<{ integration: string; scopes: string | null; expiresAt: string | null; updatedAt: string }>> {
+  const rows = await query<{
+    integration: string
+    scopes: string | null
+    expires_at: string | null
+    updated_at: string
+  }>(
+    "SELECT integration, scopes, expires_at, updated_at FROM user_credentials WHERE user_email = $1 ORDER BY integration",
+    [userEmail],
+  )
+  return rows.map((row) => ({
+    integration: row.integration,
+    scopes: row.scopes,
+    expiresAt: row.expires_at,
+    updatedAt: row.updated_at,
+  }))
 }
 
-export function deleteUserCredential(userEmail: string, integration: string) {
-  const db = getDb()
-  db.prepare("DELETE FROM user_credentials WHERE user_email = ? AND integration = ?").run(userEmail, integration)
+export async function deleteUserCredential(userEmail: string, integration: string) {
+  await execute(
+    "DELETE FROM user_credentials WHERE user_email = $1 AND integration = $2",
+    [userEmail, integration],
+  )
 }
 
-export function storeWorkspaceCredential(workspace: string, integration: string, token: string) {
-  const db = getDb()
+export async function storeWorkspaceCredential(workspace: string, integration: string, token: string) {
   const now = new Date().toISOString()
-  db.prepare(
+  await execute(
     `INSERT INTO workspace_credentials (workspace, integration, encrypted_token, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT(workspace, integration) DO UPDATE SET
-       encrypted_token = excluded.encrypted_token,
-       updated_at = excluded.updated_at`
-  ).run(workspace, integration, encrypt(token), now, now)
+       encrypted_token = EXCLUDED.encrypted_token,
+       updated_at = EXCLUDED.updated_at`,
+    [workspace, integration, encrypt(token), now, now],
+  )
 }
 
-export function getWorkspaceCredential(workspace: string, integration: string): string | null {
-  const db = getDb()
-  const row = db.prepare("SELECT encrypted_token FROM workspace_credentials WHERE workspace = ? AND integration = ?").get(workspace, integration) as { encrypted_token: string } | undefined
+export async function getWorkspaceCredential(workspace: string, integration: string): Promise<string | null> {
+  const row = await queryOne<{ encrypted_token: string }>(
+    "SELECT encrypted_token FROM workspace_credentials WHERE workspace = $1 AND integration = $2",
+    [workspace, integration],
+  )
   if (!row) return null
   return decrypt(row.encrypted_token)
 }
 
-export function listWorkspaceCredentials(workspace: string): Array<{ integration: string; updatedAt: string }> {
-  const db = getDb()
-  return (db.prepare("SELECT integration, updated_at FROM workspace_credentials WHERE workspace = ? ORDER BY integration").all(workspace) as Array<{ integration: string; updated_at: string }>)
-    .map((row) => ({ integration: row.integration, updatedAt: row.updated_at }))
+export async function listWorkspaceCredentials(workspace: string): Promise<Array<{ integration: string; updatedAt: string }>> {
+  const rows = await query<{ integration: string; updated_at: string }>(
+    "SELECT integration, updated_at FROM workspace_credentials WHERE workspace = $1 ORDER BY integration",
+    [workspace],
+  )
+  return rows.map((row) => ({ integration: row.integration, updatedAt: row.updated_at }))
 }
 
 /**
  * Resolve a credential for a given user + integration.
  * Priority: user-scoped > workspace-scoped.
  */
-export function resolveCredential(
+export async function resolveCredential(
   userEmail: string,
   workspace: string,
-  integration: string
-): string | null {
-  const userCred = getUserCredential(userEmail, integration)
+  integration: string,
+): Promise<string | null> {
+  const userCred = await getUserCredential(userEmail, integration)
   if (userCred) return userCred.token
 
   return getWorkspaceCredential(workspace, integration)
@@ -146,19 +169,19 @@ export function resolveCredential(
  * Auto-seed workspace credentials from the workspace .env file.
  * Only inserts credentials that don't already exist in the vault.
  */
-export function seedWorkspaceCredentials(
+export async function seedWorkspaceCredentials(
   workspaceName: string,
   envVars: Record<string, string>,
   envToIntegration: Record<string, string>,
 ) {
-  const existing = new Set(listWorkspaceCredentials(workspaceName).map((c) => c.integration))
+  const existing = new Set((await listWorkspaceCredentials(workspaceName)).map((c) => c.integration))
 
   let count = 0
   for (const [envKey, value] of Object.entries(envVars)) {
     const integration = envToIntegration[envKey]
     if (!integration || !value || existing.has(integration)) continue
 
-    storeWorkspaceCredential(workspaceName, integration, value)
+    await storeWorkspaceCredential(workspaceName, integration, value)
     console.log(`Seeded ${envKey} → workspace_credentials[${workspaceName}, ${integration}]`)
     count++
   }

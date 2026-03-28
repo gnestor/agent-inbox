@@ -1,14 +1,17 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mock DB and credentials (required by session-manager module)
-const mockRun = vi.fn()
-const mockGet = vi.fn()
-const mockAll = vi.fn(() => [])
+const mockExecute = vi.fn(async () => ({ rowCount: 0 }))
+const mockQueryOne = vi.fn(async () => undefined)
+const mockQuery = vi.fn(async () => [])
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => ({
-    prepare: () => ({ run: mockRun, get: mockGet, all: mockAll }),
-  }),
+vi.mock("../../db/pool.js", () => ({
+  query: (...args: any[]) => mockQuery(...args),
+  queryOne: (...args: any[]) => mockQueryOne(...args),
+  execute: (...args: any[]) => mockExecute(...args),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -22,9 +25,9 @@ vi.mock("../../lib/title-generator.js", () => ({
 describe("session presence tracking", () => {
   beforeEach(async () => {
     vi.resetModules()
-    mockRun.mockClear()
-    mockGet.mockClear()
-    mockAll.mockReturnValue([])
+    mockExecute.mockClear()
+    mockQueryOne.mockClear()
+    mockQuery.mockResolvedValue([])
   })
 
   it("addPresenceUser adds user to presence map", async () => {
@@ -57,7 +60,6 @@ describe("session presence tracking", () => {
     const users = getPresenceUsers("sess-3")
     expect(users).toHaveLength(1)
     expect(users[0].email).toBe("bob@test.com")
-    // Should have received 3 broadcasts: add alice, add bob, remove alice
     expect(received).toHaveLength(3)
     const lastEvent = JSON.parse(received[2])
     expect(lastEvent.type).toBe("presence")
@@ -90,13 +92,12 @@ describe("session presence tracking", () => {
 describe("resumeSessionQuery author attribution", () => {
   beforeEach(async () => {
     vi.resetModules()
-    mockRun.mockClear()
-    mockGet.mockClear()
-    mockAll.mockReturnValue([])
+    mockExecute.mockClear()
+    mockQueryOne.mockClear()
+    mockQuery.mockResolvedValue([])
   })
 
   it("stores authorEmail/authorName/authorPicture on user message when userProfile provided", async () => {
-    // Mock the claude-agent-sdk to avoid actual network calls
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
         [Symbol.asyncIterator]: async function* () {},
@@ -105,18 +106,22 @@ describe("resumeSessionQuery author attribution", () => {
       createSdkMcpServer: vi.fn(),
     }))
 
-    // Capture all JSON values passed to db.prepare().run()
+    // Capture all JSON values passed to execute()
     const storedJsonArgs: unknown[] = []
-    mockRun.mockImplementation((...args: unknown[]) => {
-      for (const arg of args) {
-        if (typeof arg === "string" && arg.startsWith("{")) {
-          try {
-            storedJsonArgs.push(JSON.parse(arg))
-          } catch { /* ignore */ }
+    mockExecute.mockImplementation(async (...args: unknown[]) => {
+      const params = (args as any[])[1] as unknown[] | undefined
+      if (params) {
+        for (const arg of params) {
+          if (typeof arg === "string" && arg.startsWith("{")) {
+            try {
+              storedJsonArgs.push(JSON.parse(arg))
+            } catch { /* ignore */ }
+          }
         }
       }
+      return { rowCount: 1 }
     })
-    mockAll.mockReturnValue([]) // no existing messages
+    mockQuery.mockResolvedValue([]) // no existing messages
 
     const { resumeSessionQuery } = await import("../session-manager.js")
 
@@ -126,13 +131,12 @@ describe("resumeSessionQuery author attribution", () => {
       picture: "https://example.com/alice.jpg",
     })
 
-    // Find the user message that was stored
     const userMsgs = storedJsonArgs.filter((m: any) => m?.type === "user")
     expect(userMsgs.length).toBeGreaterThan(0)
     const userMsg = userMsgs[0] as any
     expect(userMsg.authorEmail).toBe("alice@test.com")
     expect(userMsg.authorName).toBe("Alice")
-    expect(userMsg.authorPicture).toBeUndefined() // picture stored in DB, not JSONL
+    expect(userMsg.authorPicture).toBeUndefined()
   })
 
   it("omits author fields when no userProfile provided (backward compat)", async () => {
@@ -145,16 +149,20 @@ describe("resumeSessionQuery author attribution", () => {
     }))
 
     const storedJsonArgs: unknown[] = []
-    mockRun.mockImplementation((...args: unknown[]) => {
-      for (const arg of args) {
-        if (typeof arg === "string" && arg.startsWith("{")) {
-          try {
-            storedJsonArgs.push(JSON.parse(arg))
-          } catch { /* ignore */ }
+    mockExecute.mockImplementation(async (...args: unknown[]) => {
+      const params = (args as any[])[1] as unknown[] | undefined
+      if (params) {
+        for (const arg of params) {
+          if (typeof arg === "string" && arg.startsWith("{")) {
+            try {
+              storedJsonArgs.push(JSON.parse(arg))
+            } catch { /* ignore */ }
+          }
         }
       }
+      return { rowCount: 1 }
     })
-    mockAll.mockReturnValue([])
+    mockQuery.mockResolvedValue([])
 
     const { resumeSessionQuery } = await import("../session-manager.js")
 

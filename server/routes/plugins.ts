@@ -9,13 +9,13 @@ import type { PluginContext } from "../../src/types/plugin.js"
  * Build a PluginContext from the Hono request context.
  * The auth middleware has already set userEmail on all /api/* routes.
  */
-function buildPluginContext(c: { get: (key: string) => unknown }): PluginContext {
+async function buildPluginContext(c: { get: (key: string) => unknown }): Promise<PluginContext> {
   const userEmail = c.get("userEmail") as string
   return {
     userEmail,
     async getCredential(integration: string): Promise<string | null> {
       // Per-user OAuth credential (e.g. Google)
-      const cred = getUserCredential(userEmail, integration)
+      const cred = await getUserCredential(userEmail, integration)
       if (cred?.refreshToken) {
         if (integration === "google") {
           return refreshGoogleToken(cred.refreshToken)
@@ -63,7 +63,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
     Object.entries(raw).filter(([k]) => k !== "cursor")
   )
 
-  const ctx = buildPluginContext(c)
+  const ctx = await buildPluginContext(c)
   const result = await plugin.query(filters, cursor, ctx)
   return c.json(result)
 })
@@ -75,7 +75,7 @@ pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.getItem) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support getItem` })
 
-  const ctx = buildPluginContext(c)
+  const ctx = await buildPluginContext(c)
   const item = await plugin.getItem(itemId, ctx)
   if (!item) throw new HTTPException(404, { message: `Item "${itemId}" not found` })
   return c.json(item)
@@ -94,7 +94,7 @@ pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
     Object.entries(raw).filter(([k]) => k !== "cursor")
   )
 
-  const ctx = buildPluginContext(c)
+  const ctx = await buildPluginContext(c)
   const result = await plugin.querySubItems(itemId, filters, cursor, ctx)
   return c.json(result)
 })
@@ -108,7 +108,7 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })
 
-  const ctx = buildPluginContext(c)
+  const ctx = await buildPluginContext(c)
 
   // Validate payload against plugin-declared schema if available
   const schema = plugin.actionSchemas?.[action]
@@ -135,7 +135,7 @@ pluginRoutes.get("/:pluginId/fields/:fieldId/options", async (c) => {
   const fetcher = plugin.filterOptions?.[fieldId]
   if (!fetcher) throw new HTTPException(404, { message: `Plugin "${pluginId}" has no filter options for "${fieldId}"` })
 
-  const ctx = buildPluginContext(c)
+  const ctx = await buildPluginContext(c)
   const options = await fetcher(ctx)
   return c.json({ options })
 })

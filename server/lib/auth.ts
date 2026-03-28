@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto"
-import { getDb } from "../db/schema.js"
+import { execute, queryOne } from "../db/pool.js"
 
 export function getClientId(): string {
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -34,32 +34,32 @@ export async function verifyIdToken(credential: string): Promise<{
   }
 
   const sessionToken = randomBytes(32).toString("hex")
-  const db = getDb()
   const now = new Date().toISOString()
 
-  db.prepare(
+  await execute(
     `INSERT INTO users (email, name, picture, created_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(email) DO UPDATE SET name = excluded.name, picture = excluded.picture, last_login_at = excluded.last_login_at`,
-  ).run(user.email, user.name, user.picture || null, now, now)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT(email) DO UPDATE SET name = EXCLUDED.name, picture = EXCLUDED.picture, last_login_at = EXCLUDED.last_login_at`,
+    [user.email, user.name, user.picture || null, now, now],
+  )
 
-  db.prepare(
+  await execute(
     `INSERT INTO auth_sessions (token, user_name, user_email, user_picture, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(sessionToken, user.name, user.email, user.picture || null, now)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [sessionToken, user.name, user.email, user.picture || null, now],
+  )
 
   return { sessionToken, user }
 }
 
-export function getSession(
+export async function getSession(
   token: string,
-): { user: { name: string; email: string; picture?: string } } | undefined {
-  const db = getDb()
-  const row = db
-    .prepare(`SELECT user_name, user_email, user_picture FROM auth_sessions WHERE token = ?`)
-    .get(token) as
-    | { user_name: string; user_email: string; user_picture: string | null }
-    | undefined
+): Promise<{ user: { name: string; email: string; picture?: string } } | undefined> {
+  const row = await queryOne<{
+    user_name: string
+    user_email: string
+    user_picture: string | null
+  }>(`SELECT user_name, user_email, user_picture FROM auth_sessions WHERE token = $1`, [token])
 
   if (!row) return undefined
   return {
@@ -67,7 +67,6 @@ export function getSession(
   }
 }
 
-export function deleteSession(token: string) {
-  const db = getDb()
-  db.prepare(`DELETE FROM auth_sessions WHERE token = ?`).run(token)
+export async function deleteSession(token: string) {
+  await execute(`DELETE FROM auth_sessions WHERE token = $1`, [token])
 }

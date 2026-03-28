@@ -1,13 +1,77 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import Database from "better-sqlite3"
 import { Hono } from "hono"
 
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
-const dbHolder: { db: Database.Database | null } = { db: null }
+// In-memory stores to simulate DB tables
+const users = new Map<string, any>()
+const userCredentials = new Map<string, any>()
+const workspaceCredentials = new Map<string, any>()
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => dbHolder.db!,
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM user_credentials") && sql.includes("WHERE user_email") && !params?.[1]) {
+      const email = params![0] as string
+      const results: any[] = []
+      for (const [key, row] of userCredentials.entries()) {
+        if (key.startsWith(email + ":")) results.push(row)
+      }
+      return results
+    }
+    if (sql.includes("FROM workspace_credentials")) {
+      const workspace = params![0] as string
+      const results: any[] = []
+      for (const [key, row] of workspaceCredentials.entries()) {
+        if (key.startsWith(workspace + ":")) results.push(row)
+      }
+      return results
+    }
+    return []
+  }),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM user_credentials") && params!.length >= 2) {
+      return userCredentials.get(`${params![0]}:${params![1]}`) || undefined
+    }
+    if (sql.includes("FROM workspace_credentials") && params!.length >= 2) {
+      return workspaceCredentials.get(`${params![0]}:${params![1]}`) || undefined
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO user_credentials")) {
+      const userEmail = params![0] as string
+      const integration = params![1] as string
+      userCredentials.set(`${userEmail}:${integration}`, {
+        encrypted_token: params![2],
+        refresh_token: params![3],
+        scopes: params![4],
+        expires_at: params![5],
+        integration,
+        updated_at: params![7],
+      })
+      return { rowCount: 1 }
+    }
+    if (sql.includes("DELETE FROM user_credentials")) {
+      const email = params![0] as string
+      const integration = params![1] as string
+      userCredentials.delete(`${email}:${integration}`)
+      return { rowCount: 1 }
+    }
+    if (sql.includes("INSERT INTO workspace_credentials")) {
+      const workspace = params![0] as string
+      const integration = params![1] as string
+      workspaceCredentials.set(`${workspace}:${integration}`, {
+        encrypted_token: params![2],
+        integration,
+        updated_at: params![4],
+      })
+      return { rowCount: 1 }
+    }
+    return { rowCount: 0 }
+  }),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 // Mock session-manager to provide a workspace path
@@ -24,44 +88,6 @@ vi.mock("../auth.js", () => ({
 
 const { connectionRoutes } = await import("../../routes/connections.js")
 const { storeUserCredential, storeWorkspaceCredential } = await import("../vault.js")
-
-function createSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      email TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      picture TEXT,
-      created_at TEXT NOT NULL,
-      last_login_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS auth_sessions (
-      token TEXT PRIMARY KEY,
-      user_name TEXT NOT NULL,
-      user_email TEXT NOT NULL,
-      user_picture TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS user_credentials (
-      user_email TEXT NOT NULL REFERENCES users(email),
-      integration TEXT NOT NULL,
-      encrypted_token TEXT NOT NULL,
-      refresh_token TEXT,
-      scopes TEXT,
-      expires_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (user_email, integration)
-    );
-    CREATE TABLE IF NOT EXISTS workspace_credentials (
-      workspace TEXT NOT NULL,
-      integration TEXT NOT NULL,
-      encrypted_token TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (workspace, integration)
-    );
-  `)
-}
 
 function createTestApp() {
   const app = new Hono()
@@ -83,13 +109,10 @@ describe("connection routes", () => {
   const testEmail = "test@hammies.com"
 
   beforeEach(() => {
-    dbHolder.db = new Database(":memory:")
-    createSchema(dbHolder.db)
-    // Create test user
-    dbHolder.db.prepare(
-      "INSERT INTO users (email, name, created_at, last_login_at) VALUES (?, ?, ?, ?)"
-    ).run(testEmail, "Test User", new Date().toISOString(), new Date().toISOString())
-    // Mock session lookup
+    users.clear()
+    userCredentials.clear()
+    workspaceCredentials.clear()
+    users.set(testEmail, { email: testEmail, name: "Test User" })
     mockGetSession.mockReset()
     mockGetSession.mockReturnValue({
       user: { name: "Test User", email: testEmail, picture: undefined },
@@ -107,7 +130,6 @@ describe("connection routes", () => {
       expect(Array.isArray(data.integrations)).toBe(true)
       expect(data.integrations.length).toBeGreaterThanOrEqual(6)
 
-      // All should be disconnected initially
       for (const integration of data.integrations) {
         expect(integration.connected).toBe(false)
         expect(integration.id).toBeTruthy()
@@ -116,7 +138,7 @@ describe("connection routes", () => {
     })
 
     it("shows user integrations as connected when credentials exist", async () => {
-      storeUserCredential(testEmail, "google", { token: "test-token" })
+      await storeUserCredential(testEmail, "google", { token: "test-token" })
 
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections")
@@ -130,7 +152,7 @@ describe("connection routes", () => {
     })
 
     it("shows workspace integrations as connected when credentials exist", async () => {
-      storeWorkspaceCredential("test-workspace", "shopify", "shop-token")
+      await storeWorkspaceCredential("test-workspace", "shopify", "shop-token")
 
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections")
@@ -163,7 +185,6 @@ describe("connection routes", () => {
     })
 
     it("returns 500 when client ID env is not set", async () => {
-      // Ensure env var is not set
       delete process.env.GOOGLE_CLIENT_ID
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections/connect/google")
@@ -182,7 +203,6 @@ describe("connection routes", () => {
       expect(location).toContain("https://accounts.google.com/o/oauth2/v2/auth")
       expect(location).toContain("client_id=test-google-client-id")
       expect(location).toContain("state=")
-      // Clean up
       delete process.env.GOOGLE_CLIENT_ID
       delete process.env.GOOGLE_CLIENT_SECRET
     })
@@ -227,7 +247,7 @@ describe("connection routes", () => {
 
   describe("DELETE /api/connections/:integration", () => {
     it("disconnects a user integration", async () => {
-      storeUserCredential(testEmail, "google", { token: "test-token" })
+      await storeUserCredential(testEmail, "google", { token: "test-token" })
 
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections/google", {
