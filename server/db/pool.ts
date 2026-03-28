@@ -3,19 +3,33 @@ import { readFileSync } from "fs"
 import { resolve } from "path"
 import { fileURLToPath } from "url"
 import { dirname } from "path"
+import { hostname } from "os"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let pool: pg.Pool | null = null
 
+/** If running on the DB host itself, rewrite the Tailscale hostname to localhost. */
+function resolveConnectionString(): string {
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
+    )
+  }
+  try {
+    const url = new URL(connectionString)
+    if (url.hostname.endsWith(".ts.net") && hostname().toLowerCase().startsWith(url.hostname.split(".")[0])) {
+      url.hostname = "localhost"
+      return url.toString()
+    }
+  } catch {}
+  return connectionString
+}
+
 export function getPool(): pg.Pool {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL
-    if (!connectionString) {
-      throw new Error(
-        "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
-      )
-    }
+    const connectionString = resolveConnectionString()
     pool = new pg.Pool({
       connectionString,
       max: 10,

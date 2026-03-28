@@ -10,6 +10,7 @@
 // Default SQLite path: data/inbox.db (relative to packages/inbox)
 
 import { config } from "dotenv"
+import { hostname } from "os"
 import Database from "better-sqlite3"
 import pg from "pg"
 import { resolve, dirname } from "path"
@@ -21,12 +22,24 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, "../.env") })
 
 const sqlitePath = process.argv[2] || resolve(__dirname, "../data/inbox.db")
-const databaseUrl = process.env.DATABASE_URL
 
-if (!databaseUrl) {
-  console.error("DATABASE_URL environment variable is required")
-  process.exit(1)
+function resolveConnectionString(): string {
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    console.error("DATABASE_URL environment variable is required")
+    process.exit(1)
+  }
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname.endsWith(".ts.net") && hostname().toLowerCase().startsWith(parsed.hostname.split(".")[0])) {
+      parsed.hostname = "localhost"
+      return parsed.toString()
+    }
+  } catch {}
+  return url
 }
+
+const databaseUrl = resolveConnectionString()
 
 console.log(`SQLite source: ${sqlitePath}`)
 console.log(`Postgres target: ${databaseUrl.replace(/:[^@]*@/, ':***@')}`)
