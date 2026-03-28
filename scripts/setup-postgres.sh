@@ -80,8 +80,8 @@ if grep -q "^listen_addresses = '\*'" "$PG_CONF"; then
   echo "listen_addresses already set to '*'."
 else
   echo "Setting listen_addresses = '*' in postgresql.conf..."
-  # Comment out any existing listen_addresses line and add ours
-  sed -i '' "s/^#*listen_addresses.*$/# &/" "$PG_CONF"
+  # Remove any existing listen_addresses lines (commented or not), then add ours
+  sed -i '' '/^#*listen_addresses/d' "$PG_CONF"
   echo "listen_addresses = '*'" >> "$PG_CONF"
 fi
 
