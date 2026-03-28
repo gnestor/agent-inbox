@@ -19,15 +19,8 @@ export async function set<T>(key: string, data: T, ttlMs: number): Promise<void>
 }
 
 export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
-  const now = new Date().toISOString()
-  const row = await queryOne<{ data: string }>(
-    `SELECT data FROM api_cache WHERE key = $1 AND expires_at > $2`,
-    [key, now],
-  )
-
-  if (row) {
-    return JSON.parse(row.data) as T
-  }
+  const existing = await get<T>(key)
+  if (existing !== null) return existing
 
   const data = await fn()
   await set(key, data, ttlMs)

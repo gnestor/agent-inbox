@@ -74,27 +74,6 @@ export async function initializeDatabase(): Promise<void> {
   )
   await getPool().query(migrationSql)
 
-  // Column migrations (equivalent to SQLite PRAGMA table_info checks)
-  const cols = await query<{ column_name: string }>(
-    "SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'",
-  )
-  const colNames = cols.map((c) => c.column_name)
-
-  if (!colNames.includes("linked_source_id")) {
-    await execute("ALTER TABLE sessions ADD COLUMN linked_source_id TEXT")
-  }
-  if (!colNames.includes("linked_source_type")) {
-    await execute("ALTER TABLE sessions ADD COLUMN linked_source_type TEXT")
-  }
-
-  // Migrate legacy linked columns to generic linked_source_type/id
-  await execute(
-    "UPDATE sessions SET linked_source_type = 'gmail', linked_source_id = linked_email_thread_id WHERE linked_email_thread_id IS NOT NULL AND linked_source_id IS NULL",
-  )
-  await execute(
-    "UPDATE sessions SET linked_source_type = 'notion-tasks', linked_source_id = linked_task_id WHERE linked_task_id IS NOT NULL AND linked_source_id IS NULL",
-  )
-
   console.log("Database initialized (PostgreSQL)")
 }
 
