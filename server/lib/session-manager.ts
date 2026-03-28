@@ -910,15 +910,21 @@ export async function watchProjectsDir(): Promise<void> {
   }
 
   // Watch recursively — new subdirs (new workspaces) will be picked up
-  fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
-    if (!filename || !filename.endsWith(".jsonl")) return
-    const filePath = join(projectsDir, filename)
-    pending.add(filePath)
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(flush, 2000)
-  })
-
-  console.log(`[watcher] Watching ${projectsDir} for new sessions`)
+  try {
+    const watcher = fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
+      if (!filename || !filename.endsWith(".jsonl")) return
+      const filePath = join(projectsDir, filename)
+      pending.add(filePath)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(flush, 2000)
+    })
+    watcher.on("error", (err) => {
+      console.warn(`[watcher] File watcher error (non-fatal):`, (err as NodeJS.ErrnoException).code ?? err)
+    })
+    console.log(`[watcher] Watching ${projectsDir} for new sessions`)
+  } catch (err) {
+    console.warn(`[watcher] Failed to start file watcher (non-fatal):`, (err as Error).message)
+  }
 }
 
 export async function listAgentSessions() {
