@@ -173,21 +173,8 @@ export const gmailPlugin: Plugin = {
     return await gmail.getThread(accessToken, threadId) as any
   },
 
-  async querySubItems(threadId, _filters, _cursor, ctx) {
-    const accessToken = await requireToken(ctx)
-    const thread = await gmail.getThread(accessToken, threadId)
-    return {
-      items: (thread.messages || []).map((msg: any) => ({
-        id: msg.id,
-        // Map to MessageRow expected fields
-        userName: msg.from || "Unknown",
-        ts: msg.date ? String(new Date(msg.date).getTime() / 1000) : "",
-        text: msg.body || msg.snippet || "",
-        bodyType: msg.body ? "html" : "text",
-        attachments: msg.attachments || [],
-      })),
-    }
-  },
+  // No querySubItems — Gmail uses EmailTab with its own EmailThread component
+  // for thread rendering. The generic PluginDetail subitems path is not used.
 
   async mutate(id, action, payload, ctx) {
     const accessToken = await requireToken(ctx)
