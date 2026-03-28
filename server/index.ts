@@ -17,6 +17,7 @@ import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
 import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
+import { contextRoutes } from "./routes/context.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
 import { loadCredentials, setDefaultWorkspaceId } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir } from "./lib/session-manager.js"
@@ -226,6 +227,7 @@ app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
+app.route("/api/context", contextRoutes)
 // Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
 app.route("/api", pluginRoutes)
 

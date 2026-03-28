@@ -221,6 +221,32 @@ export const gmailPlugin: Plugin = {
     }
   },
 
+  itemToContext(item) {
+    // Skip automated/no-reply senders
+    const from = (item.from as string) || (item.fromDisplay as string) || ""
+    const automatedPatterns = [
+      /noreply@/i, /no-reply@/i, /notifications?@/i, /do-?not-?reply@/i,
+      /automated?@/i, /support@/i, /info@/i, /hello@/i, /team@/i,
+      /newsletter@/i, /marketing@/i, /updates?@/i,
+    ]
+    if (automatedPatterns.some((p) => p.test(from))) return null
+
+    // Skip empty threads
+    const body = (item.body as string) || (item.snippet as string) || ""
+    if (!body.trim()) return null
+
+    const subject = (item.subject as string) || "(no subject)"
+    const date = (item.date as string) || ""
+
+    return [
+      `# ${subject}`,
+      `From: ${from}`,
+      date && `Date: ${date}`,
+      "",
+      body.slice(0, 2000),
+    ].filter(Boolean).join("\n")
+  },
+
   filterOptions: {
     labels: async (ctx) => {
       const accessToken = await requireToken(ctx)
@@ -335,7 +361,7 @@ export const gmailPlugin: Plugin = {
     app.get("/messages", async (c) => {
       const raw = c.req.query()
       const ctx = await getContext(c)
-      const result = await gmailPlugin.query(
+      const result = await gmailPlugin.query!(
         { q: raw.q || "in:inbox" },
         raw.pageToken || undefined,
         ctx,

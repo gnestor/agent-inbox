@@ -3,7 +3,10 @@ import { HTTPException } from "hono/http-exception"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
+import { get as cacheGet, set as cacheSet, invalidate as cacheInvalidate } from "../lib/cache.js"
 import type { PluginContext } from "../../src/types/plugin.js"
+
+const PLUGIN_CACHE_TTL = 24 * 60 * 60 * 1000 // 24h default
 
 /**
  * Build a PluginContext from the Hono request context.
@@ -23,6 +26,17 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
         return cred.refreshToken
       }
       return null
+    },
+    cache: {
+      async get<T>(key: string): Promise<T | null> {
+        return cacheGet<T>(key)
+      },
+      async set<T>(key: string, value: T, ttlMs = PLUGIN_CACHE_TTL): Promise<void> {
+        return cacheSet(key, value, ttlMs)
+      },
+      async invalidate(key: string): Promise<void> {
+        return cacheInvalidate(key)
+      },
     },
   }
 }

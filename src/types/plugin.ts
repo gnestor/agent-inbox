@@ -111,6 +111,12 @@ export interface PluginContext {
   userEmail: string
   /** Resolve a credential for an integration (per-user OAuth or workspace API key) */
   getCredential(integration: string): Promise<string | null>
+  /** Cache interface for storing plugin-specific data */
+  cache: {
+    get<T>(key: string): Promise<T | null>
+    set<T>(key: string, value: T, ttlMs?: number): Promise<void>
+    invalidate(key: string): Promise<void>
+  }
 }
 
 // ---------------------------------------------------------------------------
