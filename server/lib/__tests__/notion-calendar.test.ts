@@ -112,13 +112,22 @@ describe("queryCalendarItems", () => {
     })
   })
 
-  it("applies assignee filter", async () => {
-    mockFetch.mockReturnValueOnce(okJson({ results: [], has_more: false }))
+  it("applies assignee filter post-fetch (Notion people filter requires UUID)", async () => {
+    mockFetch.mockReturnValueOnce(okJson({
+      results: [
+        { properties: { Name: { title: [{ plain_text: "Meeting" }] }, Status: { status: { name: "Confirmed" } }, Tags: { multi_select: [] }, Assignee: { people: [{ name: "Alice" }] }, Date: { date: { start: "2025-01-01" } } }, id: "1", url: "https://notion.so/1", created_time: "2025-01-01", last_edited_time: "2025-01-01" },
+        { properties: { Name: { title: [{ plain_text: "Review" }] }, Status: { status: { name: "Confirmed" } }, Tags: { multi_select: [] }, Assignee: { people: [{ name: "Bob" }] }, Date: { date: { start: "2025-01-02" } } }, id: "2", url: "https://notion.so/2", created_time: "2025-01-02", last_edited_time: "2025-01-02" },
+      ],
+      has_more: false,
+    }))
 
-    await queryCalendarItems({ assignee: "Alice" })
+    const result = await queryCalendarItems({ assignee: "Alice" })
 
+    // Assignee is filtered post-fetch, not in the Notion API request
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-    expect(body.filter).toEqual({ property: "Assignee", people: { contains: "Alice" } })
+    expect(body.filter).toBeUndefined()
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].title).toBe("Meeting")
   })
 
   it("passes cursor for pagination", async () => {
