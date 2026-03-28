@@ -169,13 +169,18 @@ export const gmailPlugin: Plugin = {
   },
 
   async getItem(threadId, ctx) {
+    const cacheKey = `gmail:thread:${threadId}`
+    const cached = await getCached<any>(cacheKey)
+    if (cached) return cached
     const accessToken = await requireToken(ctx)
-    return await gmail.getThread(accessToken, threadId) as any
+    const thread = await gmail.getThread(accessToken, threadId) as any
+    await setCached(cacheKey, thread, SYNC_TTL)
+    return thread
   },
 
   async querySubItems(threadId, _filters, _cursor, ctx) {
-    const accessToken = await requireToken(ctx)
-    const thread = await gmail.getThread(accessToken, threadId)
+    // Reuse getItem cache to avoid duplicate API calls
+    const thread = await gmailPlugin.getItem!(threadId, ctx) as any
     return {
       items: (thread.messages || []).map((msg: any) => ({
         id: msg.id,
