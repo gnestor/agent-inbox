@@ -167,8 +167,9 @@ export interface Plugin {
    * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
+   * Optional — skills-only and context-only plugins may omit this.
    */
-  query(
+  query?(
     filters: Record<string, string>,
     cursor?: string,
     ctx?: PluginContext
@@ -179,7 +180,7 @@ export interface Plugin {
    * Actions are plugin-defined strings (e.g. "archive", "reply", "mark-done").
    * Payload shape is action-specific.
    */
-  mutate(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
+  mutate?(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
 
   /**
    * Optional per-action payload schemas for runtime validation.
@@ -191,8 +192,22 @@ export interface Plugin {
   /**
    * Combined schema for filter UI, list badge rendering, and detail view layout.
    * Fields are rendered in the order they appear in this array.
+   * Omit for skills-only or context-only plugins (no tab appears in sidebar).
    */
-  fieldSchema: FieldDef[]
+  fieldSchema?: FieldDef[]
+
+  /**
+   * True if this plugin has Claude Code skills (populated by plugin-loader from disk).
+   * Skills-only plugins use this as their validity marker.
+   */
+  hasSkills?: boolean
+
+  /**
+   * Convert a plugin item to a markdown document for the context index.
+   * The backfill route uses query() to paginate and this method to convert.
+   * Return null to skip an item (filtered out).
+   */
+  itemToContext?(item: PluginItem): string | null
 
   /**
    * Optional detail widget tree. If omitted, the detail view is auto-generated

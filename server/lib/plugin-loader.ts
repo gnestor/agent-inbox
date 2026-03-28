@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Plugin } from "../../src/types/plugin.js"
 
-type Importer = (path: string) => Promise<{ default: Plugin }>
+type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
 
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
@@ -16,14 +16,65 @@ function isValidPlugin(p: unknown): p is Plugin {
   return (
     typeof plugin.id === "string" &&
     plugin.id.length > 0 &&
-    typeof plugin.query === "function"
+    (
+      typeof plugin.query === "function" ||
+      plugin.hasSkills === true ||
+      typeof plugin.itemToContext === "function"
+    )
   )
 }
 
+/**
+ * Merge a workspace plugin over a built-in plugin.
+ * Workspace fields replace built-in fields when present.
+ * Skills are merged (workspace additions/overrides by name).
+ * Components are merged (workspace overrides by key).
+ */
+function mergeWorkspaceOverBuiltin(builtin: Plugin, workspace: Partial<Plugin>): Plugin {
+  return {
+    ...builtin,
+    // Workspace plugin.ts fields override built-in (if workspace has them)
+    ...(workspace.query !== undefined && { query: workspace.query }),
+    ...(workspace.mutate !== undefined && { mutate: workspace.mutate }),
+    ...(workspace.fieldSchema !== undefined && { fieldSchema: workspace.fieldSchema }),
+    ...(workspace.routes !== undefined && { routes: workspace.routes }),
+    ...(workspace.itemToContext !== undefined && { itemToContext: workspace.itemToContext }),
+    // Components: workspace overrides by key
+    components: builtin.components || workspace.components
+      ? { ...(builtin.components ?? {}), ...(workspace.components ?? {}) }
+      : undefined,
+    // Skills: mark as merged (actual skill merge happens in loadSkillManifests)
+    hasSkills: builtin.hasSkills || workspace.hasSkills || false,
+  }
+}
+
 /** Register a built-in plugin (survives loadPlugins reloads). */
-export function registerPlugin(plugin: Plugin): void {
+export function registerPlugin(plugin: Plugin, _pluginDirPath?: string): void {
   registry.set(plugin.id, plugin)
   builtinIds.add(plugin.id)
+}
+
+/**
+ * Register a single plugin entry into the target registry.
+ * If the plugin ID matches a built-in, merge the workspace plugin over the built-in.
+ */
+function registerPluginEntry(
+  plugin: Plugin,
+  targetRegistry: Map<string, Plugin>,
+  isWorkspace: boolean,
+): void {
+  if (isWorkspace && builtinIds.has(plugin.id)) {
+    // Workspace extends built-in: merge
+    const builtin = registry.get(plugin.id)!
+    const merged = mergeWorkspaceOverBuiltin(builtin, plugin)
+    targetRegistry.set(plugin.id, merged)
+    return
+  }
+  // Duplicate IDs within a load: last wins (logged as warning)
+  if (targetRegistry.has(plugin.id)) {
+    console.warn(`plugin-loader: duplicate plugin id "${plugin.id}" — last wins`)
+  }
+  targetRegistry.set(plugin.id, plugin)
 }
 
 export async function loadPlugins(
@@ -33,6 +84,7 @@ export async function loadPlugins(
 ): Promise<void> {
   // If workspace ID provided, load into per-workspace registry
   const targetRegistry = workspaceId ? new Map<string, Plugin>() : registry
+  const isWorkspace = !!workspaceId
 
   if (!workspaceId) {
     // Clear only non-builtin plugins (workspace plugins may change on reload)
@@ -51,13 +103,23 @@ export async function loadPlugins(
         const fullPath = join(pluginsDir, entry.name, filename)
         try {
           const mod = await importer(fullPath)
-          const plugin = mod.default
-          if (!isValidPlugin(plugin)) {
-            console.warn(`plugin-loader: skipping ${entry.name}/${filename} — missing id or query`)
-            continue
-          }
-          if (!builtinIds.has(plugin.id)) {
-            targetRegistry.set(plugin.id, plugin)
+          const defaultExport = mod.default
+
+          // Array exports: each entry is a separate plugin
+          if (Array.isArray(defaultExport)) {
+            for (const item of defaultExport) {
+              if (!isValidPlugin(item)) {
+                console.warn(`plugin-loader: skipping array entry in ${entry.name}/${filename} — invalid plugin (id: ${(item as any)?.id ?? "missing"})`)
+                continue
+              }
+              registerPluginEntry(item, targetRegistry, isWorkspace)
+            }
+          } else {
+            if (!isValidPlugin(defaultExport)) {
+              console.warn(`plugin-loader: skipping ${entry.name}/${filename} — missing id or no data source/skills`)
+              continue
+            }
+            registerPluginEntry(defaultExport, targetRegistry, isWorkspace)
           }
         } catch (err: unknown) {
           // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
@@ -81,13 +143,22 @@ export async function loadPlugins(
       const fullPath = join(legacyDir, file)
       try {
         const mod = await importer(fullPath)
-        const plugin = mod.default
-        if (!isValidPlugin(plugin)) {
-          console.warn(`plugin-loader: skipping ${file} — missing id or query`)
-          continue
-        }
-        if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
-          targetRegistry.set(plugin.id, plugin)
+        const defaultExport = mod.default
+
+        if (Array.isArray(defaultExport)) {
+          for (const item of defaultExport) {
+            if (!isValidPlugin(item)) {
+              console.warn(`plugin-loader: skipping array entry in ${file} — invalid plugin`)
+              continue
+            }
+            registerPluginEntry(item, targetRegistry, isWorkspace)
+          }
+        } else {
+          if (!isValidPlugin(defaultExport)) {
+            console.warn(`plugin-loader: skipping ${file} — missing id or no data source/skills`)
+            continue
+          }
+          registerPluginEntry(defaultExport, targetRegistry, isWorkspace)
         }
       } catch (err: unknown) {
         console.error(`plugin-loader: failed to load ${file}:`, err)
@@ -110,6 +181,7 @@ export function getPlugins(workspaceId?: string): Plugin[] {
   if (!wsPlugins) return builtins
   const merged = new Map<string, Plugin>()
   for (const p of builtins) merged.set(p.id, p)
+  // Workspace plugins override or extend built-ins
   for (const [id, p] of wsPlugins) merged.set(id, p)
   return [...merged.values()]
 }

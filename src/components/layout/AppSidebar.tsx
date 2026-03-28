@@ -36,7 +36,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout, activeWorkspace, workspaces, switchWorkspace } = useUser()
-  const { switchTab } = useNavigation()
+  const { switchTab, activeTab } = useNavigation()
   const savedUrls = useRef(new Map<string, string>())
   const [menuOpen, setMenuOpen] = useState(false)
   const { data: plugins } = usePlugins()
@@ -170,7 +170,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenu>
                 {plugins.map((plugin) => {
                   const tabId: TabId = `plugin:${plugin.id}`
-                  const isActive = location.pathname.startsWith(`/${plugin.id}`)
+                  const isActive = activeTab === tabId
                   return (
                     <SidebarMenuItem key={plugin.id}>
                       <SidebarMenuButton

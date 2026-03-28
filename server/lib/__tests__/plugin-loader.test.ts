@@ -26,13 +26,13 @@ function makePlugin(overrides: Partial<Plugin> = {}): Plugin {
     name: "Test Source",
     icon: "Box",
     fieldSchema: [],
-    async query() { return { items: [] } },
-    async mutate() {},
+    query: async () => ({ items: [] }),
+    mutate: async () => {},
     ...overrides,
   }
 }
 
-function makeImporter(map: Record<string, Plugin>) {
+function makeImporter(map: Record<string, Plugin | Plugin[]>) {
   return async (path: string) => {
     const filename = path.split("/").pop()!
     const plugin = map[filename]
@@ -101,11 +101,51 @@ describe("plugin-loader", () => {
       expect(getPlugins()).toHaveLength(0)
     })
 
-    it("skips a plugin with no query function", async () => {
+    it("skips a plugin with no query, hasSkills, or itemToContext", async () => {
       mockInboxPlugins(["bad-plugin.ts"])
       const badPlugin = { id: "bad", name: "Bad", icon: "X", fieldSchema: [], mutate: async () => {} }
       await loadPlugins("/fake/workspace", undefined, async () => ({ default: badPlugin as unknown as Plugin }))
       expect(getPlugins()).toHaveLength(0)
+    })
+
+    it("loads a skills-only plugin (no query, hasSkills=true)", async () => {
+      mockInboxPlugins(["core-plugin.ts"])
+      const skillsPlugin: Plugin = { id: "core", name: "Core", icon: "Settings", hasSkills: true }
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: skillsPlugin }))
+      expect(getPlugin("core")).toBeDefined()
+    })
+
+    it("loads a context-only plugin (itemToContext, no query)", async () => {
+      mockInboxPlugins(["ctx-plugin.ts"])
+      const ctxPlugin: Plugin = { id: "notion-context", name: "Notion Context", icon: "FileText", itemToContext: () => "markdown" }
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: ctxPlugin }))
+      expect(getPlugin("notion-context")).toBeDefined()
+    })
+
+    it("loads array exports — registers each valid plugin separately", async () => {
+      mockInboxPlugins(["notion-plugin.ts"])
+      const tasks: Plugin = makePlugin({ id: "notion-tasks", name: "Tasks" })
+      const calendar: Plugin = makePlugin({ id: "notion-calendar", name: "Calendar" })
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: [tasks, calendar] }))
+      expect(getPlugin("notion-tasks")).toBeDefined()
+      expect(getPlugin("notion-calendar")).toBeDefined()
+    })
+
+    it("skips invalid entries in array exports individually", async () => {
+      mockInboxPlugins(["notion-plugin.ts"])
+      const good: Plugin = makePlugin({ id: "notion-tasks", name: "Tasks" })
+      const bad = { name: "Bad" } // no id, no query
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: [good, bad] as Plugin[] }))
+      expect(getPlugin("notion-tasks")).toBeDefined()
+      expect(getPlugins()).toHaveLength(1)
+    })
+
+    it("last duplicate wins within an array export", async () => {
+      mockInboxPlugins(["notion-plugin.ts"])
+      const first: Plugin = makePlugin({ id: "notion-tasks", name: "First" })
+      const second: Plugin = makePlugin({ id: "notion-tasks", name: "Second" })
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: [first, second] }))
+      expect(getPlugin("notion-tasks")?.name).toBe("Second")
     })
 
     it("skips a plugin that throws during import and continues loading others", async () => {
