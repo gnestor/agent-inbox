@@ -89,7 +89,7 @@ function HtmlMessageBody({ html }: { html: string }) {
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-same-origin"
-      className="w-full border-0 bg-card overflow-hidden h-0"
+      className="w-full border-0 overflow-hidden h-0"
     />
   )
 }
