@@ -127,7 +127,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                 type: "gmail",
                 id: threadId,
                 title: thread.subject,
-                content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m) => m.snippet).join("\n---\n")}`,
+                content: `Email thread: ${thread.subject}\n\nFrom: ${thread.messages[0]?.from}\n\n${thread.messages.map((m: any) => m.snippet).join("\n---\n")}`,
               }}
               linkedSessionId={linkedSession?.id}
               hidden={sessionOpen}
@@ -164,7 +164,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     )
   }
 
-  const sentMessages = thread.messages.filter((m) => !m.labelIds.includes("DRAFT"))
+  const sentMessages = thread.messages.filter((m: any) => !m.labelIds.includes("DRAFT"))
   const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
   const replyTo = lastMessage.from
 
@@ -172,7 +172,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     <div className="flex flex-col h-full">
       {header}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {sentMessages.map((message, i) => {
+        {sentMessages.map((message: any, i: number) => {
           const isLast = i === sentMessages.length - 1
           return (
             <div key={message.id} data-message-id={message.id} className="border-b">

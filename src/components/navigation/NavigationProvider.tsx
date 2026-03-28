@@ -474,7 +474,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   return (
     <NavigationContext.Provider value={{ state, dispatch }}>
-      {children}
+      {initialized.current ? children : null}
     </NavigationContext.Provider>
   )
 }
