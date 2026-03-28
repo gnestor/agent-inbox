@@ -12,6 +12,9 @@ import { get, set } from "idb-keyval"
 const BASE = "/api"
 const CACHE_PREFIX = "api:"
 
+// In-memory cache (survives within a session, instant access)
+const memCache = new Map<string, unknown>()
+
 async function fetchFromNetwork<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -25,8 +28,12 @@ async function fetchFromNetwork<T>(url: string, options?: RequestInit): Promise<
 }
 
 /**
- * Make an API request. GET requests use stale-while-revalidate from IndexedDB.
- * Non-GET requests bypass the cache entirely.
+ * Make an API request. GET requests use stale-while-revalidate:
+ * 1. Check in-memory cache (instant, <1ms)
+ * 2. Check IndexedDB cache (async, ~5ms)
+ * 3. Fetch from network (async, 100ms-4s)
+ *
+ * Cache hits return immediately. Background fetch updates both caches.
  */
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method ?? "GET"
@@ -43,22 +50,46 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
   const cacheKey = `${CACHE_PREFIX}${path}`
 
-  // Try cache first
-  try {
-    const cached = await get<{ data: T; ts: number }>(cacheKey)
-    if (cached?.data !== undefined) {
-      // Return cached data immediately, revalidate in background
-      fetchFromNetwork<T>(url, options)
-        .then((fresh) => set(cacheKey, { data: fresh, ts: Date.now() }))
-        .catch(() => {}) // silent background refresh failure
-      return cached.data
-    }
-  } catch {
-    // IndexedDB error — fall through to network
+  // 1. In-memory cache (instant)
+  const mem = memCache.get(cacheKey) as T | undefined
+  if (mem !== undefined) {
+    // Revalidate in background
+    fetchFromNetwork<T>(url, options)
+      .then((fresh) => {
+        memCache.set(cacheKey, fresh)
+        set(cacheKey, fresh).catch(() => {})
+      })
+      .catch(() => {})
+    return mem
   }
 
-  // No cache — fetch from network and cache the result
+  // 2. IndexedDB cache (fast async)
+  try {
+    const cached = await get<T>(cacheKey)
+    if (cached !== undefined && cached !== null) {
+      memCache.set(cacheKey, cached)
+      // Revalidate in background
+      fetchFromNetwork<T>(url, options)
+        .then((fresh) => {
+          memCache.set(cacheKey, fresh)
+          set(cacheKey, fresh).catch(() => {})
+        })
+        .catch(() => {})
+      return cached
+    }
+  } catch {}
+
+  // 3. Network fetch (slow)
   const data = await fetchFromNetwork<T>(url, options)
-  set(cacheKey, { data, ts: Date.now() }).catch(() => {})
+  memCache.set(cacheKey, data)
+  set(cacheKey, data).catch(() => {})
   return data
+}
+
+/** Invalidate a cached path (call after mutations) */
+export function invalidateCache(pathPrefix: string) {
+  const prefix = `${CACHE_PREFIX}${pathPrefix}`
+  for (const key of memCache.keys()) {
+    if (key.startsWith(prefix)) memCache.delete(key)
+  }
 }
