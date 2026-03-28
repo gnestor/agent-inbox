@@ -7,6 +7,9 @@ type Importer = (path: string) => Promise<{ default: Plugin }>
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
 
+// Per-workspace plugin registries (workspace ID → plugin map)
+const workspacePluginRegistries = new Map<string, Map<string, Plugin>>()
+
 function isValidPlugin(p: unknown): p is Plugin {
   if (!p || typeof p !== "object") return false
   const plugin = p as Record<string, unknown>
@@ -25,11 +28,17 @@ export function registerPlugin(plugin: Plugin): void {
 
 export async function loadPlugins(
   workspacePath: string,
+  workspaceId?: string,
   importer: Importer = (p) => import(p)
 ): Promise<void> {
-  // Clear only non-builtin plugins (workspace plugins may change on reload)
-  for (const id of registry.keys()) {
-    if (!builtinIds.has(id)) registry.delete(id)
+  // If workspace ID provided, load into per-workspace registry
+  const targetRegistry = workspaceId ? new Map<string, Plugin>() : registry
+
+  if (!workspaceId) {
+    // Clear only non-builtin plugins (workspace plugins may change on reload)
+    for (const id of registry.keys()) {
+      if (!builtinIds.has(id)) registry.delete(id)
+    }
   }
 
   // Scan {workspace}/plugins/*/plugin.ts (new convention)
@@ -48,7 +57,7 @@ export async function loadPlugins(
             continue
           }
           if (!builtinIds.has(plugin.id)) {
-            registry.set(plugin.id, plugin)
+            targetRegistry.set(plugin.id, plugin)
           }
         } catch (err: unknown) {
           // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
@@ -77,9 +86,8 @@ export async function loadPlugins(
           console.warn(`plugin-loader: skipping ${file} — missing id or query`)
           continue
         }
-        // Don't overwrite built-in or already-loaded plugins
-        if (!registry.has(plugin.id)) {
-          registry.set(plugin.id, plugin)
+        if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
+          targetRegistry.set(plugin.id, plugin)
         }
       } catch (err: unknown) {
         console.error(`plugin-loader: failed to load ${file}:`, err)
@@ -88,13 +96,29 @@ export async function loadPlugins(
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
   }
+
+  if (workspaceId) {
+    workspacePluginRegistries.set(workspaceId, targetRegistry)
+  }
 }
 
-export function getPlugins(): Plugin[] {
-  return [...registry.values()]
+/** Get all plugins for a workspace (built-ins merged with workspace-specific). */
+export function getPlugins(workspaceId?: string): Plugin[] {
+  const builtins = [...registry.values()]
+  if (!workspaceId) return builtins
+  const wsPlugins = workspacePluginRegistries.get(workspaceId)
+  if (!wsPlugins) return builtins
+  const merged = new Map<string, Plugin>()
+  for (const p of builtins) merged.set(p.id, p)
+  for (const [id, p] of wsPlugins) merged.set(id, p)
+  return [...merged.values()]
 }
 
-export function getPlugin(id: string): Plugin | undefined {
+export function getPlugin(id: string, workspaceId?: string): Plugin | undefined {
+  if (workspaceId) {
+    const wsPlugin = workspacePluginRegistries.get(workspaceId)?.get(id)
+    if (wsPlugin) return wsPlugin
+  }
   return registry.get(id)
 }
 

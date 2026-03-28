@@ -43,8 +43,11 @@ connectionRoutes.get("/", async (c) => {
   const user = await getCurrentUser(c)
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
+  const workspace = c.get("workspace")
+  const wsId = workspace?.id || getWorkspaceName()
+
   const userCreds = await listUserCredentials(user.email)
-  const workspaceCreds = await listWorkspaceCredentials(getWorkspaceName())
+  const workspaceCreds = await listWorkspaceCredentials(wsId)
 
   const connectedUserIntegrations = new Set(userCreds.map((cr) => cr.integration))
   const connectedWorkspaceIntegrations = new Set(workspaceCreds.map((cr) => cr.integration))
@@ -59,7 +62,7 @@ connectionRoutes.get("/", async (c) => {
       config.scope === "user"
         ? connectedUserIntegrations.has(config.id)
         : connectedWorkspaceIntegrations.has(config.id) ||
-          !!getCredentials()[config.envVars.credential],
+          !!getCredentials(wsId)[config.envVars.credential],
   }))
 
   return c.json({ integrations })

@@ -16,6 +16,7 @@ import { TaskTab } from "@/components/task/TaskTab"
 import { CalendarTab } from "@/components/task/CalendarTab"
 import { SessionTab } from "@/components/session/SessionTab"
 import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
+import { WorkspaceSettings } from "@/components/workspace/WorkspaceSettings"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
@@ -30,6 +31,7 @@ const COMPONENT_REGISTRY: Record<string, ComponentType<{ tabId?: TabId }>> = {
 
 const STATIC_SLOTS = [
   "settings",
+  "workspace-settings",
   "plugin:gmail",
   "plugin:notion-tasks",
   "plugin:notion-calendar",
@@ -42,6 +44,15 @@ function renderTab(tabId: string) {
       <Tab id="settings">
         <Panel id="settings" variant="settings">
           <IntegrationsPage />
+        </Panel>
+      </Tab>
+    )
+  }
+  if (tabId === "workspace-settings") {
+    return (
+      <Tab id="workspace-settings">
+        <Panel id="workspace-settings" variant="settings">
+          <WorkspaceSettings />
         </Panel>
       </Tab>
     )

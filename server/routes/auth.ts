@@ -1,6 +1,8 @@
 import { Hono } from "hono"
 import { getCookie, setCookie, deleteCookie } from "hono/cookie"
 import { getClientId, verifyIdToken, getSession, deleteSession } from "../lib/auth.js"
+import { getUserWorkspaces, resolveActiveWorkspace } from "../lib/workspace-scanner.js"
+import { WORKSPACE_COOKIE } from "./workspaces.js"
 
 export const SESSION_COOKIE = "inbox_session"
 
@@ -31,7 +33,17 @@ authRoutes.get("/session", async (c) => {
   const session = await getSession(token)
   if (!session) return c.json({ user: null })
 
-  return c.json({ user: session.user })
+  // Resolve active workspace (handles auto-claim for first-time users)
+  const activeWs = await resolveActiveWorkspace(session.user.email, getCookie(c, WORKSPACE_COOKIE))
+  const workspaces = await getUserWorkspaces(session.user.email)
+
+  return c.json({
+    user: session.user,
+    workspaces: workspaces.map((w) => ({ id: w.id, name: w.name, role: w.role })),
+    activeWorkspace: activeWs
+      ? { id: activeWs.id, name: activeWs.name, role: activeWs.role }
+      : null,
+  })
 })
 
 authRoutes.post("/logout", async (c) => {

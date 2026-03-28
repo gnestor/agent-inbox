@@ -18,8 +18,11 @@ import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
-import { loadCredentials } from "./lib/credentials.js"
-import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions } from "./lib/session-manager.js"
+import { loadCredentials, setDefaultWorkspaceId } from "./lib/credentials.js"
+import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir } from "./lib/session-manager.js"
+import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scanner.js"
+import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
+import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
@@ -44,31 +47,66 @@ if (!process.env.VAULT_SECRET || process.env.VAULT_SECRET.length < 64) {
   )
 }
 
-// Parse --workspace arg
-function getWorkspacePath(): string {
+// Parse workspace paths from CLI args or env vars
+// Priority: --workspaces > --workspace > WORKSPACES env > WORKSPACE env > default
+function getWorkspacePaths(): string[] {
+  const resolvePath = (raw: string) =>
+    raw.startsWith("~") ? raw.replace("~", homedir()) : resolve(raw.trim())
+
   const args = process.argv.slice(2)
-  const wsIndex = args.indexOf("--workspace")
+
+  // CLI: --workspaces path1,path2
+  const wsIndex = args.indexOf("--workspaces")
   if (wsIndex !== -1 && args[wsIndex + 1]) {
-    const raw = args[wsIndex + 1]
-    return raw.startsWith("~") ? raw.replace("~", homedir()) : resolve(raw)
+    return args[wsIndex + 1].split(",").map(resolvePath)
   }
+
+  // CLI: --workspace path (legacy single)
+  const legacyIndex = args.indexOf("--workspace")
+  if (legacyIndex !== -1 && args[legacyIndex + 1]) {
+    return [resolvePath(args[legacyIndex + 1])]
+  }
+
+  // Env: WORKSPACES=path1,path2
+  if (process.env.WORKSPACES) {
+    return process.env.WORKSPACES.split(",").map(resolvePath)
+  }
+
+  // Env: WORKSPACE=path (legacy single)
+  if (process.env.WORKSPACE) {
+    return [resolvePath(process.env.WORKSPACE)]
+  }
+
   // Default workspace: packages/agent in the monorepo
-  return resolve(import.meta.dirname, "../../agent")
+  return [resolve(import.meta.dirname, "../../agent")]
 }
 
-const workspacePath = getWorkspacePath()
-console.log(`Workspace: ${workspacePath}`)
+const workspacePaths = getWorkspacePaths()
+console.log(`Workspaces: ${workspacePaths.join(", ")}`)
 
-// Load workspace credentials (.env) for Gmail/Notion API access
-const workspaceEnv = loadCredentials(workspacePath)
-setWorkspacePath(workspacePath)
+// Initialize database
+await initializeDatabase()
 
-// Initialize database and seed credentials (async startup)
+// Register each workspace path
+const registeredWorkspaces = await registerWorkspaces(workspacePaths)
+
+// Legacy compat — set default workspace path for callers not yet migrated
+setWorkspacePath(workspacePaths[0])
+
+// Load credentials and seed vault for each workspace
 import { getWorkspaceName } from "./lib/session-manager.js"
 import { buildEnvToIntegrationMap } from "./lib/integrations.js"
+const envToIntegrationMap = buildEnvToIntegrationMap()
 
-await initializeDatabase()
-await seedWorkspaceCredentials(getWorkspaceName(), workspaceEnv, buildEnvToIntegrationMap())
+for (const ws of registeredWorkspaces) {
+  const wsEnv = loadCredentials(ws.path, ws.id)
+  await seedWorkspaceCredentials(ws.id, wsEnv, envToIntegrationMap)
+}
+
+// Set the first workspace as default for backward compat
+if (registeredWorkspaces.length > 0) {
+  setDefaultWorkspaceId(registeredWorkspaces[0].id)
+}
 
 // Auto-refresh an OAuth access token using the stored refresh token.
 // Currently only QBO needs this — access tokens expire after 1 hour.
@@ -129,7 +167,7 @@ createCredentialProxy({
     // For integrations with expiring access tokens, auto-refresh if needed
     const refreshed = await maybeRefreshToken(session.user.email, integration)
     if (refreshed !== null) return refreshed
-    return resolveCredential(session.user.email, workspacePath, integration)
+    return resolveCredential(session.user.email, workspacePaths[0], integration)
   },
 })
   .then((proxy) => {
@@ -145,6 +183,7 @@ type AppBindings = {
     userEmail: string
     userName: string
     sessionToken: string
+    workspace: WorkspaceContext
   }
 }
 
@@ -156,7 +195,7 @@ app.use("*", logger())
 // Auth routes (unprotected)
 app.route("/api/auth", authRoutes)
 
-app.get("/api/health", (c) => c.json({ status: "ok", workspace: workspacePath }))
+app.get("/api/health", (c) => c.json({ status: "ok", workspaces: workspacePaths }))
 
 // Auth middleware — protect all other /api routes and set user context
 app.use("/api/*", async (c, next) => {
@@ -168,6 +207,13 @@ app.use("/api/*", async (c, next) => {
   c.set("userEmail", session.user.email)
   c.set("userName", session.user.name)
   c.set("sessionToken", token)
+
+  // Resolve active workspace from cookie (shared helper handles fallback + auto-claim)
+  const ws = await resolveActiveWorkspace(session.user.email, getCookie(c, WORKSPACE_COOKIE))
+  if (ws) {
+    c.set("workspace", { id: ws.id, name: ws.name, path: ws.path, role: ws.role })
+  }
+
   await next()
 })
 
@@ -177,6 +223,7 @@ registerPlugin(notionTasksPlugin)
 registerPlugin(notionCalendarPlugin)
 
 // Protected routes (static routes first, plugin catch-all last)
+app.route("/api/workspaces", workspaceRoutes)
 app.route("/api/sessions", sessionRoutes)
 app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
@@ -220,20 +267,27 @@ const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
   pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
-  // Index all agent SDK sessions into DB (non-blocking)
-  indexAllAgentSessions().catch((err: unknown) => console.warn("Failed to index sessions:", err))
+  // Index all agent SDK sessions into DB (non-blocking), then watch for new ones
+  indexAllAgentSessions()
+    .then(() => watchProjectsDir())
+    .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
   // Sync Notion property options on startup (non-blocking)
   syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
   syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
   // Load workspace plugins and workflow panel schemas (non-blocking)
-  process.env.WORKSPACE_PATH = workspacePath
-  loadPlugins(workspacePath).then(() => {
-    // Mount any workspace plugin custom routes
+  process.env.WORKSPACE_PATH = workspacePaths[0]
+  Promise.all(
+    registeredWorkspaces.map((ws) =>
+      loadPlugins(ws.path, ws.id).catch((err) => console.warn(`Failed to load plugins for ${ws.id}:`, err.message))
+    )
+  ).then(() => {
     mountPluginRoutes(app)
-  }).catch((err) => console.warn("Failed to load plugins:", err.message))
-  loadPanels(workspacePath).catch((err) => console.warn("Failed to load panels:", err.message))
+  })
+  if (registeredWorkspaces.length > 0) {
+    loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))
+  }
 })
 
 // Graceful shutdown — close server, pool, and unref timers so tsx can restart cleanly

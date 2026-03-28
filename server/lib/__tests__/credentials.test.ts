@@ -30,18 +30,18 @@ describe("credentials", () => {
     it("loads credentials from a .env file", () => {
       // Use the test fixtures or a known directory; since we can't control dotenv easily,
       // test the flow with a nonexistent path (warns) and verify empty result
-      const result = loadCredentials("/nonexistent/path")
+      const result = loadCredentials("/nonexistent/path", "test-empty")
       expect(result).toEqual({})
     })
 
     it("getCredential throws for missing key", () => {
-      loadCredentials("/nonexistent/path")
-      expect(() => getCredential("MISSING_KEY")).toThrow("Missing credential: MISSING_KEY")
+      loadCredentials("/nonexistent/path", "test-missing")
+      expect(() => getCredential("MISSING_KEY", "test-missing")).toThrow("Missing credential: MISSING_KEY")
     })
 
     it("getCredentials returns all loaded credentials", () => {
-      loadCredentials("/nonexistent/path")
-      expect(getCredentials()).toEqual({})
+      loadCredentials("/nonexistent/path", "test-creds")
+      expect(getCredentials("test-creds")).toEqual({})
     })
   })
 
@@ -65,7 +65,8 @@ describe("credentials", () => {
       }))
 
       const mod = await import("../credentials.js")
-      mod.loadCredentials("/fake/path")
+      mod.loadCredentials("/fake/path", "test")
+      mod.setDefaultWorkspaceId("test")
 
       const env = mod.getAgentEnv()
       expect(env).toHaveProperty("GOOGLE_CLIENT_ID", "gid")
@@ -88,7 +89,8 @@ describe("credentials", () => {
       }))
 
       const mod = await import("../credentials.js")
-      mod.loadCredentials("/fake")
+      mod.loadCredentials("/fake", "test")
+      mod.setDefaultWorkspaceId("test")
 
       mockFetch.mockReturnValueOnce(
         okJson({ access_token: "fresh-token", expires_in: 3600 }),
@@ -117,7 +119,8 @@ describe("credentials", () => {
       }))
 
       const mod = await import("../credentials.js")
-      mod.loadCredentials("/fake")
+      mod.loadCredentials("/fake", "test")
+      mod.setDefaultWorkspaceId("test")
 
       mockFetch.mockReturnValueOnce(
         okJson({ access_token: "cached-token", expires_in: 3600 }),
@@ -144,7 +147,8 @@ describe("credentials", () => {
       }))
 
       const mod = await import("../credentials.js")
-      mod.loadCredentials("/fake")
+      mod.loadCredentials("/fake", "test")
+      mod.setDefaultWorkspaceId("test")
 
       mockFetch.mockReturnValueOnce(
         Promise.resolve({ ok: false, text: () => Promise.resolve("invalid_grant") }),

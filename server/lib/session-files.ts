@@ -1,6 +1,5 @@
 import { mkdirSync, existsSync, writeFileSync, readdirSync, statSync } from "fs"
 import { join } from "path"
-import { getWorkspacePath } from "./session-manager.js"
 
 /**
  * Per-session file directories.
@@ -23,14 +22,13 @@ function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._\- ]/g, "_")
 }
 
-function getSessionsRoot(): string {
-  const workspace = getWorkspacePath() || process.cwd()
-  return join(workspace, "sessions")
+function getSessionsRoot(workspacePath: string): string {
+  return join(workspacePath || process.cwd(), "sessions")
 }
 
-export function getSessionFilesDir(sessionId: string, subfolder: "input" | "output" = "input"): string {
+export function getSessionFilesDir(workspacePath: string, sessionId: string, subfolder: "input" | "output" = "input"): string {
   validateSessionId(sessionId)
-  const dir = join(getSessionsRoot(), sessionId, subfolder)
+  const dir = join(getSessionsRoot(workspacePath), sessionId, subfolder)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
@@ -38,12 +36,13 @@ export function getSessionFilesDir(sessionId: string, subfolder: "input" | "outp
 }
 
 export function saveSessionFile(
+  workspacePath: string,
   sessionId: string,
   filename: string,
   data: Buffer,
   mimeType = "application/octet-stream",
 ): { name: string; path: string; size: number; mimeType: string } {
-  const dir = getSessionFilesDir(sessionId, "input")
+  const dir = getSessionFilesDir(workspacePath, sessionId, "input")
   const safe = sanitizeFilename(filename)
   const filePath = join(dir, safe)
   writeFileSync(filePath, data)
@@ -51,13 +50,14 @@ export function saveSessionFile(
 }
 
 export function getSessionFilePath(
+  workspacePath: string,
   sessionId: string,
   filename: string,
 ): string | null {
   validateSessionId(sessionId)
   const safe = sanitizeFilename(filename)
   for (const subfolder of ["input", "output"] as const) {
-    const dir = join(getSessionsRoot(), sessionId, subfolder)
+    const dir = join(getSessionsRoot(workspacePath), sessionId, subfolder)
     const filePath = join(dir, safe)
     if (existsSync(filePath)) {
       return filePath
@@ -67,11 +67,11 @@ export function getSessionFilePath(
 }
 
 /** List all files in a session (both input and output) */
-export function listSessionFiles(sessionId: string): Array<{ name: string; size: number; subfolder: string }> {
+export function listSessionFiles(workspacePath: string, sessionId: string): Array<{ name: string; size: number; subfolder: string }> {
   validateSessionId(sessionId)
   const result: Array<{ name: string; size: number; subfolder: string }> = []
   for (const subfolder of ["input", "output"] as const) {
-    const dir = join(getSessionsRoot(), sessionId, subfolder)
+    const dir = join(getSessionsRoot(workspacePath), sessionId, subfolder)
     if (!existsSync(dir)) continue
     for (const name of readdirSync(dir)) {
       const filePath = join(dir, name)
@@ -85,8 +85,8 @@ export function listSessionFiles(sessionId: string): Array<{ name: string; size:
 }
 
 /** Build a file manifest string to prepend to the session system prompt */
-export function buildFileManifest(sessionId: string): string {
-  const files = listSessionFiles(sessionId)
+export function buildFileManifest(workspacePath: string, sessionId: string): string {
+  const files = listSessionFiles(workspacePath, sessionId)
   if (files.length === 0) return ""
   const lines = files.map((f) => `- ${f.name} (${f.subfolder}/, ${f.size} bytes)`)
   return `\nSession files:\n${lines.join("\n")}\n`

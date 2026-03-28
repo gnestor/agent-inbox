@@ -76,7 +76,7 @@ describe("plugin-loader", () => {
     it("loads a valid .ts plugin and adds it to the registry", async () => {
       mockInboxPlugins(["slack-plugin.ts"])
       const plugin = makePlugin({ id: "slack", name: "Slack" })
-      await loadPlugins("/fake/workspace", makeImporter({ "slack-plugin.ts": plugin }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "slack-plugin.ts": plugin }))
       expect(getPlugins()).toHaveLength(1)
       expect(getPlugin("slack")).toBe(plugin)
     })
@@ -84,27 +84,27 @@ describe("plugin-loader", () => {
     it("loads a valid .js plugin", async () => {
       mockInboxPlugins(["github-plugin.js"])
       const plugin = makePlugin({ id: "github", name: "GitHub" })
-      await loadPlugins("/fake/workspace", makeImporter({ "github-plugin.js": plugin }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "github-plugin.js": plugin }))
       expect(getPlugin("github")).toBeDefined()
     })
 
     it("skips files that are not .ts or .js", async () => {
       mockInboxPlugins(["README.md", "notes.txt"])
-      await loadPlugins("/fake/workspace", makeImporter({}))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({}))
       expect(getPlugins()).toHaveLength(0)
     })
 
     it("skips a plugin that has no id field", async () => {
       mockInboxPlugins(["bad-plugin.ts"])
       const badPlugin = { name: "Bad", icon: "X", fieldSchema: [], query: async () => ({ items: [] }), mutate: async () => {} }
-      await loadPlugins("/fake/workspace", async () => ({ default: badPlugin as unknown as Plugin }))
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: badPlugin as unknown as Plugin }))
       expect(getPlugins()).toHaveLength(0)
     })
 
     it("skips a plugin with no query function", async () => {
       mockInboxPlugins(["bad-plugin.ts"])
       const badPlugin = { id: "bad", name: "Bad", icon: "X", fieldSchema: [], mutate: async () => {} }
-      await loadPlugins("/fake/workspace", async () => ({ default: badPlugin as unknown as Plugin }))
+      await loadPlugins("/fake/workspace", undefined, async () => ({ default: badPlugin as unknown as Plugin }))
       expect(getPlugins()).toHaveLength(0)
     })
 
@@ -115,7 +115,7 @@ describe("plugin-loader", () => {
         if (path.includes("broken")) throw new Error("Syntax error")
         return { default: good }
       }
-      await loadPlugins("/fake/workspace", importer)
+      await loadPlugins("/fake/workspace", undefined, importer)
       expect(getPlugins()).toHaveLength(1)
       expect(getPlugin("good")).toBeDefined()
     })
@@ -124,13 +124,13 @@ describe("plugin-loader", () => {
       // First load: slack
       mockInboxPlugins(["slack-plugin.ts"])
       const slack = makePlugin({ id: "slack", name: "Slack" })
-      await loadPlugins("/fake/workspace", makeImporter({ "slack-plugin.ts": slack }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "slack-plugin.ts": slack }))
       expect(getPlugins()).toHaveLength(1)
 
       // Second load: only github
       mockInboxPlugins(["github-plugin.ts"])
       const github = makePlugin({ id: "github", name: "GitHub" })
-      await loadPlugins("/fake/workspace", makeImporter({ "github-plugin.ts": github }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "github-plugin.ts": github }))
       expect(getPlugins()).toHaveLength(1)
       expect(getPlugin("slack")).toBeUndefined()
       expect(getPlugin("github")).toBeDefined()
@@ -156,7 +156,7 @@ describe("plugin-loader", () => {
     it("returns the plugin by id", async () => {
       mockInboxPlugins(["p.ts"])
       const plugin = makePlugin({ id: "myp", name: "My Plugin" })
-      await loadPlugins("/fake/workspace", makeImporter({ "p.ts": plugin }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "p.ts": plugin }))
       expect(getPlugin("myp")).toBe(plugin)
     })
   })
@@ -168,7 +168,7 @@ describe("plugin-loader", () => {
       mockInboxPlugins(["a.ts", "b.ts"])
       const a = makePlugin({ id: "a" })
       const b = makePlugin({ id: "b" })
-      await loadPlugins("/fake/workspace", makeImporter({ "a.ts": a, "b.ts": b }))
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "a.ts": a, "b.ts": b }))
       const plugins = getPlugins()
       expect(plugins).toHaveLength(2)
       expect(plugins.map(p => p.id)).toEqual(expect.arrayContaining(["a", "b"]))
