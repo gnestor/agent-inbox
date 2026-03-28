@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   getWorkspaceDetails,
   getWorkspaceGitInfo,
+  renameWorkspace,
   addWorkspaceMember,
   removeWorkspaceMember,
   updateMemberRole,
@@ -34,12 +35,40 @@ import { ExternalLink, GitBranch, Trash2, UserPlus } from "lucide-react"
 import type { WorkspaceMember } from "@/types"
 
 export function WorkspaceSettings() {
-  const { activeWorkspace } = useUser()
+  const { activeWorkspace, refresh: refreshUser } = useUser()
   const queryClient = useQueryClient()
   const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState("")
 
   const workspaceId = activeWorkspace?.id
   if (!workspaceId) return null
+
+  const rename = useMutation({
+    mutationFn: (name: string) => renameWorkspace(workspaceId, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace-details", workspaceId] })
+      refreshUser()
+    },
+  })
+
+  function handleStartEdit() {
+    setEditName(activeWorkspace?.name || "")
+    setIsEditingName(true)
+  }
+
+  function handleFinishEdit() {
+    setIsEditingName(false)
+    const trimmed = editName.trim()
+    if (trimmed && trimmed !== activeWorkspace?.name) {
+      rename.mutate(trimmed)
+    }
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); handleFinishEdit() }
+    if (e.key === "Escape") { setIsEditingName(false) }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["workspace-details", workspaceId],
@@ -58,7 +87,7 @@ export function WorkspaceSettings() {
   })
 
   const { data: integrations } = useConnections()
-  const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace") || []
+  const workspaceIntegrations = integrations?.filter((i) => i.scope === "workspace" && i.connected) || []
 
   const addMember = useMutation({
     mutationFn: (email: string) => addWorkspaceMember(workspaceId, email),
@@ -92,7 +121,26 @@ export function WorkspaceSettings() {
         left={
           <>
             <SidebarButton />
-            <h2 className="font-semibold text-sm">{activeWorkspace?.name}</h2>
+            {isEditingName ? (
+              <input
+                autoFocus
+                onFocus={(e) => e.target.select()}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={handleFinishEdit}
+                onKeyDown={handleEditKeyDown}
+                className="font-semibold text-sm bg-transparent border-b border-foreground/30 outline-none truncate min-w-0 flex-1"
+                maxLength={200}
+              />
+            ) : (
+              <h2
+                className="font-semibold text-sm truncate min-w-0 flex-1 cursor-pointer hover:text-foreground/70"
+                onClick={handleStartEdit}
+                title="Click to rename"
+              >
+                {activeWorkspace?.name}
+              </h2>
+            )}
           </>
         }
       />

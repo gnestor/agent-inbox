@@ -62,6 +62,16 @@ export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[
   return await query<WorkspaceRow>("SELECT * FROM workspaces")
 }
 
+/** Update a workspace's display name. */
+export async function updateWorkspaceName(id: string, name: string): Promise<boolean> {
+  const now = new Date().toISOString()
+  const result = await execute(
+    "UPDATE workspaces SET name = $1, updated_at = $2 WHERE id = $3",
+    [name, now, id],
+  )
+  return (result as any).rowCount > 0
+}
+
 /** Get all workspaces from the DB. */
 export function getAllWorkspaces(): Promise<WorkspaceRow[]> {
   return query<WorkspaceRow>("SELECT * FROM workspaces ORDER BY name")

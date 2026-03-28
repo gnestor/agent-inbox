@@ -446,6 +446,13 @@ export async function getWorkspaceDetails(workspaceId: string) {
   return request<{ workspace: unknown; members: import("@/types").WorkspaceMember[] }>(`/workspaces/${workspaceId}`)
 }
 
+export async function renameWorkspace(workspaceId: string, name: string) {
+  return request<{ ok: boolean }>(`/workspaces/${workspaceId}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+}
+
 export async function getWorkspaceGitInfo(workspaceId: string) {
   return request<{ branch: string | null; remote: string | null; remoteUrl: string | null; status: string[] }>(
     `/workspaces/${workspaceId}/git`,

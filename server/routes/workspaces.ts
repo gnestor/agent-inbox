@@ -8,6 +8,7 @@ import {
   addWorkspaceMember,
   removeWorkspaceMember,
   updateWorkspaceMemberRole,
+  updateWorkspaceName,
   getWorkspaceGitInfo,
   isLastAdmin,
 } from "../lib/workspace-scanner.js"
@@ -50,6 +51,17 @@ workspaceRoutes.get("/:id", async (c) => {
   if (!ws) return c.json({ error: "Workspace not found" }, 404)
   const members = await getWorkspaceMembers(id)
   return c.json({ workspace: ws, members })
+})
+
+/** Update workspace name (admin only). */
+workspaceRoutes.put("/:id", async (c) => {
+  requireAdmin(c)
+  const id = c.req.param("id")
+  const { name } = await c.req.json<{ name: string }>()
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400)
+  const updated = await updateWorkspaceName(id, name.trim())
+  if (!updated) return c.json({ error: "Workspace not found" }, 404)
+  return c.json({ ok: true })
 })
 
 /** Get git info for a workspace (admin only). */
