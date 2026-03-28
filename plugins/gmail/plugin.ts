@@ -73,7 +73,7 @@ export const gmailPlugin: Plugin = {
   name: "Emails",
   icon: "Mail",
   emoji: "✉️",
-  components: { tab: "./app/components/GmailTab.tsx" },
+  // components: { tab: "./app/components/GmailTab.tsx" },  // TODO: enable when iframe components have full panel UI
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [
