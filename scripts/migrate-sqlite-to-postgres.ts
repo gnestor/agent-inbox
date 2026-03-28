@@ -5,10 +5,11 @@
 // switching the app over.
 //
 // Usage:
-//   DATABASE_URL=postgresql://... npx tsx scripts/migrate-sqlite-to-postgres.ts [sqlite-path]
+//   npx tsx scripts/migrate-sqlite-to-postgres.ts [sqlite-path]
 //
 // Default SQLite path: data/inbox.db (relative to packages/inbox)
 
+import { config } from "dotenv"
 import Database from "better-sqlite3"
 import pg from "pg"
 import { resolve, dirname } from "path"
@@ -16,6 +17,8 @@ import { fileURLToPath } from "url"
 import { readFileSync } from "fs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+config({ path: resolve(__dirname, "../.env") })
 
 const sqlitePath = process.argv[2] || resolve(__dirname, "../data/inbox.db")
 const databaseUrl = process.env.DATABASE_URL
