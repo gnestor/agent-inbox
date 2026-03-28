@@ -1,4 +1,4 @@
-import { useMemo, useContext, memo } from "react"
+import { useMemo, useContext, memo, type ComponentType } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -11,14 +11,21 @@ import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
 import { pluginIdFromTab, setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
+import { EmailTab } from "@plugins/gmail/app/components/EmailTab"
 import { SessionTab } from "@/components/session/SessionTab"
 import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
 import { WorkspaceSettings } from "@/components/workspace/WorkspaceSettings"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
-import { PluginFrame } from "@/components/plugin/PluginFrame"
+// import { PluginFrame } from "@/components/plugin/PluginFrame"  // TODO: re-enable for iframe-in-panel-slot rendering
 import { usePlugins } from "@/hooks/use-plugins"
+
+// Built-in plugin tab components — rendered directly (not via iframe)
+// Plugins not in this registry use generic PluginView
+const BUILTIN_TAB_REGISTRY: Record<string, ComponentType<{ tabId?: TabId }>> = {
+  "gmail": EmailTab,
+}
 
 // Static slots that always exist in the navigation stack.
 // Plugin tabs are added dynamically as users navigate to them.
@@ -29,40 +36,19 @@ const STATIC_SLOTS = [
 ]
 
 /**
- * Derive the component name from a plugin's components.tab path.
- * e.g. "./app/components/EmailTab.tsx" → "EmailTab"
- */
-function componentNameFromTabPath(tabPath: string): string {
-  const parts = tabPath.replace(/\.tsx?$/, "").split("/")
-  return parts[parts.length - 1]
-}
-
-/**
  * Renders a plugin tab via PluginFrame (if the plugin declares components.tab)
  * or falls back to PluginView (generic fieldSchema-based rendering).
  */
 const PluginTabSlot = memo(function PluginTabSlot({ tabId }: { tabId: TabId }) {
-  const { data: plugins } = usePlugins()
   const pluginId = pluginIdFromTab(tabId)
-  const plugin = plugins?.find((p) => p.id === pluginId)
 
-  if (pluginId && plugin?.components?.tab) {
-    const componentName = componentNameFromTabPath(plugin.components.tab)
-    return (
-      <Tab id={tabId}>
-        <Panel id="list">
-          <PluginFrame
-            pluginId={pluginId}
-            componentName={componentName}
-            componentProps={{ tabId }}
-            className="w-full h-full border-0"
-          />
-        </Panel>
-      </Tab>
-    )
+  // Check built-in tab registry first (direct React components, no iframe)
+  if (pluginId && BUILTIN_TAB_REGISTRY[pluginId]) {
+    const BuiltinTab = BUILTIN_TAB_REGISTRY[pluginId]
+    return <BuiltinTab tabId={tabId} />
   }
 
-  // No custom component — render generic list+detail UI from fieldSchema
+  // No built-in tab — render generic list+detail UI from fieldSchema
   return <PluginView />
 })
 

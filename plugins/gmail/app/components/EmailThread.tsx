@@ -24,9 +24,9 @@ import {
   Save,
 } from "lucide-react"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
-import { useEmailThread } from "@/hooks/use-email-thread"
-import { useEmailActions } from "@/hooks/use-email-actions"
-import { useEmailDraft } from "@/hooks/use-email-draft"
+import { useEmailThread } from "../hooks/use-email-thread"
+import { useEmailActions } from "../hooks/use-email-actions"
+import { useEmailDraft } from "../hooks/use-email-draft"
 import { formatRelativeDate, formatEmailAddress, formatFileSize } from "@/lib/formatters"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"

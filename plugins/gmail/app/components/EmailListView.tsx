@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
-import { useEmails } from "@/hooks/use-emails"
+import { useEmails } from "../hooks/use-emails"
 import { getEmailLabels } from "@/api/client"
 import { formatEmailAddress } from "@/lib/formatters"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
