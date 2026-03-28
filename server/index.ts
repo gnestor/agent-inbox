@@ -197,7 +197,12 @@ app.route("/api/auth", authRoutes)
 app.get("/api/health", (c) => c.json({ status: "ok", workspaces: workspacePaths }))
 
 // Auth middleware — protect all other /api routes and set user context
+// Skip auth for plugin component serving (components are code, not user data)
 app.use("/api/*", async (c, next) => {
+  // Plugin component routes don't need auth — srcDoc iframes have null origin (no cookies)
+  if (c.req.path.match(/^\/api\/[^/]+\/components\/[^/]+$/)) {
+    return next()
+  }
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return c.json({ error: "Unauthorized" }, 401)
   const session = await getSession(token)
