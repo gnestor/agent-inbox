@@ -16,16 +16,38 @@ if [ -z "$DB_PASS" ]; then
   exit 1
 fi
 
+# --- Ensure Postgres binaries are on PATH ---
+# Homebrew's postgresql@17 is keg-only; binaries aren't linked into /opt/homebrew/bin
+for candidate in /opt/homebrew/opt/postgresql@17/bin /usr/local/opt/postgresql@17/bin; do
+  if [ -d "$candidate" ]; then
+    export PATH="$candidate:$PATH"
+    break
+  fi
+done
+
 # --- Install Postgres ---
 if ! command -v psql &>/dev/null; then
   echo "Installing PostgreSQL 17 via Homebrew..."
   brew install postgresql@17
+  # Add newly installed binaries to PATH
+  for candidate in /opt/homebrew/opt/postgresql@17/bin /usr/local/opt/postgresql@17/bin; do
+    if [ -d "$candidate" ]; then
+      export PATH="$candidate:$PATH"
+      break
+    fi
+  done
   brew services start postgresql@17
   echo "Waiting for Postgres to start..."
   sleep 3
 else
   echo "PostgreSQL already installed."
   brew services start postgresql@17 2>/dev/null || true
+fi
+
+if ! command -v psql &>/dev/null; then
+  echo "ERROR: psql not found. Add postgresql@17/bin to your PATH:"
+  echo "  export PATH=\"/opt/homebrew/opt/postgresql@17/bin:\$PATH\""
+  exit 1
 fi
 
 # --- Create user and database ---
