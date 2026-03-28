@@ -2,7 +2,6 @@ import { useMemo } from "react"
 import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
-import { getSessionProjects } from "@/api/client"
 import { sessionStatusBadgeClass, sessionStatusLabel } from "@/lib/formatters"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
@@ -30,14 +29,6 @@ const sessionFieldSchema: FieldDef[] = [
     },
   },
   {
-    id: "project",
-    label: "Project",
-    type: "text",
-    listRole: "hidden",
-    badge: { show: "if-set" },
-    filter: { filterable: true },
-  },
-  {
     id: "linkedEmailId",
     label: "Email",
     type: "text",
@@ -54,9 +45,7 @@ const sessionFieldSchema: FieldDef[] = [
   { id: "prompt", label: "Prompt", type: "text", listRole: "hidden" },
 ]
 
-const sessionOptionsFetcher: Record<string, () => Promise<string[]>> = {
-  project: () => getSessionProjects().then((r) => r.projects),
-}
+const sessionOptionsFetcher: Record<string, () => Promise<string[]>> = {}
 
 const getId = (s: Record<string, unknown>) => s.id as string
 
@@ -68,14 +57,11 @@ export function SessionListView() {
   )
 
   const [showStatus, setShowStatus] = usePreference("sessions.showStatus", true)
-  const [showProject, setShowProject] = usePreference("sessions.showProject", true)
-
   const hiddenBadgeFields = useMemo(() => {
     const hidden = new Set<string>()
     if (!showStatus) hidden.add("status")
-    if (!showProject) hidden.add("project")
     return hidden
-  }, [showStatus, showProject])
+  }, [showStatus])
 
   // Hide archived by default (unless explicitly filtered to a status)
   const filtered = filters.status ? sessions : sessions.filter((s) => s.status !== "archived")
@@ -102,7 +88,6 @@ export function SessionListView() {
         <BadgeToggleMenu
           items={[
             { label: "Status", checked: showStatus, onChange: setShowStatus },
-            { label: "Project", checked: showProject, onChange: setShowProject },
           ]}
         />
         <button

@@ -21,6 +21,7 @@ sessionRoutes.post("/", async (c) => {
   const userSessionToken = getCookie(c, SESSION_COOKIE)
 
   try {
+    const workspace = c.get("workspace")
     const sessionId = await sessions.startSession(prompt, {
       linkedEmailId,
       linkedEmailThreadId,
@@ -30,6 +31,7 @@ sessionRoutes.post("/", async (c) => {
       linkedSourceContent,
       triggerSource: "manual",
       userSessionToken,
+      workspacePath: workspace?.path,
     })
     return c.json({ sessionId })
   } catch (err: any) {
@@ -40,99 +42,81 @@ sessionRoutes.post("/", async (c) => {
 
 sessionRoutes.get("/", async (c) => {
   const status = c.req.query("status")
-  const triggerSource = c.req.query("trigger_source")
-  const project = c.req.query("project")
   const q = c.req.query("q")
 
-  // Get sessions from local DB
-  const dbSessions = await sessions.listSessionRecords({
-    status: status || undefined,
-    triggerSource: triggerSource || undefined,
-    q: q || undefined,
-  })
+  // Resolve active workspace — sessions come from ~/.claude/projects/{encoded-path}/
+  const workspace = c.get("workspace")
+  const wsPath = workspace?.path || sessions.getWorkspacePath()
 
-  // Also get sessions from Agent SDK (discovers CC sessions not started by us).
-  // When searching, use searchAgentSessions which scans raw JSONL content rather
-  // than the truncated firstPrompt metadata so deep-in-prompt terms are found.
+  // Fetch sessions from the workspace's JSONL files
   const agentSessions = await (q
-    ? sessions.searchAgentSessions(q)
-    : sessions.listAllAgentSessions()
+    ? sessions.searchAgentSessions(q, wsPath)
+    : sessions.listAllAgentSessions(wsPath)
   ).catch((err: unknown) => {
     console.error("listAllAgentSessions failed:", err)
     return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
   })
 
-  // Match sessions from both the git repo name (e.g., "hammies-agent") and
-  // the directory basename (e.g., "agent") to handle workspace path changes
-  const workspaceName = sessions.getWorkspaceName()
-  const dirName = sessions.projectLabel(sessions.getWorkspacePath())
-  const currentProject = workspaceName || dirName
+  // Enrich with DB metadata (status overrides, summaries, linked items)
+  const dbRecords = new Map<string, Record<string, unknown>>()
+  if (agentSessions.length > 0) {
+    const allDbSessions = await sessions.listSessionRecords({ q: q || undefined })
+    for (const s of allDbSessions) {
+      dbRecords.set(s.id as string, s)
+    }
+  }
 
-  // Merge: DB sessions take priority, add any agent sessions not in DB
-  // Default to current workspace project; explicit project filter overrides
-  //
-  // IMPORTANT: build dbIds from ALL DB sessions (ignoring the status filter) so
-  // that agent SDK sessions don't "resurrect" as "complete" when their DB
-  // counterpart is filtered out by status (e.g. filtering out "archived").
-  const allDbIds = status
-    ? new Set((await sessions.listSessionRecords({ q: q || undefined })).map((s) => s.id as string))
-    : new Set(dbSessions.map((s) => s.id as string))
-  const dbIds = allDbIds
-  const defaultProjects = new Set([currentProject, dirName])
-  if (workspaceName) defaultProjects.add(workspaceName)
-  const projectsFilter = project ? project.split(",") : [...defaultProjects]
-  let merged = [
-    ...dbSessions.map((s) => ({
-      id: s.id as string,
-      status: s.status as string,
-      prompt: s.prompt as string,
-      summary: (s.summary as string) || null,
-      startedAt: s.started_at as string,
-      updatedAt: s.updated_at as string,
-      completedAt: (s.completed_at as string) || null,
-      linkedEmailId: (s.linked_email_id as string) || null,
-      linkedEmailThreadId: (s.linked_email_thread_id as string) || null,
-      linkedTaskId: (s.linked_task_id as string) || null,
-      linkedSourceType: (s.linked_source_type as string) || null,
-      linkedSourceId: (s.linked_source_id as string) || null,
-      triggerSource: (s.trigger_source as string) || "manual",
-      project: currentProject,
-      linkedItemTitle: (s.linked_item_title as string) || null,
-    })),
-    ...agentSessions
-      .filter((s) => projectsFilter.includes(s.project))
-      .filter((s) => !dbIds.has(s.sessionId))
-      .filter(() => !status || status.split(",").includes("complete"))
-      .map((s) => ({
+  let results = agentSessions.map((s) => {
+    const db = dbRecords.get(s.sessionId)
+    // DB record takes priority for status, summary, and linked items
+    if (db) {
+      return {
         id: s.sessionId,
-        status: "complete" as const,
-        prompt: s.firstPrompt || "",
-        summary: s.summary || s.firstPrompt || null,
-        startedAt: new Date(s.lastModified).toISOString(),
-        updatedAt: new Date(s.lastModified).toISOString(),
-        completedAt: new Date(s.lastModified).toISOString(),
-        linkedEmailId: null,
-        linkedEmailThreadId: null,
-        linkedTaskId: null,
-        linkedSourceType: null,
-        linkedSourceId: null,
-        triggerSource: "manual" as const,
+        status: db.status as string,
+        prompt: (db.prompt as string) || s.firstPrompt || "",
+        summary: (db.summary as string) || s.summary || s.firstPrompt || null,
+        startedAt: (db.started_at as string) || new Date(s.lastModified).toISOString(),
+        updatedAt: (db.updated_at as string) || new Date(s.lastModified).toISOString(),
+        completedAt: (db.completed_at as string) || null,
+        linkedEmailId: (db.linked_email_id as string) || null,
+        linkedEmailThreadId: (db.linked_email_thread_id as string) || null,
+        linkedTaskId: (db.linked_task_id as string) || null,
+        linkedSourceType: (db.linked_source_type as string) || null,
+        linkedSourceId: (db.linked_source_id as string) || null,
+        triggerSource: (db.trigger_source as string) || "manual",
         project: s.project,
-      })),
-  ]
-
-  // Deduplicate by id (DB sessions take priority since they appear first)
-  const seenIds = new Set<string>()
-  merged = merged.filter((s) => {
-    if (seenIds.has(s.id)) return false
-    seenIds.add(s.id)
-    return true
+        linkedItemTitle: (db.linked_item_title as string) || null,
+      }
+    }
+    return {
+      id: s.sessionId,
+      status: "complete" as const,
+      prompt: s.firstPrompt || "",
+      summary: s.summary || s.firstPrompt || null,
+      startedAt: new Date(s.lastModified).toISOString(),
+      updatedAt: new Date(s.lastModified).toISOString(),
+      completedAt: new Date(s.lastModified).toISOString(),
+      linkedEmailId: null,
+      linkedEmailThreadId: null,
+      linkedTaskId: null,
+      linkedSourceType: null,
+      linkedSourceId: null,
+      triggerSource: "manual" as const,
+      project: s.project,
+      linkedItemTitle: null,
+    }
   })
 
-  // Sort by most recently updated
-  merged.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  // Apply status filter
+  if (status) {
+    const statuses = status.split(",")
+    results = results.filter((s) => statuses.includes(s.status))
+  }
 
-  return c.json({ sessions: merged })
+  // Sort by most recently updated
+  results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+
+  return c.json({ sessions: results })
 })
 
 sessionRoutes.get("/projects", async (c) => {
@@ -202,7 +186,7 @@ sessionRoutes.get("/:id", async (c) => {
         linkedSourceType: session.linked_source_type || null,
         linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
-        project: sessions.projectLabel(sessions.getWorkspacePath()),
+        project: sessions.projectLabel(c.get("workspace")?.path || sessions.getWorkspacePath()),
         hasActiveProcess: sessions.isSessionRunning(session.id),
       },
       messages,
@@ -425,7 +409,8 @@ sessionRoutes.post("/:id/files", async (c) => {
   }
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
-  const result = saveSessionFile(sessionId, file.name, buffer, file.type)
+  const wsPath = c.get("workspace")?.path || sessions.getWorkspacePath()
+  const result = saveSessionFile(wsPath, sessionId, file.name, buffer, file.type)
   return c.json(result)
 })
 
@@ -439,14 +424,16 @@ sessionRoutes.get("/:id/files/:filename", async (c) => {
   let resolvedPath: string | null = null
 
   if (absolutePath) {
-    const workspace = normalize(sessions.getWorkspacePath() || process.cwd())
+    const wsPath = c.get("workspace")?.path || sessions.getWorkspacePath() || process.cwd()
+    const wsNorm = normalize(wsPath)
     const normalized = normalize(resolve(absolutePath))
-    if (!normalized.startsWith(workspace + sep) && normalized !== workspace) {
+    if (!normalized.startsWith(wsNorm + sep) && normalized !== wsNorm) {
       return c.json({ error: "Path outside workspace" }, 403)
     }
     resolvedPath = normalized
   } else {
-    resolvedPath = getSessionFilePath(sessionId, filename)
+    const wsPath = c.get("workspace")?.path || sessions.getWorkspacePath()
+    resolvedPath = getSessionFilePath(wsPath, sessionId, filename)
   }
 
   if (!resolvedPath) {
