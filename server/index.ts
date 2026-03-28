@@ -30,7 +30,7 @@ import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.j
 import { pruneExpired } from "./lib/cache.js"
 import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
 import { loadPanels } from "./lib/panel-registry.js"
-import { gmailPlugin } from "./plugins/gmail-plugin.js"
+import { gmailPlugin } from "../plugins/gmail/plugin.js"
 import { notionTasksPlugin } from "./plugins/notion-tasks-plugin.js"
 import { notionCalendarPlugin } from "./plugins/notion-calendar-plugin.js"
 

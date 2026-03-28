@@ -1,0 +1,7 @@
+{
+  "id": "gmail",
+  "name": "Gmail",
+  "description": "Email management via Gmail API — read, search, compose, and process emails",
+  "version": "1.0.0",
+  "skills": ["google-workspace", "process-email"]
+}

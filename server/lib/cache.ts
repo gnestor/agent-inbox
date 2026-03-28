@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from "../db/pool.js"
+import { queryOne, execute } from "../db/pool.js"
 
 export async function get<T>(key: string): Promise<T | null> {
   const now = new Date().toISOString()

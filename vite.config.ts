@@ -39,6 +39,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@plugins": path.resolve(__dirname, "./plugins"),
     },
   },
   server: {
