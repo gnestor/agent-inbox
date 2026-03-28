@@ -84,7 +84,6 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   // 1. In-memory cache (instant)
   const mem = memCache.get(cacheKey) as T | undefined
   if (mem !== undefined) {
-    console.log(`[cache] HIT mem ${path}`)
     fetchFromNetwork<T>(url, options)
       .then((fresh) => { memCache.set(cacheKey, fresh); idbSet(cacheKey, fresh) })
       .catch(() => {})
@@ -93,21 +92,15 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
   // 2. IndexedDB cache (fast async)
   try {
-    const t0 = performance.now()
     const cached = await idbGet<T>(cacheKey)
-    const dt = performance.now() - t0
     if (cached !== undefined && cached !== null) {
-      console.log(`[cache] HIT idb ${path} (${dt.toFixed(0)}ms)`)
       memCache.set(cacheKey, cached)
       fetchFromNetwork<T>(url, options)
         .then((fresh) => { memCache.set(cacheKey, fresh); idbSet(cacheKey, fresh) })
         .catch(() => {})
       return cached
     }
-    console.log(`[cache] MISS ${path} (idb read ${dt.toFixed(0)}ms)`)
-  } catch {
-    console.log(`[cache] ERROR ${path}`)
-  }
+  } catch {}
 
   // 3. Network fetch (slow)
   const data = await fetchFromNetwork<T>(url, options)
