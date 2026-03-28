@@ -49,12 +49,16 @@ const PluginTabSlot = memo(function PluginTabSlot({ tabId }: { tabId: TabId }) {
   if (pluginId && plugin?.components?.tab) {
     const componentName = componentNameFromTabPath(plugin.components.tab)
     return (
-      <PluginFrame
-        pluginId={pluginId}
-        componentName={componentName}
-        componentProps={{ tabId }}
-        className="w-full h-full border-0"
-      />
+      <Tab id={tabId}>
+        <Panel id="list">
+          <PluginFrame
+            pluginId={pluginId}
+            componentName={componentName}
+            componentProps={{ tabId }}
+            className="w-full h-full border-0"
+          />
+        </Panel>
+      </Tab>
     )
   }
 
