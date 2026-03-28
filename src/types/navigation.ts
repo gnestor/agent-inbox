@@ -109,20 +109,22 @@ export function normalizeTabId(tabId: string): TabId {
   return LEGACY_TAB_MAP[tabId] ?? tabId as TabId
 }
 
+/** Runtime plugin order — set by App.tsx when plugins load */
+let pluginOrder: string[] = []
+export function setPluginOrder(ids: string[]) { pluginOrder = ids }
+
 /**
  * Get the index of a tab for animation direction.
- * Order: settings (0) → plugins (1+, in order) → sessions (last)
+ * Order: settings (0) → plugins (1+, in manifest order) → sessions (last)
  */
 export function getTabIndex(tabId: TabId): number {
   if (tabId === "settings") return 0
+  if (tabId === "workspace-settings") return 0
   if (tabId === "sessions") return 100
   if (tabId.startsWith("plugin:")) {
-    // Built-in plugins first, then external, then recent
     const id = pluginIdFromTab(tabId)!
-    const builtinOrder = ["gmail", "notion-tasks", "notion-calendar"]
-    const idx = builtinOrder.indexOf(id)
-    if (idx >= 0) return idx + 1
-    return 50 // external plugins
+    const idx = pluginOrder.indexOf(id)
+    return idx >= 0 ? idx + 1 : 50
   }
   if (tabId.startsWith("recent:")) return 99
   return 50

@@ -1,4 +1,4 @@
-import { useMemo, useContext } from "react"
+import { useMemo, useContext, memo } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -9,7 +9,7 @@ import { NavigationProvider } from "@/components/navigation"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
-import { pluginIdFromTab } from "@/types/navigation"
+import { pluginIdFromTab, setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
 import { SessionTab } from "@/components/session/SessionTab"
 import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
@@ -41,7 +41,7 @@ function componentNameFromTabPath(tabPath: string): string {
  * Renders a plugin tab via PluginFrame (if the plugin declares components.tab)
  * or falls back to PluginView (generic fieldSchema-based rendering).
  */
-function PluginTabSlot({ tabId }: { tabId: TabId }) {
+const PluginTabSlot = memo(function PluginTabSlot({ tabId }: { tabId: TabId }) {
   const { data: plugins } = usePlugins()
   const pluginId = pluginIdFromTab(tabId)
   const plugin = plugins?.find((p) => p.id === pluginId)
@@ -60,7 +60,7 @@ function PluginTabSlot({ tabId }: { tabId: TabId }) {
 
   // No custom component — render generic list+detail UI from fieldSchema
   return <PluginView />
-}
+})
 
 function renderTab(tabId: string) {
   if (tabId === "settings") {
@@ -101,26 +101,35 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
 
 function TabContainer() {
   const { activeTab } = useNavigation()
+  const { data: plugins } = usePlugins()
   const ctx = useContext(NavigationContext)
   const tabs = ctx?.state.tabs
 
-  const keys = useMemo(() => {
-    if (!tabs) return STATIC_SLOTS
-    const recentKeys = Object.keys(tabs)
+  // Stable plugin keys derived from the plugin manifest (not from tabs state)
+  const pluginIds = useMemo(() => {
+    const ids = (plugins ?? []).map((p) => p.id)
+    setPluginOrder(ids) // Keep animation direction in sync
+    return ids.map((id) => `plugin:${id}` as TabId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(plugins ?? []).map((p) => p.id).join(",")])
+
+  // Recent keys from tabs state (these change less frequently)
+  const recentKeys = useMemo(() => {
+    if (!tabs) return [] as string[]
+    return Object.keys(tabs)
       .filter((k) => k.startsWith("recent:"))
       .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
-    // All plugin tabs are now dynamic (no longer in STATIC_SLOTS)
-    const pluginKeys = Object.keys(tabs).filter((k) => k.startsWith("plugin:"))
-    if (recentKeys.length === 0 && pluginKeys.length === 0) return STATIC_SLOTS
-    // Plugin tabs before sessions, recent tabs after plugin tabs
+  }, [tabs])
+
+  const keys = useMemo(() => {
     const sessionsIdx = STATIC_SLOTS.indexOf("sessions")
     return [
       ...STATIC_SLOTS.slice(0, sessionsIdx),
-      ...pluginKeys,
+      ...pluginIds,
       ...recentKeys,
       ...STATIC_SLOTS.slice(sessionsIdx),
     ]
-  }, [tabs])
+  }, [pluginIds, recentKeys])
 
   return (
     <SlotStack
