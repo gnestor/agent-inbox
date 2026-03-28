@@ -273,7 +273,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
   pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
   // Index all agent SDK sessions into DB (non-blocking), then watch for new ones
   indexAllAgentSessions()
-    .then(() => watchProjectsDir())
+    .then(() => watchProjectsDir(workspacePaths))
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))

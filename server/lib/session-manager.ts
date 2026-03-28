@@ -870,13 +870,28 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
  * When a change is detected, indexes the new session into the DB so that
  * metadata (summaries, linked items) stays up-to-date without a server restart.
  */
-export async function watchProjectsDir(): Promise<void> {
+export async function watchProjectsDir(workspacePaths?: string[]): Promise<void> {
   const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
 
-  const projectsDir = join(homedir(), ".claude", "projects")
-  if (!fs.existsSync(projectsDir)) return
+  const projectsBase = join(homedir(), ".claude", "projects")
+  if (!fs.existsSync(projectsBase)) return
+
+  // Only watch workspace-specific project dirs, not the entire ~/.claude/projects/
+  const dirsToWatch: string[] = []
+  if (workspacePaths?.length) {
+    for (const wsPath of workspacePaths) {
+      // Claude Code encodes workspace path as dir name: /Users/grant/foo → -Users-grant-foo
+      const encoded = wsPath.replace(/\//g, "-")
+      const dir = join(projectsBase, encoded)
+      if (fs.existsSync(dir)) dirsToWatch.push(dir)
+    }
+  }
+  if (dirsToWatch.length === 0) {
+    // Fallback: watch all projects if no workspace paths provided
+    dirsToWatch.push(projectsBase)
+  }
 
   // Debounce: collect changed files for 2s before indexing
   let pending = new Set<string>()
@@ -909,21 +924,23 @@ export async function watchProjectsDir(): Promise<void> {
     }
   }
 
-  // Watch recursively — new subdirs (new workspaces) will be picked up
-  try {
-    const watcher = fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
-      if (!filename || !filename.endsWith(".jsonl")) return
-      const filePath = join(projectsDir, filename)
-      pending.add(filePath)
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(flush, 2000)
-    })
-    watcher.on("error", (err) => {
-      console.warn(`[watcher] File watcher error (non-fatal):`, (err as NodeJS.ErrnoException).code ?? err)
-    })
-    console.log(`[watcher] Watching ${projectsDir} for new sessions`)
-  } catch (err) {
-    console.warn(`[watcher] Failed to start file watcher (non-fatal):`, (err as Error).message)
+  // Watch each workspace project directory
+  for (const dir of dirsToWatch) {
+    try {
+      const watcher = fs.watch(dir, { recursive: true }, (_event, filename) => {
+        if (!filename || !filename.endsWith(".jsonl")) return
+        const filePath = join(dir, filename)
+        pending.add(filePath)
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(flush, 2000)
+      })
+      watcher.on("error", (err) => {
+        console.warn(`[watcher] File watcher error (non-fatal):`, (err as NodeJS.ErrnoException).code ?? err)
+      })
+      console.log(`[watcher] Watching ${dir} for new sessions`)
+    } catch (err) {
+      console.warn(`[watcher] Failed to watch ${dir} (non-fatal):`, (err as Error).message)
+    }
   }
 }
 
