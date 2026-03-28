@@ -123,12 +123,12 @@
 - [x] Audit use of inline styles vs. Tailwind classes
 - [ ] Use prettier across hammies-workspace
 - [ ] Add sort by to list view
-- [ ] Migrate from SQLite to local Postgres database
+- [x] Migrate from SQLite to local Postgres database
 - [ ] Sync qmd DB with Mac Mini, or store in Postgres
 - [ ] Sync sessions with Mac Mini
 - [ ] Remove the Projects filter from the sessions list view. We're only fetch session transcripts from the workspace's project folder in ~/.claude/projects now. 
 - [ ] Optimistic updates for email delete/archive
-- [ ] Multiple workspace support: From the account menu, the user can switch between workspaces and if they're an admin, they can manage workspaces. 
+- [x] Multiple workspace support: From the account menu, the user can switch between workspaces and if they're an admin, they can manage workspaces.
   - [ ] personal-agent for grantnestor@gmail.com
 - [ ] Upload files to session
 - [ ] Save artifacts in session directory
@@ -140,9 +140,23 @@
 - [ ] Add support for slash commands?
 - [ ] Add compact/clear context?
 - [ ] Pin sessions? Add to folder/project?
-- [ ] Plugins for source, workflows, commponents
-  - [ ] Gmail plugin can provide a source/input, list and detail view components, email editor component, process email workflow, triage emails workflow
-  - [ ] Notion plugin for databases (list view), pages (detail view), page editor component, skills for research?, process page workflow
+- [x] Plugin architecture — unified plugins with data source, components, skills, hooks
+  - [x] Gmail consolidated to plugins/gmail/ (built-in)
+  - [x] Core plugin (plugin-creator, render-output, context-manager skills)
+  - [x] Notion removed from built-in — workspace plugins serve data
+  - [x] Plugin loader: workspace extends built-in, array exports, skill manifests
+  - [x] Plugin interface: itemToContext, cache on PluginContext, public type exports (@hammies/inbox)
+  - [x] Backfill route (POST /api/context/backfill)
+  - [x] Plugin component iframes (esbuild transform, PluginFrame, HTML builder)
+  - [x] COMPONENT_REGISTRY removed — all plugins render via PluginFrame or PluginView
+  - [x] process-* skills per plugin (process-email, process-task, process-ticket, process-message)
+  - [ ] Gmail iframe rendering — component serves but root has 0 children (module loading issue)
+  - [ ] Notion dates showing 12/31/1969 — workspace plugin date parsing
+  - [ ] Calendar detail "Item not found" — workspace calendar getItem()
+  - [ ] Task detail missing body content — workspace tasks getItem() doesn't fetch blocks
+  - [ ] Clean up duplicate notion-tasks/notion-calendar workspace dirs
+  - [ ] Workspace plugin app/ directories (React components as iframe modules)
+- [ ] Plugins should support webhooks in addition to query and mutate functions
 - [ ] Context menu that includes toolbar actions (list view items, detail view content area, session panel body, output panel body)
 - [ ] Add playwright for browser verification
 
