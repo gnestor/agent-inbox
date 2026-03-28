@@ -66,8 +66,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 <ChevronsUpDown className="ml-auto size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-[--anchor-width] min-w-56 rounded-lg"
-                side={isMobile ? "bottom" : "bottom"}
+                className="rounded-lg"
+                side="bottom"
                 align="start"
                 sideOffset={4}
               >
