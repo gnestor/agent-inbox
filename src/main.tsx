@@ -43,6 +43,9 @@ const persister = createAsyncStoragePersister({
             if (key === "sessions") return false
             // Strip pending queries (Promise serializes to plain object, breaks restore)
             if (q.state?.status === "pending") return false
+            // Strip infinite queries (pages/pageParams breaks getNextPageParam on restore)
+            const data = q.state?.data as Record<string, unknown> | undefined
+            if (data && "pages" in data) return false
             return true
           },
         )
@@ -72,6 +75,9 @@ createRoot(document.getElementById("root")!).render(
                 if (key === "plugins" || query.state.status === "error" || query.state.status === "pending") return false
                 // Never persist session lists — status changes frequently
                 if (key === "sessions") return false
+                // Never persist infinite queries — pages/pageParams state breaks on restore
+                const data = query.state.data as Record<string, unknown> | undefined
+                if (data && "pages" in data) return false
                 return true
               },
             },
