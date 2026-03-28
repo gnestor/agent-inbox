@@ -1,15 +1,18 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 let capturedSql = ""
-const mockAll = vi.fn(() => [])
+const mockQuery = vi.fn(async () => [])
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => ({
-    prepare: (sql: string) => {
-      capturedSql = sql
-      return { all: mockAll, run: vi.fn(), get: vi.fn() }
-    },
-  }),
+vi.mock("../../db/pool.js", () => ({
+  query: (...args: any[]) => {
+    capturedSql = args[0]
+    return mockQuery(...args)
+  },
+  queryOne: vi.fn(async () => undefined),
+  execute: vi.fn(async () => ({ rowCount: 0 })),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -20,14 +23,14 @@ describe("listSessionRecords", () => {
   beforeEach(() => {
     vi.resetModules()
     capturedSql = ""
-    mockAll.mockReturnValue([])
+    mockQuery.mockResolvedValue([])
   })
 
-  it("extracts linked_item_title via json_extract on metadata", async () => {
+  it("extracts linked_item_title via ->> on metadata", async () => {
     const { listSessionRecords } = await import("../session-manager.js")
-    listSessionRecords()
+    await listSessionRecords()
     expect(capturedSql).toContain("linked_item_title")
-    expect(capturedSql).toContain("json_extract")
+    expect(capturedSql).toContain("->>'linkedItemTitle'")
     expect(capturedSql).not.toContain("processed_emails")
   })
 
@@ -47,9 +50,9 @@ describe("listSessionRecords", () => {
       metadata: JSON.stringify({ linkedItemTitle: "Re: Invoice Q1" }),
       linked_item_title: "Re: Invoice Q1",
     }
-    mockAll.mockReturnValue([row])
+    mockQuery.mockResolvedValue([row])
     const { listSessionRecords } = await import("../session-manager.js")
-    const results = listSessionRecords()
+    const results = await listSessionRecords()
     expect(results[0]).toMatchObject({ linked_item_title: "Re: Invoice Q1" })
   })
 })

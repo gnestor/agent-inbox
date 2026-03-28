@@ -45,7 +45,7 @@ sessionRoutes.get("/", async (c) => {
   const q = c.req.query("q")
 
   // Get sessions from local DB
-  const dbSessions = sessions.listSessionRecords({
+  const dbSessions = await sessions.listSessionRecords({
     status: status || undefined,
     triggerSource: triggerSource || undefined,
     q: q || undefined,
@@ -75,7 +75,7 @@ sessionRoutes.get("/", async (c) => {
   // that agent SDK sessions don't "resurrect" as "complete" when their DB
   // counterpart is filtered out by status (e.g. filtering out "archived").
   const allDbIds = status
-    ? new Set(sessions.listSessionRecords({ q: q || undefined }).map((s) => s.id as string))
+    ? new Set((await sessions.listSessionRecords({ q: q || undefined })).map((s) => s.id as string))
     : new Set(dbSessions.map((s) => s.id as string))
   const dbIds = allDbIds
   const defaultProjects = new Set([currentProject, dirName])
@@ -145,7 +145,7 @@ sessionRoutes.get("/linked", async (c) => {
   const taskId = c.req.query("taskId")
   const sourceType = c.req.query("sourceType")
   const sourceId = c.req.query("sourceId")
-  const session = sessions.getLinkedSession(threadId, taskId, sourceType, sourceId)
+  const session = await sessions.getLinkedSession(threadId, taskId, sourceType, sourceId)
   if (!session) return c.json({ session: null })
   return c.json({
     session: {
@@ -160,7 +160,7 @@ sessionRoutes.get("/linked", async (c) => {
 
 sessionRoutes.get("/:id", async (c) => {
   const sessionId = c.req.param("id")
-  const session = sessions.getSessionRecord(sessionId)
+  const session = await sessions.getSessionRecord(sessionId)
 
   if (session) {
     // JSONL is the source of truth for session transcript.
@@ -171,7 +171,7 @@ sessionRoutes.get("/:id", async (c) => {
       : []
 
     // Prepend any DB-only messages (e.g. attached_context) that aren't in the JSONL
-    const dbMessages = sessions.getSessionMessages(sessionId)
+    const dbMessages = await sessions.getSessionMessages(sessionId)
     const attachedContext = dbMessages
       .filter((m) => {
         const msg = JSON.parse(m.message as string)
@@ -247,7 +247,7 @@ sessionRoutes.patch("/:id", async (c) => {
     return c.json({ error: "summary must be a string" }, 400)
   }
 
-  let session = sessions.getSessionRecord(sessionId)
+  let session = await sessions.getSessionRecord(sessionId)
   if (!session) {
     // Agent-only session (JSONL, not in DB) — import a minimal completed record
     const agentSession = await sessions.findAgentSession(sessionId)
@@ -257,7 +257,7 @@ sessionRoutes.patch("/:id", async (c) => {
     sessions.importAgentSession(sessionId, agentSession)
   }
 
-  sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
+  await sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
   return c.json({ ok: true })
 })
 
@@ -297,7 +297,7 @@ sessionRoutes.post("/:id/resume", async (c) => {
   }
 
   // Import agent-only session to DB if not already there (prevents FK constraint failure)
-  if (!sessions.getSessionRecord(sessionId)) {
+  if (!(await sessions.getSessionRecord(sessionId))) {
     const { getAgentSession } = await import("../lib/session-files.js")
     const agentSession = getAgentSession(sessionId)
     if (!agentSession) return c.json({ error: "Session not found" }, 404)
@@ -318,7 +318,7 @@ sessionRoutes.post("/:id/attach", async (c) => {
     return c.json({ error: "type, id, and content are required" }, 400)
   }
 
-  let session = sessions.getSessionRecord(sessionId)
+  let session = await sessions.getSessionRecord(sessionId)
   if (!session) {
     // Agent-only session (JSONL, not in DB) — import a minimal record first
     const agentSession = await sessions.findAgentSession(sessionId)
@@ -328,7 +328,7 @@ sessionRoutes.post("/:id/attach", async (c) => {
     sessions.importAgentSession(sessionId, agentSession)
   }
 
-  sessions.attachSourceToSession(sessionId, {
+  await sessions.attachSourceToSession(sessionId, {
     type,
     id,
     title: title || `${type} ${id}`,
@@ -347,7 +347,7 @@ sessionRoutes.get("/:id/stream", async (c) => {
       stream.writeSSE({ data, event: "message" })
     }
 
-    sessions.addSseClient(sessionId, send)
+    await sessions.addSseClient(sessionId, send)
     if (user) sessions.addPresenceUser(sessionId, user)
 
     // Keep connection alive
@@ -370,13 +370,13 @@ sessionRoutes.get("/:id/stream", async (c) => {
 
 sessionRoutes.post("/:id/abort", async (c) => {
   const sessionId = c.req.param("id")
-  const aborted = sessions.abortRunningSession(sessionId)
+  const aborted = await sessions.abortRunningSession(sessionId)
   return c.json({ ok: aborted })
 })
 
 sessionRoutes.post("/:id/archive", async (c) => {
   const sessionId = c.req.param("id")
-  let session = sessions.getSessionRecord(sessionId)
+  let session = await sessions.getSessionRecord(sessionId)
   if (!session) {
     // Agent-only session (JSONL, not in DB) — import a minimal record first
     const agentSession = await sessions.findAgentSession(sessionId)
@@ -385,13 +385,13 @@ sessionRoutes.post("/:id/archive", async (c) => {
     }
     sessions.importAgentSession(sessionId, agentSession)
   }
-  const archived = sessions.archiveSession(sessionId)
+  const archived = await sessions.archiveSession(sessionId)
   return c.json({ ok: archived })
 })
 
 sessionRoutes.post("/:id/unarchive", async (c) => {
   const sessionId = c.req.param("id")
-  const unarchived = sessions.unarchiveSession(sessionId)
+  const unarchived = await sessions.unarchiveSession(sessionId)
   if (!unarchived) {
     return c.json({ error: "Session not found or not archived" }, 404)
   }

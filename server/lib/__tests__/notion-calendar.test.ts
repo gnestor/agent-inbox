@@ -1,12 +1,14 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mock credentials and DB before importing notion
-const mockGetDb = vi.fn()
 vi.mock("../credentials.js", () => ({
   getNotionToken: () => "test-token",
 }))
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => mockGetDb(),
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async () => []),
+  queryOne: vi.fn(async () => undefined),
+  execute: vi.fn(async () => ({ rowCount: 0 })),
+  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 // Mock fetch globally

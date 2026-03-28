@@ -71,9 +71,9 @@ export const notionTasksPlugin: Plugin = {
   },
 
   filterOptions: {
-    status: async () => notion.getPropertyOptions("Status").map((o) => o.value),
-    priority: async () => notion.getPropertyOptions("Priority").map((o) => o.value),
-    tags: async () => notion.getPropertyOptions("Tags").map((o) => o.value),
+    status: async () => (await notion.getPropertyOptions("Status")).map((o) => o.value),
+    priority: async () => (await notion.getPropertyOptions("Priority")).map((o) => o.value),
+    tags: async () => (await notion.getPropertyOptions("Tags")).map((o) => o.value),
     assignee: async () => {
       const result = await notion.queryTasks({})
       return [...new Set(result.tasks.map((t) => t.assignee).filter(Boolean))].sort()

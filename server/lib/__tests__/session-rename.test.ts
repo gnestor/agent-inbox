@@ -2,77 +2,79 @@ import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // ─── DB mock ──────────────────────────────────────────────────────────────────
 //
-// Tracks the last SQL and args passed to prepare().run() / prepare().get() so
-// tests can assert on what was actually written without a real SQLite DB.
-//
-// For INSERT OR IGNORE we also populate a simple in-memory store so that
-// getSessionRecord() and listSessionRecords() can return the inserted row.
+// In-memory store to simulate the sessions table.
 
 type Row = Record<string, unknown>
 let store: Map<string, Row> = new Map()
 
 // Last captured calls — reset in beforeEach
-let lastRunSql = ""
-let lastRunArgs: unknown[] = []
+let lastExecuteSql = ""
+let lastExecuteParams: unknown[] = []
 
-function makeDb() {
-  return {
-    prepare(sql: string) {
-      return {
-        run(...args: unknown[]) {
-          lastRunSql = sql
-          lastRunArgs = args
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, _params?: unknown[]) => {
+    if (/SELECT/i.test(sql) && sql.includes("sessions")) return [...store.values()]
+    return []
+  }),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM sessions") && sql.includes("WHERE id")) {
+      const id = params![0] as string
+      return store.get(id) || undefined
+    }
+    if (sql.includes("SELECT status FROM sessions")) {
+      const id = params![0] as string
+      const s = store.get(id)
+      return s ? { status: s.status } : undefined
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    lastExecuteSql = sql
+    lastExecuteParams = params || []
 
-          if (/INSERT\s+OR\s+IGNORE\s+INTO\s+sessions/i.test(sql)) {
-            // importAgentSession SQL:
-            //   INSERT OR IGNORE INTO sessions
-            //     (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
-            //   VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')
-            // args: [id, firstPrompt, summary, ts, ts, ts]
-            const [id, prompt, summary, started_at, updated_at, completed_at] = args as string[]
-            if (!store.has(id)) {
-              store.set(id, {
-                id,
-                status: "complete",
-                prompt,
-                summary,
-                started_at,
-                updated_at,
-                completed_at,
-                trigger_source: "manual",
-              })
-            }
-          }
-
-          if (/UPDATE\s+sessions\s+SET\s+summary/i.test(sql)) {
-            // updateSessionSummary SQL:
-            //   UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?
-            // args: [summary, updated_at, id]
-            const [summary, updated_at, id] = args as string[]
-            if (store.has(id)) {
-              store.set(id, { ...store.get(id)!, summary, updated_at })
-            }
-          }
-        },
-
-        get(id: unknown) {
-          if (/SELECT\s+\*\s+FROM\s+sessions/i.test(sql)) {
-            return store.get(id as string) ?? undefined
-          }
-          return undefined
-        },
-
-        all(..._args: unknown[]) {
-          if (/SELECT/i.test(sql)) return [...store.values()]
-          return []
-        },
+    if (sql.includes("INSERT INTO sessions") && sql.includes("ON CONFLICT DO NOTHING")) {
+      // importAgentSession
+      const [id, prompt, summary, started_at, updated_at, completed_at] = params as string[]
+      if (!store.has(id)) {
+        store.set(id, {
+          id,
+          status: "complete",
+          prompt,
+          summary,
+          started_at,
+          updated_at,
+          completed_at,
+          trigger_source: "manual",
+        })
       }
-    },
-  }
-}
+      return { rowCount: store.has(id) ? 0 : 1 }
+    }
 
-vi.mock("../../db/schema.js", () => ({
-  getDb: () => makeDb(),
+    if (/UPDATE\s+sessions\s+SET\s+summary/i.test(sql)) {
+      // updateSessionSummary: UPDATE sessions SET summary = $1, updated_at = $2 WHERE id = $3
+      const [summary, updated_at, id] = params as string[]
+      if (store.has(id)) {
+        store.set(id, { ...store.get(id)!, summary, updated_at })
+      }
+      return { rowCount: 1 }
+    }
+
+    if (/UPDATE\s+sessions\s+SET\s+status/i.test(sql)) {
+      const id = params![params!.length - 1] as string
+      const status = params![0] as string
+      if (store.has(id)) {
+        const s = store.get(id)!
+        s.status = status
+        s.updated_at = new Date().toISOString()
+      }
+      return { rowCount: 1 }
+    }
+
+    return { rowCount: 0 }
+  }),
+  withTransaction: vi.fn(async (fn: any) => fn({
+    query: vi.fn(async () => ({ rows: [] })),
+  })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -85,13 +87,13 @@ describe("importAgentSession", () => {
   beforeEach(() => {
     vi.resetModules()
     store = new Map()
-    lastRunSql = ""
-    lastRunArgs = []
+    lastExecuteSql = ""
+    lastExecuteParams = []
   })
 
   it("inserts a row with status='complete'", async () => {
     const { importAgentSession } = await import("../session-manager.js")
-    importAgentSession("sess-001", {
+    await importAgentSession("sess-001", {
       firstPrompt: "Draft an email",
       summary: "Drafted the email",
       lastModified: new Date("2026-01-15T10:00:00Z").getTime(),
@@ -103,7 +105,7 @@ describe("importAgentSession", () => {
 
   it("inserts with correct id and prompt", async () => {
     const { importAgentSession } = await import("../session-manager.js")
-    importAgentSession("sess-002", {
+    await importAgentSession("sess-002", {
       firstPrompt: "Analyze the sales data",
       summary: "Completed analysis",
       lastModified: new Date("2026-02-01T08:00:00Z").getTime(),
@@ -117,7 +119,7 @@ describe("importAgentSession", () => {
   it("derives timestamps from lastModified", async () => {
     const { importAgentSession } = await import("../session-manager.js")
     const lastModified = new Date("2026-03-10T12:30:00Z").getTime()
-    importAgentSession("sess-003", {
+    await importAgentSession("sess-003", {
       firstPrompt: "Write a report",
       summary: null,
       lastModified,
@@ -131,7 +133,7 @@ describe("importAgentSession", () => {
 
   it("sets trigger_source to 'manual'", async () => {
     const { importAgentSession } = await import("../session-manager.js")
-    importAgentSession("sess-004", {
+    await importAgentSession("sess-004", {
       firstPrompt: "Test prompt",
       summary: null,
       lastModified: Date.now(),
@@ -142,7 +144,7 @@ describe("importAgentSession", () => {
 
   it("falls back to firstPrompt when summary is null", async () => {
     const { importAgentSession } = await import("../session-manager.js")
-    importAgentSession("sess-005", {
+    await importAgentSession("sess-005", {
       firstPrompt: "Do the thing",
       summary: null,
       lastModified: Date.now(),
@@ -154,7 +156,7 @@ describe("importAgentSession", () => {
   it("truncates summary to 200 chars", async () => {
     const { importAgentSession } = await import("../session-manager.js")
     const longSummary = "A".repeat(300)
-    importAgentSession("sess-006", {
+    await importAgentSession("sess-006", {
       firstPrompt: "Short",
       summary: longSummary,
       lastModified: Date.now(),
@@ -163,7 +165,7 @@ describe("importAgentSession", () => {
     expect((row!.summary as string).length).toBeLessThanOrEqual(200)
   })
 
-  it("INSERT OR IGNORE does not overwrite an existing row", async () => {
+  it("ON CONFLICT DO NOTHING does not overwrite an existing row", async () => {
     const { importAgentSession } = await import("../session-manager.js")
 
     // Pre-populate with a renamed record
@@ -179,7 +181,7 @@ describe("importAgentSession", () => {
     })
 
     // Second import attempt — should be ignored
-    importAgentSession("sess-007", {
+    await importAgentSession("sess-007", {
       firstPrompt: "New prompt",
       summary: "New summary",
       lastModified: Date.now(),
@@ -192,7 +194,7 @@ describe("importAgentSession", () => {
 
   it("handles null firstPrompt gracefully (stores empty string for prompt)", async () => {
     const { importAgentSession } = await import("../session-manager.js")
-    importAgentSession("sess-008", {
+    await importAgentSession("sess-008", {
       firstPrompt: null,
       summary: null,
       lastModified: Date.now(),
@@ -209,8 +211,8 @@ describe("updateSessionSummary", () => {
   beforeEach(() => {
     vi.resetModules()
     store = new Map()
-    lastRunSql = ""
-    lastRunArgs = []
+    lastExecuteSql = ""
+    lastExecuteParams = []
   })
 
   it("updates the summary column for the given session", async () => {
@@ -223,7 +225,7 @@ describe("updateSessionSummary", () => {
       updated_at: "2026-01-01T00:00:00Z",
     })
     const { updateSessionSummary } = await import("../session-manager.js")
-    updateSessionSummary("sess-A", "new summary")
+    await updateSessionSummary("sess-A", "new summary")
     const row = store.get("sess-A")
     expect(row!.summary).toBe("new summary")
   })
@@ -239,7 +241,7 @@ describe("updateSessionSummary", () => {
     })
     const before = new Date().toISOString()
     const { updateSessionSummary } = await import("../session-manager.js")
-    updateSessionSummary("sess-B", "fresh summary")
+    await updateSessionSummary("sess-B", "fresh summary")
     const row = store.get("sess-B")
     const updatedAt = row!.updated_at as string
     expect(updatedAt >= before).toBe(true)
@@ -255,9 +257,9 @@ describe("updateSessionSummary", () => {
       updated_at: "2026-01-01T00:00:00Z",
     })
     const { updateSessionSummary } = await import("../session-manager.js")
-    updateSessionSummary("sess-C", "renamed")
-    expect(lastRunSql).toMatch(/summary/)
-    expect(lastRunSql).toMatch(/updated_at/)
+    await updateSessionSummary("sess-C", "renamed")
+    expect(lastExecuteSql).toMatch(/summary/)
+    expect(lastExecuteSql).toMatch(/updated_at/)
   })
 })
 
@@ -269,10 +271,6 @@ describe("dedup: imported session should not appear twice in merged list", () =>
     store = new Map()
   })
 
-  /**
-   * Verify that after importAgentSession, listSessionRecords() returns the row
-   * so that dbIds contains the session ID and the JSONL path is filtered out.
-   */
   it("listSessionRecords returns the imported session, so dbIds prevents JSONL duplicate", async () => {
     const SESSION_ID = "abc-123"
     const currentProject = "hammies-agent"
@@ -294,16 +292,13 @@ describe("dedup: imported session should not appear twice in merged list", () =>
     })
 
     const { listSessionRecords } = await import("../session-manager.js")
-    const dbSessions = listSessionRecords()
+    const dbSessions = await listSessionRecords()
 
-    // Confirm the imported session is returned
     expect(dbSessions.some((s) => s.id === SESSION_ID)).toBe(true)
 
-    // Build dbIds exactly as routes/sessions.ts does
     const dbIds = new Set(dbSessions.map((s) => s.id as string))
     expect(dbIds.has(SESSION_ID)).toBe(true)
 
-    // Simulate the agent session list containing the same session
     const agentSessions = [
       {
         sessionId: SESSION_ID,
@@ -315,9 +310,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
       },
     ]
 
-    // Apply the dedup filter from routes/sessions.ts line 78
     const filtered = agentSessions.filter((s) => !dbIds.has(s.sessionId))
-
     expect(filtered).toHaveLength(0)
   })
 
@@ -342,7 +335,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
     })
 
     const { listSessionRecords } = await import("../session-manager.js")
-    const dbSessions = listSessionRecords()
+    const dbSessions = await listSessionRecords()
     const dbIds = new Set(dbSessions.map((s) => s.id as string))
 
     const dbMapped = dbSessions.map((s) => ({
@@ -373,7 +366,6 @@ describe("dedup: imported session should not appear twice in merged list", () =>
         project: s.project,
       }))
 
-    // Merge + second-pass dedup (mirrors routes/sessions.ts lines 98-103)
     const merged = [...dbMapped, ...agentMapped]
     const seenIds = new Set<string>()
     const deduped = merged.filter((s) => {
@@ -384,7 +376,6 @@ describe("dedup: imported session should not appear twice in merged list", () =>
 
     const matches = deduped.filter((s) => s.id === SESSION_ID)
     expect(matches).toHaveLength(1)
-    // DB version (renamed summary) should win
     expect(matches[0].summary).toBe("Renamed summary")
   })
 
@@ -392,9 +383,8 @@ describe("dedup: imported session should not appear twice in merged list", () =>
     const SESSION_ID = "new-jsonl-only"
     const currentProject = "hammies-agent"
 
-    // store is empty — session not in DB
     const { listSessionRecords } = await import("../session-manager.js")
-    const dbSessions = listSessionRecords()
+    const dbSessions = await listSessionRecords()
     const dbIds = new Set(dbSessions.map((s) => s.id as string))
     expect(dbIds.has(SESSION_ID)).toBe(false)
 
@@ -431,17 +421,17 @@ describe("dedup: imported session should not appear twice in merged list", () =>
     )
 
     // Step 1: import
-    importAgentSession(SESSION_ID, {
+    await importAgentSession(SESSION_ID, {
       firstPrompt: "Original agent prompt",
       summary: "Original agent summary",
       lastModified: new Date("2026-02-10T10:00:00Z").getTime(),
     })
 
     // Step 2: rename
-    updateSessionSummary(SESSION_ID, "My custom session name")
+    await updateSessionSummary(SESSION_ID, "My custom session name")
 
     // Step 3: verify
-    const record = getSessionRecord(SESSION_ID)
+    const record = await getSessionRecord(SESSION_ID)
     expect(record).toBeDefined()
     expect(record!.summary).toBe("My custom session name")
     expect(record!.status).toBe("complete")

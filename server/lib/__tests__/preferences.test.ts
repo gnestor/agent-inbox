@@ -3,23 +3,54 @@ import { Hono } from "hono"
 
 // ── In-memory DB ─────────────────────────────────────────────────────────────
 
-const dbHolder: { db: ReturnType<import("better-sqlite3").default> | null } = { db: null }
+const prefsStore = new Map<string, { user_email: string; key: string; value: string; updated_at: string }>()
 
-vi.mock("../../db/schema.js", async () => {
-  const Database = (await import("better-sqlite3")).default
-  const db = new Database(":memory:")
-  db.prepare(
-    `CREATE TABLE IF NOT EXISTS user_preferences (
-      user_email TEXT NOT NULL,
-      key TEXT NOT NULL,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (user_email, key)
-    )`,
-  ).run()
-  dbHolder.db = db
-  return { getDb: () => dbHolder.db }
-})
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM user_preferences") && sql.includes("WHERE user_email")) {
+      const email = params![0] as string
+      const results: any[] = []
+      for (const entry of prefsStore.values()) {
+        if (entry.user_email === email) {
+          results.push(entry)
+        }
+      }
+      return results
+    }
+    return []
+  }),
+  queryOne: vi.fn(async () => undefined),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO user_preferences") || sql.includes("user_preferences")) {
+      if (sql.includes("INSERT")) {
+        const user_email = params![0] as string
+        const key = params![1] as string
+        const value = params![2] as string
+        const updated_at = params![3] as string
+        prefsStore.set(`${user_email}:${key}`, { user_email, key, value, updated_at })
+        return { rowCount: 1 }
+      }
+    }
+    return { rowCount: 0 }
+  }),
+  withTransaction: vi.fn(async (fn: any) => {
+    // For batch operations, provide a client that writes to our store
+    const client = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] }
+        if (sql.includes("INSERT INTO user_preferences")) {
+          const user_email = params![0] as string
+          const key = params![1] as string
+          const value = params![2] as string
+          const updated_at = params![3] as string
+          prefsStore.set(`${user_email}:${key}`, { user_email, key, value, updated_at })
+        }
+        return { rows: [] }
+      }),
+    }
+    return fn(client)
+  }),
+}))
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 
@@ -53,7 +84,7 @@ function req(path: string, options: RequestInit = {}, email: string | null = "al
 
 describe("preferences routes", () => {
   beforeEach(() => {
-    dbHolder.db!.prepare("DELETE FROM user_preferences").run()
+    prefsStore.clear()
     vi.clearAllMocks()
   })
 
@@ -70,26 +101,30 @@ describe("preferences routes", () => {
     })
 
     it("returns preferences for the authenticated user only", async () => {
-      dbHolder.db!
-        .prepare(`INSERT INTO user_preferences (user_email, key, value, updated_at) VALUES (?, ?, ?, ?)`)
-        .run("alice@example.com", "theme", JSON.stringify("dark"), new Date().toISOString())
-      dbHolder.db!
-        .prepare(`INSERT INTO user_preferences (user_email, key, value, updated_at) VALUES (?, ?, ?, ?)`)
-        .run("bob@example.com", "theme", JSON.stringify("light"), new Date().toISOString())
+      prefsStore.set("alice@example.com:theme", {
+        user_email: "alice@example.com",
+        key: "theme",
+        value: JSON.stringify("dark"),
+        updated_at: new Date().toISOString(),
+      })
+      prefsStore.set("bob@example.com:theme", {
+        user_email: "bob@example.com",
+        key: "theme",
+        value: JSON.stringify("light"),
+        updated_at: new Date().toISOString(),
+      })
 
       const res = await req("/preferences", {}, "alice@example.com")
       expect(await res.json()).toEqual({ theme: "dark" })
     })
 
     it("deserializes JSON values", async () => {
-      dbHolder.db!
-        .prepare(`INSERT INTO user_preferences (user_email, key, value, updated_at) VALUES (?, ?, ?, ?)`)
-        .run(
-          "alice@example.com",
-          "visibility",
-          JSON.stringify({ messages: true, toolCalls: false, thinking: true }),
-          new Date().toISOString(),
-        )
+      prefsStore.set("alice@example.com:visibility", {
+        user_email: "alice@example.com",
+        key: "visibility",
+        value: JSON.stringify({ messages: true, toolCalls: false, thinking: true }),
+        updated_at: new Date().toISOString(),
+      })
 
       const res = await req("/preferences")
       expect(await res.json()).toEqual({

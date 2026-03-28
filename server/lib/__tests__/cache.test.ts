@@ -1,78 +1,120 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
-// dbHolder is populated by the vi.mock factory (called when cache.ts imports schema.ts).
-// Declaring it at module scope (before the dynamic import) ensures it's initialised.
-const dbHolder: { db: ReturnType<import("better-sqlite3").default> | null } = { db: null }
+// In-memory store to simulate a real cache table
+const store = new Map<string, { data: string; expires_at: string }>()
 
-vi.mock("../../db/schema.js", async () => {
-  const Database = (await import("better-sqlite3")).default
-  const db = new Database(":memory:")
-  db.prepare(
-    `CREATE TABLE IF NOT EXISTS api_cache (
-      key TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      expires_at TEXT NOT NULL
-    )`,
-  ).run()
-  dbHolder.db = db
-  return { getDb: () => dbHolder.db }
-})
+vi.mock("../../db/pool.js", () => ({
+  query: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("SELECT data FROM api_cache") && sql.includes("expires_at >")) {
+      const key = params![0] as string
+      const now = params![1] as string
+      const entry = store.get(key)
+      if (entry && entry.expires_at > now) return [{ data: entry.data }]
+      return []
+    }
+    if (sql.includes("SELECT data FROM api_cache") && !sql.includes("expires_at >")) {
+      const key = params![0] as string
+      const entry = store.get(key)
+      if (entry) return [{ data: entry.data }]
+      return []
+    }
+    return []
+  }),
+  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("SELECT data FROM api_cache") && sql.includes("expires_at >")) {
+      const key = params![0] as string
+      const now = params![1] as string
+      const entry = store.get(key)
+      if (entry && entry.expires_at > now) return { data: entry.data }
+      return undefined
+    }
+    if (sql.includes("SELECT data FROM api_cache") && !sql.includes("expires_at >")) {
+      const key = params![0] as string
+      const entry = store.get(key)
+      if (entry) return { data: entry.data }
+      return undefined
+    }
+    return undefined
+  }),
+  execute: vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("INSERT INTO api_cache")) {
+      const key = params![0] as string
+      const data = params![1] as string
+      const expires_at = params![2] as string
+      store.set(key, { data, expires_at })
+      return { rowCount: 1 }
+    }
+    if (sql.includes("DELETE FROM api_cache") && sql.includes("LIKE")) {
+      const prefix = (params![0] as string).replace(/%$/, "")
+      for (const key of store.keys()) {
+        if (key.startsWith(prefix)) store.delete(key)
+      }
+      return { rowCount: 1 }
+    }
+    if (sql.includes("DELETE FROM api_cache") && sql.includes("expires_at <=")) {
+      const now = params![0] as string
+      for (const [key, entry] of store.entries()) {
+        if (entry.expires_at <= now) store.delete(key)
+      }
+      return { rowCount: 1 }
+    }
+    return { rowCount: 0 }
+  }),
+}))
 
-// Dynamic import resolves AFTER the mock is registered (avoids ESM static-import hoisting)
+// Dynamic import resolves AFTER the mock is registered
 const { get, set, cached, invalidate, pruneExpired, getStale, staleWhileRevalidate } =
   await import("../cache.js")
 
 describe("cache", () => {
   beforeEach(() => {
-    dbHolder.db!.prepare("DELETE FROM api_cache").run()
+    store.clear()
   })
 
   // ── get ───────────────────────────────────────────────────────────────────
 
   describe("get", () => {
-    it("returns null for a missing key", () => {
-      expect(get("missing")).toBeNull()
+    it("returns null for a missing key", async () => {
+      expect(await get("missing")).toBeNull()
     })
 
-    it("returns null for an expired entry", () => {
+    it("returns null for an expired entry", async () => {
       const past = new Date(Date.now() - 5000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("exp", '"v"', past)
-      expect(get("exp")).toBeNull()
+      store.set("exp", { data: '"v"', expires_at: past })
+      expect(await get("exp")).toBeNull()
     })
 
-    it("returns the parsed value for a valid (non-expired) entry", () => {
+    it("returns the parsed value for a valid (non-expired) entry", async () => {
       const future = new Date(Date.now() + 60_000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("k", '"hello"', future)
-      expect(get("k")).toBe("hello")
+      store.set("k", { data: '"hello"', expires_at: future })
+      expect(await get("k")).toBe("hello")
     })
 
-    it("deserialises objects correctly", () => {
+    it("deserialises objects correctly", async () => {
       const future = new Date(Date.now() + 60_000).toISOString()
-      dbHolder
-        .db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)")
-        .run("obj", JSON.stringify({ a: 1 }), future)
-      expect(get<{ a: number }>("obj")).toEqual({ a: 1 })
+      store.set("obj", { data: JSON.stringify({ a: 1 }), expires_at: future })
+      expect(await get<{ a: number }>("obj")).toEqual({ a: 1 })
     })
   })
 
   // ── set ───────────────────────────────────────────────────────────────────
 
   describe("set", () => {
-    it("stores a value retrievable via get", () => {
-      set("k1", { foo: "bar" }, 60_000)
-      expect(get<{ foo: string }>("k1")).toEqual({ foo: "bar" })
+    it("stores a value retrievable via get", async () => {
+      await set("k1", { foo: "bar" }, 60_000)
+      expect(await get<{ foo: string }>("k1")).toEqual({ foo: "bar" })
     })
 
-    it("overwrites an existing key", () => {
-      set("k2", "first", 60_000)
-      set("k2", "second", 60_000)
-      expect(get("k2")).toBe("second")
+    it("overwrites an existing key", async () => {
+      await set("k2", "first", 60_000)
+      await set("k2", "second", 60_000)
+      expect(await get("k2")).toBe("second")
     })
 
-    it("entry with negative TTL is immediately expired", () => {
+    it("entry with negative TTL is immediately expired", async () => {
       // Date.now() + (-5000) = 5 seconds in the past → already expired
-      set("gone", "value", -5_000)
-      expect(get("gone")).toBeNull()
+      await set("gone", "value", -5_000)
+      expect(await get("gone")).toBeNull()
     })
   })
 
@@ -96,46 +138,46 @@ describe("cache", () => {
 
     it("persists the fn result so subsequent get() calls return it", async () => {
       await cached("c3", 60_000, () => Promise.resolve({ nested: true }))
-      expect(get<{ nested: boolean }>("c3")).toEqual({ nested: true })
+      expect(await get<{ nested: boolean }>("c3")).toEqual({ nested: true })
     })
   })
 
   // ── invalidate ────────────────────────────────────────────────────────────
 
   describe("invalidate", () => {
-    it("deletes all keys matching the given prefix", () => {
-      set("prefix:a", 1, 60_000)
-      set("prefix:b", 2, 60_000)
-      set("other:c", 3, 60_000)
-      invalidate("prefix:")
-      expect(get("prefix:a")).toBeNull()
-      expect(get("prefix:b")).toBeNull()
+    it("deletes all keys matching the given prefix", async () => {
+      await set("prefix:a", 1, 60_000)
+      await set("prefix:b", 2, 60_000)
+      await set("other:c", 3, 60_000)
+      await invalidate("prefix:")
+      expect(await get("prefix:a")).toBeNull()
+      expect(await get("prefix:b")).toBeNull()
     })
 
-    it("leaves keys that do not match the prefix", () => {
-      set("prefix:a", 1, 60_000)
-      set("other:c", 3, 60_000)
-      invalidate("prefix:")
-      expect(get("other:c")).toBe(3)
+    it("leaves keys that do not match the prefix", async () => {
+      await set("prefix:a", 1, 60_000)
+      await set("other:c", 3, 60_000)
+      await invalidate("prefix:")
+      expect(await get("other:c")).toBe(3)
     })
   })
 
   // ── getStale ──────────────────────────────────────────────────────────────
 
   describe("getStale", () => {
-    it("returns null for a completely missing key", () => {
-      expect(getStale("missing")).toBeNull()
+    it("returns null for a completely missing key", async () => {
+      expect(await getStale("missing")).toBeNull()
     })
 
-    it("returns data even when the entry is expired (ignores TTL)", () => {
+    it("returns data even when the entry is expired (ignores TTL)", async () => {
       const past = new Date(Date.now() - 10_000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("stale", '"old"', past)
-      expect(getStale("stale")).toBe("old")
+      store.set("stale", { data: '"old"', expires_at: past })
+      expect(await getStale("stale")).toBe("old")
     })
 
-    it("returns data for a fresh (non-expired) entry too", () => {
-      set("fresh", "new", 60_000)
-      expect(getStale("fresh")).toBe("new")
+    it("returns data for a fresh (non-expired) entry too", async () => {
+      await set("fresh", "new", 60_000)
+      expect(await getStale("fresh")).toBe("new")
     })
   })
 
@@ -147,11 +189,11 @@ describe("cache", () => {
       const result = await staleWhileRevalidate("swr1", 60_000, fn)
       expect(fn).toHaveBeenCalledOnce()
       expect(result).toBe(42)
-      expect(get("swr1")).toBe(42) // persisted for next request
+      expect(await get("swr1")).toBe(42) // persisted for next request
     })
 
     it("returns fresh cached value without calling fn", async () => {
-      set("swr2", "cached", 60_000)
+      await set("swr2", "cached", 60_000)
       const fn = vi.fn()
       const result = await staleWhileRevalidate("swr2", 60_000, fn)
       expect(fn).not.toHaveBeenCalled()
@@ -160,7 +202,7 @@ describe("cache", () => {
 
     it("returns stale value immediately when cache is expired", async () => {
       const past = new Date(Date.now() - 5_000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("swr3", '"stale"', past)
+      store.set("swr3", { data: '"stale"', expires_at: past })
       const fn = vi.fn().mockResolvedValue("fresh")
       const result = await staleWhileRevalidate("swr3", 60_000, fn)
       expect(result).toBe("stale") // stale returned immediately
@@ -168,18 +210,18 @@ describe("cache", () => {
 
     it("updates the cache in the background after returning stale data", async () => {
       const past = new Date(Date.now() - 5_000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("swr4", '"stale"', past)
+      store.set("swr4", { data: '"stale"', expires_at: past })
       const fn = vi.fn().mockResolvedValue("fresh")
       await staleWhileRevalidate("swr4", 60_000, fn)
       // Background Promise resolves in the next microtask tick
       await Promise.resolve()
       await Promise.resolve()
-      expect(get("swr4")).toBe("fresh")
+      expect(await get("swr4")).toBe("fresh")
     })
 
     it("does not launch duplicate background refreshes for the same key", async () => {
       const past = new Date(Date.now() - 5_000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("swr5", '"stale"', past)
+      store.set("swr5", { data: '"stale"', expires_at: past })
       const fn = vi.fn().mockResolvedValue("fresh")
       // Two concurrent calls with the same stale key
       await Promise.all([
@@ -195,16 +237,15 @@ describe("cache", () => {
   // ── pruneExpired ──────────────────────────────────────────────────────────
 
   describe("pruneExpired", () => {
-    it("removes expired rows and leaves valid ones", () => {
+    it("removes expired rows and leaves valid ones", async () => {
       const past = new Date(Date.now() - 1000).toISOString()
-      dbHolder.db!.prepare("INSERT INTO api_cache VALUES (?, ?, ?)").run("dead", '"d"', past)
-      set("alive", "v", 60_000)
+      store.set("dead", { data: '"d"', expires_at: past })
+      await set("alive", "v", 60_000)
 
-      pruneExpired()
+      await pruneExpired()
 
-      expect(get("alive")).toBe("v")
-      const row = dbHolder.db!.prepare("SELECT * FROM api_cache WHERE key = ?").get("dead")
-      expect(row).toBeUndefined()
+      expect(await get("alive")).toBe("v")
+      expect(store.has("dead")).toBe(false)
     })
   })
 })

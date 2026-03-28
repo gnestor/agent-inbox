@@ -2,7 +2,7 @@ import { execFileSync } from "child_process"
 import { resolve } from "path"
 
 const INITIAL_SUMMARY_LENGTH = 80
-import { getDb } from "../db/schema.js"
+import { query, queryOne, execute, withTransaction } from "../db/pool.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
@@ -45,7 +45,7 @@ function makeCanUseTool(getSessionId: () => string | null) {
         if (process.env.NODE_ENV !== "production") {
           console.log(`[session:${sessionId}] ask_user:`, input.questions)
         }
-        updateSessionStatus(sessionId, "awaiting_user_input")
+        await updateSessionStatus(sessionId, "awaiting_user_input")
         broadcastToSession(sessionId, { type: "ask_user_question", questions: input.questions })
 
         const answers = await new Promise<Record<string, string>>((resolve) => {
@@ -55,7 +55,7 @@ function makeCanUseTool(getSessionId: () => string | null) {
         if (process.env.NODE_ENV !== "production") {
           console.log(`[session:${sessionId}] user_answered:`, Object.keys(answers))
         }
-        updateSessionStatus(sessionId, "running")
+        await updateSessionStatus(sessionId, "running")
         return { behavior: "allow", updatedInput: { ...input, answers } }
       }
     }
@@ -132,7 +132,6 @@ export async function createSessionRecord(
     linkedItemTitle?: string
   },
 ) {
-  const db = getDb()
   const now = new Date().toISOString()
   const metadata = options?.linkedItemTitle
     ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
@@ -144,34 +143,33 @@ export async function createSessionRecord(
   const sourceId = options?.linkedSourceId
     ?? options?.linkedEmailThreadId ?? options?.linkedTaskId ?? null
 
-  db.prepare(
+  await execute(
     `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, linked_source_type, linked_source_id, trigger_source, metadata)
-     VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    sessionId,
-    prompt,
-    prompt.slice(0, INITIAL_SUMMARY_LENGTH),
-    now,
-    now,
-    options?.linkedEmailId || null,
-    options?.linkedEmailThreadId || null,
-    options?.linkedTaskId || null,
-    sourceType,
-    sourceId,
-    options?.triggerSource || "manual",
-    metadata,
+     VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      sessionId,
+      prompt,
+      prompt.slice(0, INITIAL_SUMMARY_LENGTH),
+      now,
+      now,
+      options?.linkedEmailId || null,
+      options?.linkedEmailThreadId || null,
+      options?.linkedTaskId || null,
+      sourceType,
+      sourceId,
+      options?.triggerSource || "manual",
+      metadata,
+    ],
   )
 }
 
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
  *  Uses a targeted query (last 10 assistant messages) instead of loading the full transcript. */
-export function getLastAskUserQuestions(sessionId: string): unknown[] | null {
-  const db = getDb()
-  const rows = db
-    .prepare(
-      "SELECT message FROM session_messages WHERE session_id = ? AND type = 'assistant' ORDER BY sequence DESC LIMIT 10",
-    )
-    .all(sessionId) as Array<{ message: string }>
+export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
+  const rows = await query<{ message: string }>(
+    "SELECT message FROM session_messages WHERE session_id = $1 AND type = 'assistant' ORDER BY sequence DESC LIMIT 10",
+    [sessionId],
+  )
   for (const row of rows) {
     try {
       const parsed = JSON.parse(row.message)
@@ -187,35 +185,36 @@ export function getLastAskUserQuestions(sessionId: string): unknown[] | null {
   return null
 }
 
-export function appendSessionMessage(
+export async function appendSessionMessage(
   sessionId: string,
   sequence: number,
   type: string,
   message: unknown,
 ) {
-  const db = getDb()
   const now = new Date().toISOString()
 
-  db.prepare(
-    `INSERT OR IGNORE INTO session_messages (session_id, sequence, type, message, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(sessionId, sequence, type, JSON.stringify(message), now)
+  await execute(
+    `INSERT INTO session_messages (session_id, sequence, type, message, created_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT DO NOTHING`,
+    [sessionId, sequence, type, JSON.stringify(message), now],
+  )
 
-  db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(
-    now,
-    sessionId,
+  await execute(
+    `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
+    [now, sessionId],
   )
 }
 
-export function updateSessionStatus(sessionId: string, status: string, summary?: string) {
-  const db = getDb()
+export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {
   const now = new Date().toISOString()
 
   if (status === "complete" || status === "errored") {
     // Don't overwrite archived status with terminal stream states (race condition guard)
-    const current = db.prepare("SELECT status FROM sessions WHERE id = ?").get(sessionId) as
-      | { status: string }
-      | undefined
+    const current = await queryOne<{ status: string }>(
+      "SELECT status FROM sessions WHERE id = $1",
+      [sessionId],
+    )
     if (current?.status === "archived") {
       if (process.env.NODE_ENV !== "production") {
         console.log(`[session:${sessionId}] status change blocked: archived → ${status}`)
@@ -226,21 +225,23 @@ export function updateSessionStatus(sessionId: string, status: string, summary?:
       console.log(`[session:${sessionId}] ${current?.status ?? "unknown"} → ${status}`)
     }
 
-    db.prepare(
-      `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), completed_at = ?, updated_at = ? WHERE id = ?`,
-    ).run(status, summary || null, now, now, sessionId)
+    await execute(
+      `UPDATE sessions SET status = $1, summary = COALESCE($2, summary), completed_at = $3, updated_at = $4 WHERE id = $5`,
+      [status, summary || null, now, now, sessionId],
+    )
   } else {
     if (process.env.NODE_ENV !== "production") {
       console.log(`[session:${sessionId}] → ${status}`)
     }
-    db.prepare(
-      `UPDATE sessions SET status = ?, summary = COALESCE(?, summary), updated_at = ? WHERE id = ?`,
-    ).run(status, summary || null, now, sessionId)
+    await execute(
+      `UPDATE sessions SET status = $1, summary = COALESCE($2, summary), updated_at = $3 WHERE id = $4`,
+      [status, summary || null, now, sessionId],
+    )
   }
 }
 
-export function archiveSession(sessionId: string): boolean {
-  const session = getSessionRecord(sessionId)
+export async function archiveSession(sessionId: string): Promise<boolean> {
+  const session = await getSessionRecord(sessionId)
   if (!session) return false
 
   // Abort if running (without calling abortRunningSession which would set status to "complete")
@@ -251,116 +252,115 @@ export function archiveSession(sessionId: string): boolean {
     pendingQuestions.delete(sessionId)
   }
 
-  updateSessionStatus(sessionId, "archived")
+  await updateSessionStatus(sessionId, "archived")
   return true
 }
 
-export function unarchiveSession(sessionId: string): boolean {
-  const db = getDb()
+export async function unarchiveSession(sessionId: string): Promise<boolean> {
   const now = new Date().toISOString()
-  const result = db.prepare(
-    `UPDATE sessions SET status = 'complete', updated_at = ? WHERE id = ? AND status = 'archived'`,
-  ).run(now, sessionId)
-  return result.changes > 0
+  const result = await execute(
+    `UPDATE sessions SET status = 'complete', updated_at = $1 WHERE id = $2 AND status = 'archived'`,
+    [now, sessionId],
+  )
+  return result.rowCount > 0
 }
 
 /** Import an agent-only session (JSONL) into the DB as a completed record. */
-export function importAgentSession(
+export async function importAgentSession(
   sessionId: string,
   agentSession: { firstPrompt?: string | null; summary?: string | null; lastModified: number }
 ) {
-  const db = getDb()
   const ts = new Date(agentSession.lastModified).toISOString()
-  db.prepare(
-    `INSERT OR IGNORE INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
-     VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')`
-  ).run(
-    sessionId,
-    agentSession.firstPrompt || "",
-    (agentSession.summary || agentSession.firstPrompt || "").slice(0, 200),
-    ts,
-    ts,
-    ts,
+  await execute(
+    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
+     VALUES ($1, 'complete', $2, $3, $4, $5, $6, 'manual')
+     ON CONFLICT DO NOTHING`,
+    [
+      sessionId,
+      agentSession.firstPrompt || "",
+      (agentSession.summary || agentSession.firstPrompt || "").slice(0, 200),
+      ts,
+      ts,
+      ts,
+    ],
   )
 }
 
-export function updateSessionSummary(sessionId: string, summary: string) {
-  const db = getDb()
-  db.prepare("UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?")
-    .run(summary, new Date().toISOString(), sessionId)
+export async function updateSessionSummary(sessionId: string, summary: string) {
+  await execute(
+    "UPDATE sessions SET summary = $1, updated_at = $2 WHERE id = $3",
+    [summary, new Date().toISOString(), sessionId],
+  )
 }
 
-export function getSessionRecord(sessionId: string) {
-  const db = getDb()
-  return db.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as
-    | Record<string, unknown>
-    | undefined
+export async function getSessionRecord(sessionId: string) {
+  return await queryOne<Record<string, unknown>>(
+    "SELECT * FROM sessions WHERE id = $1",
+    [sessionId],
+  )
 }
 
-export function getSessionMessages(sessionId: string) {
-  const db = getDb()
-  return db
-    .prepare("SELECT * FROM session_messages WHERE session_id = ? ORDER BY sequence")
-    .all(sessionId) as Array<Record<string, unknown>>
+export async function getSessionMessages(sessionId: string) {
+  return await query<Record<string, unknown>>(
+    "SELECT * FROM session_messages WHERE session_id = $1 ORDER BY sequence",
+    [sessionId],
+  )
 }
 
-export function getLinkedSession(
+export async function getLinkedSession(
   linkedEmailThreadId?: string,
   linkedTaskId?: string,
   linkedSourceType?: string,
   linkedSourceId?: string,
-): Record<string, unknown> | undefined {
-  const db = getDb()
+): Promise<Record<string, unknown> | undefined> {
   // Prefer generic linked_source_type/id
   const srcType = linkedSourceType ?? (linkedEmailThreadId ? "gmail" : linkedTaskId ? "notion-tasks" : undefined)
   const srcId = linkedSourceId ?? linkedEmailThreadId ?? linkedTaskId
   if (srcType && srcId) {
-    const result = db
-      .prepare(
-        "SELECT * FROM sessions WHERE linked_source_type = ? AND linked_source_id = ? ORDER BY updated_at DESC LIMIT 1",
-      )
-      .get(srcType, srcId) as Record<string, unknown> | undefined
+    const result = await queryOne<Record<string, unknown>>(
+      "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
+      [srcType, srcId],
+    )
     if (result) return result
   }
   // Fallback: check legacy columns for backward compat
   if (linkedEmailThreadId) {
-    return db
-      .prepare(
-        "SELECT * FROM sessions WHERE linked_email_thread_id = ? ORDER BY updated_at DESC LIMIT 1",
-      )
-      .get(linkedEmailThreadId) as Record<string, unknown> | undefined
+    return await queryOne<Record<string, unknown>>(
+      "SELECT * FROM sessions WHERE linked_email_thread_id = $1 ORDER BY updated_at DESC LIMIT 1",
+      [linkedEmailThreadId],
+    )
   }
   if (linkedTaskId) {
-    return db
-      .prepare(
-        "SELECT * FROM sessions WHERE linked_task_id = ? ORDER BY updated_at DESC LIMIT 1",
-      )
-      .get(linkedTaskId) as Record<string, unknown> | undefined
+    return await queryOne<Record<string, unknown>>(
+      "SELECT * FROM sessions WHERE linked_task_id = $1 ORDER BY updated_at DESC LIMIT 1",
+      [linkedTaskId],
+    )
   }
   return undefined
 }
 
-export function listSessionRecords(filters?: {
+export async function listSessionRecords(filters?: {
   status?: string
   triggerSource?: string
   q?: string
 }) {
-  const db = getDb()
   const conditions: string[] = []
   const params: unknown[] = []
+  let paramIndex = 1
 
   if (filters?.status) {
     const values = filters.status.split(",")
     if (values.length === 1) {
-      conditions.push("s.status = ?")
+      conditions.push(`s.status = $${paramIndex++}`)
       params.push(values[0])
     } else {
-      conditions.push(`s.status IN (${values.map(() => "?").join(",")})`)
+      const placeholders = values.map(() => `$${paramIndex++}`)
+      conditions.push(`s.status IN (${placeholders.join(",")})`)
       params.push(...values)
     }
   }
   if (filters?.triggerSource) {
-    conditions.push("s.trigger_source = ?")
+    conditions.push(`s.trigger_source = $${paramIndex++}`)
     params.push(filters.triggerSource)
   }
 
@@ -368,11 +368,11 @@ export function listSessionRecords(filters?: {
   if (filters?.q) {
     const like = `%${filters.q}%`
     // Join session_messages to search full message content
-    sql = `SELECT DISTINCT s.*, json_extract(s.metadata, '$.linkedItemTitle') AS linked_item_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
-    conditions.push("(s.prompt LIKE ? OR s.summary LIKE ? OR sm.message LIKE ?)")
+    sql = `SELECT DISTINCT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
+    conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++} OR sm.message LIKE $${paramIndex++})`)
     params.push(like, like, like)
   } else {
-    sql = "SELECT s.*, json_extract(s.metadata, '$.linkedItemTitle') AS linked_item_title FROM sessions s"
+    sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
   }
 
   if (conditions.length) {
@@ -380,7 +380,7 @@ export function listSessionRecords(filters?: {
   }
   sql += " ORDER BY s.updated_at DESC"
 
-  return db.prepare(sql).all(...params) as Array<Record<string, unknown>>
+  return await query<Record<string, unknown>>(sql, params)
 }
 
 // In-memory presence map: sessionId → Map<email, user>
@@ -406,7 +406,7 @@ export function getPresenceUsers(sessionId: string) {
 }
 
 // SSE client management
-export function addSseClient(sessionId: string, send: (data: string) => void) {
+export async function addSseClient(sessionId: string, send: (data: string) => void) {
   if (!sseClients.has(sessionId)) {
     sseClients.set(sessionId, new Set())
   }
@@ -418,9 +418,9 @@ export function addSseClient(sessionId: string, send: (data: string) => void) {
   // Re-deliver the last AskUserQuestion when the session is awaiting input.
   // The original broadcast may have fired before any browser was connected
   // (e.g. agent resumed on startup and hit AskUserQuestion before the user opened the page).
-  const session = getSessionRecord(sessionId)
+  const session = await getSessionRecord(sessionId)
   if (session?.status === "awaiting_user_input") {
-    const questions = getLastAskUserQuestions(sessionId)
+    const questions = await getLastAskUserQuestions(sessionId)
     if (questions) {
       send(JSON.stringify({ type: "ask_user_question", questions }))
     }
@@ -453,21 +453,21 @@ export function broadcastToSession(sessionId: string, data: unknown) {
 
 async function autoNameSession(sessionId: string) {
   try {
-    const session = getSessionRecord(sessionId)
+    const session = await getSessionRecord(sessionId)
     if (!session) return
 
     // Skip if user has manually renamed the session
     const initialSummary = (session.prompt as string).slice(0, INITIAL_SUMMARY_LENGTH)
     if (session.summary !== initialSummary) return
 
-    const messages = getSessionMessages(sessionId)
+    const messages = await getSessionMessages(sessionId)
     if (messages.length < 2) return // Skip trivial sessions (e.g. immediate errors)
 
     const title = await generateSessionTitle(
       messages.map((m) => ({ type: m.type as string, message: m.message as string }))
     )
     if (title) {
-      updateSessionSummary(sessionId, title)
+      await updateSessionSummary(sessionId, title)
     }
   } catch (err) {
     console.error("Auto-naming failed for session", sessionId, err)
@@ -515,7 +515,7 @@ export async function startSession(
   },
 ): Promise<string> {
   // Dynamic import to avoid issues at startup
-  const { query } = await import("@anthropic-ai/claude-agent-sdk")
+  const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
   const abortController = new AbortController()
   let sessionId: string | null = null
@@ -525,7 +525,7 @@ export async function startSession(
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
 
-  const q = query({
+  const q = agentQuery({
     prompt,
     options: {
       cwd: workspacePath,
@@ -561,7 +561,7 @@ export async function startSession(
         }
 
         if (sessionId) {
-          appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+          await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
           broadcastToSession(sessionId, { sequence, message })
           sequence++
         }
@@ -569,7 +569,7 @@ export async function startSession(
         // Check for result message (session complete)
         if ("result" in (message as any)) {
           if (sessionId) {
-            updateSessionStatus(sessionId, "complete")
+            await updateSessionStatus(sessionId, "complete")
             broadcastToSession(sessionId, {
               type: "session_complete",
               status: "complete",
@@ -579,14 +579,14 @@ export async function startSession(
       }
 
       if (sessionId) {
-        updateSessionStatus(sessionId, "complete")
+        await updateSessionStatus(sessionId, "complete")
         autoNameSession(sessionId).catch(() => {})
         runningQueries.delete(sessionId)
       }
     } catch (err: any) {
       console.error("Session error:", err)
       if (sessionId) {
-        updateSessionStatus(sessionId, "errored", err.message)
+        await updateSessionStatus(sessionId, "errored", err.message)
         broadcastToSession(sessionId, {
           type: "session_error",
           error: err.message,
@@ -622,11 +622,11 @@ export async function resumeSessionQuery(
   const abortController = new AbortController()
   runningQueries.set(sessionId, abortController)
 
-  const { query } = await import("@anthropic-ai/claude-agent-sdk")
+  const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
-  updateSessionStatus(sessionId, "running")
+  await updateSessionStatus(sessionId, "running")
 
-  const sessionRecord = getSessionRecord(sessionId)
+  const sessionRecord = await getSessionRecord(sessionId)
   const resumeSourceContext = buildSourceContext(
     sessionRecord?.linked_email_thread_id as string | undefined,
     sessionRecord?.linked_email_id as string | undefined,
@@ -635,7 +635,7 @@ export async function resumeSessionQuery(
     sessionRecord?.linked_source_id as string | undefined,
   )
 
-  const existingMessages = getSessionMessages(sessionId)
+  const existingMessages = await getSessionMessages(sessionId)
   let sequence = existingMessages.length
 
   // Save and broadcast the user's prompt as a message so it appears in the transcript
@@ -647,11 +647,11 @@ export async function resumeSessionQuery(
       authorName: userProfile.name,
     }),
   }
-  appendSessionMessage(sessionId, sequence, "user", userMessage)
+  await appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
-  const q = query({
+  const q = agentQuery({
     prompt,
     options: {
       resume: sessionId,
@@ -677,12 +677,12 @@ export async function resumeSessionQuery(
   ;(async () => {
     try {
       for await (const message of q) {
-        appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+        await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 
         if ("result" in (message as any)) {
-          updateSessionStatus(sessionId, "complete")
+          await updateSessionStatus(sessionId, "complete")
           broadcastToSession(sessionId, {
             type: "session_complete",
             status: "complete",
@@ -690,12 +690,12 @@ export async function resumeSessionQuery(
         }
       }
 
-      updateSessionStatus(sessionId, "complete")
+      await updateSessionStatus(sessionId, "complete")
       autoNameSession(sessionId).catch(() => {})
       runningQueries.delete(sessionId)
     } catch (err: any) {
       console.error("Session resume error:", err)
-      updateSessionStatus(sessionId, "errored", err.message)
+      await updateSessionStatus(sessionId, "errored", err.message)
       broadcastToSession(sessionId, {
         type: "session_error",
         error: err.message,
@@ -705,11 +705,11 @@ export async function resumeSessionQuery(
   })()
 }
 
-export function attachSourceToSession(
+export async function attachSourceToSession(
   sessionId: string,
   source: { type: string; id: string; title: string; content: string },
 ) {
-  const messages = getSessionMessages(sessionId)
+  const messages = await getSessionMessages(sessionId)
   const nextSequence = messages.length
 
   const contextMessage = {
@@ -721,33 +721,32 @@ export function attachSourceToSession(
     content: source.content,
   }
 
-  appendSessionMessage(sessionId, nextSequence, "system", contextMessage)
+  await appendSessionMessage(sessionId, nextSequence, "system", contextMessage)
   broadcastToSession(sessionId, { sequence: nextSequence, message: contextMessage })
 
   // Update linked source columns (last attachment wins — the actual context
   // is preserved in session_messages regardless, so multiple attachments work)
-  const db = getDb()
   const now = new Date().toISOString()
 
   // Persist title in metadata so listSessionRecords can surface it without joins.
-  // Uses json_set so we don't need a SELECT + parse + re-serialize round-trip.
+  // Uses jsonb_set so we don't need a SELECT + parse + re-serialize round-trip.
   const isEmail = source.type === "email" || source.type === "gmail"
   const isTask = source.type === "task" || source.type === "notion-tasks"
-  db.prepare(`
+  await execute(`
     UPDATE sessions
-    SET linked_source_id = ?,
-        linked_source_type = ?,
-        metadata = json_set(COALESCE(metadata, '{}'), '$.linkedItemTitle', ?),
-        linked_email_thread_id = CASE WHEN ? THEN ? ELSE linked_email_thread_id END,
-        linked_task_id = CASE WHEN ? THEN ? ELSE linked_task_id END,
-        updated_at = ?
-    WHERE id = ?
-  `).run(
+    SET linked_source_id = $1,
+        linked_source_type = $2,
+        metadata = jsonb_set(COALESCE(metadata, '{}')::jsonb, '{linkedItemTitle}', to_jsonb($3::text)),
+        linked_email_thread_id = CASE WHEN $4::boolean THEN $5 ELSE linked_email_thread_id END,
+        linked_task_id = CASE WHEN $6::boolean THEN $7 ELSE linked_task_id END,
+        updated_at = $8
+    WHERE id = $9
+  `, [
     source.id, source.type, source.title,
-    isEmail ? 1 : 0, isEmail ? source.id : null,
-    isTask ? 1 : 0, isTask ? source.id : null,
+    isEmail, isEmail ? source.id : null,
+    isTask, isTask ? source.id : null,
     now, sessionId,
-  )
+  ])
 }
 
 /** Check if a session has an active agent process (in-memory query) */
@@ -755,45 +754,47 @@ export function isSessionRunning(sessionId: string): boolean {
   return runningQueries.has(sessionId)
 }
 
-export function abortRunningSession(sessionId: string): boolean {
+export async function abortRunningSession(sessionId: string): Promise<boolean> {
   const controller = runningQueries.get(sessionId)
   if (controller) {
     controller.abort()
     runningQueries.delete(sessionId)
     pendingQuestions.delete(sessionId)
-    updateSessionStatus(sessionId, "complete", "Aborted by user")
+    await updateSessionStatus(sessionId, "complete", "Aborted by user")
     return true
   }
   return false
 }
 
 /** Index all agent SDK sessions into the DB on startup.
- *  Uses INSERT OR IGNORE so existing records are not overwritten. */
+ *  Uses INSERT ... ON CONFLICT DO NOTHING so existing records are not overwritten. */
 export async function indexAllAgentSessions() {
   try {
     const agentSessions = await listAgentSessions()
-    const db = getDb()
-    const insertStmt = db.prepare(
-      `INSERT OR IGNORE INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
-       VALUES (?, 'complete', ?, ?, ?, ?, ?, 'manual')`
-    )
-    const updateStmt = db.prepare(
-      `UPDATE sessions SET prompt = ?, summary = ? WHERE id = ? AND (prompt IS NULL OR prompt = '')`
-    )
     let inserted = 0
     let updated = 0
-    for (const s of agentSessions) {
-      const ts = new Date(s.lastModified).toISOString()
-      const prompt = s.firstPrompt || ""
-      const summary = (s.summary || s.firstPrompt || "").slice(0, 200)
-      const result = insertStmt.run(s.sessionId, prompt, summary, ts, ts, ts)
-      if (result.changes > 0) {
-        inserted++
-      } else if (prompt) {
-        const upd = updateStmt.run(prompt, summary, s.sessionId)
-        if (upd.changes > 0) updated++
+    await withTransaction(async (client) => {
+      for (const s of agentSessions) {
+        const ts = new Date(s.lastModified).toISOString()
+        const prompt = s.firstPrompt || ""
+        const summary = (s.summary || s.firstPrompt || "").slice(0, 200)
+        const insertResult = await client.query(
+          `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, completed_at, trigger_source)
+           VALUES ($1, 'complete', $2, $3, $4, $5, $6, 'manual')
+           ON CONFLICT DO NOTHING`,
+          [s.sessionId, prompt, summary, ts, ts, ts],
+        )
+        if ((insertResult.rowCount ?? 0) > 0) {
+          inserted++
+        } else if (prompt) {
+          const updResult = await client.query(
+            `UPDATE sessions SET prompt = $1, summary = $2 WHERE id = $3 AND (prompt IS NULL OR prompt = '')`,
+            [prompt, summary, s.sessionId],
+          )
+          if ((updResult.rowCount ?? 0) > 0) updated++
+        }
       }
-    }
+    })
     if (inserted > 0 || updated > 0) {
       console.log(`[server] Indexed ${inserted} new, updated ${updated} existing agent sessions`)
     }
@@ -808,16 +809,13 @@ export async function indexAllAgentSessions() {
  *    re-delivers the original question when the user reconnects.
  *  - Old stale sessions are marked as errored. */
 export async function recoverStaleSessions(cutoffMinutes = 30) {
-  const db = getDb()
   const cutoff = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString()
 
   // Find all sessions stuck in running/awaiting_user_input
-  const staleSessions = db
-    .prepare(
-      `SELECT id, status, updated_at FROM sessions
-       WHERE status IN ('running', 'awaiting_user_input')`,
-    )
-    .all() as Array<{ id: string; status: string; updated_at: string }>
+  const staleSessions = await query<{ id: string; status: string; updated_at: string }>(
+    `SELECT id, status, updated_at FROM sessions
+     WHERE status IN ('running', 'awaiting_user_input')`,
+  )
 
   if (staleSessions.length === 0) return
 
@@ -830,7 +828,7 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
   // Mark old stale sessions as errored
   for (const session of old) {
     console.log(`[server] Marking stale session ${session.id} as errored (last updated ${session.updated_at})`)
-    updateSessionStatus(session.id, "errored", "Session interrupted by server restart")
+    await updateSessionStatus(session.id, "errored", "Session interrupted by server restart")
   }
 
   // Auto-resume recent running sessions concurrently
@@ -844,7 +842,7 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
     if (results[i].status === "rejected") {
       const session = toResume[i]
       console.error(`[server] Failed to recover session ${session.id}:`, (results[i] as PromiseRejectedResult).reason)
-      updateSessionStatus(session.id, "errored", "Server restart recovery failed")
+      await updateSessionStatus(session.id, "errored", "Server restart recovery failed")
     }
   }
 
@@ -1241,10 +1239,10 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
 
 /**
  * Patch the code of a render_output artifact.
- * Handles both DB sessions (SQLite) and JSONL-only sessions.
+ * Handles both DB sessions and JSONL-only sessions.
  */
 export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  if (patchArtifactInDb(sessionId, sequence, code)) return true
+  if (await patchArtifactInDb(sessionId, sequence, code)) return true
 
   // Locate the JSONL file (may be in a different workspace directory)
   const agentSession = await findAgentSession(sessionId)
@@ -1272,12 +1270,12 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
   return false
 }
 
-function patchArtifactInDb(sessionId: string, sequence: number, code: string): boolean {
+async function patchArtifactInDb(sessionId: string, sequence: number, code: string): Promise<boolean> {
   try {
-    const db = getDb()
-    const row = db
-      .prepare("SELECT message FROM session_messages WHERE session_id = ? AND sequence = ?")
-      .get(sessionId, sequence) as { message: string } | undefined
+    const row = await queryOne<{ message: string }>(
+      "SELECT message FROM session_messages WHERE session_id = $1 AND sequence = $2",
+      [sessionId, sequence],
+    )
     if (!row) {
       console.warn(`[patchArtifactInDb] No message at sequence=${sequence} for session=${sessionId}`)
       return false
@@ -1291,8 +1289,10 @@ function patchArtifactInDb(sessionId: string, sequence: number, code: string): b
       return false
     }
 
-    db.prepare("UPDATE session_messages SET message = ? WHERE session_id = ? AND sequence = ?")
-      .run(JSON.stringify(msg), sessionId, sequence)
+    await execute(
+      "UPDATE session_messages SET message = $1 WHERE session_id = $2 AND sequence = $3",
+      [JSON.stringify(msg), sessionId, sequence],
+    )
     return true
   } catch {
     return false

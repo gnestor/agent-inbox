@@ -1,0 +1,94 @@
+-- Initial PostgreSQL schema for the Inbox app.
+-- Translated from the original SQLite schema in server/db/schema.ts.
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'running',
+  prompt TEXT NOT NULL,
+  summary TEXT,
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  linked_email_id TEXT,
+  linked_email_thread_id TEXT,
+  linked_task_id TEXT,
+  trigger_source TEXT DEFAULT 'manual',
+  metadata JSONB,
+  linked_source_id TEXT,
+  linked_source_type TEXT
+);
+
+CREATE TABLE IF NOT EXISTS session_messages (
+  id SERIAL PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  sequence INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(session_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_messages_session
+  ON session_messages(session_id, sequence);
+
+CREATE TABLE IF NOT EXISTS notion_options (
+  property TEXT NOT NULL,
+  value TEXT NOT NULL,
+  color TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (property, value)
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  email TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  picture TEXT,
+  created_at TEXT NOT NULL,
+  last_login_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token TEXT PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  user_email TEXT NOT NULL,
+  user_picture TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_email TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_email, key)
+);
+
+CREATE TABLE IF NOT EXISTS api_cache (
+  key TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_cache_expires
+  ON api_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS user_credentials (
+  user_email TEXT NOT NULL REFERENCES users(email),
+  integration TEXT NOT NULL,
+  encrypted_token TEXT NOT NULL,
+  refresh_token TEXT,
+  scopes TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_email, integration)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_credentials (
+  workspace TEXT NOT NULL,
+  integration TEXT NOT NULL,
+  encrypted_token TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace, integration)
+);

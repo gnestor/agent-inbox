@@ -6,7 +6,7 @@ Unified web app for managing emails (Gmail), Notion tasks, and Claude Code agent
 
 - **Frontend**: React 19 + Vite 7 + TypeScript — UI components from `@hammies/frontend`
 - **Server**: Hono + `@hono/node-server` on port 3002
-- **Database**: better-sqlite3 in `data/inbox.db`
+- **Database**: PostgreSQL via `pg` connection pool (configured via `DATABASE_URL` env var)
 - **Sessions**: `@anthropic-ai/claude-agent-sdk` — sessions stored in `~/.claude/projects/`, interchangeable with Claude Code CLI
 
 ## Running

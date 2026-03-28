@@ -1,57 +1,54 @@
-import { getDb } from "../db/schema.js"
+import { query, queryOne, execute } from "../db/pool.js"
 
-export function get<T>(key: string): T | null {
-  const db = getDb()
+export async function get<T>(key: string): Promise<T | null> {
   const now = new Date().toISOString()
-  const row = db
-    .prepare(`SELECT data FROM api_cache WHERE key = ? AND expires_at > ?`)
-    .get(key, now) as { data: string } | undefined
+  const row = await queryOne<{ data: string }>(
+    `SELECT data FROM api_cache WHERE key = $1 AND expires_at > $2`,
+    [key, now],
+  )
   return row ? (JSON.parse(row.data) as T) : null
 }
 
-export function set<T>(key: string, data: T, ttlMs: number): void {
-  const db = getDb()
+export async function set<T>(key: string, data: T, ttlMs: number): Promise<void> {
   const expiresAt = new Date(Date.now() + ttlMs).toISOString()
-  db.prepare(`INSERT OR REPLACE INTO api_cache (key, data, expires_at) VALUES (?, ?, ?)`).run(
-    key,
-    JSON.stringify(data),
-    expiresAt,
+  await execute(
+    `INSERT INTO api_cache (key, data, expires_at) VALUES ($1, $2, $3)
+     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at`,
+    [key, JSON.stringify(data), expiresAt],
   )
 }
 
-export function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
-  const db = getDb()
+export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const now = new Date().toISOString()
-  const row = db
-    .prepare(`SELECT data FROM api_cache WHERE key = ? AND expires_at > ?`)
-    .get(key, now) as { data: string } | undefined
+  const row = await queryOne<{ data: string }>(
+    `SELECT data FROM api_cache WHERE key = $1 AND expires_at > $2`,
+    [key, now],
+  )
 
   if (row) {
-    return Promise.resolve(JSON.parse(row.data) as T)
+    return JSON.parse(row.data) as T
   }
 
-  return fn().then((data) => {
-    const expiresAt = new Date(Date.now() + ttlMs).toISOString()
-    db.prepare(`INSERT OR REPLACE INTO api_cache (key, data, expires_at) VALUES (?, ?, ?)`).run(
-      key,
-      JSON.stringify(data),
-      expiresAt,
-    )
-    return data
-  })
+  const data = await fn()
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString()
+  await execute(
+    `INSERT INTO api_cache (key, data, expires_at) VALUES ($1, $2, $3)
+     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at`,
+    [key, JSON.stringify(data), expiresAt],
+  )
+  return data
 }
 
-export function invalidate(keyPrefix: string) {
-  const db = getDb()
-  db.prepare(`DELETE FROM api_cache WHERE key LIKE ?`).run(`${keyPrefix}%`)
+export async function invalidate(keyPrefix: string) {
+  await execute(`DELETE FROM api_cache WHERE key LIKE $1`, [`${keyPrefix}%`])
 }
 
 /** Like get() but returns data even when the TTL has expired. */
-export function getStale<T>(key: string): T | null {
-  const db = getDb()
-  const row = db.prepare(`SELECT data FROM api_cache WHERE key = ?`).get(key) as
-    | { data: string }
-    | undefined
+export async function getStale<T>(key: string): Promise<T | null> {
+  const row = await queryOne<{ data: string }>(
+    `SELECT data FROM api_cache WHERE key = $1`,
+    [key],
+  )
   return row ? (JSON.parse(row.data) as T) : null
 }
 
@@ -72,19 +69,19 @@ export async function staleWhileRevalidate<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   // Fast path: fresh data exists
-  const fresh = get<T>(key)
+  const fresh = await get<T>(key)
   if (fresh !== null) return fresh
 
   // Stale path: expired data exists — return it and refresh in background
-  const stale = getStale<T>(key)
+  const stale = await getStale<T>(key)
   if (stale !== null) {
     if (!inFlight.has(key)) {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 30_000),
       )
       const p = Promise.race([fn(), timeout])
-        .then((data) => {
-          set(key, data as T, ttlMs)
+        .then(async (data) => {
+          await set(key, data as T, ttlMs)
           inFlight.delete(key)
         })
         .catch((err) => {
@@ -98,11 +95,10 @@ export async function staleWhileRevalidate<T>(
 
   // Cold path: no data — must wait for the first fetch
   const data = await fn()
-  set(key, data, ttlMs)
+  await set(key, data, ttlMs)
   return data
 }
 
-export function pruneExpired() {
-  const db = getDb()
-  db.prepare(`DELETE FROM api_cache WHERE expires_at <= ?`).run(new Date().toISOString())
+export async function pruneExpired() {
+  await execute(`DELETE FROM api_cache WHERE expires_at <= $1`, [new Date().toISOString()])
 }

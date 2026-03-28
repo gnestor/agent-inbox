@@ -15,7 +15,7 @@
 import { config } from "dotenv"
 import { resolve } from "path"
 import { homedir } from "os"
-import { initializeDatabase } from "../db/schema.js"
+import { initializeDatabase } from "../db/pool.js"
 import { storeWorkspaceCredential } from "../lib/vault.js"
 import { buildEnvToIntegrationMap } from "../lib/integrations.js"
 
@@ -61,7 +61,7 @@ if (workspaceEnv.error) {
 }
 const envVars = workspaceEnv.parsed || {}
 
-initializeDatabase()
+await initializeDatabase()
 
 // Build the mapping: ENV_VAR → integration name
 const envToIntegration: Map<string, string> = explicitMappings.size > 0
@@ -83,7 +83,7 @@ for (const [envKey, value] of Object.entries(envVars)) {
   const integration = envToIntegration.get(envKey)
   if (!integration || !value) continue
 
-  storeWorkspaceCredential(workspaceName, integration, value)
+  await storeWorkspaceCredential(workspaceName, integration, value)
   console.log(`Migrated ${envKey} → workspace_credentials[${workspaceName}, ${integration}]`)
   count++
 }

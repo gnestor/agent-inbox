@@ -1,4 +1,4 @@
-import { getDb } from "./db/schema.js"
+import { query } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
@@ -17,7 +17,7 @@ import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
 import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
-import { initializeDatabase } from "./db/schema.js"
+import { initializeDatabase, closePool } from "./db/pool.js"
 import { loadCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions } from "./lib/session-manager.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
@@ -63,11 +63,12 @@ console.log(`Workspace: ${workspacePath}`)
 const workspaceEnv = loadCredentials(workspacePath)
 setWorkspacePath(workspacePath)
 
-// Initialize database and seed any missing workspace credentials from .env
-initializeDatabase()
+// Initialize database and seed credentials (async startup)
 import { getWorkspaceName } from "./lib/session-manager.js"
 import { buildEnvToIntegrationMap } from "./lib/integrations.js"
-seedWorkspaceCredentials(getWorkspaceName(), workspaceEnv, buildEnvToIntegrationMap())
+
+await initializeDatabase()
+await seedWorkspaceCredentials(getWorkspaceName(), workspaceEnv, buildEnvToIntegrationMap())
 
 // Auto-refresh an OAuth access token using the stored refresh token.
 // Currently only QBO needs this — access tokens expire after 1 hour.
@@ -75,7 +76,7 @@ async function maybeRefreshToken(
   userEmail: string,
   integration: string,
 ): Promise<string | null> {
-  const cred = getUserCredential(userEmail, integration)
+  const cred = await getUserCredential(userEmail, integration)
   if (!cred) return null
 
   const isExpired = cred.expiresAt && new Date(cred.expiresAt) <= new Date(Date.now() + 60_000)
@@ -103,7 +104,7 @@ async function maybeRefreshToken(
         return cred.token // Return stale token; QBO will 401 and user must reconnect
       }
       const expiresAt = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
-      storeUserCredential(userEmail, integration, {
+      await storeUserCredential(userEmail, integration, {
         token: data.access_token!,
         refreshToken: data.refresh_token ?? cred.refreshToken,
         scopes: cred.scopes,
@@ -123,7 +124,7 @@ async function maybeRefreshToken(
 // Start credential proxy (non-blocking)
 createCredentialProxy({
   resolveToken: async (sessionToken, integration) => {
-    const session = getSession(sessionToken)
+    const session = await getSession(sessionToken)
     if (!session) return null
     // For integrations with expiring access tokens, auto-refresh if needed
     const refreshed = await maybeRefreshToken(session.user.email, integration)
@@ -161,7 +162,7 @@ app.get("/api/health", (c) => c.json({ status: "ok", workspace: workspacePath })
 app.use("/api/*", async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return c.json({ error: "Unauthorized" }, 401)
-  const session = getSession(token)
+  const session = await getSession(token)
   if (!session) return c.json({ error: "Unauthorized" }, 401)
   c.set("user", session.user)
   c.set("userEmail", session.user.email)
@@ -185,13 +186,13 @@ app.route("/api/connections", connectionRoutes)
 app.route("/api", pluginRoutes)
 
 // User profiles — look up by email for transcript author avatars
-app.get("/api/users", (c) => {
+app.get("/api/users", async (c) => {
   const emails = c.req.query("emails")
   if (!emails) return c.json({ users: [] })
   const list = emails.split(",").map((e) => e.trim()).filter(Boolean)
   if (list.length === 0) return c.json({ users: [] })
-  const placeholders = list.map(() => "?").join(",")
-  const rows = getDb().prepare(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`).all(...list)
+  const placeholders = list.map((_, i) => `$${i + 1}`).join(",")
+  const rows = await query(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`, list)
   return c.json({ users: rows })
 })
 
@@ -218,7 +219,7 @@ const port = parseInt(process.env.PORT || "3002", 10)
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
-  pruneExpired()
+  pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions().catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
@@ -235,9 +236,10 @@ const server = serve({ fetch: app.fetch, port }, () => {
   loadPanels(workspacePath).catch((err) => console.warn("Failed to load panels:", err.message))
 })
 
-// Graceful shutdown — close server and unref timers so tsx can restart cleanly
-function shutdown() {
+// Graceful shutdown — close server, pool, and unref timers so tsx can restart cleanly
+async function shutdown() {
   server.close()
+  await closePool()
   process.exit(0)
 }
 process.on("SIGTERM", shutdown)
