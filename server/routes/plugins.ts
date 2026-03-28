@@ -62,7 +62,8 @@ export const pluginRoutes = new Hono()
 
 /** GET /api/plugins — list all loaded plugin manifests that have a UI (fieldSchema present) */
 pluginRoutes.get("/plugins", (c) => {
-  const plugins = getPlugins()
+  const workspace = c.get("workspace") as { id: string } | undefined
+  const plugins = getPlugins(workspace?.id)
     .filter((p) => p.fieldSchema && p.fieldSchema.length > 0)
     .map((p) => ({
       id: p.id,
@@ -119,9 +120,9 @@ pluginRoutes.get("/:pluginId/components/:name", async (c) => {
   const cached = componentCache.get(cacheKey)
 
   if (cached && cached.mtime === mtime) {
-    c.header("Content-Type", "application/javascript")
-    c.header("Cache-Control", "no-cache")
-    return c.text(cached.js)
+    return new Response(cached.js, {
+      headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+    })
   }
 
   // Transform with esbuild
@@ -143,15 +144,15 @@ pluginRoutes.get("/:pluginId/components/:name", async (c) => {
   }
   componentCache.set(cacheKey, { js, mtime })
 
-  c.header("Content-Type", "application/javascript")
-  c.header("Cache-Control", "no-cache")
-  return c.text(js)
+  return new Response(js, {
+    headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+  })
 })
 
 /** GET /api/:pluginId/items — query items with optional filters + cursor */
 pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const plugin = getPlugin(pluginId, (c.get("workspace") as { id: string } | undefined)?.id)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 
   const raw = c.req.query()
@@ -169,7 +170,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
 /** GET /api/:pluginId/items/:itemId — get a single item by ID */
 pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const plugin = getPlugin(pluginId, (c.get("workspace") as { id: string } | undefined)?.id)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.getItem) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support getItem` })
 
@@ -182,7 +183,7 @@ pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
 /** GET /api/:pluginId/items/:itemId/subitems — query sub-items (e.g. messages in a channel) */
 pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const plugin = getPlugin(pluginId, (c.get("workspace") as { id: string } | undefined)?.id)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.querySubItems) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support sub-items` })
 
@@ -200,7 +201,7 @@ pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
 /** POST /api/:pluginId/items/:itemId/mutate — perform an item mutation */
 pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const plugin = getPlugin(pluginId, (c.get("workspace") as { id: string } | undefined)?.id)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 
   if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutations` })
@@ -229,7 +230,7 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
 /** GET /api/:pluginId/fields/:fieldId/options — fetch dynamic filter options */
 pluginRoutes.get("/:pluginId/fields/:fieldId/options", async (c) => {
   const { pluginId, fieldId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const plugin = getPlugin(pluginId, (c.get("workspace") as { id: string } | undefined)?.id)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 
   const fetcher = plugin.filterOptions?.[fieldId]
