@@ -6,7 +6,7 @@ export function useEmailThread(threadId: string | undefined) {
     queryKey: ["thread", threadId],
     queryFn: () => getEmailThread(threadId!),
     enabled: !!threadId,
-    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
+    staleTime: 5 * 60 * 1000, // 5 minutes — cached thread data is reused, not refetched on every mount
   })
   return {
     thread: thread ?? undefined,
