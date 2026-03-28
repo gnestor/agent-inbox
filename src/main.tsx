@@ -43,9 +43,6 @@ const persister = createAsyncStoragePersister({
             if (key === "sessions") return false
             // Strip pending queries (Promise serializes to plain object, breaks restore)
             if (q.state?.status === "pending") return false
-            // Strip infinite queries (fragile pages/pageParams state)
-            const data = q.state?.data as Record<string, unknown> | undefined
-            if (data && "pages" in data) return false
             return true
           },
         )
@@ -73,12 +70,8 @@ createRoot(document.getElementById("root")!).render(
                 // Pending queries serialize a Promise that becomes a plain object on restore,
                 // causing "promise.then is not a function" in persistQueryClientRestore.
                 if (key === "plugins" || query.state.status === "error" || query.state.status === "pending") return false
-                // Never persist session lists — status changes frequently (archive, complete)
-                // and stale cached statuses cause UI inconsistencies
+                // Never persist session lists — status changes frequently
                 if (key === "sessions") return false
-                // Never persist infinite queries — their pages/pageParams state is fragile
-                const data = query.state.data as Record<string, unknown> | undefined
-                if (data && "pages" in data) return false
                 return true
               },
             },
