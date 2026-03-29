@@ -6,10 +6,9 @@
  * to obtain the user's access token.
  */
 
-import { Hono } from "hono"
-import * as gmail from "../lib/gmail.js"
-import type { ThreadSummary } from "../lib/gmail.js"
-import { get as getCached, set as setCached, invalidate } from "../lib/cache.js"
+import * as gmail from "./app/lib/gmail.js"
+import type { ThreadSummary } from "./app/lib/gmail.js"
+import { get as getCached, set as setCached, invalidate } from "../../server/lib/cache.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
 const SYNC_TTL = 86_400_000 // 24h
@@ -242,10 +241,13 @@ export const gmailPlugin: Plugin = {
       const data = await gmail.getAttachment(accessToken, messageId, attachmentId)
       const filename = c.req.query("filename")
       const mime = filename ? mimeFromFilename(filename) : sniffMimeType(data)
-      c.header("Cache-Control", "public, max-age=31536000, immutable")
-      c.header("Content-Type", mime)
-      if (filename) c.header("Content-Disposition", `inline; filename="${filename}"`)
-      return c.body(data)
+      return new Response(new Uint8Array(data), {
+        headers: {
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "Content-Type": mime,
+          ...(filename ? { "Content-Disposition": `inline; filename="${filename}"` } : {}),
+        },
+      })
     })
 
     app.get("/signature", async (c) => {
@@ -335,7 +337,7 @@ export const gmailPlugin: Plugin = {
     app.get("/messages", async (c) => {
       const raw = c.req.query()
       const ctx = await getContext(c)
-      const result = await gmailPlugin.query(
+      const result = await gmailPlugin.query!(
         { q: raw.q || "in:inbox" },
         raw.pageToken || undefined,
         ctx,

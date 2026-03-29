@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "fs"
 import { resolve } from "path"
 import { fileURLToPath } from "url"
-import { sanitizePlainText, sanitizeHtmlEmail } from "../email-sanitizer.js"
+import { sanitizePlainText, sanitizeHtmlEmail } from "../lib/email-sanitizer.js"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 function fixture(filename: string) {

@@ -3,7 +3,7 @@ import React from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useEmailActions } from "../use-email-actions"
+import { useEmailActions } from "../hooks/use-email-actions"
 import * as client from "@/api/client"
 import type { GmailThread } from "@/types"
 

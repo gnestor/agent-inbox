@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@plugins": path.resolve(__dirname, "./plugins"),
     },
   },
   test: {
@@ -20,6 +21,7 @@ export default defineConfig({
     environmentMatchGlobs: [
       ["src/**/*.test.{ts,tsx}", "jsdom"],
       ["server/**/*.test.ts", "node"],
+      ["plugins/**/*.test.{ts,tsx}", "jsdom"],
     ],
     coverage: {
       provider: "v8",

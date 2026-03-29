@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { sendEmail, createDraft } from "@/api/client"
 import { toast } from "sonner"
-import { useLocalDraft } from "./use-local-draft"
+import { useLocalDraft } from "@/hooks/use-local-draft"
 import type { GmailThread } from "@/types"
 
 export type DraftPhase = "idle" | "sending" | "saving"

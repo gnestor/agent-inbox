@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { htmlToMarkdown } from "../email-to-markdown.js"
+import { htmlToMarkdown } from "../lib/email-to-markdown.js"
 
 describe("htmlToMarkdown", () => {
   it("converts simple paragraph to markdown", () => {

@@ -109,8 +109,8 @@ describe("InboxResultPanel — task", () => {
     expect(screen.getByRole("link", { name: /open in notion/i })).toHaveAttribute("href", "https://notion.so/t1")
   })
 
-  it("calls updateTask and shows success state on Mark Complete", async () => {
-    vi.mocked(client.updateTask).mockResolvedValueOnce(undefined as any)
+  it("calls mutatePluginItem and shows success state on Mark Complete", async () => {
+    vi.mocked(client.mutatePluginItem).mockResolvedValueOnce({ ok: true })
 
     const data = {
       action: "task" as const,
@@ -123,11 +123,11 @@ describe("InboxResultPanel — task", () => {
     fireEvent.click(screen.getByRole("button", { name: /mark complete/i }))
 
     await waitFor(() => expect(screen.getByText(/marked as complete/i)).toBeInTheDocument())
-    expect(client.updateTask).toHaveBeenCalledWith("t1", { Status: { status: { name: "Done" } } })
+    expect(client.mutatePluginItem).toHaveBeenCalledWith("notion-tasks", "t1", "update-status", { status: "Done" })
   })
 
-  it("shows error message when updateTask fails", async () => {
-    vi.mocked(client.updateTask).mockRejectedValueOnce(new Error("API error"))
+  it("shows error message when mutatePluginItem fails", async () => {
+    vi.mocked(client.mutatePluginItem).mockRejectedValueOnce(new Error("API error"))
 
     const data = {
       action: "task" as const,
@@ -167,8 +167,8 @@ describe("InboxResultPanel — draft", () => {
     expect(screen.getByRole("button", { name: /save draft/i })).toBeInTheDocument()
   })
 
-  it("calls createDraft and shows success state on Save Draft", async () => {
-    vi.mocked(client.createDraft).mockResolvedValueOnce(undefined as any)
+  it("calls mutatePluginItem and shows success state on Save Draft", async () => {
+    vi.mocked(client.mutatePluginItem).mockResolvedValueOnce({ ok: true })
 
     const data = {
       action: "draft" as const,
@@ -188,7 +188,7 @@ describe("InboxResultPanel — draft", () => {
     fireEvent.click(screen.getByRole("button", { name: /save draft/i }))
 
     await waitFor(() => expect(screen.getByText(/draft saved/i)).toBeInTheDocument())
-    expect(client.createDraft).toHaveBeenCalledWith({
+    expect(client.mutatePluginItem).toHaveBeenCalledWith("gmail", "thread-1", "save-draft", {
       to: "alice@example.com",
       subject: "Re: Meeting",
       body: "Hello Alice",
@@ -197,8 +197,8 @@ describe("InboxResultPanel — draft", () => {
     })
   })
 
-  it("shows error message when createDraft fails", async () => {
-    vi.mocked(client.createDraft).mockRejectedValueOnce(new Error("Network error"))
+  it("shows error message when mutatePluginItem fails", async () => {
+    vi.mocked(client.mutatePluginItem).mockRejectedValueOnce(new Error("Network error"))
 
     const data = {
       action: "draft" as const,

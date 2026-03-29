@@ -10,7 +10,7 @@ import type {
   GmailApiMessageListResponse,
   GmailApiLabel,
   GmailApiSendAs,
-} from "./types/gmail-api.js"
+} from "./gmail-api-types.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -260,7 +260,7 @@ export async function searchThreads(accessToken: string, query: string, maxResul
     return { threads: [] as ThreadSummary[], nextPageToken: null, historyId: listResult.historyId || null }
   }
 
-  const threads = await fetchBatched(listResult.threads.map(t => t.id), (id) => getThreadSummary(accessToken, id))
+  const threads = await fetchBatched(listResult.threads.map((t: { id: string }) => t.id), (id: string) => getThreadSummary(accessToken, id))
 
   return {
     threads,
@@ -290,7 +290,7 @@ export async function searchMessages(accessToken: string, query: string, maxResu
     return { messages: [], nextPageToken: null }
   }
 
-  const messages = await fetchBatched(listResult.messages.map(m => m.id), async (id) => {
+  const messages = await fetchBatched(listResult.messages.map((m: { id: string }) => m.id), async (id: string) => {
     const full: GmailApiMessage = await gmailRequest(accessToken, `/messages/${id}?format=full`)
     return parseMessage(full)
   })
@@ -319,8 +319,8 @@ export async function getThread(accessToken: string, threadId: string) {
     from: firstMessage?.from || "",
     date: firstMessage?.date || "",
     messageCount: messages.length,
-    isUnread: messages.some((m) => m.isUnread),
-    labelIds: [...new Set(messages.flatMap((m) => m.labelIds))],
+    isUnread: messages.some((m: { isUnread: boolean }) => m.isUnread),
+    labelIds: [...new Set(messages.flatMap((m: { labelIds: string[] }) => m.labelIds))],
   }
 }
 

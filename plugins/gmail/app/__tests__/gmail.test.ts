@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("../email-sanitizer.js", () => ({
+vi.mock("../lib/email-sanitizer.js", () => ({
   sanitizeHtmlEmail: (html: string) => html,
   sanitizePlainText: (text: string) => text,
 }))
@@ -47,7 +47,7 @@ const {
   getMessage,
   getAttachment,
   getAttachments,
-} = await import("../gmail.js")
+} = await import("../lib/gmail.js")
 
 describe("decodeBase64Url", () => {
   it("decodes base64url-encoded string", () => {

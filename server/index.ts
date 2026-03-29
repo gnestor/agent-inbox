@@ -26,13 +26,9 @@ import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
-import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
 import { pruneExpired } from "./lib/cache.js"
-import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
+import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { loadPanels } from "./lib/panel-registry.js"
-import { gmailPlugin } from "./plugins/gmail-plugin.js"
-import { notionTasksPlugin } from "./plugins/notion-tasks-plugin.js"
-import { notionCalendarPlugin } from "./plugins/notion-calendar-plugin.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -217,10 +213,8 @@ app.use("/api/*", async (c, next) => {
   await next()
 })
 
-// Register built-in plugins (before workspace plugins are loaded)
-registerPlugin(gmailPlugin)
-registerPlugin(notionTasksPlugin)
-registerPlugin(notionCalendarPlugin)
+// Load built-in plugins from plugins/ directory
+await loadBuiltinPlugins(resolve(__dirname, "../plugins"))
 
 // Protected routes (static routes first, plugin catch-all last)
 app.route("/api/workspaces", workspaceRoutes)
@@ -273,9 +267,6 @@ const server = serve({ fetch: app.fetch, port }, () => {
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
-  // Sync Notion property options on startup (non-blocking)
-  syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
-  syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
   // Load workspace plugins and workflow panel schemas (non-blocking)
   process.env.WORKSPACE_PATH = workspacePaths[0]
   Promise.all(

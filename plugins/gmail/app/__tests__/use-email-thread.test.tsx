@@ -3,7 +3,7 @@ import React from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useEmailThread } from "../use-email-thread"
+import { useEmailThread } from "../hooks/use-email-thread"
 import * as client from "@/api/client"
 
 vi.mock("@/api/client")

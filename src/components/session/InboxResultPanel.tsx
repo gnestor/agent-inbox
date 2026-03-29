@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Button, Badge } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { CheckCircle2, FileText, ExternalLink, Loader2 } from "lucide-react"
-import { createDraft, updateTask } from "@/api/client"
+import { mutatePluginItem } from "@/api/client"
 import type { InboxResultData } from "@/types"
 
 interface InboxResultPanelProps {
@@ -37,7 +37,8 @@ function DraftResult({ data }: { data: InboxResultData }) {
   async function handleSend() {
     setState("pending")
     try {
-      await createDraft({
+      // Use gmail plugin route to save draft
+      await mutatePluginItem("gmail", draft.threadId ?? "new", "save-draft", {
         to: draft.to,
         subject: draft.subject,
         body,
@@ -102,8 +103,8 @@ function TaskResult({ data, qc }: { data: InboxResultData; qc: ReturnType<typeof
   async function handleComplete() {
     setState("pending")
     try {
-      await updateTask(task.id, { Status: { status: { name: "Done" } } })
-      qc.invalidateQueries({ queryKey: ["tasks"] })
+      await mutatePluginItem("notion-tasks", task.id, "update-status", { status: "Done" })
+      qc.invalidateQueries({ queryKey: ["plugin-items", "notion-tasks"] })
       setState("success")
     } catch {
       setState("error")

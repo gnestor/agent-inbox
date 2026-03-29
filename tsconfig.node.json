@@ -10,8 +10,9 @@
     "erasableSyntaxOnly": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@plugins/*": ["./plugins/*"]
     }
   },
-  "include": ["server"]
+  "include": ["server", "plugins"]
 }

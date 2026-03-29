@@ -17,9 +17,9 @@
 import { resolve } from "path"
 import { writeFileSync, existsSync } from "fs"
 import { fileURLToPath } from "url"
-import { loadCredentials, getGoogleAccessToken } from "../credentials.js"
-import { getEmailBody, getHeader } from "../gmail.js"
-import { sanitizePlainText, sanitizeHtmlEmail } from "../email-sanitizer.js"
+import { loadCredentials, getGoogleAccessToken } from "../../../../server/lib/credentials.js"
+import { getEmailBody, getHeader } from "../lib/gmail.js"
+import { sanitizePlainText, sanitizeHtmlEmail } from "../lib/email-sanitizer.js"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const FIXTURES_DIR = resolve(__dirname, "fixtures")
