@@ -33,21 +33,23 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
 
 export const pluginRoutes = new Hono()
 
-/** GET /api/plugins — list all loaded plugin manifests */
+/** GET /api/plugins — list all loaded plugin manifests (excludes skills-only plugins) */
 pluginRoutes.get("/plugins", (c) => {
-  const plugins = getPlugins().map((p) => ({
-    id: p.id,
-    name: p.name,
-    icon: p.icon,
-    emoji: p.emoji,
-    components: p.components,
-    auth: p.auth,
-    fieldSchema: p.fieldSchema,
-    detailSchema: p.detailSchema,
-    hasSubItems: !!p.querySubItems,
-    hasGetItem: !!p.getItem,
-    hasFilterOptions: !!p.filterOptions,
-  }))
+  const plugins = getPlugins()
+    .filter((p) => p.fieldSchema && p.fieldSchema.length > 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      icon: p.icon,
+      emoji: p.emoji,
+      components: p.components,
+      auth: p.auth,
+      fieldSchema: p.fieldSchema,
+      detailSchema: p.detailSchema,
+      hasSubItems: !!p.querySubItems,
+      hasGetItem: !!p.getItem,
+      hasFilterOptions: !!p.filterOptions,
+    }))
   return c.json(plugins)
 })
 
@@ -56,6 +58,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+  if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support query` })
 
   const raw = c.req.query()
   const cursor = raw.cursor
@@ -104,6 +107,8 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
   const plugin = getPlugin(pluginId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+
+  if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutations` })
 
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })

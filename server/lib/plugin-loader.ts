@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Plugin } from "../../src/types/plugin.js"
 
-type Importer = (path: string) => Promise<{ default: Plugin }>
+type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
 
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
@@ -16,14 +16,58 @@ function isValidPlugin(p: unknown): p is Plugin {
   return (
     typeof plugin.id === "string" &&
     plugin.id.length > 0 &&
-    typeof plugin.query === "function"
+    (typeof plugin.query === "function" ||
+     plugin.hasSkills === true ||
+     typeof plugin.itemToContext === "function")
   )
+}
+
+/** Normalize a default export to an array of plugins. */
+function toPluginArray(exported: Plugin | Plugin[]): Plugin[] {
+  return Array.isArray(exported) ? exported : [exported]
 }
 
 /** Register a built-in plugin (survives loadPlugins reloads). */
 export function registerPlugin(plugin: Plugin): void {
   registry.set(plugin.id, plugin)
   builtinIds.add(plugin.id)
+}
+
+/**
+ * Load built-in plugins from a directory (e.g. packages/inbox/plugins/).
+ * These are registered as built-in (survive workspace reloads).
+ */
+export async function loadBuiltinPlugins(
+  builtinDir: string,
+  importer: Importer = (p) => import(p)
+): Promise<void> {
+  try {
+    const entries = await readdir(builtinDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      for (const filename of ["plugin.ts", "plugin.js"]) {
+        const fullPath = join(builtinDir, entry.name, filename)
+        try {
+          const mod = await importer(fullPath)
+          const plugins = toPluginArray(mod.default)
+          for (const plugin of plugins) {
+            if (!isValidPlugin(plugin)) {
+              console.warn(`plugin-loader: skipping builtin ${entry.name}/${filename} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+              continue
+            }
+            registerPlugin(plugin)
+          }
+        } catch (err: unknown) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
+              (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
+          console.error(`plugin-loader: failed to load builtin ${entry.name}/${filename}:`, err)
+        }
+        break
+      }
+    }
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+  }
 }
 
 export async function loadPlugins(
@@ -51,13 +95,15 @@ export async function loadPlugins(
         const fullPath = join(pluginsDir, entry.name, filename)
         try {
           const mod = await importer(fullPath)
-          const plugin = mod.default
-          if (!isValidPlugin(plugin)) {
-            console.warn(`plugin-loader: skipping ${entry.name}/${filename} — missing id or query`)
-            continue
-          }
-          if (!builtinIds.has(plugin.id)) {
-            targetRegistry.set(plugin.id, plugin)
+          const plugins = toPluginArray(mod.default)
+          for (const plugin of plugins) {
+            if (!isValidPlugin(plugin)) {
+              console.warn(`plugin-loader: skipping ${entry.name}/${filename} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+              continue
+            }
+            if (!builtinIds.has(plugin.id)) {
+              targetRegistry.set(plugin.id, plugin)
+            }
           }
         } catch (err: unknown) {
           // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
@@ -81,13 +127,15 @@ export async function loadPlugins(
       const fullPath = join(legacyDir, file)
       try {
         const mod = await importer(fullPath)
-        const plugin = mod.default
-        if (!isValidPlugin(plugin)) {
-          console.warn(`plugin-loader: skipping ${file} — missing id or query`)
-          continue
-        }
-        if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
-          targetRegistry.set(plugin.id, plugin)
+        const plugins = toPluginArray(mod.default)
+        for (const plugin of plugins) {
+          if (!isValidPlugin(plugin)) {
+            console.warn(`plugin-loader: skipping ${file} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+            continue
+          }
+          if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
+            targetRegistry.set(plugin.id, plugin)
+          }
         }
       } catch (err: unknown) {
         console.error(`plugin-loader: failed to load ${file}:`, err)
@@ -126,4 +174,5 @@ export function getPlugin(id: string, workspaceId?: string): Plugin | undefined 
 ;(loadPlugins as unknown as Record<string, unknown>).__resetForTest = () => {
   registry.clear()
   builtinIds.clear()
+  workspacePluginRegistries.clear()
 }

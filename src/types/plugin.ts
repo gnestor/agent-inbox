@@ -106,11 +106,19 @@ export interface FieldDef {
 // Plugin context (request-scoped, passed by the server to plugin methods)
 // ---------------------------------------------------------------------------
 
+export interface PluginCache {
+  get<T>(key: string): Promise<T | null>
+  set<T>(key: string, value: T, ttlMs?: number): Promise<void>
+  invalidate(pattern: string): Promise<void>
+}
+
 export interface PluginContext {
   /** Email of the authenticated user making the request */
   userEmail: string
   /** Resolve a credential for an integration (per-user OAuth or workspace API key) */
   getCredential(integration: string): Promise<string | null>
+  /** Plugin-scoped cache for storing arbitrary data with optional TTL */
+  cache: PluginCache
 }
 
 // ---------------------------------------------------------------------------
@@ -163,12 +171,18 @@ export interface Plugin {
   /** Auth requirements — client shows connection prompts */
   auth?: { integrationId: string; scope: "user" | "workspace" }
 
+  /** True for skills-only plugins (no tab, no data source) */
+  hasSkills?: boolean
+  /** Auto-populated by the loader — describes available skills */
+  skillManifest?: { name: string; description: string }[]
+
   /**
    * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
+   * Optional for skills-only plugins.
    */
-  query(
+  query?(
     filters: Record<string, string>,
     cursor?: string,
     ctx?: PluginContext
@@ -178,8 +192,9 @@ export interface Plugin {
    * Perform a mutation on an item.
    * Actions are plugin-defined strings (e.g. "archive", "reply", "mark-done").
    * Payload shape is action-specific.
+   * Optional for skills-only plugins.
    */
-  mutate(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
+  mutate?(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
 
   /**
    * Optional per-action payload schemas for runtime validation.
@@ -191,8 +206,9 @@ export interface Plugin {
   /**
    * Combined schema for filter UI, list badge rendering, and detail view layout.
    * Fields are rendered in the order they appear in this array.
+   * Plugins without fieldSchema don't appear as tabs in the sidebar.
    */
-  fieldSchema: FieldDef[]
+  fieldSchema?: FieldDef[]
 
   /**
    * Optional detail widget tree. If omitted, the detail view is auto-generated
@@ -231,6 +247,13 @@ export interface Plugin {
    * file upload, OAuth callback).
    */
   routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => Promise<PluginContext> }): void
+
+  /**
+   * Convert an item to a markdown string for the context index.
+   * Return null to exclude the item from the context.
+   * Used by the context backfill system.
+   */
+  itemToContext?(item: PluginItem): string | null
 }
 
 /** @deprecated Use Plugin instead */
