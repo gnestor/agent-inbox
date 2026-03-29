@@ -2,7 +2,14 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, LEGACY_URL_TO_PLUGIN, pluginIdFromTab } from "@/types/navigation"
+import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, pluginIdFromTab } from "@/types/navigation"
+
+// Legacy URL paths → plugin IDs (for backward compat with old bookmarks/history)
+const LEGACY_URL_TO_PLUGIN: Record<string, string> = {
+  emails: "gmail",
+  tasks: "notion-tasks",
+  calendar: "notion-calendar",
+}
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
@@ -85,7 +92,7 @@ export function parseUrl(pathname: string): ParsedUrl {
   if (pluginId) {
     return { tabId: `plugin:${pluginId}` as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
   }
-  return { tabId: "plugin:gmail" }
+  return { tabId: "sessions" }
 }
 
 /** Build an ephemeral tab state for a /recent/ route (no list panel). */

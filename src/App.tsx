@@ -1,4 +1,4 @@
-import { useMemo, useContext, type ComponentType } from "react"
+import { useMemo, useEffect, useContext } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -8,12 +8,10 @@ import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
+import { usePlugins } from "@/hooks/use-plugins"
 import type { TabId } from "@/types/navigation"
-import { pluginIdFromTab } from "@/types/navigation"
+import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
-import { EmailTab } from "@/components/email/EmailTab"
-import { TaskTab } from "@/components/task/TaskTab"
-import { CalendarTab } from "@/components/task/CalendarTab"
 import { SessionTab } from "@/components/session/SessionTab"
 import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
 import { WorkspaceSettings } from "@/components/workspace/WorkspaceSettings"
@@ -21,20 +19,9 @@ import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
 
-// Client-side component registry for built-in plugins.
-// Maps plugin component keys (from Plugin.components) to React components.
-const COMPONENT_REGISTRY: Record<string, ComponentType<{ tabId?: TabId }>> = {
-  "gmail:tab": EmailTab,
-  "notion-tasks:tab": TaskTab,
-  "notion-calendar:tab": CalendarTab,
-}
-
 const STATIC_SLOTS = [
   "settings",
   "workspace-settings",
-  "plugin:gmail",
-  "plugin:notion-tasks",
-  "plugin:notion-calendar",
   "sessions",
 ]
 
@@ -60,10 +47,6 @@ function renderTab(tabId: string) {
   if (tabId === "sessions") return <SessionTab />
   if (tabId.startsWith("recent:")) return <RecentTabSlot tabId={tabId as TabId} />
   if (tabId.startsWith("plugin:")) {
-    const pluginId = pluginIdFromTab(tabId)
-    const componentKey = `${pluginId}:tab`
-    const CustomTab = COMPONENT_REGISTRY[componentKey]
-    if (CustomTab) return <CustomTab tabId={tabId as TabId} />
     return <PluginView />
   }
   return null
@@ -72,12 +55,8 @@ function renderTab(tabId: string) {
 function RecentTabSlot({ tabId }: { tabId: TabId }) {
   const { getSourceTab } = useNavigation()
   const sourceTab = getSourceTab(tabId)
-  // sourceTab is now plugin:gmail, plugin:notion-tasks, etc.
   if (sourceTab?.startsWith("plugin:")) {
-    const pluginId = pluginIdFromTab(sourceTab)
-    const componentKey = `${pluginId}:tab`
-    const CustomTab = COMPONENT_REGISTRY[componentKey]
-    if (CustomTab) return <CustomTab tabId={tabId} />
+    return <PluginView />
   }
   return <SessionTab tabId={tabId} />
 }
@@ -86,17 +65,39 @@ function TabContainer() {
   const { activeTab } = useNavigation()
   const ctx = useContext(NavigationContext)
   const tabs = ctx?.state.tabs
+  const { data: plugins } = usePlugins()
+
+  // Set plugin order for animation direction when plugins load
+  useEffect(() => {
+    if (plugins && plugins.length > 0) {
+      setPluginOrder(plugins.map((p) => p.id))
+    }
+  }, [plugins])
+
+  // Switch to first plugin tab on initial load if currently on sessions and plugins are available
+  const { switchTab } = useNavigation()
+  const initialSwitchDone = useMemo(() => ({ done: false }), [])
+  useEffect(() => {
+    if (initialSwitchDone.done) return
+    if (plugins && plugins.length > 0 && activeTab === "sessions") {
+      initialSwitchDone.done = true
+      switchTab(`plugin:${plugins[0].id}`)
+    }
+  }, [plugins, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const keys = useMemo(() => {
     if (!tabs) return STATIC_SLOTS
+
+    // Collect plugin tabs from loaded plugins
+    const pluginKeys = plugins
+      ? plugins.map((p) => `plugin:${p.id}`)
+      : Object.keys(tabs).filter((k) => k.startsWith("plugin:"))
+
     const recentKeys = Object.keys(tabs)
       .filter((k) => k.startsWith("recent:"))
       .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
-    // Collect plugin tabs that aren't in STATIC_SLOTS (external plugins)
-    const pluginKeys = Object.keys(tabs)
-      .filter((k) => k.startsWith("plugin:") && !STATIC_SLOTS.includes(k))
-    if (recentKeys.length === 0 && pluginKeys.length === 0) return STATIC_SLOTS
-    // Insert recent tabs before sessions, add dynamic plugin tabs
+
+    // Insert plugin tabs before sessions, recent tabs after plugins
     const sessionsIdx = STATIC_SLOTS.indexOf("sessions")
     return [
       ...STATIC_SLOTS.slice(0, sessionsIdx),
@@ -104,7 +105,7 @@ function TabContainer() {
       ...recentKeys,
       ...STATIC_SLOTS.slice(sessionsIdx),
     ]
-  }, [tabs])
+  }, [tabs, plugins])
 
   return (
     <SlotStack

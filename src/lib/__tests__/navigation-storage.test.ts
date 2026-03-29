@@ -40,7 +40,7 @@ describe("navigation-storage", () => {
   describe("saveNavigationState / loadNavigationState", () => {
     it("round-trips a navigation state", async () => {
       const state = createDefaultNavigationState()
-      state.activeTab = "plugin:notion-tasks"
+      state.activeTab = "plugin:gmail"
       await saveNavigationState(state)
       const loaded = await loadNavigationState()
       expect(loaded).toEqual(state)

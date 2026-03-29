@@ -74,11 +74,8 @@ export function createDefaultTabState(): TabState {
 
 export function createDefaultNavigationState(): NavigationState {
   return {
-    activeTab: "plugin:gmail",
+    activeTab: "sessions",
     tabs: {
-      "plugin:gmail": createDefaultTabState(),
-      "plugin:notion-tasks": createDefaultTabState(),
-      "plugin:notion-calendar": createDefaultTabState(),
       sessions: createDefaultTabState(),
       settings: {
         panelScrollOffset: 0,
@@ -88,41 +85,26 @@ export function createDefaultNavigationState(): NavigationState {
   }
 }
 
-// --- Backward compat: map legacy tab IDs to new plugin:* format ---
+// Plugin order for animation direction — set dynamically when plugins load
+let pluginOrder: string[] = []
 
-/** Maps legacy URL path / tab ID to new plugin:* tab ID */
-export const LEGACY_TAB_MAP: Record<string, TabId> = {
-  emails: "plugin:gmail",
-  tasks: "plugin:notion-tasks",
-  calendar: "plugin:notion-calendar",
-}
-
-/** Maps legacy URL paths to plugin IDs (for URL parsing) */
-export const LEGACY_URL_TO_PLUGIN: Record<string, string> = {
-  emails: "gmail",
-  tasks: "notion-tasks",
-  calendar: "notion-calendar",
-}
-
-/** Convert a legacy tab ID to the new format, or return as-is if already new format */
-export function normalizeTabId(tabId: string): TabId {
-  return LEGACY_TAB_MAP[tabId] ?? tabId as TabId
+/** Set the plugin order for tab animation direction. Called when plugins load. */
+export function setPluginOrder(ids: string[]): void {
+  pluginOrder = ids
 }
 
 /**
  * Get the index of a tab for animation direction.
- * Order: settings (0) → plugins (1+, in order) → sessions (last)
+ * Order: settings (0) → plugins (1+, in manifest order) → sessions (last)
  */
 export function getTabIndex(tabId: TabId): number {
   if (tabId === "settings") return 0
   if (tabId === "sessions") return 100
   if (tabId.startsWith("plugin:")) {
-    // Built-in plugins first, then external, then recent
     const id = pluginIdFromTab(tabId)!
-    const builtinOrder = ["gmail", "notion-tasks", "notion-calendar"]
-    const idx = builtinOrder.indexOf(id)
+    const idx = pluginOrder.indexOf(id)
     if (idx >= 0) return idx + 1
-    return 50 // external plugins
+    return 50 // unknown plugins
   }
   if (tabId.startsWith("recent:")) return 99
   return 50
