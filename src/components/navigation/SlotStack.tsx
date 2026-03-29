@@ -118,7 +118,12 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
     prevKeyForIdxRef.current = activeKey
   }, [activeIdx, activeKey])
 
-  // Start scroll when activeKey changes — snap instantly (no animation between tabs)
+  // Suppress scroll animation during the initial mount/hydration settling period.
+  // Async state loading (persisted navigation) can cause multiple key/index changes
+  // in the first few frames — all should snap instantly.
+  const mountedAt = useRef(performance.now())
+
+  // Start animation when activeKey changes
   useEffect(() => {
     if (activeKey === prevKeyRef.current) return
     prevKeyRef.current = activeKey
@@ -130,9 +135,13 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
     const from = el.scrollTop
     if (Math.abs(to - from) < 1) return
 
-    // Snap instantly — tab switches should be immediate (no scroll animation between slots)
-    el.scrollTop = to
-    return
+    // Snap instantly during initial settling (first 500ms)
+    if (performance.now() - mountedAt.current < 500) {
+      el.scrollTop = to
+      return
+    }
+
+    dispatch({ type: "ANIMATE", from, to })
   }, [activeKey, safeIdx])
 
   // Drive the RAF loop when animating
@@ -169,7 +178,6 @@ export function SlotStack({ activeKey, keys, renderItem, className = "", style: 
       className={className}
       style={{
         height: "100%",
-        overflow: "hidden",
         ...outerStyle,
       }}
     >

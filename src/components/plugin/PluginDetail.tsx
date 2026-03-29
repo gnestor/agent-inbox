@@ -8,7 +8,7 @@ import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
-import { mutatePluginItem, getLinkedSession } from "@/api/client"
+import { mutatePluginItem, getLinkedSession, getPluginItem } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
@@ -190,6 +190,15 @@ export function PluginDetail({
     hasSubItems,
   )
 
+  // Fetch individual item via getItem() — covers items not in the list page and
+  // provides full detail data (e.g. body content) that list queries omit
+  const hasGetItem = !!plugin?.hasGetItem
+  const { data: singleItem, isLoading: singleLoading } = useQuery({
+    queryKey: ["plugin-item", pluginId, itemId],
+    queryFn: () => getPluginItem(pluginId, itemId),
+    enabled: hasGetItem && !!pluginId && !!itemId,
+  })
+
   // Session linking
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", pluginId, itemId],
@@ -197,8 +206,9 @@ export function PluginDetail({
   })
   const linkedSession = linkedData?.session
 
-  // Look up the parent item from the list query (for title, externalUrl, etc.)
-  const parentItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Use single item (full detail) if available, fall back to list data
+  const listItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  const parentItem = (singleItem as Record<string, unknown> | undefined) ?? listItem
   const title = parentItem ? getItemTitle(parentItem) : itemId
   const externalUrl = parentItem?.externalUrl as string | undefined
 
@@ -312,10 +322,10 @@ export function PluginDetail({
     )
   }
 
-  // Widget tree path
-  const item = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Widget tree path — use full detail from getItem() when available
+  const item = parentItem ?? (itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined)
 
-  if (!plugin || (!item && itemsLoading)) {
+  if (!plugin || (!item && (itemsLoading || singleLoading))) {
     return <PanelSkeleton />
   }
   if (!item) {

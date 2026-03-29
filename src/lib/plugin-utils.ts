@@ -24,8 +24,11 @@ export function getItemTimestamp(item: PluginItem | Record<string, unknown>): st
     if (!val) continue
     if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
     if (typeof val === "string") {
+      // ISO date strings contain hyphens/letters — parse directly, don't treat as epoch
+      if (/[a-zA-Z-]/.test(val)) return new Date(val).toLocaleDateString()
+      // Numeric strings with dots (e.g. Slack "1711641600.123") are epoch seconds
       const n = parseFloat(val)
-      if (!isNaN(n) && val.includes(".")) return new Date(n * 1000).toLocaleDateString()
+      if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString()
       return new Date(val).toLocaleDateString()
     }
   }
