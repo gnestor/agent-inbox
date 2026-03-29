@@ -32,7 +32,7 @@ import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/Pane
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { useNavigation } from "@/hooks/use-navigation"
-import type { GmailMessage } from "@/types"
+import type { GmailMessage } from "../types"
 
 interface EmailThreadProps {
   threadId: string

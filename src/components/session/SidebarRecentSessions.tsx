@@ -11,7 +11,7 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { getEmailThread, getTask } from "@/api/client"
+import { getPluginItem } from "@/api/client"
 import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
@@ -106,26 +106,26 @@ export function SidebarRecentSessions() {
     [recent],
   )
 
-  // Fetch email subjects and task titles in parallel
+  // Fetch email subjects and task titles in parallel via generic plugin API
   const emailQueries = useQueries({
     queries: linkedEmailIds.map((threadId) => ({
-      queryKey: ["gmail-thread", threadId],
-      queryFn: () => getEmailThread(threadId),
+      queryKey: ["plugin-item", "gmail", threadId],
+      queryFn: () => getPluginItem("gmail", threadId),
       staleTime: 5 * 60 * 1000,
     })),
   })
   const taskQueries = useQueries({
     queries: linkedTaskIds.map((taskId) => ({
-      queryKey: ["task", taskId],
-      queryFn: () => getTask(taskId),
+      queryKey: ["plugin-item", "notion-tasks", taskId],
+      queryFn: () => getPluginItem("notion-tasks", taskId),
       staleTime: 5 * 60 * 1000,
     })),
   })
 
   // Build lookup maps: linkedId → title
   // Derive stable dep keys from query data (not the query arrays themselves, which are new each render)
-  const emailSubjects = emailQueries.map((q) => q.data?.subject ?? "")
-  const taskTitles = taskQueries.map((q) => q.data?.title ?? "")
+  const emailSubjects = emailQueries.map((q) => (q.data as any)?.subject ?? "")
+  const taskTitles = taskQueries.map((q) => (q.data as any)?.title ?? "")
   const titleLookup = useMemo(() => {
     const map = new Map<string, string>()
     linkedEmailIds.forEach((id, i) => {

@@ -48,141 +48,6 @@ export async function logout() {
   return request<{ ok: boolean }>(`/auth/logout`, { method: "POST" })
 }
 
-// Gmail
-
-export async function searchEmails(query: string, maxResults = 50, pageToken?: string) {
-  const params = new URLSearchParams({ q: query, max: String(maxResults) })
-  if (pageToken) params.set("pageToken", pageToken)
-  return request<{ messages: import("@/types").GmailMessage[]; nextPageToken: string | null }>(
-    `/gmail/messages?${params}`,
-  )
-}
-
-export async function getEmailThread(threadId: string) {
-  return request<import("@/types").GmailThread>(`/gmail/threads/${threadId}`)
-}
-
-export async function getEmailLabels() {
-  return request<{ labels: import("@/types").GmailLabel[] }>(`/gmail/labels`)
-}
-
-export async function createDraft(body: {
-  to: string
-  subject: string
-  body: string
-  threadId?: string
-  inReplyTo?: string
-}) {
-  return request<{ id: string }>(`/gmail/drafts`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
-}
-
-export async function sendEmail(body: {
-  to: string
-  subject: string
-  body: string
-  threadId?: string
-  inReplyTo?: string
-}) {
-  return request<{ id: string }>(`/gmail/send`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
-}
-
-export async function trashThread(threadId: string) {
-  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/trash`, {
-    method: "POST",
-  })
-}
-
-export async function modifyThreadLabels(
-  threadId: string,
-  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
-) {
-  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/labels`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  })
-}
-
-// Notion
-
-export async function getNotionOptions(property: string) {
-  return request<{ options: { value: string; color: string | null }[] }>(
-    `/notion-tasks/options/${encodeURIComponent(property)}`,
-  )
-}
-
-export async function getTaskAssignees() {
-  return request<{ assignees: string[] }>(`/notion-tasks/assignees`)
-}
-
-export async function getTasks(filters?: {
-  status?: string
-  tags?: string
-  assignee?: string
-  priority?: string
-  cursor?: string
-}) {
-  const params = new URLSearchParams()
-  if (filters?.status) params.set("status", filters.status)
-  if (filters?.tags) params.set("tags", filters.tags)
-  if (filters?.assignee) params.set("assignee", filters.assignee)
-  if (filters?.priority) params.set("priority", filters.priority)
-  if (filters?.cursor) params.set("cursor", filters.cursor)
-  const qs = params.toString()
-  const result = await request<{ items: import("@/types").NotionTask[]; nextCursor?: string }>(
-    `/notion-tasks/items${qs ? `?${qs}` : ""}`,
-  )
-  return { tasks: result.items, nextCursor: result.nextCursor ?? null }
-}
-
-export async function getTask(taskId: string) {
-  return request<import("@/types").NotionTaskDetail>(`/notion-tasks/items/${taskId}`)
-}
-
-export async function updateTask(taskId: string, properties: import("@/types/notion-mutations").TaskPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion-tasks/items/${taskId}/mutate`, {
-    method: "POST",
-    body: JSON.stringify({ action: "update-properties", payload: properties }),
-  })
-}
-
-export async function getCalendarItems(filters?: {
-  status?: string
-  tags?: string
-  assignee?: string
-  cursor?: string
-}) {
-  const params = new URLSearchParams()
-  if (filters?.status) params.set("status", filters.status)
-  if (filters?.tags) params.set("tags", filters.tags)
-  if (filters?.assignee) params.set("assignee", filters.assignee)
-  if (filters?.cursor) params.set("cursor", filters.cursor)
-  const qs = params.toString()
-  return request<{ items: import("@/types").NotionCalendarItem[]; nextCursor: string | null }>(
-    `/notion-calendar/items${qs ? `?${qs}` : ""}`,
-  )
-}
-
-export async function getCalendarItem(itemId: string) {
-  return request<import("@/types").NotionCalendarItemDetail>(`/notion-calendar/items/${itemId}`)
-}
-
-export async function updateCalendarItem(itemId: string, properties: import("@/types/notion-mutations").CalendarPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion-calendar/items/${itemId}/mutate`, {
-    method: "POST",
-    body: JSON.stringify({ action: "update-properties", payload: properties }),
-  })
-}
-
-export async function getCalendarAssignees() {
-  return request<{ assignees: string[] }>(`/notion-calendar/calendar-assignees`)
-}
-
 // Sessions
 
 export async function getSessions(filters?: {
@@ -392,6 +257,42 @@ export async function mutatePluginItem(
   })
 }
 
+// Gmail-specific (used by plugins/gmail/ components that import from @/api/client)
+
+export async function searchEmails(query: string, maxResults = 50, pageToken?: string) {
+  const params = new URLSearchParams({ q: query, max: String(maxResults) })
+  if (pageToken) params.set("pageToken", pageToken)
+  return request<{ messages: unknown[]; nextPageToken: string | null }>(`/gmail/messages?${params}`)
+}
+
+export async function getEmailThread(threadId: string) {
+  return request<unknown>(`/gmail/threads/${threadId}`)
+}
+
+export async function getEmailLabels() {
+  return request<{ labels: { id: string; name: string; type: string }[] }>(`/gmail/labels`)
+}
+
+export async function sendEmail(body: {
+  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string
+}) {
+  return request<{ id: string }>(`/gmail/send`, { method: "POST", body: JSON.stringify(body) })
+}
+
+export async function createDraft(body: {
+  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string
+}) {
+  return request<{ id: string }>(`/gmail/drafts`, { method: "POST", body: JSON.stringify(body) })
+}
+
+export async function trashThread(threadId: string) {
+  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/trash`, { method: "POST" })
+}
+
+export async function modifyThreadLabels(threadId: string, body: { addLabelIds?: string[]; removeLabelIds?: string[] }) {
+  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/labels`, { method: "PATCH", body: JSON.stringify(body) })
+}
+
 // Connections
 
 export async function getConnections() {
@@ -404,10 +305,6 @@ export async function disconnectIntegration(integration: string) {
   })
 }
 
-/**
- * Get the OAuth connect URL for an integration.
- * Returns the URL to redirect to (browser navigation, not fetch).
- */
 export function getConnectUrl(integration: string): string {
   return `${BASE}/connections/connect/${integration}`
 }

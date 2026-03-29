@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { trashThread, modifyThreadLabels } from "@/api/client"
 import { toast } from "sonner"
-import type { GmailThread } from "@/types"
+import type { GmailThread } from "../types"
 
 interface EmailActionsOptions {
   onRemove?: () => void

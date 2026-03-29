@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { getEmailThread } from "@/api/client"
+import type { GmailThread } from "../types"
 
 export function useEmailThread(threadId: string | undefined) {
-  const { data: thread, isLoading: loading, error } = useQuery({
+  const { data: thread, isLoading: loading, error } = useQuery<GmailThread>({
     queryKey: ["thread", threadId],
-    queryFn: () => getEmailThread(threadId!),
+    queryFn: () => getEmailThread(threadId!) as Promise<GmailThread>,
     enabled: !!threadId,
-    refetchOnMount: true, // refetch when stale (e.g. after IndexedDB restore invalidation)
+    refetchOnMount: true,
   })
   return {
     thread: thread ?? undefined,
