@@ -858,32 +858,48 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
 }
 
 /**
- * Watch the ~/.claude/projects/ directory for new/changed JSONL session files.
- * When a change is detected, indexes the new session into the DB so that
- * metadata (summaries, linked items) stays up-to-date without a server restart.
+ * Poll the ~/.claude/projects/{workspace} directory for new/changed JSONL session files.
+ * Only checks the project directory for the active workspace, not all projects.
+ * Uses polling instead of fs.watch to avoid EMFILE errors when many watchers are active.
  */
 export async function watchProjectsDir(): Promise<void> {
   const fs = await import("fs")
   const { join } = await import("path")
   const { homedir } = await import("os")
 
-  const projectsDir = join(homedir(), ".claude", "projects")
-  if (!fs.existsSync(projectsDir)) return
+  const encodedDir = defaultWorkspacePath.replace(/\//g, "-")
+  const watchDir = join(homedir(), ".claude", "projects", encodedDir)
+  if (!fs.existsSync(watchDir)) return
 
-  // Debounce: collect changed files for 2s before indexing
-  let pending = new Set<string>()
-  let timer: ReturnType<typeof setTimeout> | null = null
+  // Track last-seen mtime for each file to detect changes
+  const knownMtimes = new Map<string, number>()
 
-  function flush() {
-    timer = null
-    const files = [...pending]
-    pending = new Set()
-    indexNewSessions(files).catch((err) =>
-      console.warn("[watcher] Failed to index sessions:", err)
-    )
+  async function poll() {
+    try {
+      const files = fs.readdirSync(watchDir).filter((f: string) => f.endsWith(".jsonl"))
+      const changed: string[] = []
+
+      for (const file of files) {
+        const fullPath = join(watchDir, file)
+        try {
+          const stat = fs.statSync(fullPath)
+          const prev = knownMtimes.get(fullPath)
+          if (prev === undefined || stat.mtimeMs > prev) {
+            knownMtimes.set(fullPath, stat.mtimeMs)
+            if (prev !== undefined) changed.push(fullPath) // skip first scan
+          }
+        } catch { /* skip unreadable */ }
+      }
+
+      if (changed.length > 0) {
+        await indexNewSessions(changed, fs)
+      }
+    } catch (err) {
+      console.warn("[watcher] Poll error:", err)
+    }
   }
 
-  async function indexNewSessions(filePaths: string[]) {
+  async function indexNewSessions(filePaths: string[], fs: typeof import("fs")) {
     for (const filePath of filePaths) {
       try {
         const stat = fs.statSync(filePath)
@@ -901,16 +917,13 @@ export async function watchProjectsDir(): Promise<void> {
     }
   }
 
-  // Watch recursively — new subdirs (new workspaces) will be picked up
-  fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
-    if (!filename || !filename.endsWith(".jsonl")) return
-    const filePath = join(projectsDir, filename)
-    pending.add(filePath)
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(flush, 2000)
-  })
+  // Initial scan to populate known mtimes
+  await poll()
 
-  console.log(`[watcher] Watching ${projectsDir} for new sessions`)
+  // Poll every 5 seconds
+  setInterval(poll, 5000)
+
+  console.log(`[watcher] Polling ${watchDir} for new sessions (every 5s)`)
 }
 
 export async function listAgentSessions() {
