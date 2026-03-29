@@ -6,13 +6,13 @@ import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
-import { createSession, getTask } from "@/api/client"
+import { createSession, getPluginItem } from "@/api/client"
 import { useEmailThread } from "@plugins/gmail/app/hooks/use-email-thread"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import { NEW_SESSION_PANEL } from "@/types/navigation"
-import type { NotionTaskDetail } from "@/types"
+import type { PluginItem } from "@/types/plugin"
 
 
 interface PromptTemplate {
@@ -51,9 +51,9 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
   const fired = useRef(false)
 
   const { thread } = useEmailThread(threadId)
-  const { data: task } = useQuery<NotionTaskDetail>({
-    queryKey: ["task", taskId],
-    queryFn: () => getTask(taskId!),
+  const { data: task } = useQuery<PluginItem>({
+    queryKey: ["plugin-item", "notion-tasks", taskId],
+    queryFn: () => getPluginItem("notion-tasks", taskId!),
     enabled: !!taskId,
   })
 
@@ -113,9 +113,9 @@ function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId, sourceC
 
   // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
   const { thread } = useEmailThread(threadId)
-  const { data: task } = useQuery<NotionTaskDetail>({
-    queryKey: ["task", taskId],
-    queryFn: () => getTask(taskId!),
+  const { data: task } = useQuery<PluginItem>({
+    queryKey: ["plugin-item", "notion-tasks", taskId],
+    queryFn: () => getPluginItem("notion-tasks", taskId!),
     enabled: !!taskId,
   })
 

@@ -110,7 +110,7 @@ describe("InboxResultPanel — task", () => {
   })
 
   it("calls updateTask and shows success state on Mark Complete", async () => {
-    vi.mocked(client.updateTask).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.mutatePluginItem).mockResolvedValueOnce(undefined as any)
 
     const data = {
       action: "task" as const,
@@ -123,11 +123,11 @@ describe("InboxResultPanel — task", () => {
     fireEvent.click(screen.getByRole("button", { name: /mark complete/i }))
 
     await waitFor(() => expect(screen.getByText(/marked as complete/i)).toBeInTheDocument())
-    expect(client.updateTask).toHaveBeenCalledWith("t1", { Status: { status: { name: "Done" } } })
+    expect(client.mutatePluginItem).toHaveBeenCalledWith("notion-tasks", "t1", "update-status", { status: "Done" })
   })
 
   it("shows error message when updateTask fails", async () => {
-    vi.mocked(client.updateTask).mockRejectedValueOnce(new Error("API error"))
+    vi.mocked(client.mutatePluginItem).mockRejectedValueOnce(new Error("API error"))
 
     const data = {
       action: "task" as const,
