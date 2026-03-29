@@ -30,13 +30,14 @@ import { usePlugins } from "@/hooks/use-plugins"
 import { useNavigation } from "@/hooks/use-navigation"
 import { getInitials } from "@/lib/formatters"
 import type { TabId } from "@/types/navigation"
+import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout, activeWorkspace, workspaces, switchWorkspace } = useUser()
-  const { switchTab } = useNavigation()
+  const { switchTab, activeTab } = useNavigation()
   const savedUrls = useRef(new Map<string, string>())
   const [menuOpen, setMenuOpen] = useState(false)
   const { data: plugins } = usePlugins()
@@ -170,16 +171,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenu>
                 {plugins.map((plugin) => {
                   const tabId: TabId = `plugin:${plugin.id}`
-                  const isActive = location.pathname.startsWith(`/${plugin.id}`)
+                  const isActive = activeTab === tabId
                   return (
                     <SidebarMenuItem key={plugin.id}>
                       <SidebarMenuButton
                         tooltip={plugin.name}
-                        className={cn(
-                          isActive
-                            ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
-                            : "hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
-                        )}
+                        isActive={isActive}
+                        data-tab-id={tabId}
+                        className={isActive ? ACTIVE_TAB_CLASSES : ""}
                         onClick={() => {
                           switchTab(tabId)
                           if (isMobile) setOpenMobile(false)

@@ -35,20 +35,28 @@ async function requireToken(ctx?: PluginContext): Promise<string> {
   return token
 }
 
-async function sendWithSignature(
-  accessToken: string,
-  params: { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string },
-) {
-  const signature = await gmail.getSignature(accessToken)
-  return gmail.sendMessage(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
+type ComposeParams = { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string }
+
+// Signature is cached per user email to avoid re-fetching on every send/draft
+const signatureCache = new Map<string, { value: string; ts: number }>()
+const SIGNATURE_TTL = 60 * 60 * 1000 // 1h
+
+async function getSignatureCached(accessToken: string, userEmail: string): Promise<string> {
+  const cached = signatureCache.get(userEmail)
+  if (cached && Date.now() - cached.ts < SIGNATURE_TTL) return cached.value
+  const sig = await gmail.getSignature(accessToken)
+  signatureCache.set(userEmail, { value: sig, ts: Date.now() })
+  return sig
 }
 
-async function createDraftWithSignature(
+async function composeWithSignature(
   accessToken: string,
-  params: { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string },
+  userEmail: string,
+  params: ComposeParams,
+  fn: typeof gmail.sendMessage,
 ) {
-  const signature = await gmail.getSignature(accessToken)
-  return gmail.createDraft(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
+  const signature = await getSignatureCached(accessToken, userEmail)
+  return fn(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
 }
 
 const MIME_MAP: Record<string, string> = {
@@ -81,12 +89,11 @@ export const gmailPlugin: Plugin = {
   name: "Emails",
   icon: "Mail",
   emoji: "✉️",
-  components: { tab: "gmail:tab" },
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [
-    { id: "from", label: "From", type: "text", listRole: "title" },
-    { id: "subject", label: "Subject", type: "text", listRole: "subtitle" },
+    { id: "from", label: "From", type: "text", listRole: "subtitle" },
+    { id: "subject", label: "Subject", type: "text", listRole: "title" },
     { id: "date", label: "Date", type: "date", listRole: "timestamp" },
     {
       id: "isUnread", label: "Unread", type: "boolean",
@@ -157,7 +164,7 @@ export const gmailPlugin: Plugin = {
             [...changedThreadIds],
             (id) => gmail.getThreadSummary(accessToken, id),
           )
-          for (const id of changedThreadIds) await invalidate(`gmail:thread:${id}`)
+          await Promise.all([...changedThreadIds].map((id) => invalidate(`gmail:thread:${id}`)))
 
           const updatedMap = new Map(updatedThreads.map((t) => [t.id, t]))
           let threads = syncState.threads
@@ -225,13 +232,13 @@ export const gmailPlugin: Plugin = {
       }
       case "send": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
-        await sendWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
+        await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
         if (threadId) await invalidate(`gmail:thread:${threadId}`)
         break
       }
       case "save-draft": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
-        await createDraftWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
+        await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
         skipInvalidate = true
         break
       }
@@ -277,7 +284,7 @@ export const gmailPlugin: Plugin = {
     app.get("/signature", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const signature = await gmail.getSignature(accessToken)
+      const signature = await getSignatureCached(accessToken, ctx.userEmail)
       return c.json({ signature })
     })
 
@@ -292,7 +299,7 @@ export const gmailPlugin: Plugin = {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
       const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const result = await sendWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
+      const result = await composeWithSignature(accessToken, ctx.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
       await invalidate("gmail:sync:")
       if (threadId) await invalidate(`gmail:thread:${threadId}`)
       return c.json(result)
@@ -303,7 +310,7 @@ export const gmailPlugin: Plugin = {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
       const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const result = await createDraftWithSignature(accessToken, { to, subject, body, threadId, inReplyTo })
+      const result = await composeWithSignature(accessToken, ctx.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
       return c.json(result)
     })
 

@@ -13,7 +13,10 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { mutatePluginItem, getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
+import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
+import { NotionBlockRenderer } from "@/components/shared/NotionBlockRenderer"
+import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
@@ -75,7 +78,7 @@ function formatTs(ts: string): string {
 function HtmlMessageBody({ html }: { html: string }) {
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: var(--card, transparent) !important;
+    html, body { margin: 0; padding: 0; overflow: hidden; background: transparent !important;
       color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
       font-size: 13px; line-height: 1.5; }
     img { max-width: 100%; height: auto; }
@@ -93,7 +96,7 @@ function HtmlMessageBody({ html }: { html: string }) {
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-same-origin"
-      className="w-full border-0 bg-card overflow-hidden h-0"
+      className="w-full border-0 overflow-hidden h-0"
     />
   )
 }
@@ -111,8 +114,8 @@ function MessageRow({ item }: { item: PluginItem }) {
   const otherAttachments = attachments.filter((a) => !a.contentType?.startsWith("image/"))
 
   return (
-    <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
-      <div className="flex gap-2.5">
+    <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary overflow-hidden">
+      <div className="flex gap-2.5 min-w-0">
         {avatar ? (
           <img src={avatar} alt={name} className="h-8 w-8 rounded-full shrink-0 mt-0.5" />
         ) : (
@@ -159,7 +162,7 @@ function MessageRow({ item }: { item: PluginItem }) {
                   href={a.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                  className="text-xs text-muted-foreground underline hover:text-foreground truncate max-w-[200px] inline-block"
                 >
                   {a.name}
                 </a>
@@ -178,11 +181,8 @@ function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
   const date = String(msg.date ?? "")
   const body = String(msg.body ?? msg.text ?? "")
   const bodyFormat = String(msg.bodyFormat ?? msg.bodyType ?? "plain")
-  const formattedDate = date ? new Date(date).toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  }) : ""
-  // Extract display name from "Name <email>" format
-  const displayName = from.includes("<") ? from.split("<")[0].trim().replace(/^"(.*)"$/, "$1") : from
+  const formattedDate = date ? formatRelativeDate(date) : ""
+  const displayName = formatEmailAddress(from)
 
   return (
     <div className="px-4 py-3 border-b last:border-0">
@@ -216,10 +216,10 @@ export function PluginDetail({
   const hasSubItems = !!plugin?.hasSubItems
   const hasGetItem = !!plugin?.hasGetItem
 
-  // Always call all hooks — conditionally enable based on plugin capabilities
-  const { data: itemsData, isLoading: itemsLoading } = usePluginItems(pluginId, {}, undefined)
-  const { data: fullItem, isLoading: fullItemLoading } = usePluginItem(pluginId, itemId, hasGetItem)
-  const { data: subData, isLoading: subLoading } = usePluginSubItems(
+  // Fetch list items only as fallback when getItem isn't available
+  const { data: itemsData, isPending: itemsPending } = usePluginItems(pluginId, {}, undefined, !hasGetItem)
+  const { data: fullItem, isPending: fullItemPending } = usePluginItem(pluginId, itemId, hasGetItem)
+  const { data: subData, isPending: subPending } = usePluginSubItems(
     pluginId,
     itemId,
     {},
@@ -238,7 +238,22 @@ export function PluginDetail({
   const listItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
   const parentItem = (fullItem as Record<string, unknown> | undefined) ?? listItem
   const title = parentItem ? getItemTitle(parentItem) : itemId
-  const externalUrl = parentItem?.externalUrl as string | undefined
+  const externalUrl = (parentItem?.externalUrl ?? parentItem?.url) as string | undefined
+
+  // Shared mutation handler for both sub-items and widget-tree paths
+  async function handleMutate(action: string, payload: unknown) {
+    try {
+      await mutatePluginItem(pluginId, itemId, action, payload)
+      queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
+    } catch (err) {
+      console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
+    }
+  }
+
+  // Action buttons from detailSchema (shared across render paths)
+  const actionButtons = plugin?.detailSchema
+    ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
+    .flatMap((w) => w.actions) ?? []
 
   // Build session context from sub-items for session linking
   const sessionSource = useMemo(() => {
@@ -263,11 +278,6 @@ export function PluginDetail({
   if (hasSubItems) {
     const items = subData?.items ?? []
 
-    // Extract action-buttons from detailSchema for toolbar rendering
-    const actionButtons = plugin?.detailSchema
-      ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
-      .flatMap((w) => w.actions) ?? []
-
     // Resolve dynamic actions: archive ↔ reopen based on item status
     const itemStatus = parentItem?.status as string | undefined
     const resolvedActions = actionButtons.map((action) => {
@@ -276,15 +286,6 @@ export function PluginDetail({
       }
       return action
     })
-
-    async function handleMutate(action: string, payload: unknown) {
-      try {
-        await mutatePluginItem(pluginId, itemId, action, payload)
-        queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
-      } catch (err) {
-        console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
-      }
-    }
 
     return (
       <div className="flex flex-1 flex-col min-h-0">
@@ -335,8 +336,8 @@ export function PluginDetail({
             </>
           }
         />
-        {subLoading && !items.length && <ListSkeleton itemHeight={72} />}
-        {!subLoading && !items.length && (
+        {subPending && !items.length && <ListSkeleton itemHeight={72} />}
+        {!subPending && !items.length && (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No messages</div>
         )}
         {items.length > 0 && (
@@ -358,7 +359,7 @@ export function PluginDetail({
 
   // Widget tree path — use full item from getItem() if available
   const item = parentItem
-  const isLoading = hasGetItem ? fullItemLoading : itemsLoading
+  const isLoading = hasGetItem ? fullItemPending : itemsPending
 
   if (!plugin || (!item && isLoading)) {
     return <PanelSkeleton />
@@ -399,11 +400,6 @@ export function PluginDetail({
 
   const widgets = plugin.detailSchema ?? autoDetailSchema(plugin)
 
-  async function handleMutate(action: string, payload: unknown) {
-    await mutatePluginItem(pluginId, itemId, action, payload)
-    queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
-  }
-
   const widgetSource = {
     type: pluginId,
     id: itemId,
@@ -411,14 +407,56 @@ export function PluginDetail({
     content: JSON.stringify(item),
   }
 
-  // Extract action-buttons from detailSchema for toolbar
-  const actionButtons = plugin.detailSchema
-    ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
-    .flatMap((w) => w.actions) ?? []
-
-  // If item has a markdown body (e.g. Notion page content), render as prose
+  // If item has a markdown body or Notion blocks, render as prose
   const bodyContent = item.body as string | undefined
   const bodyFormat = item.bodyFormat as string | undefined
+  const notionBlocks = item.children as any[] | undefined
+
+  // Properties popover for items with editable fields (e.g. Notion tasks/calendar)
+  const hasEditableFields = plugin?.fieldSchema?.some((f) =>
+    (f.type === "select" || f.type === "multiselect") && f.filter?.filterable
+  )
+
+  const toolbarRight = (
+    <>
+      {hasEditableFields && (
+        <PropertiesPopover pluginId={pluginId} itemId={itemId} item={item} />
+      )}
+      {externalUrl && (
+        <a
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          title={`Open in ${plugin?.name ?? "app"}`}
+        >
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      )}
+      {actionButtons.map((action) => {
+        const Icon = ACTION_ICONS[action.mutation]
+        return (
+          <button
+            key={action.mutation}
+            type="button"
+            title={action.label}
+            className={`shrink-0 p-1.5 rounded-md ${
+              action.variant === "destructive"
+                ? "text-destructive hover:bg-destructive/10"
+                : "text-muted-foreground hover:bg-secondary"
+            }`}
+            onClick={() => handleMutate(action.mutation, undefined)}
+          >
+            {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+          </button>
+        )
+      })}
+      <SessionActionMenu
+        source={widgetSource}
+        linkedSessionId={linkedSession?.id}
+      />
+    </>
+  )
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -429,35 +467,12 @@ export function PluginDetail({
             <span className="font-semibold text-sm">{getItemTitle(item)}</span>
           </div>
         }
-        right={
-          <>
-            {actionButtons.map((action) => {
-              const Icon = ACTION_ICONS[action.mutation]
-              return (
-                <button
-                  key={action.mutation}
-                  type="button"
-                  title={action.label}
-                  className={`shrink-0 p-1.5 rounded-md ${
-                    action.variant === "destructive"
-                      ? "text-destructive hover:bg-destructive/10"
-                      : "text-muted-foreground hover:bg-secondary"
-                  }`}
-                  onClick={() => handleMutate(action.mutation, undefined)}
-                >
-                  {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
-                </button>
-              )
-            })}
-            <SessionActionMenu
-              source={widgetSource}
-              linkedSessionId={linkedSession?.id}
-            />
-          </>
-        }
+        right={toolbarRight}
       />
       <div className="flex-1 overflow-y-auto p-4">
-        {bodyContent && bodyFormat === "markdown" ? (
+        {notionBlocks && notionBlocks.length > 0 ? (
+          <NotionBlockRenderer blocks={notionBlocks} />
+        ) : bodyContent && bodyFormat === "markdown" ? (
           <div className="prose prose-sm dark:prose-invert max-w-none">
             <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{bodyContent}</Markdown>
           </div>

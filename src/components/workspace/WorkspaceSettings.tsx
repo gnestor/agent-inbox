@@ -70,7 +70,7 @@ export function WorkspaceSettings() {
     if (e.key === "Escape") { setIsEditingName(false) }
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["workspace-details", workspaceId],
     queryFn: () => getWorkspaceDetails(workspaceId),
   })
@@ -145,7 +145,7 @@ export function WorkspaceSettings() {
         }
       />
 
-      {isLoading ? (
+      {isPending ? (
         <PanelSkeleton />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl">

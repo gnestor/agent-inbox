@@ -1,29 +1,20 @@
 const BASE = "/api"
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const method = options?.method ?? "GET"
-  if (import.meta.env.DEV) {
-    console.log(`[api] ${method} ${path}`)
-  }
-  const start = import.meta.env.DEV ? performance.now() : 0
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   })
   if (!res.ok) {
     const text = await res.text()
-    if (import.meta.env.DEV) {
-      console.error(`[api] ${method} ${path} → ${res.status} (${(performance.now() - start).toFixed(0)}ms)`, text)
-    }
     throw new Error(`API ${res.status}: ${text}`)
-  }
-  if (import.meta.env.DEV) {
-    console.log(`[api] ${method} ${path} → ${res.status} (${(performance.now() - start).toFixed(0)}ms)`)
   }
   return res.json()
 }
 
+// ---------------------------------------------------------------------------
 // Auth
+// ---------------------------------------------------------------------------
 
 export async function getAuthClientId() {
   return request<{ clientId: string }>(`/auth/client-id`)
@@ -48,7 +39,9 @@ export async function logout() {
   return request<{ ok: boolean }>(`/auth/logout`, { method: "POST" })
 }
 
+// ---------------------------------------------------------------------------
 // Sessions
+// ---------------------------------------------------------------------------
 
 export async function getSessions(filters?: {
   status?: string
@@ -176,7 +169,9 @@ export async function getLinkedSession(sourceId: string, sourceType: string) {
   )
 }
 
+// ---------------------------------------------------------------------------
 // Plugins
+// ---------------------------------------------------------------------------
 
 export interface PluginManifest {
   id: string
@@ -257,7 +252,7 @@ export async function mutatePluginItem(
   })
 }
 
-// Gmail-specific (used by plugins/gmail/ components that import from @/api/client)
+// Gmail-specific (used by plugins/gmail/ components)
 
 export async function searchEmails(query: string, maxResults = 50, pageToken?: string) {
   const params = new URLSearchParams({ q: query, max: String(maxResults) })
@@ -293,7 +288,9 @@ export async function modifyThreadLabels(threadId: string, body: { addLabelIds?:
   return request<{ ok: boolean }>(`/gmail/threads/${threadId}/labels`, { method: "PATCH", body: JSON.stringify(body) })
 }
 
+// ---------------------------------------------------------------------------
 // Connections
+// ---------------------------------------------------------------------------
 
 export async function getConnections() {
   return request<{ integrations: import("@/types").Integration[] }>(`/connections`)
@@ -309,7 +306,9 @@ export function getConnectUrl(integration: string): string {
   return `${BASE}/connections/connect/${integration}`
 }
 
+// ---------------------------------------------------------------------------
 // Preferences
+// ---------------------------------------------------------------------------
 
 export async function getPreferences() {
   return request<Record<string, unknown>>(`/preferences`)
@@ -326,7 +325,9 @@ export async function getUserProfiles(emails: string[]): Promise<{ users: { emai
   return request(`/users?emails=${emails.map(encodeURIComponent).join(",")}`)
 }
 
+// ---------------------------------------------------------------------------
 // Workspaces
+// ---------------------------------------------------------------------------
 
 export async function getWorkspaces() {
   return request<{ workspaces: import("@/types").Workspace[]; activeWorkspaceId: string | null }>(`/workspaces`)

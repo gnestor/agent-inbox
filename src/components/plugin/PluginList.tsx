@@ -1,7 +1,7 @@
 import { useRef, useMemo, useState } from "react"
-import { useIsRestoring, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { SlidersHorizontal, Search } from "lucide-react"
+import { SlidersHorizontal } from "lucide-react"
 import {
   Popover, PopoverTrigger, PopoverContent,
   Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty,
@@ -16,6 +16,7 @@ import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
+import { SearchInput } from "@/components/shared/SearchInput"
 import { useNavigation } from "@/hooks/use-navigation"
 import { getItemTitle, getItemSubtitle, getItemTimestamp } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
@@ -155,16 +156,17 @@ function PluginListInner({
     },
   }))
 
-  const isRestoring = useIsRestoring()
-  const { data, isLoading: queryLoading } = usePluginItems(plugin.id, queryFilters)
-  const isLoading = queryLoading || isRestoring
+  const { data, isPending } = usePluginItems(plugin.id, queryFilters)
   const items = data?.items ?? []
+
+  const hasSubtitle = plugin.fieldSchema?.some((f) => f.listRole === "subtitle")
+  const rowHeight = hasSubtitle ? 100 : 80
 
   const containerRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizerSafe({
     count: items.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => rowHeight,
     getItemKey: (index) => items[index]?.id ?? index,
     overscan: 5,
   })
@@ -301,20 +303,15 @@ function PluginListInner({
         }
       />
 
-      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b">
-        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={`Search ${plugin.name.toLowerCase()}...`}
-          className="flex-1 text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground"
-        />
-      </div>
+      <SearchInput
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder={`Search ${plugin.name.toLowerCase()}...`}
+      />
 
-      {isLoading && !items.length && <ListSkeleton itemHeight={72} />}
+      {isPending && !items.length && <ListSkeleton itemHeight={72} />}
 
-      {!isLoading && !items.length && (
+      {!isPending && !items.length && (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
           No {plugin.name} items
         </div>
@@ -325,26 +322,26 @@ function PluginListInner({
           <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index]
-              const title = getItemTitle(item)
+              const title = getItemTitle(item, plugin.fieldSchema)
               const badges = buildBadges(item, plugin.fieldSchema, hiddenBadgeFields)
 
               return (
                 <div
                   key={item.id}
-                  ref={rowVirtualizer.measureElement}
                   data-index={virtualRow.index}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
+                    height: rowHeight,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
                   <ListItem
                     title={title}
-                    subtitle={getItemSubtitle(item)}
-                    timestamp={getItemTimestamp(item)}
+                    subtitle={getItemSubtitle(item, plugin.fieldSchema)}
+                    timestamp={getItemTimestamp(item, plugin.fieldSchema)}
                     badges={badges}
                     isSelected={selectedItemId === item.id}
                     onClick={() => {
@@ -374,10 +371,10 @@ export function PluginList({
   onSelectedIndexChange?: (index: number) => void
   onSelectedTitleChange?: (title: string) => void
 }) {
-  const { data: plugins, isLoading } = usePlugins()
+  const { data: plugins, isPending } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
 
-  if (isLoading || (pluginId && !plugin)) return <ListSkeleton itemHeight={72} />
+  if (isPending || (pluginId && !plugin)) return <ListSkeleton itemHeight={80} />
   if (!plugin) return null
 
   return (

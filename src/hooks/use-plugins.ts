@@ -5,9 +5,6 @@ export function usePlugins() {
   return useQuery({
     queryKey: ["plugins"],
     queryFn: () => getPlugins(),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnMount: true,
     placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const data = query.state.data
@@ -23,13 +20,13 @@ export function usePlugins() {
 export function usePluginItems(
   sourceId: string,
   filters: Record<string, string>,
-  cursor?: string
+  cursor?: string,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ["plugin-items", sourceId, filters, cursor],
     queryFn: () => queryPluginItems(sourceId, filters, cursor),
-    enabled: !!sourceId,
-    staleTime: 5 * 60 * 1000,
+    enabled: enabled && !!sourceId,
   })
 }
 
@@ -42,7 +39,6 @@ export function usePluginItem(
     queryKey: ["plugin-item", pluginId, itemId],
     queryFn: () => getPluginItem(pluginId, itemId),
     enabled: enabled && !!pluginId && !!itemId,
-    staleTime: 5 * 60 * 1000,
   })
 }
 

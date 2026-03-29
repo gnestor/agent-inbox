@@ -1,5 +1,4 @@
 import { useMemo } from "react"
-import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
@@ -16,6 +15,7 @@ import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
 import type { TabId } from "@/types/navigation"
+import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
 
 const ONE_DAY_MS = 86_400_000
 
@@ -56,16 +56,6 @@ export function getSessionUrl(session: Session): string {
   return `/recent/sessions/${session.id}`
 }
 
-// Extract the active session ID from the current URL
-function activeSessionIdFromPath(pathname: string): string | null {
-  // /recent/{source}/{id}/session/{sessionId}
-  const m = pathname.match(/^\/recent\/[^/]+\/[^/]+\/session\/([^/]+)/)
-  if (m) return decodeURIComponent(m[1])
-  // /recent/sessions/{sessionId}
-  const m2 = pathname.match(/^\/recent\/sessions\/([^/]+)/)
-  if (m2) return decodeURIComponent(m2[1])
-  return null
-}
 
 function loadReadSet(): Set<string> {
   try {
@@ -87,8 +77,7 @@ export function markSessionRead(sessionId: string): void {
 }
 
 export function SidebarRecentSessions() {
-  const location = useLocation()
-  const { openRecent, switchTab } = useNavigation()
+  const { openRecent, switchTab, activeTab } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
@@ -111,14 +100,12 @@ export function SidebarRecentSessions() {
     queries: linkedEmailIds.map((threadId) => ({
       queryKey: ["plugin-item", "gmail", threadId],
       queryFn: () => getPluginItem("gmail", threadId),
-      staleTime: 5 * 60 * 1000,
     })),
   })
   const taskQueries = useQueries({
     queries: linkedTaskIds.map((taskId) => ({
       queryKey: ["plugin-item", "notion-tasks", taskId],
       queryFn: () => getPluginItem("notion-tasks", taskId),
-      staleTime: 5 * 60 * 1000,
     })),
   })
 
@@ -140,9 +127,9 @@ export function SidebarRecentSessions() {
 
 
 
-  const isRecentRoute = location.pathname.startsWith("/recent/")
-  const activeSessionId = activeSessionIdFromPath(location.pathname)
-  const isSessionsTab = location.pathname.startsWith("/sessions")
+  const isRecentRoute = activeTab.startsWith("recent:")
+  const activeSessionId = isRecentRoute ? activeTab.slice("recent:".length) : null
+  const isSessionsTab = activeTab === "sessions"
 
   return (
     <SidebarGroup>
@@ -194,11 +181,9 @@ export function SidebarRecentSessions() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="All Sessions"
-              className={cn(
-                isSessionsTab
-                  ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
-              )}
+              isActive={isSessionsTab}
+              data-tab-id="sessions"
+              className={isSessionsTab ? ACTIVE_TAB_CLASSES : "text-muted-foreground"}
               onClick={() => {
                 switchTab("sessions")
                 if (isMobile) setOpenMobile(false)

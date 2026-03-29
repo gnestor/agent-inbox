@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useContext } from "react"
+import { useMemo, useEffect, useContext, useCallback } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -47,7 +47,7 @@ function renderTab(tabId: string) {
   if (tabId === "sessions") return <SessionTab />
   if (tabId.startsWith("recent:")) return <RecentTabSlot tabId={tabId as TabId} />
   if (tabId.startsWith("plugin:")) {
-    return <PluginView />
+    return <PluginView tabId={tabId as TabId} />
   }
   return null
 }
@@ -56,7 +56,7 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
   const { getSourceTab } = useNavigation()
   const sourceTab = getSourceTab(tabId)
   if (sourceTab?.startsWith("plugin:")) {
-    return <PluginView />
+    return <PluginView tabId={tabId} />
   }
   return <SessionTab tabId={tabId} />
 }
@@ -74,16 +74,7 @@ function TabContainer() {
     }
   }, [plugins])
 
-  // Switch to first plugin tab on initial load if currently on sessions and plugins are available
   const { switchTab } = useNavigation()
-  const initialSwitchDone = useMemo(() => ({ done: false }), [])
-  useEffect(() => {
-    if (initialSwitchDone.done) return
-    if (plugins && plugins.length > 0 && activeTab === "sessions") {
-      initialSwitchDone.done = true
-      switchTab(`plugin:${plugins[0].id}`)
-    }
-  }, [plugins, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const keys = useMemo(() => {
     if (!tabs) return STATIC_SLOTS
@@ -107,11 +98,17 @@ function TabContainer() {
     ]
   }, [tabs, plugins])
 
+  // When user scroll-snaps to a different tab, sync the URL/sidebar
+  const handleActiveKeyChange = useCallback((key: string) => {
+    switchTab(key as TabId)
+  }, [switchTab])
+
   return (
     <SlotStack
       activeKey={activeTab}
       keys={keys}
       renderItem={renderTab}
+      onActiveKeyChange={handleActiveKeyChange}
       className="h-full w-full"
     />
   )

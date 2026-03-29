@@ -17,3 +17,7 @@ export const PANEL_CARD = "shrink-0 h-full w-[600px] bg-card rounded-lg shadow-s
 
 /** Default panel width in pixels */
 export const DEFAULT_PANEL_WIDTH = 600
+
+/** Active tab sidebar highlight classes (primary color, overrides SidebarMenuButton's default secondary) */
+export const ACTIVE_TAB_CLASSES = "bg-primary! text-primary-foreground! hover:bg-primary! hover:text-primary-foreground!"
+export const ACTIVE_TAB_CLASS_LIST = ACTIVE_TAB_CLASSES.split(" ")

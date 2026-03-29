@@ -5,7 +5,7 @@ import { mountPluginRoutes } from "../routes/plugins.js"
 import type { Hono } from "hono"
 
 const watchers: FSWatcher[] = []
-let debounceTimer: ReturnType<typeof setTimeout> | undefined
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /**
  * Watch workspace plugin directories for changes and hot-reload.
@@ -57,8 +57,8 @@ export function watchPlugins(
 }
 
 function scheduleReload(ws: { id: string; path: string }, app: Hono<any>) {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(async () => {
+  clearTimeout(debounceTimers.get(ws.id))
+  debounceTimers.set(ws.id, setTimeout(async () => {
     console.log(`[plugin-watcher] Reloading plugins for ${ws.id}…`)
     try {
       await loadPlugins(ws.path, ws.id)
@@ -67,12 +67,13 @@ function scheduleReload(ws: { id: string; path: string }, app: Hono<any>) {
     } catch (err) {
       console.error(`[plugin-watcher] Failed to reload plugins for ${ws.id}:`, err)
     }
-  }, 500)
+  }, 500))
 }
 
 /** Stop all watchers (for graceful shutdown). */
 export function stopWatching(): void {
-  clearTimeout(debounceTimer)
+  for (const t of debounceTimers.values()) clearTimeout(t)
+  debounceTimers.clear()
   for (const w of watchers) w.close()
   watchers.length = 0
 }

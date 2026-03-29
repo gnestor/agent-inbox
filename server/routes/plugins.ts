@@ -37,11 +37,15 @@ async function buildPluginContext(c: { get: (key: string) => unknown }): Promise
 // Auto-generated routes for all plugins, mounted at /api/:pluginId/*
 // ---------------------------------------------------------------------------
 
+function getWorkspaceId(c: { get: (key: string) => unknown }): string | undefined {
+  return (c.get("workspace") as { id?: string } | undefined)?.id
+}
+
 export const pluginRoutes = new Hono()
 
 /** GET /api/plugins — list all loaded plugin manifests (excludes skills-only plugins) */
 pluginRoutes.get("/plugins", (c) => {
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugins = getPlugins(workspaceId)
     .filter((p) => p.fieldSchema && p.fieldSchema.length > 0)
     .map((p) => ({
@@ -63,7 +67,7 @@ pluginRoutes.get("/plugins", (c) => {
 /** GET /api/:pluginId/items — query items with optional filters + cursor */
 pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support query` })
@@ -82,7 +86,7 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
 /** GET /api/:pluginId/items/:itemId — get a single item by ID */
 pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.getItem) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support getItem` })
@@ -96,7 +100,7 @@ pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
 /** GET /api/:pluginId/items/:itemId/subitems — query sub-items (e.g. messages in a channel) */
 pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.querySubItems) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support sub-items` })
@@ -115,7 +119,7 @@ pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
 /** POST /api/:pluginId/items/:itemId/mutate — perform an item mutation */
 pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 
@@ -145,7 +149,7 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
 /** GET /api/:pluginId/fields/:fieldId/options — fetch dynamic filter options */
 pluginRoutes.get("/:pluginId/fields/:fieldId/options", async (c) => {
   const { pluginId, fieldId } = c.req.param()
-  const workspaceId = (c.get("workspace") as { id?: string } | undefined)?.id
+  const workspaceId = getWorkspaceId(c)
   const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 

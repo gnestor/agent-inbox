@@ -3,6 +3,7 @@ import {
   Children,
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   createContext,
   useContext,
@@ -210,6 +211,13 @@ function DesktopTab({ id, children }: TabProps) {
   const panelCount = panels.length
   const mountedAt = useRef(performance.now())
   useEffect(() => { hasMounted.current = true }, [])
+
+  // On first mount, start scrolled to the last panel
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    el.scrollLeft = el.scrollWidth - el.clientWidth
+  }, [])
 
   // Scroll when panels are added or removed inside the group
   useEffect(() => {
