@@ -1,0 +1,5 @@
+{
+  "name": "Inbox Core",
+  "description": "Core skills for the Inbox app — plugin creation, output rendering, and context management",
+  "skills": ["skills/plugin-creator", "skills/render-output", "skills/context-manager"]
+}
