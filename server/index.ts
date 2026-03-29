@@ -28,6 +28,7 @@ import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspac
 import { getSession } from "./lib/auth.js"
 import { pruneExpired } from "./lib/cache.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
+import { watchPlugins } from "./lib/plugin-watcher.js"
 import { loadPanels } from "./lib/panel-registry.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -275,6 +276,8 @@ const server = serve({ fetch: app.fetch, port }, () => {
     )
   ).then(() => {
     mountPluginRoutes(app)
+    // Watch workspace plugin dirs for hot reload
+    watchPlugins(registeredWorkspaces, app)
   })
   if (registeredWorkspaces.length > 0) {
     loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))

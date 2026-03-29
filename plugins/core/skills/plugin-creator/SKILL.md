@@ -169,16 +169,40 @@ const plugin: Plugin = {
 export default plugin
 ```
 
+### Step 3.5 — Add a process skill (optional)
+
+Create a `process-{source}` skill that handles items from this plugin:
+
+```
+{workspace}/plugins/{id}/skills/process-{source}/SKILL.md
+```
+
+The process skill defines how the agent should handle items from this source:
+1. Query context (via context-manager)
+2. Search for applicable workflows
+3. Propose actions (draft, update, etc.)
+4. Execute approved actions
+5. Update context with findings
+
+### Step 3.6 — Add itemToContext (optional)
+
+If this plugin's items should be indexed for context search, add `itemToContext`:
+
+```typescript
+itemToContext(item) {
+  // Return markdown string for context index, or null to skip
+  return `# ${item.title}\n\n${item.body || item.snippet || ""}`
+},
+```
+
 ### Step 4 — Save and activate
 
 1. Write the plugin to `{workspace}/plugins/{id}/plugin.ts`
 2. Add required env vars to `{workspace}/.env` (append, don't overwrite)
-3. Tell the user:
-   - Which env vars to fill in (if not already set)
-   - Restart the server: `npm run inbox:dev` (from workspace root) or `kill -9 $(lsof -ti :3002) && cd packages/inbox && npm run dev:server -- --workspace ../agent`
-   - The plugin appears as a new tab in the inbox automatically on restart
+3. The server watches the workspace plugins directory — changes are **hot-reloaded** automatically (no restart needed for plugin file changes)
+4. Tell the user which env vars to fill in (if not already set)
 
-> **Important**: The inbox server loads plugins via dynamic `import()` at startup. Changes to plugin files require a full server restart — Vite HMR only reloads frontend code, not workspace plugins.
+> **Note**: The server watches `{workspace}/plugins/` and auto-reloads on `.ts`/`.js` file changes. A full server restart is only needed when adding new env vars to `.env`.
 
 ### Step 5 — Verify
 

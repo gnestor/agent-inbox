@@ -19,17 +19,20 @@ interface Plugin {
   /** Auth requirements — client shows connection prompts when not connected */
   auth?: { integrationId: string; scope: "user" | "workspace" }
 
-  /** Fetch a page of items. Filters match FieldDef.id where filterable is true. */
-  query(filters: Record<string, string>, cursor?: string, ctx?: PluginContext): Promise<QueryResult>
+  /** True for skills-only plugins (no data source, no tab) */
+  hasSkills?: boolean
 
-  /** Perform a mutation. Actions are plugin-defined strings. */
-  mutate(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
+  /** Fetch a page of items. Filters match FieldDef.id where filterable is true. Optional for skills-only plugins. */
+  query?(filters: Record<string, string>, cursor?: string, ctx?: PluginContext): Promise<QueryResult>
+
+  /** Perform a mutation. Actions are plugin-defined strings. Optional for skills-only plugins. */
+  mutate?(id: string, action: string, payload?: unknown, ctx?: PluginContext): Promise<unknown>
 
   /** Per-action Zod schemas for runtime payload validation (optional) */
   actionSchemas?: Record<string, ZodType>
 
-  /** Combined schema for filter UI, list badges, and detail view layout */
-  fieldSchema: FieldDef[]
+  /** Combined schema for filter UI, list badges, and detail view layout. Plugins without fieldSchema don't appear as tabs. */
+  fieldSchema?: FieldDef[]
 
   /** Custom detail widget tree (auto-generated from fieldSchema if omitted) */
   detailSchema?: WidgetDef[]
@@ -45,6 +48,9 @@ interface Plugin {
 
   /** Register custom Hono routes under /api/{pluginId}/ */
   routes?(hono: Hono, helpers: { getContext: (c: unknown) => PluginContext }): void
+
+  /** Convert item to markdown for context index. Return null to skip. */
+  itemToContext?(item: PluginItem): string | null
 }
 ```
 
@@ -57,6 +63,12 @@ interface PluginContext {
   userEmail: string
   /** Resolve a credential — per-user OAuth or workspace API key */
   getCredential(integration: string): Promise<string | null>
+  /** Plugin-scoped cache with optional TTL */
+  cache: {
+    get<T>(key: string): Promise<T | null>
+    set<T>(key: string, value: T, ttlMs?: number): Promise<void>
+    invalidate(pattern: string): Promise<void>
+  }
 }
 ```
 
@@ -135,10 +147,13 @@ Plugin manifests are listed at `GET /api/plugins`.
 
 ## Plugin Discovery
 
-The loader scans three locations (in priority order):
+The loader scans these locations (in priority order):
 
-1. `server/plugins/*.ts` — Built-in (highest priority)
-2. `{workspace}/plugins/{id}/plugin.ts` — Workspace plugins
+1. `packages/inbox/plugins/*/plugin.ts` — Built-in plugins (Gmail, Core)
+2. `{workspace}/plugins/{id}/plugin.ts` — Workspace plugins (hot-reloaded on file changes)
 3. `{workspace}/inbox-plugins/*.ts` — Legacy flat files (lowest priority)
 
-Each file must `export default` an object with at least `id` (string) and `query` (function).
+Each file must `export default` a Plugin object (or array of Plugin objects for multi-tab plugins).
+A valid plugin needs `id` (string) and at least one of: `query` (function), `hasSkills: true`, or `itemToContext` (function).
+
+**Multi-tab plugins**: A single `plugin.ts` can export an array of Plugin objects. Example: `export default [tasksPlugin, calendarPlugin]`

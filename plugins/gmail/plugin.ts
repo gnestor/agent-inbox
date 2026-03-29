@@ -346,3 +346,5 @@ export const gmailPlugin: Plugin = {
     })
   },
 }
+
+export default gmailPlugin
