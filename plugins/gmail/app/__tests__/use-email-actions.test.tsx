@@ -4,10 +4,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useEmailActions } from "../hooks/use-email-actions"
-import * as client from "@/api/client"
-import type { GmailThread } from "@/types"
+import * as client from "../api"
+import type { GmailThread } from "../types"
 
-vi.mock("@/api/client")
+vi.mock("../api")
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 function makeWrapper(queryClient: QueryClient) {

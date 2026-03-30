@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query"
-import { searchEmails } from "@/api/client"
+import { searchEmails } from "../api"
 import type { GmailMessage } from "../types"
 
 export function useEmails(query = "in:inbox is:important OR is:starred", enabled = true) {

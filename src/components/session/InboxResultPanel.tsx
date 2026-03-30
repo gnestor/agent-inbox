@@ -37,8 +37,8 @@ function DraftResult({ data }: { data: InboxResultData }) {
   async function handleSend() {
     setState("pending")
     try {
-      // Use gmail plugin route to save draft
-      await mutatePluginItem("gmail", draft.threadId ?? "new", "save-draft", {
+      // pluginId comes from agent structured output; fallback for legacy sessions
+      await mutatePluginItem(data.pluginId || "gmail", draft.threadId ?? "new", "save-draft", {
         to: draft.to,
         subject: draft.subject,
         body,
@@ -55,7 +55,7 @@ function DraftResult({ data }: { data: InboxResultData }) {
     return (
       <div className="border rounded-lg mx-3 my-2 p-3 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20">
         <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-        Draft saved — review and send from Gmail
+        Draft saved
       </div>
     )
   }
@@ -103,8 +103,9 @@ function TaskResult({ data, qc }: { data: InboxResultData; qc: ReturnType<typeof
   async function handleComplete() {
     setState("pending")
     try {
-      await mutatePluginItem("notion-tasks", task.id, "update-status", { status: "Done" })
-      qc.invalidateQueries({ queryKey: ["plugin-items", "notion-tasks"] })
+      const pluginId = data.pluginId ?? "notion-tasks"
+      await mutatePluginItem(pluginId, task.id, "update-status", { status: "Done" })
+      qc.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
       setState("success")
     } catch {
       setState("error")

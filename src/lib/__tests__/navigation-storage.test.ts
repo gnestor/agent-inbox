@@ -55,28 +55,17 @@ describe("navigation-storage", () => {
   describe("migrateFromLocalStorage", () => {
     it("migrates old spatial-nav-state to new format", async () => {
       const oldState = {
-        pathname: "/emails/abc123",
+        pathname: "/sessions",
         tabs: {
-          emails: { selectedId: "abc123", sessionOpen: true, sessionId: "sess1" },
-          tasks: {},
-          calendar: {},
-          sessions: {},
+          sessions: { selectedId: "sess1" },
         },
-        itemSessions: [
-          ["emails:abc123", { sessionOpen: true, sessionId: "sess1" }],
-        ],
+        itemSessions: [],
       }
       localStorage.setItem("spatial-nav-state", JSON.stringify(oldState))
 
       const migrated = await migrateFromLocalStorage()
       expect(migrated).not.toBeNull()
-      expect(migrated!.activeTab).toBe("plugin:gmail")
-
-      // Should have list + detail + session panels for gmail tab
-      const emailPanels = migrated!.tabs["plugin:gmail"].panels
-      expect(emailPanels.length).toBeGreaterThanOrEqual(2)
-      expect(emailPanels[0].type).toBe("list")
-      expect(emailPanels[1].type).toBe("detail")
+      expect(migrated!.activeTab).toBe("sessions")
     })
 
     it("returns null when no old state exists", async () => {

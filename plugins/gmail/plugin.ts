@@ -89,6 +89,7 @@ export const gmailPlugin: Plugin = {
   name: "Emails",
   icon: "Mail",
   emoji: "✉️",
+  components: { detail: "EmailThread" },
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [

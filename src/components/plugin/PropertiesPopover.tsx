@@ -32,7 +32,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
   const { data: priorityOpts } = useQuery({
     queryKey: ["plugin-field-options", pluginId, "priority"],
     queryFn: () => getFieldOptions(pluginId, "priority").then((r) => r.options.map((o) => ({ value: o, color: null }))),
-    enabled: pluginId === "notion-tasks",
+    enabled: item.priority !== undefined,
   })
 
   const { data: tagOpts } = useQuery({

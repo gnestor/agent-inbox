@@ -7,7 +7,6 @@ import {
   sessionStatusLabel,
   sessionStatusColor,
   sessionStatusBadgeClass,
-  taskStatusBadgeClass,
   formatFileSize,
 } from "../formatters"
 
@@ -133,24 +132,6 @@ describe("sessionStatusBadgeClass", () => {
 
   it("returns empty string for unknown status", () => {
     expect(sessionStatusBadgeClass("unknown")).toBe("")
-  })
-})
-
-describe("taskStatusBadgeClass", () => {
-  it.each([
-    ["Not started", "bg-foreground/10 text-muted-foreground"],
-    ["Archive", "bg-foreground/10 text-muted-foreground"],
-    ["Next Up", "bg-chart-2/20 text-chart-2"],
-    ["In Progress", "bg-chart-3/20 text-chart-3"],
-    ["In progress", "bg-chart-3/20 text-chart-3"],
-    ["Completed", "bg-chart-1/20 text-chart-1"],
-    ["Done", "bg-chart-1/20 text-chart-1"],
-  ])("maps '%s' correctly", (input, expected) => {
-    expect(taskStatusBadgeClass(input)).toBe(expected)
-  })
-
-  it("returns empty string for unknown status", () => {
-    expect(taskStatusBadgeClass("unknown")).toBe("")
   })
 })
 

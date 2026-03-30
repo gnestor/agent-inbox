@@ -43,15 +43,10 @@ function getSessionTitle(session: Session): string {
 }
 
 export function getSessionUrl(session: Session): string {
-  if (session.linkedSourceType && session.linkedSourceId) {
-    return `/recent/${session.linkedSourceType}/${encodeURIComponent(session.linkedSourceId)}/session/${session.id}`
-  }
-  // Fallback to legacy fields
-  if (session.linkedEmailThreadId) {
-    return `/recent/gmail/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
-  }
-  if (session.linkedTaskId) {
-    return `/recent/notion-tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
+  const sourceType = session.linkedSourceType
+  const sourceId = session.linkedSourceId
+  if (sourceType && sourceId) {
+    return `/recent/${sourceType}/${encodeURIComponent(sourceId)}/session/${session.id}`
   }
   return `/recent/sessions/${session.id}`
 }
@@ -83,47 +78,43 @@ export function SidebarRecentSessions() {
 
   const recent = sessions.filter(isRecentSession).slice(0, 10)
 
-  // Collect linked IDs that need title lookups (no linkedItemTitle yet)
-  const linkedEmailIds = useMemo(
-    () =>
-      [...new Set(recent.filter((s) => s.linkedEmailThreadId && !s.linkedItemTitle).map((s) => s.linkedEmailThreadId!))],
-    [recent],
-  )
-  const linkedTaskIds = useMemo(
-    () =>
-      [...new Set(recent.filter((s) => s.linkedTaskId && !s.linkedItemTitle).map((s) => s.linkedTaskId!))],
+  // Collect linked items that need title lookups (no linkedItemTitle yet)
+  const linkedItems = useMemo(
+    () => {
+      const seen = new Set<string>()
+      return recent
+        .filter((s) => s.linkedSourceType && s.linkedSourceId && !s.linkedItemTitle)
+        .map((s) => ({ type: s.linkedSourceType!, id: s.linkedSourceId! }))
+        .filter((item) => {
+          const key = `${item.type}:${item.id}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+    },
     [recent],
   )
 
-  // Fetch email subjects and task titles in parallel via generic plugin API
-  const emailQueries = useQueries({
-    queries: linkedEmailIds.map((threadId) => ({
-      queryKey: ["plugin-item", "gmail", threadId],
-      queryFn: () => getPluginItem("gmail", threadId),
-    })),
-  })
-  const taskQueries = useQueries({
-    queries: linkedTaskIds.map((taskId) => ({
-      queryKey: ["plugin-item", "notion-tasks", taskId],
-      queryFn: () => getPluginItem("notion-tasks", taskId),
+  // Fetch linked item titles in parallel via generic plugin API
+  const itemQueries = useQueries({
+    queries: linkedItems.map((item) => ({
+      queryKey: ["plugin-item", item.type, item.id],
+      queryFn: () => getPluginItem(item.type, item.id),
     })),
   })
 
-  // Build lookup maps: linkedId → title
-  // Derive stable dep keys from query data (not the query arrays themselves, which are new each render)
-  const emailSubjects = emailQueries.map((q) => (q.data as any)?.subject ?? "")
-  const taskTitles = taskQueries.map((q) => (q.data as any)?.title ?? "")
+  const itemTitles = itemQueries.map((q) => {
+    const data = q.data as Record<string, unknown> | undefined
+    return (data?.subject ?? data?.title ?? data?.name ?? "") as string
+  })
   const titleLookup = useMemo(() => {
     const map = new Map<string, string>()
-    linkedEmailIds.forEach((id, i) => {
-      if (emailSubjects[i]) map.set(id, emailSubjects[i])
-    })
-    linkedTaskIds.forEach((id, i) => {
-      if (taskTitles[i]) map.set(id, taskTitles[i])
+    linkedItems.forEach((item, i) => {
+      if (itemTitles[i]) map.set(item.id, itemTitles[i])
     })
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedEmailIds, linkedTaskIds, emailSubjects.join("\0"), taskTitles.join("\0")])
+  }, [linkedItems, itemTitles.join("\0")])
 
 
 
@@ -138,19 +129,15 @@ export function SidebarRecentSessions() {
         <SidebarMenu>
           {recent.map((session, i) => {
             const color = getIndicatorColor(session)
-            const linkedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? ""
+            const linkedId = session.linkedSourceId ?? ""
             const linkedTitle = titleLookup.get(linkedId)
             const title = linkedTitle || getSessionTitle(session)
             const isActive = isRecentRoute && session.id === activeSessionId
 
             const sourceTab: TabId = session.linkedSourceType
               ? `plugin:${session.linkedSourceType}`
-              : session.linkedEmailThreadId
-                ? "plugin:gmail"
-                : session.linkedTaskId
-                  ? "plugin:notion-tasks"
-                  : "sessions"
-            const selectedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
+              : "sessions"
+            const selectedId = session.linkedSourceId ?? undefined
 
             return (
               <SidebarMenuItem key={session.id}>

@@ -26,11 +26,7 @@ export function useAttachToSession() {
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
       qc.invalidateQueries({ queryKey: ["sessions"] })
       // Invalidate the linked-session query so the sparkles icon updates
-      if (source.type === "email") {
-        qc.invalidateQueries({ queryKey: ["linked-session", "thread", source.id] })
-      } else if (source.type === "task") {
-        qc.invalidateQueries({ queryKey: ["linked-session", "task", source.id] })
-      }
+      qc.invalidateQueries({ queryKey: ["linked-session", source.type, source.id] })
     },
   })
 }

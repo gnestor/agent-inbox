@@ -14,7 +14,7 @@ vi.mock("@/lib/navigation-storage", () => ({
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return (
-    <MemoryRouter initialEntries={["/emails"]}>
+    <MemoryRouter initialEntries={["/gmail"]}>
       <NavigationProvider>{children}</NavigationProvider>
     </MemoryRouter>
   )

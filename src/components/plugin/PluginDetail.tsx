@@ -16,7 +16,6 @@ import { mutatePluginItem, getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
 import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
-import { NotionBlockRenderer } from "@/components/shared/NotionBlockRenderer"
 import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
@@ -361,9 +360,9 @@ export function PluginDetail({
     )
   }
 
-  // Gmail: use the EmailThread component for rich email rendering
-  // Render immediately — EmailThread fetches its own data
-  if (pluginId === "gmail") {
+  // Plugins with a dedicated detail component (e.g. Gmail's EmailThread)
+  // Render immediately — the component fetches its own data
+  if (plugin?.components?.detail) {
     return <EmailThread threadId={itemId} />
   }
 
@@ -417,10 +416,8 @@ export function PluginDetail({
     content: JSON.stringify(item),
   }
 
-  // If item has a markdown body or Notion blocks, render as prose
   const bodyContent = item.body as string | undefined
   const bodyFormat = item.bodyFormat as string | undefined
-  const notionBlocks = item.children as any[] | undefined
 
   // Properties popover for items with editable fields (e.g. Notion tasks/calendar)
   const hasEditableFields = plugin?.fieldSchema?.some((f) =>
@@ -480,9 +477,7 @@ export function PluginDetail({
         right={toolbarRight}
       />
       <div className="flex-1 overflow-y-auto p-4">
-        {notionBlocks && notionBlocks.length > 0 ? (
-          <NotionBlockRenderer blocks={notionBlocks} />
-        ) : bodyContent && bodyFormat === "markdown" ? (
+        {bodyContent && bodyFormat === "markdown" ? (
           <div className="prose prose-sm dark:prose-invert max-w-none">
             <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{bodyContent}</Markdown>
           </div>

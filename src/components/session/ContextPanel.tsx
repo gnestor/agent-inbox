@@ -49,7 +49,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
           <button
             type="button"
             onClick={() => {
-              const pluginId = source.type === "email" ? "gmail" : source.type === "task" ? "notion-tasks" : source.type
+              const pluginId = source.type
               const itemId = source.threadId ?? source.id
               if (itemId) { switchTab(`plugin:${pluginId}`); selectItem(itemId) }
             }}
@@ -112,7 +112,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={thread.threadId}
                       type="button"
-                      onClick={() => { switchTab(`plugin:${source.type === "email" ? "gmail" : source.type}`); selectItem(thread.threadId) }}
+                      onClick={() => { switchTab(`plugin:${source.type}`); selectItem(thread.threadId) }}
                       className={cn(
                         "w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors",
                       )}
@@ -146,7 +146,7 @@ export function ContextPanel({ data }: ContextPanelProps) {
                     <button
                       key={task.id}
                       type="button"
-                      onClick={() => { switchTab("plugin:notion-tasks" as import("@/types/navigation").TabId); selectItem(task.id) }}
+                      onClick={() => { switchTab(`plugin:${source.type}` as import("@/types/navigation").TabId); selectItem(task.id) }}
                       className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center gap-2"
                     >
                       <span className="text-xs flex-1 truncate">{task.title}</span>

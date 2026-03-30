@@ -12,7 +12,7 @@ type UserProfile = { name: string; email: string; picture?: string }
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
-  const { prompt, linkedEmailId, linkedEmailThreadId, linkedTaskId, linkedSourceType, linkedSourceId, linkedSourceContent } = await c.req.json()
+  const { prompt, linkedSourceType, linkedSourceId, linkedSourceContent } = await c.req.json()
 
   if (!prompt) {
     return c.json({ error: "prompt is required" }, 400)
@@ -23,9 +23,6 @@ sessionRoutes.post("/", async (c) => {
   try {
     const workspace = c.get("workspace")
     const sessionId = await sessions.startSession(prompt, {
-      linkedEmailId,
-      linkedEmailThreadId,
-      linkedTaskId,
       linkedSourceType,
       linkedSourceId,
       linkedSourceContent,
@@ -78,9 +75,6 @@ sessionRoutes.get("/", async (c) => {
         startedAt: (db.started_at as string) || new Date(s.lastModified).toISOString(),
         updatedAt: (db.updated_at as string) || new Date(s.lastModified).toISOString(),
         completedAt: (db.completed_at as string) || null,
-        linkedEmailId: (db.linked_email_id as string) || null,
-        linkedEmailThreadId: (db.linked_email_thread_id as string) || null,
-        linkedTaskId: (db.linked_task_id as string) || null,
         linkedSourceType: (db.linked_source_type as string) || null,
         linkedSourceId: (db.linked_source_id as string) || null,
         triggerSource: (db.trigger_source as string) || "manual",
@@ -96,9 +90,6 @@ sessionRoutes.get("/", async (c) => {
       startedAt: new Date(s.lastModified).toISOString(),
       updatedAt: new Date(s.lastModified).toISOString(),
       completedAt: new Date(s.lastModified).toISOString(),
-      linkedEmailId: null,
-      linkedEmailThreadId: null,
-      linkedTaskId: null,
       linkedSourceType: null,
       linkedSourceId: null,
       triggerSource: "manual" as const,
@@ -125,11 +116,9 @@ sessionRoutes.get("/projects", async (c) => {
 })
 
 sessionRoutes.get("/linked", async (c) => {
-  const threadId = c.req.query("threadId")
-  const taskId = c.req.query("taskId")
   const sourceType = c.req.query("sourceType")
   const sourceId = c.req.query("sourceId")
-  const session = await sessions.getLinkedSession(threadId, taskId, sourceType, sourceId)
+  const session = await sessions.getLinkedSession(sourceType, sourceId)
   if (!session) return c.json({ session: null })
   return c.json({
     session: {
@@ -180,9 +169,6 @@ sessionRoutes.get("/:id", async (c) => {
         startedAt: session.started_at,
         updatedAt: session.updated_at,
         completedAt: session.completed_at,
-        linkedEmailId: session.linked_email_id,
-        linkedEmailThreadId: session.linked_email_thread_id,
-        linkedTaskId: session.linked_task_id,
         linkedSourceType: session.linked_source_type || null,
         linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
@@ -212,9 +198,6 @@ sessionRoutes.get("/:id", async (c) => {
       startedAt: new Date(agentSession.lastModified).toISOString(),
       updatedAt: new Date(agentSession.lastModified).toISOString(),
       completedAt: new Date(agentSession.lastModified).toISOString(),
-      linkedEmailId: null,
-      linkedEmailThreadId: null,
-      linkedTaskId: null,
       linkedSourceType: null,
       linkedSourceId: null,
       triggerSource: "manual",

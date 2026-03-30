@@ -6,16 +6,6 @@ import { createDefaultNavigationState, createDefaultTabState } from "@/types/nav
 const STORAGE_KEY = "INBOX_NAV_STATE"
 const OLD_STORAGE_KEY = "spatial-nav-state"
 
-// Legacy tab ID migration map (for persisted state from older versions)
-const LEGACY_TAB_MIGRATION: Record<string, string> = {
-  emails: "plugin:gmail",
-  tasks: "plugin:notion-tasks",
-  calendar: "plugin:notion-calendar",
-}
-
-function normalizeLegacyTabId(tabId: string): string {
-  return LEGACY_TAB_MIGRATION[tabId] ?? tabId
-}
 
 // --- IndexedDB persistence ---
 
@@ -37,19 +27,6 @@ export async function loadNavigationState(): Promise<NavigationState | null> {
 function validateState(state: NavigationState): NavigationState {
   // new_session is intentionally excluded — transient panel that shouldn't persist across reloads
   const validTypes = new Set(["list", "detail", "session", "output", "code_editor", "compose", "settings"])
-
-  // Migrate legacy tab IDs: emails → plugin:gmail, tasks → plugin:notion-tasks, calendar → plugin:notion-calendar
-  for (const [oldId, newId] of Object.entries(LEGACY_TAB_MIGRATION)) {
-    if (state.tabs[oldId]) {
-      if (!state.tabs[newId]) {
-        state.tabs[newId] = state.tabs[oldId]
-      }
-      delete state.tabs[oldId]
-    }
-  }
-
-  // Normalize activeTab
-  state.activeTab = normalizeLegacyTabId(state.activeTab) as NavigationState["activeTab"]
 
   for (const [tabId, tabState] of Object.entries(state.tabs)) {
     // Validate savedPanels entries too
@@ -115,9 +92,10 @@ export async function migrateFromLocalStorage(): Promise<NavigationState | null>
 
     // Derive activeTab from pathname
     const firstSegment = old.pathname.split("/").filter(Boolean)[0] || "sessions"
-    state.activeTab = normalizeLegacyTabId(firstSegment === "inbox" ? "emails" : firstSegment) as NavigationState["activeTab"]
+    const nonPluginTabs = new Set(["sessions", "settings", "workspace-settings"])
+    state.activeTab = (nonPluginTabs.has(firstSegment) ? firstSegment : `plugin:${firstSegment}`) as NavigationState["activeTab"]
 
-    const migrationMap: Record<string, string> = { ...LEGACY_TAB_MIGRATION, sessions: "sessions" }
+    const migrationMap: Record<string, string> = { sessions: "sessions" }
 
     for (const [oldTabId, newTabId] of Object.entries(migrationMap)) {
       const oldTab = old.tabs[oldTabId]

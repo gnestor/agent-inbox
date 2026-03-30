@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { trashThread, modifyThreadLabels } from "@/api/client"
+import { trashThread, modifyThreadLabels } from "../api"
 import { toast } from "sonner"
 import type { GmailThread } from "../types"
 

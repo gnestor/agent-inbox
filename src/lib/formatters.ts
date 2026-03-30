@@ -63,21 +63,3 @@ export function sessionStatusBadgeClass(status: string): string {
   }
 }
 
-export function taskStatusBadgeClass(status: string): string {
-  switch (status) {
-    case "Not started":
-      return "bg-foreground/10 text-muted-foreground"
-    case "Next Up":
-      return "bg-chart-2/20 text-chart-2"
-    case "In Progress":
-    case "In progress":
-      return "bg-chart-3/20 text-chart-3"
-    case "Completed":
-    case "Done":
-      return "bg-chart-1/20 text-chart-1"
-    case "Archive":
-      return "bg-foreground/10 text-muted-foreground"
-    default:
-      return ""
-  }
-}

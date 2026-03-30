@@ -17,6 +17,12 @@ export interface IntegrationConfig {
   scopes?: string[]
   clientIdEnv?: string
   clientSecretEnv?: string
+  /** Extra params for the OAuth authorize URL */
+  authParams?: Record<string, string>
+  /** Token exchange auth method: "basic" (Authorization header) or "body" (client_id/secret in body, default) */
+  tokenAuthMethod?: "basic" | "body"
+  /** Token exchange content type: "json" or "form" (default) */
+  tokenContentType?: "json" | "form"
 }
 
 export const INTEGRATIONS: IntegrationConfig[] = [
@@ -36,6 +42,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     scopes: ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.compose"],
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    authParams: { access_type: "offline", prompt: "consent" },
   },
   {
     id: "pinterest",
@@ -52,6 +59,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     scopes: ["boards:read", "pins:read"],
     clientIdEnv: "PINTEREST_CLIENT_ID",
     clientSecretEnv: "PINTEREST_CLIENT_SECRET",
+    tokenAuthMethod: "basic",
   },
   {
     id: "quickbooks",
@@ -80,6 +88,9 @@ export const INTEGRATIONS: IntegrationConfig[] = [
     scope: "workspace",
     authType: "api_key",
     envVars: { credential: "NOTION_API_TOKEN" },
+    authParams: { owner: "user" },
+    tokenAuthMethod: "basic",
+    tokenContentType: "json",
   },
   {
     id: "slack",

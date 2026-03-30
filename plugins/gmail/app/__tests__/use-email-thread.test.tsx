@@ -4,9 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useEmailThread } from "../hooks/use-email-thread"
-import * as client from "@/api/client"
+import * as client from "../api"
 
-vi.mock("@/api/client")
+vi.mock("../api")
 
 function makeWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {

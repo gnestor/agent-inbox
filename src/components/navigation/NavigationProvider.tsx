@@ -4,12 +4,6 @@ import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, pluginIdFromTab } from "@/types/navigation"
 
-// Legacy URL paths → plugin IDs (for backward compat with old bookmarks/history)
-const LEGACY_URL_TO_PLUGIN: Record<string, string> = {
-  emails: "gmail",
-  tasks: "notion-tasks",
-  calendar: "notion-calendar",
-}
 import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
@@ -75,7 +69,7 @@ export function parseUrl(pathname: string): ParsedUrl {
       const selectedId = decodeURIComponent(parts[2])
       const sessionId = parts[3] === "session" && parts[4] ? decodeURIComponent(parts[4]) : undefined
       const key = sessionId ?? selectedId
-      const pluginId = LEGACY_URL_TO_PLUGIN[parts[1]] ?? parts[1]
+      const pluginId = parts[1]
       return { tabId: `recent:${key}`, sourceTab: `plugin:${pluginId}`, selectedId, sessionId }
     }
     return { tabId: "sessions" }
@@ -88,7 +82,7 @@ export function parseUrl(pathname: string): ParsedUrl {
     return { tabId: `plugin:${parts[1]}` as TabId, selectedId: parts[2] ? decodeURIComponent(parts[2]) : undefined }
   // All other paths: treat as plugin ID (or legacy name)
   // /gmail/{id}, /notion-tasks/{id}, /emails/{id} (backward compat), etc.
-  const pluginId = LEGACY_URL_TO_PLUGIN[parts[0]] ?? parts[0]
+  const pluginId = parts[0]
   if (pluginId) {
     return { tabId: `plugin:${pluginId}` as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
   }

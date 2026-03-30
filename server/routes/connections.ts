@@ -119,13 +119,11 @@ connectionRoutes.get("/connect/:integration", async (c) => {
     params.set("scope", config.scopes.join(" "))
   }
 
-  // Provider-specific params
-  if (integrationId === "notion") {
-    params.set("owner", "user")
-  }
-  if (integrationId === "google") {
-    params.set("access_type", "offline")
-    params.set("prompt", "consent")
+  // Provider-specific params from integration config
+  if (config.authParams) {
+    for (const [key, value] of Object.entries(config.authParams)) {
+      params.set(key, value)
+    }
   }
 
   return c.redirect(`${config.authUrl}?${params}`)
@@ -174,30 +172,16 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
   let tokenBody: URLSearchParams | string
   let tokenHeaders: Record<string, string> = {}
 
-  if (integrationId === "notion") {
-    // Notion uses Basic auth + JSON body
+  if (config.tokenAuthMethod === "basic") {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+    const useJson = config.tokenContentType === "json"
     tokenHeaders = {
       "Authorization": `Basic ${basicAuth}`,
-      "Content-Type": "application/json",
+      "Content-Type": useJson ? "application/json" : "application/x-www-form-urlencoded",
     }
-    tokenBody = JSON.stringify({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-    })
-  } else if (integrationId === "pinterest") {
-    // Pinterest uses Basic auth + form-encoded body
-    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
-    tokenHeaders = {
-      "Authorization": `Basic ${basicAuth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    }
-    tokenBody = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-    }).toString()
+    tokenBody = useJson
+      ? JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: redirectUri })
+      : new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri }).toString()
   } else {
     tokenHeaders = { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }
     tokenBody = new URLSearchParams({

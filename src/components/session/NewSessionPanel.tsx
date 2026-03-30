@@ -21,8 +21,6 @@ interface PromptTemplate {
 
 interface NewSessionPanelProps {
   panelId?: string
-  threadId?: string
-  taskId?: string
   sessionId?: string
   autoStart?: boolean
   sourceType?: string
@@ -41,19 +39,15 @@ function useSourceItem(sourceType?: string, sourceId?: string) {
 
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart, sourceType, sourceId, sourceContent }: NewSessionPanelProps) {
+export function NewSessionPanel({ panelId, sessionId, autoStart, sourceType, sourceId, sourceContent }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
 
-  // Normalize legacy threadId/taskId to sourceType/sourceId
-  const resolvedSourceType = sourceType ?? (threadId ? "gmail" : taskId ? "notion-tasks" : undefined)
-  const resolvedSourceId = sourceId ?? threadId ?? taskId
-
-  if (autoStart && resolvedSourceId) {
-    return <AutoStartPanel sourceType={resolvedSourceType} sourceId={resolvedSourceId} />
+  if (autoStart && sourceId) {
+    return <AutoStartPanel sourceType={sourceType} sourceId={sourceId} />
   }
-  return <ComposePanel panelId={panelId} sourceType={resolvedSourceType} sourceId={resolvedSourceId} sourceContent={sourceContent} />
+  return <ComposePanel panelId={panelId} sourceType={sourceType} sourceId={sourceId} sourceContent={sourceContent} />
 }
 
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────

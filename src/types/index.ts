@@ -49,7 +49,7 @@ export interface AskUserQuestion {
 export interface PendingQuestion {
   questions: AskUserQuestion[]
 }
-export type TriggerSource = "manual" | "inbox" | "email_triage" | "webhook_notion" | "webhook_slack"
+export type TriggerSource = "manual" | "inbox" | "webhook" | (string & {})
 
 // Inbox workflow structured output types (from <inbox-context> and <inbox-result> XML blocks)
 
@@ -81,6 +81,8 @@ export type InboxResultAction = "draft" | "task" | "context_updated" | "skipped"
 
 export interface InboxResultData {
   action: InboxResultAction
+  /** Plugin that produced this result (e.g. "gmail", "notion-tasks") */
+  pluginId?: string
   draft?: {
     to: string
     subject: string
@@ -101,9 +103,6 @@ export interface Session {
   startedAt: string
   updatedAt: string
   completedAt: string | null
-  linkedEmailId: string | null
-  linkedEmailThreadId: string | null
-  linkedTaskId: string | null
   linkedSourceType: string | null
   linkedSourceId: string | null
   triggerSource: TriggerSource

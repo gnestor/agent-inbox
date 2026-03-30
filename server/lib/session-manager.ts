@@ -118,9 +118,6 @@ export async function createSessionRecord(
   sessionId: string,
   prompt: string,
   options?: {
-    linkedEmailId?: string
-    linkedEmailThreadId?: string
-    linkedTaskId?: string
     linkedSourceType?: string
     linkedSourceId?: string
     triggerSource?: string
@@ -132,26 +129,17 @@ export async function createSessionRecord(
     ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
     : null
 
-  // Derive generic linked_source_type/id from legacy fields if not provided
-  const sourceType = options?.linkedSourceType
-    ?? (options?.linkedEmailThreadId ? "gmail" : options?.linkedTaskId ? "notion-tasks" : null)
-  const sourceId = options?.linkedSourceId
-    ?? options?.linkedEmailThreadId ?? options?.linkedTaskId ?? null
-
   await execute(
-    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, linked_source_type, linked_source_id, trigger_source, metadata)
-     VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_source_type, linked_source_id, trigger_source, metadata)
+     VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       sessionId,
       prompt,
       prompt.slice(0, INITIAL_SUMMARY_LENGTH),
       now,
       now,
-      options?.linkedEmailId || null,
-      options?.linkedEmailThreadId || null,
-      options?.linkedTaskId || null,
-      sourceType,
-      sourceId,
+      options?.linkedSourceType || null,
+      options?.linkedSourceId || null,
       options?.triggerSource || "manual",
       metadata,
     ],
@@ -304,35 +292,14 @@ export async function getSessionMessages(sessionId: string) {
 }
 
 export async function getLinkedSession(
-  linkedEmailThreadId?: string,
-  linkedTaskId?: string,
   linkedSourceType?: string,
   linkedSourceId?: string,
 ): Promise<Record<string, unknown> | undefined> {
-  // Prefer generic linked_source_type/id
-  const srcType = linkedSourceType ?? (linkedEmailThreadId ? "gmail" : linkedTaskId ? "notion-tasks" : undefined)
-  const srcId = linkedSourceId ?? linkedEmailThreadId ?? linkedTaskId
-  if (srcType && srcId) {
-    const result = await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
-      [srcType, srcId],
-    )
-    if (result) return result
-  }
-  // Fallback: check legacy columns for backward compat
-  if (linkedEmailThreadId) {
-    return await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_email_thread_id = $1 ORDER BY updated_at DESC LIMIT 1",
-      [linkedEmailThreadId],
-    )
-  }
-  if (linkedTaskId) {
-    return await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_task_id = $1 ORDER BY updated_at DESC LIMIT 1",
-      [linkedTaskId],
-    )
-  }
-  return undefined
+  if (!linkedSourceType || !linkedSourceId) return undefined
+  return await queryOne<Record<string, unknown>>(
+    "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
+    [linkedSourceType, linkedSourceId],
+  )
 }
 
 export async function listSessionRecords(filters?: {
@@ -471,18 +438,10 @@ async function autoNameSession(sessionId: string) {
 }
 
 function buildSourceContext(
-  emailThreadId?: string | null,
-  emailId?: string | null,
-  taskId?: string | null,
   sourceType?: string | null,
   sourceId?: string | null,
   sourceContent?: string | null,
 ): string | null {
-  if (emailThreadId) {
-    return `Source context: Email thread ${emailThreadId}` +
-      (emailId ? ` (message: ${emailId})` : "")
-  }
-  if (taskId) return `Source context: Notion task ${taskId}`
   if (sourceType && sourceId) {
     const header = `Source context: ${sourceType} item ${sourceId}`
     return sourceContent ? `${header}\n\n${sourceContent}` : header
@@ -500,9 +459,6 @@ function buildSystemPrompt(context: string | null) {
 export async function startSession(
   prompt: string,
   options?: {
-    linkedEmailId?: string
-    linkedEmailThreadId?: string
-    linkedTaskId?: string
     linkedSourceType?: string
     linkedSourceId?: string
     linkedSourceContent?: string
@@ -519,7 +475,6 @@ export async function startSession(
   let sessionId: string | null = null
 
   const sourceContext = buildSourceContext(
-    options?.linkedEmailThreadId, options?.linkedEmailId, options?.linkedTaskId,
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
 
@@ -628,9 +583,6 @@ export async function resumeSessionQuery(
 
   const sessionRecord = await getSessionRecord(sessionId)
   const resumeSourceContext = buildSourceContext(
-    sessionRecord?.linked_email_thread_id as string | undefined,
-    sessionRecord?.linked_email_id as string | undefined,
-    sessionRecord?.linked_task_id as string | undefined,
     sessionRecord?.linked_source_type as string | undefined,
     sessionRecord?.linked_source_id as string | undefined,
   )
@@ -733,23 +685,14 @@ export async function attachSourceToSession(
 
   // Persist title in metadata so listSessionRecords can surface it without joins.
   // Uses jsonb_set so we don't need a SELECT + parse + re-serialize round-trip.
-  const isEmail = source.type === "email" || source.type === "gmail"
-  const isTask = source.type === "task" || source.type === "notion-tasks"
   await execute(`
     UPDATE sessions
     SET linked_source_id = $1,
         linked_source_type = $2,
         metadata = jsonb_set(COALESCE(metadata, '{}')::jsonb, '{linkedItemTitle}', to_jsonb($3::text)),
-        linked_email_thread_id = CASE WHEN $4::boolean THEN $5 ELSE linked_email_thread_id END,
-        linked_task_id = CASE WHEN $6::boolean THEN $7 ELSE linked_task_id END,
-        updated_at = $8
-    WHERE id = $9
-  `, [
-    source.id, source.type, source.title,
-    isEmail, isEmail ? source.id : null,
-    isTask, isTask ? source.id : null,
-    now, sessionId,
-  ])
+        updated_at = $4
+    WHERE id = $5
+  `, [source.id, source.type, source.title, now, sessionId])
 }
 
 /** Check if a session has an active agent process (in-memory query) */
