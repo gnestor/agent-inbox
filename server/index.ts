@@ -26,7 +26,6 @@ import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
-import { pruneExpired } from "./lib/cache.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
 import { loadPanels } from "./lib/panel-registry.js"
@@ -259,8 +258,6 @@ const port = parseInt(process.env.PORT || "3002", 10)
 
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
-  // Prune expired cache entries on startup
-  pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions()
     .then(() => watchProjectsDir())

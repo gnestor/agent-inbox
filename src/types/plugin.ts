@@ -106,19 +106,11 @@ export interface FieldDef {
 // Plugin context (request-scoped, passed by the server to plugin methods)
 // ---------------------------------------------------------------------------
 
-export interface PluginCache {
-  get<T>(key: string): Promise<T | null>
-  set<T>(key: string, value: T, ttlMs?: number): Promise<void>
-  invalidate(pattern: string): Promise<void>
-}
-
 export interface PluginContext {
   /** Email of the authenticated user making the request */
   userEmail: string
   /** Resolve a credential for an integration (per-user OAuth or workspace API key) */
   getCredential(integration: string): Promise<string | null>
-  /** Plugin-scoped cache for storing arbitrary data with optional TTL */
-  cache: PluginCache
 }
 
 // ---------------------------------------------------------------------------

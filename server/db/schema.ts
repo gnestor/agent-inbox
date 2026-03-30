@@ -73,15 +73,6 @@ export function initializeDatabase() {
       PRIMARY KEY (user_email, key)
     );
 
-    CREATE TABLE IF NOT EXISTS api_cache (
-      key TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      expires_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_api_cache_expires
-      ON api_cache(expires_at);
-
     CREATE TABLE IF NOT EXISTS user_credentials (
       user_email TEXT NOT NULL REFERENCES users(email),
       integration TEXT NOT NULL,

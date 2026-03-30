@@ -71,6 +71,8 @@ export async function initializeDatabase(): Promise<void> {
   const migrations = [
     "001_initial_schema.sql",
     "002_workspaces.sql",
+    "003_remove_legacy_linked_columns.sql",
+    "004_drop_api_cache.sql",
   ]
   for (const file of migrations) {
     const sql = readFileSync(resolve(__dirname, "migrations", file), "utf-8")

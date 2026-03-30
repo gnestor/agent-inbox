@@ -8,10 +8,7 @@
 
 import * as gmail from "./app/lib/gmail.js"
 import type { ThreadSummary } from "./app/lib/gmail.js"
-import { get as getCached, set as setCached, invalidate } from "../../server/lib/cache.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
-
-const SYNC_TTL = 86_400_000 // 24h
 
 /** Add derived boolean fields from labelIds for badge rendering. */
 function addDerivedFields(thread: ThreadSummary): ThreadSummary & { isImportant: boolean; isStarred: boolean } {
@@ -20,12 +17,6 @@ function addDerivedFields(thread: ThreadSummary): ThreadSummary & { isImportant:
     isImportant: thread.labelIds.includes("IMPORTANT"),
     isStarred: thread.labelIds.includes("STARRED"),
   }
-}
-
-type SyncState = {
-  historyId: string
-  threads: ThreadSummary[]
-  nextPageToken: string | null
 }
 
 async function requireToken(ctx?: PluginContext): Promise<string> {
@@ -118,7 +109,6 @@ export const gmailPlugin: Plugin = {
 
   async query(filters, cursor, ctx) {
     const accessToken = await requireToken(ctx)
-    const userEmail = ctx!.userEmail
 
     // Build Gmail search query from filters
     const parts: string[] = []
@@ -135,67 +125,8 @@ export const gmailPlugin: Plugin = {
       }
     }
     const query = parts.join(" ")
-    const max = 20
-    const pageToken = cursor
 
-    // Incremental sync (first page only)
-    if (!pageToken) {
-      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
-      const syncState = await getCached<SyncState>(syncKey)
-
-      if (syncState?.historyId) {
-        try {
-          const history = await gmail.getHistory(accessToken, syncState.historyId)
-          const changedThreadIds = new Set<string>()
-          for (const h of history.history || []) {
-            for (const { message } of h.messagesAdded || []) changedThreadIds.add(message.threadId)
-            for (const { message } of h.messagesDeleted || []) changedThreadIds.add(message.threadId)
-            for (const { message } of h.labelsAdded || []) changedThreadIds.add(message.threadId)
-            for (const { message } of h.labelsRemoved || []) changedThreadIds.add(message.threadId)
-          }
-
-          const newHistoryId = history.historyId || syncState.historyId
-
-          if (changedThreadIds.size === 0) {
-            await setCached(syncKey, { ...syncState, historyId: newHistoryId }, SYNC_TTL)
-            return { items: syncState.threads as any[], nextCursor: syncState.nextPageToken ?? undefined }
-          }
-
-          const updatedThreads = await gmail.fetchBatched(
-            [...changedThreadIds],
-            (id) => gmail.getThreadSummary(accessToken, id),
-          )
-          await Promise.all([...changedThreadIds].map((id) => invalidate(`gmail:thread:${id}`)))
-
-          const updatedMap = new Map(updatedThreads.map((t) => [t.id, t]))
-          let threads = syncState.threads
-            .map((t) => updatedMap.get(t.id) || t)
-            .filter((t) => {
-              const updated = updatedMap.get(t.id)
-              return updated ? updated.labelIds.includes("INBOX") : true
-            })
-          const existingIds = new Set(threads.map((t) => t.id))
-          for (const t of updatedThreads) {
-            if (!existingIds.has(t.id) && t.labelIds.includes("INBOX")) {
-              threads.unshift(t)
-            }
-          }
-
-          await setCached(syncKey, { historyId: newHistoryId, threads, nextPageToken: syncState.nextPageToken }, SYNC_TTL)
-          return { items: threads.map(addDerivedFields) as any[], nextCursor: syncState.nextPageToken ?? undefined }
-        } catch (e: any) {
-          console.warn("Incremental sync failed, falling back to full sync:", e.message)
-          await invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
-        }
-      }
-    }
-
-    // Full sync
-    const result = await gmail.searchThreads(accessToken, query, max, pageToken || undefined)
-    if (!pageToken && result.historyId) {
-      const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
-      await setCached(syncKey, { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken }, SYNC_TTL)
-    }
+    const result = await gmail.searchThreads(accessToken, query, 20, cursor || undefined)
     return { items: result.threads.map(addDerivedFields) as any[], nextCursor: result.nextPageToken ?? undefined }
   },
 
@@ -206,7 +137,6 @@ export const gmailPlugin: Plugin = {
 
   async mutate(id, action, payload, ctx) {
     const accessToken = await requireToken(ctx)
-    let skipInvalidate = false
     switch (action) {
       case "archive":
         await gmail.modifyThreadLabels(accessToken, id, [], ["INBOX"])
@@ -234,37 +164,26 @@ export const gmailPlugin: Plugin = {
       case "send": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
         await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
-        if (threadId) await invalidate(`gmail:thread:${threadId}`)
         break
       }
       case "save-draft": {
         const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
         await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
-        skipInvalidate = true
         break
       }
       default:
         throw new Error(`Unknown Gmail action: ${action}`)
-    }
-    if (!skipInvalidate) {
-      await invalidate("gmail:sync:")
-      await invalidate(`gmail:thread:${id}`)
     }
   },
 
   filterOptions: {
     labels: async (ctx) => {
       const accessToken = await requireToken(ctx)
-      const cacheKey = `gmail:labels:${ctx!.userEmail}`
-      const cached = await getCached<string[]>(cacheKey)
-      if (cached) return cached
       const result = await gmail.getLabels(accessToken)
-      const labels = result.labels
+      return result.labels
         .filter((l: any) => l.type === "user")
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((l: any) => l.name)
-      await setCached(cacheKey, labels, 10 * 60 * 1000) // 10min
-      return labels
     },
   },
 
@@ -306,8 +225,6 @@ export const gmailPlugin: Plugin = {
       const accessToken = await requireToken(ctx)
       const { to, subject, body, threadId, inReplyTo } = await c.req.json()
       const result = await composeWithSignature(accessToken, ctx.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
-      await invalidate("gmail:sync:")
-      if (threadId) await invalidate(`gmail:thread:${threadId}`)
       return c.json(result)
     })
 
@@ -326,8 +243,6 @@ export const gmailPlugin: Plugin = {
       const accessToken = await requireToken(ctx)
       const id = c.req.param("id")
       await gmail.trashThread(accessToken, id)
-      await invalidate("gmail:sync:")
-      await invalidate(`gmail:thread:${id}`)
       return c.json({ ok: true })
     })
 
@@ -338,8 +253,6 @@ export const gmailPlugin: Plugin = {
       const id = c.req.param("id")
       const { addLabelIds, removeLabelIds } = await c.req.json()
       await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
-      await invalidate("gmail:sync:")
-      await invalidate(`gmail:thread:${id}`)
       return c.json({ ok: true })
     })
 
