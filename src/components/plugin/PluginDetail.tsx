@@ -7,6 +7,7 @@ import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, t
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
@@ -221,6 +222,7 @@ export function PluginDetail({
   itemId: string
 }) {
   const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
@@ -254,7 +256,7 @@ export function PluginDetail({
   async function handleMutate(action: string, payload: unknown) {
     try {
       await mutatePluginItem(pluginId, itemId, action, payload)
-      queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
+      queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
     } catch (err) {
       console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
     }

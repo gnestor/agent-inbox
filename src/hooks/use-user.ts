@@ -85,3 +85,8 @@ export function useUserProvider() {
 export function useUser() {
   return useContext(UserContext)
 }
+
+/** Returns the active workspace ID (stable string for use in query keys). */
+export function useWorkspaceId(): string {
+  return useContext(UserContext).activeWorkspace?.id ?? ""
+}

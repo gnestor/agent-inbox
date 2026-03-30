@@ -7,6 +7,7 @@ import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
 import { createSession, getPluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
@@ -30,8 +31,9 @@ interface NewSessionPanelProps {
 
 /** Fetch a plugin item generically — works for any source type */
 function useSourceItem(sourceType?: string, sourceId?: string) {
+  const wsId = useWorkspaceId()
   return useQuery<PluginItem>({
-    queryKey: ["plugin-item", sourceType, sourceId],
+    queryKey: ["plugin-item", wsId, sourceType, sourceId],
     queryFn: () => getPluginItem(sourceType!, sourceId!),
     enabled: !!sourceType && !!sourceId,
   })
@@ -129,7 +131,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         linkedSourceContent: sourceContent,
       }),
     onSuccess: ({ sessionId }) => {
-      if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
+      setPrompt("")
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
       replacePanel(panelId ?? NEW_SESSION_PANEL.id, {

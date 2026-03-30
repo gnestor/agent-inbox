@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, pluginIdFromTab } from "@/types/navigation"
 
-import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
+import { saveNavigationState, loadNavigationState } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
 
@@ -362,7 +362,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
       // 2. Persisted state supplements (panel stacks, filters, scroll, savedPanels)
       let base = await loadNavigationState()
-      if (!base) base = await migrateFromLocalStorage()
       if (!base) base = createDefaultNavigationState()
 
       // 3. Override activeTab and selectedItemId from URL

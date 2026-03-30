@@ -8,6 +8,7 @@ import {
   ComboboxCollection, ComboboxGroup, ComboboxLabel, ComboboxSeparator,
 } from "@hammies/frontend/components/ui"
 import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { getFieldOptions } from "@/api/client"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
@@ -69,6 +70,7 @@ function PluginListInner({
   onSelectedTitleChange,
 }: PluginListInnerProps) {
   const { selectItem } = useNavigation()
+  const wsId = useWorkspaceId()
   const [searchQuery, setSearchQuery] = useState("")
 
   // Persist filter state per plugin via user preferences
@@ -92,7 +94,7 @@ function PluginListInner({
     [plugin.hasFilterOptions, filterableFields],
   )
   const { data: dynamicOptions } = useQuery({
-    queryKey: ["plugin-field-options", plugin.id, dynamicFieldIds],
+    queryKey: ["plugin-field-options", wsId, plugin.id, dynamicFieldIds],
     queryFn: async () => {
       const results: Record<string, string[]> = {}
       await Promise.all(

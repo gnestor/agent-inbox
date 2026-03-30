@@ -1,10 +1,9 @@
 // src/lib/navigation-storage.ts
 import { get, set } from "idb-keyval"
 import type { NavigationState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState } from "@/types/navigation"
+import { createDefaultTabState } from "@/types/navigation"
 
 const STORAGE_KEY = "INBOX_NAV_STATE"
-const OLD_STORAGE_KEY = "spatial-nav-state"
 
 
 // --- IndexedDB persistence ---
@@ -66,73 +65,3 @@ function validateState(state: NavigationState): NavigationState {
   return state
 }
 
-// --- Migration from old localStorage format ---
-
-interface OldSavedNavState {
-  pathname: string
-  tabs: Record<string, { selectedId?: string; sessionOpen?: boolean; sessionId?: string }>
-  itemSessions?: Array<[string, { sessionOpen: boolean; sessionId?: string }]>
-}
-
-export async function migrateFromLocalStorage(): Promise<NavigationState | null> {
-  try {
-    const raw = localStorage.getItem(OLD_STORAGE_KEY)
-    if (!raw) return null
-
-    const old: OldSavedNavState = JSON.parse(raw)
-    if (!old.pathname || !old.tabs) return null
-
-    // Handle inbox → emails rename from old migration
-    if ("inbox" in old.tabs && !("emails" in old.tabs)) {
-      old.tabs.emails = old.tabs.inbox
-      delete old.tabs.inbox
-    }
-
-    const state = createDefaultNavigationState()
-
-    // Derive activeTab from pathname
-    const firstSegment = old.pathname.split("/").filter(Boolean)[0] || "sessions"
-    const nonPluginTabs = new Set(["sessions", "settings", "workspace-settings"])
-    state.activeTab = (nonPluginTabs.has(firstSegment) ? firstSegment : `plugin:${firstSegment}`) as NavigationState["activeTab"]
-
-    const migrationMap: Record<string, string> = { sessions: "sessions" }
-
-    for (const [oldTabId, newTabId] of Object.entries(migrationMap)) {
-      const oldTab = old.tabs[oldTabId]
-      if (!oldTab) continue
-
-      const panels: any[] = [{ id: "list", type: "list", props: {} }]
-
-      if (oldTab.selectedId) {
-        if (!state.tabs[newTabId]) state.tabs[newTabId] = createDefaultTabState()
-        state.tabs[newTabId].selectedItemId = oldTab.selectedId
-        panels.push({
-          id: `detail:${oldTab.selectedId}`,
-          type: "detail",
-          props: { itemId: oldTab.selectedId },
-        })
-
-        if (oldTab.sessionOpen && oldTab.sessionId) {
-          panels.push({
-            id: `session:${oldTab.sessionId}`,
-            type: "session",
-            props: { sessionId: oldTab.sessionId },
-          })
-        }
-      }
-
-      if (!state.tabs[newTabId]) state.tabs[newTabId] = createDefaultTabState()
-      state.tabs[newTabId].panels = panels
-    }
-
-    // Save to IndexedDB and remove old key
-    await saveNavigationState(state)
-    localStorage.removeItem(OLD_STORAGE_KEY)
-
-    return state
-  } catch {
-    // Migration failed — clear old state and start fresh
-    localStorage.removeItem(OLD_STORAGE_KEY)
-    return null
-  }
-}

@@ -9,7 +9,6 @@ import { useNavigation } from "../use-navigation"
 vi.mock("@/lib/navigation-storage", () => ({
   saveNavigationState: vi.fn(() => Promise.resolve()),
   loadNavigationState: vi.fn(() => Promise.resolve(null)),
-  migrateFromLocalStorage: vi.fn(() => Promise.resolve(null)),
 }))
 
 function wrapper({ children }: { children: React.ReactNode }) {

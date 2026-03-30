@@ -13,6 +13,7 @@ import {
 import { SlidersHorizontal } from "lucide-react"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
 import { getFieldOptions, mutatePluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { formatRelativeDate } from "@/lib/formatters"
 
 interface PropertiesPopoverProps {
@@ -23,20 +24,21 @@ interface PropertiesPopoverProps {
 
 export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverProps) {
   const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
 
   const { data: statusOpts } = useQuery({
-    queryKey: ["plugin-field-options", pluginId, "status"],
+    queryKey: ["plugin-field-options", wsId, pluginId, "status"],
     queryFn: () => getFieldOptions(pluginId, "status").then((r) => r.options.map((o) => ({ value: o, color: null }))),
   })
 
   const { data: priorityOpts } = useQuery({
-    queryKey: ["plugin-field-options", pluginId, "priority"],
+    queryKey: ["plugin-field-options", wsId, pluginId, "priority"],
     queryFn: () => getFieldOptions(pluginId, "priority").then((r) => r.options.map((o) => ({ value: o, color: null }))),
     enabled: item.priority !== undefined,
   })
 
   const { data: tagOpts } = useQuery({
-    queryKey: ["plugin-field-options", pluginId, "tags"],
+    queryKey: ["plugin-field-options", wsId, pluginId, "tags"],
     queryFn: () => getFieldOptions(pluginId, "tags").then((r) => r.options.map((o) => ({ value: o, color: null }))),
   })
 
@@ -44,8 +46,8 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
 
   async function update(action: string, payload: unknown) {
     await mutatePluginItem(pluginId, itemId, action, payload)
-    queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
-    queryClient.invalidateQueries({ queryKey: ["plugin-item", pluginId, itemId] })
+    queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
+    queryClient.invalidateQueries({ queryKey: ["plugin-item", wsId, pluginId, itemId] })
   }
 
   const status = item.status as string | undefined

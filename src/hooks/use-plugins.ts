@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { getPlugins, queryPluginItems, queryPluginSubItems, getPluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 
 export function usePlugins() {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugins"],
+    queryKey: ["plugins", wsId],
     queryFn: () => getPlugins(),
     placeholderData: (prev) => prev,
     refetchInterval: (query) => {
@@ -23,8 +25,9 @@ export function usePluginItems(
   cursor?: string,
   enabled = true,
 ) {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugin-items", sourceId, filters, cursor],
+    queryKey: ["plugin-items", wsId, sourceId, filters, cursor],
     queryFn: () => queryPluginItems(sourceId, filters, cursor),
     enabled: enabled && !!sourceId,
   })
@@ -35,8 +38,9 @@ export function usePluginItem(
   itemId: string,
   enabled = true,
 ) {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugin-item", pluginId, itemId],
+    queryKey: ["plugin-item", wsId, pluginId, itemId],
     queryFn: () => getPluginItem(pluginId, itemId),
     enabled: enabled && !!pluginId && !!itemId,
   })
@@ -49,8 +53,9 @@ export function usePluginSubItems(
   cursor?: string,
   enabled = true,
 ) {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugin-subitems", sourceId, itemId, filters, cursor],
+    queryKey: ["plugin-subitems", wsId, sourceId, itemId, filters, cursor],
     queryFn: () => queryPluginSubItems(sourceId, itemId, filters, cursor),
     enabled: enabled && !!sourceId && !!itemId,
   })

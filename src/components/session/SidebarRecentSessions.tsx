@@ -11,6 +11,7 @@ import {
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
 import { getPluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
@@ -52,28 +53,11 @@ export function getSessionUrl(session: Session): string {
 }
 
 
-function loadReadSet(): Set<string> {
-  try {
-    const raw = localStorage.getItem("inbox:sessions-read")
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-export function markSessionRead(sessionId: string): void {
-  try {
-    const set = loadReadSet()
-    set.add(sessionId)
-    localStorage.setItem("inbox:sessions-read", JSON.stringify([...set]))
-  } catch {
-    // ignore
-  }
-}
 
 export function SidebarRecentSessions() {
   const { openRecent, switchTab, activeTab } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
+  const wsId = useWorkspaceId()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
   const recent = sessions.filter(isRecentSession).slice(0, 10)
@@ -98,7 +82,7 @@ export function SidebarRecentSessions() {
   // Fetch linked item titles in parallel via generic plugin API
   const itemQueries = useQueries({
     queries: linkedItems.map((item) => ({
-      queryKey: ["plugin-item", item.type, item.id],
+      queryKey: ["plugin-item", wsId, item.type, item.id],
       queryFn: () => getPluginItem(item.type, item.id),
     })),
   })
@@ -144,7 +128,6 @@ export function SidebarRecentSessions() {
                 <SidebarMenuButton
                   tooltip={title}
                   onClick={() => {
-                    markSessionRead(session.id)
                     openRecent(session.id, sourceTab, selectedId, i)
                     if (isMobile) setOpenMobile(false)
                   }}

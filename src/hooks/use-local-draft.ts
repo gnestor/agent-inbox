@@ -1,48 +1,31 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
+import { get, set, del } from "idb-keyval"
+
+const PREFIX = "draft:"
 
 /**
- * Manages a draft string persisted in localStorage.
- * Returns [draft, setDraft] — setDraft updates both React state and localStorage.
- * Cleans up the key when the draft is empty.
+ * Manages a draft string persisted in IndexedDB.
+ * Returns [draft, setDraft]. Resets when the key changes.
+ * Empty drafts are deleted from storage.
  */
 export function useLocalDraft(key: string): [string, (value: string) => void] {
-  const [draft, setDraftState] = useState(() => {
-    try {
-      return localStorage.getItem(key) ?? ""
-    } catch {
-      return ""
-    }
-  })
-
-  // Track the current key so we can detect key changes
+  const [draft, setDraftState] = useState("")
   const keyRef = useRef(key)
 
-  // When the key changes, load the new draft
+  // Load draft from IndexedDB on mount and key change
   useEffect(() => {
-    if (keyRef.current === key) return
     keyRef.current = key
-    try {
-      setDraftState(localStorage.getItem(key) ?? "")
-    } catch {
-      setDraftState("")
-    }
+    get<string>(PREFIX + key).then((val) => {
+      if (keyRef.current === key) setDraftState(val ?? "")
+    }).catch(() => {})
   }, [key])
 
-  // Persist to localStorage whenever draft changes (skip on key change)
-  const prevKeyRef = useRef(key)
-  useEffect(() => {
-    if (prevKeyRef.current !== key) {
-      prevKeyRef.current = key
-      return
-    }
-    try {
-      if (draft.trim()) localStorage.setItem(key, draft)
-      else localStorage.removeItem(key)
-    } catch {}
-  }, [draft, key])
-
+  // Persist to IndexedDB on change
   const setDraft = useCallback((value: string) => {
     setDraftState(value)
+    const k = PREFIX + keyRef.current
+    if (value.trim()) set(k, value).catch(() => {})
+    else del(k).catch(() => {})
   }, [])
 
   return [draft, setDraft]

@@ -4,6 +4,7 @@ import { Button, Badge } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { CheckCircle2, FileText, ExternalLink, Loader2 } from "lucide-react"
 import { mutatePluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 import type { InboxResultData } from "@/types"
 
 interface InboxResultPanelProps {
@@ -97,6 +98,7 @@ function DraftResult({ data }: { data: InboxResultData }) {
 }
 
 function TaskResult({ data, qc }: { data: InboxResultData; qc: ReturnType<typeof useQueryClient> }) {
+  const wsId = useWorkspaceId()
   const task = data.task!
   const [state, setState] = useState<ActionState>("idle")
 
@@ -105,7 +107,7 @@ function TaskResult({ data, qc }: { data: InboxResultData; qc: ReturnType<typeof
     try {
       const pluginId = data.pluginId ?? "notion-tasks"
       await mutatePluginItem(pluginId, task.id, "update-status", { status: "Done" })
-      qc.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
+      qc.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
       setState("success")
     } catch {
       setState("error")

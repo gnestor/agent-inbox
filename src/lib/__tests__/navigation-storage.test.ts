@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
   saveNavigationState,
   loadNavigationState,
-  migrateFromLocalStorage,
 } from "../navigation-storage"
 import { createDefaultNavigationState } from "@/types/navigation"
 
@@ -15,26 +14,9 @@ vi.mock("idb-keyval", () => ({
   del: vi.fn((key: string) => { store.delete(key); return Promise.resolve() }),
 }))
 
-// Vitest's jsdom environment provides localStorage as a plain {} without Storage methods.
-// Install a working in-memory localStorage mock.
-const localStorageStore: Record<string, string> = {}
-beforeAll(() => {
-  Object.defineProperty(window, "localStorage", {
-    value: {
-      getItem: (k: string) => localStorageStore[k] ?? null,
-      setItem: (k: string, v: string) => { localStorageStore[k] = v },
-      removeItem: (k: string) => { delete localStorageStore[k] },
-      clear: () => Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k]),
-    },
-    writable: true,
-    configurable: true,
-  })
-})
-
 describe("navigation-storage", () => {
   beforeEach(() => {
     store.clear()
-    localStorage.clear()
   })
 
   describe("saveNavigationState / loadNavigationState", () => {
@@ -49,39 +31,6 @@ describe("navigation-storage", () => {
     it("returns null when no state saved", async () => {
       const loaded = await loadNavigationState()
       expect(loaded).toBeNull()
-    })
-  })
-
-  describe("migrateFromLocalStorage", () => {
-    it("migrates old spatial-nav-state to new format", async () => {
-      const oldState = {
-        pathname: "/sessions",
-        tabs: {
-          sessions: { selectedId: "sess1" },
-        },
-        itemSessions: [],
-      }
-      localStorage.setItem("spatial-nav-state", JSON.stringify(oldState))
-
-      const migrated = await migrateFromLocalStorage()
-      expect(migrated).not.toBeNull()
-      expect(migrated!.activeTab).toBe("sessions")
-    })
-
-    it("returns null when no old state exists", async () => {
-      const migrated = await migrateFromLocalStorage()
-      expect(migrated).toBeNull()
-    })
-
-    it("removes old localStorage key after migration", async () => {
-      localStorage.setItem("spatial-nav-state", JSON.stringify({
-        pathname: "/emails",
-        tabs: { emails: {}, tasks: {}, calendar: {}, sessions: {} },
-        itemSessions: [],
-      }))
-
-      await migrateFromLocalStorage()
-      expect(localStorage.getItem("spatial-nav-state")).toBeNull()
     })
   })
 })
