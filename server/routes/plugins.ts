@@ -4,7 +4,7 @@ import { join, resolve } from "node:path"
 import { stat } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { build } from "esbuild"
-import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
+import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
 import { get as cacheGet, set as cacheSet, invalidate as cacheInvalidate } from "../lib/cache.js"
@@ -80,7 +80,11 @@ pluginRoutes.get("/:pluginId/components/:name", async (c) => {
   const { pluginId, name } = c.req.param()
   const workspace = c.get("workspace") as { id?: string; path?: string } | undefined
 
+  // Resolve component file: use plugin's actual directory (handles multi-tab plugins
+  // where plugin ID differs from directory name, e.g. "notion-tasks" → "notion/")
+  const pluginDir = getPluginDir(pluginId)
   const candidates = [
+    pluginDir && join(pluginDir, "app", "components", `${name}.tsx`),
     workspace?.path && join(workspace.path, "plugins", pluginId, "app", "components", `${name}.tsx`),
     join(BUILTIN_PLUGINS_ROOT, pluginId, "app", "components", `${name}.tsx`),
   ].filter(Boolean) as string[]

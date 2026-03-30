@@ -16,6 +16,7 @@ import { mutatePluginItem, getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
 import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
+import { PluginFrame } from "@/components/plugin/PluginFrame"
 import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
@@ -264,6 +265,11 @@ export function PluginDetail({
     ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
     .flatMap((w) => w.actions) ?? []
 
+  // Properties popover for items with editable fields (e.g. Notion tasks/calendar)
+  const hasEditableFields = plugin?.fieldSchema?.some((f) =>
+    (f.type === "select" || f.type === "multiselect") && f.filter?.filterable
+  )
+
   // Build session context from sub-items for session linking
   const sessionSource = useMemo(() => {
     if (!hasSubItems) return undefined
@@ -360,10 +366,63 @@ export function PluginDetail({
     )
   }
 
-  // Plugins with a dedicated detail component (e.g. Gmail's EmailThread)
-  // Render immediately — the component fetches its own data
+  // Plugins with a dedicated detail component
   if (plugin?.components?.detail) {
-    return <EmailThread threadId={itemId} />
+    // Gmail: direct import (will move to iframe when EmailThread is self-contained)
+    if (pluginId === "gmail") {
+      return <EmailThread threadId={itemId} />
+    }
+    // Workspace plugins: render via PluginFrame iframe
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <PanelHeader
+          left={
+            <div className="flex items-center gap-2 min-w-0">
+              <SidebarButton />
+              <span className="font-semibold text-sm truncate">{title}</span>
+            </div>
+          }
+          right={
+            <>
+              {hasEditableFields && (
+                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={parentItem!} />
+              )}
+              {externalUrl && (
+                <a href={externalUrl} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+                  title={`Open in ${plugin?.name ?? "app"}`}>
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+              {actionButtons.map((action) => {
+                const Icon = ACTION_ICONS[action.mutation]
+                return (
+                  <button key={action.mutation} type="button" title={action.label}
+                    className={`shrink-0 p-1.5 rounded-md ${
+                      action.variant === "destructive"
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-muted-foreground hover:bg-secondary"
+                    }`}
+                    onClick={() => handleMutate(action.mutation, undefined)}>
+                    {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+                  </button>
+                )
+              })}
+              <SessionActionMenu
+                source={{ type: pluginId, id: itemId, title, content: JSON.stringify(parentItem) }}
+                linkedSessionId={linkedSession?.id}
+              />
+            </>
+          }
+        />
+        <PluginFrame
+          pluginId={pluginId}
+          componentName={plugin.components.detail}
+          componentProps={{ itemId, pluginId }}
+          className="w-full flex-1 border-0"
+        />
+      </div>
+    )
   }
 
   // Widget tree path — use full item from getItem() if available
@@ -418,11 +477,6 @@ export function PluginDetail({
 
   const bodyContent = item.body as string | undefined
   const bodyFormat = item.bodyFormat as string | undefined
-
-  // Properties popover for items with editable fields (e.g. Notion tasks/calendar)
-  const hasEditableFields = plugin?.fieldSchema?.some((f) =>
-    (f.type === "select" || f.type === "multiselect") && f.filter?.filterable
-  )
 
   const toolbarRight = (
     <>

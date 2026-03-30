@@ -186,8 +186,10 @@ function PluginListInner({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
         {filterableFields.map((field) => {
-          const options = (field.filter?.filterOptions as string[] | undefined)?.length
-            ? (field.filter!.filterOptions as string[])
+          type LabeledItem = { value: string; label: string }
+          const staticOpts = field.filter?.filterOptions as (string | LabeledItem)[] | undefined
+          const options: string[] | LabeledItem[] = staticOpts?.length
+            ? (typeof staticOpts[0] === "object" ? staticOpts as LabeledItem[] : staticOpts as string[])
             : (dynamicOptions?.[field.id] ?? [])
 
           if (field.filter?.filterType === "select") {
@@ -270,6 +272,11 @@ function PluginListInner({
             )
           }
 
+          // Build labelMap for labeled items (so chips show display names)
+          const labelMap = options.length > 0 && typeof options[0] === "object"
+            ? Object.fromEntries((options as { value: string; label: string }[]).map((o) => [o.value, o.label]))
+            : undefined
+
           return (
             <FilterCombobox
               key={field.id}
@@ -279,6 +286,7 @@ function PluginListInner({
               onValueChange={(vals) =>
                 setFilterState({ ...filterState, [field.id]: vals })
               }
+              labelMap={labelMap}
             />
           )
         })}

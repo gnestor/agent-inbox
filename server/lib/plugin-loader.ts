@@ -6,6 +6,8 @@ type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
 
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
+// Maps plugin ID → directory path (for component resolution)
+const pluginDirs = new Map<string, string>()
 
 // Per-workspace plugin registries (workspace ID → plugin map)
 const workspacePluginRegistries = new Map<string, Map<string, Plugin>>()
@@ -56,6 +58,7 @@ export async function loadBuiltinPlugins(
               continue
             }
             registerPlugin(plugin)
+            pluginDirs.set(plugin.id, join(builtinDir, entry.name))
           }
         } catch (err: unknown) {
           if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
@@ -103,6 +106,7 @@ export async function loadPlugins(
             }
             if (!builtinIds.has(plugin.id)) {
               targetRegistry.set(plugin.id, plugin)
+              pluginDirs.set(plugin.id, join(pluginsDir, entry.name))
             }
           }
         } catch (err: unknown) {
@@ -162,6 +166,11 @@ export function getPlugins(workspaceId?: string): Plugin[] {
   return [...merged.values()]
 }
 
+/** Get the directory path for a plugin (for component resolution). */
+export function getPluginDir(id: string): string | undefined {
+  return pluginDirs.get(id)
+}
+
 export function getPlugin(id: string, workspaceId?: string): Plugin | undefined {
   if (workspaceId) {
     const wsPlugin = workspacePluginRegistries.get(workspaceId)?.get(id)
@@ -175,4 +184,5 @@ export function getPlugin(id: string, workspaceId?: string): Plugin | undefined 
   registry.clear()
   builtinIds.clear()
   workspacePluginRegistries.clear()
+  pluginDirs.clear()
 }
