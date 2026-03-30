@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useRef, useState, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { SidebarRecentSessions } from "@/components/session/SidebarRecentSessions"
 import {
@@ -25,9 +25,11 @@ import {
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
 import { Check, ChevronsUpDown, LogOut, Settings } from "lucide-react"
+import { icons as lucideIcons } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { usePlugins } from "@/hooks/use-plugins"
 import { useNavigation } from "@/hooks/use-navigation"
+import { usePreference } from "@/hooks/use-preferences"
 import { getInitials } from "@/lib/formatters"
 import type { TabId } from "@/types/navigation"
 import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
@@ -41,6 +43,20 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const savedUrls = useRef(new Map<string, string>())
   const [menuOpen, setMenuOpen] = useState(false)
   const { data: plugins } = usePlugins()
+  const [pluginOrder, setPluginOrder] = usePreference<string[]>("pluginOrder", [])
+  const dragItem = useRef<string | null>(null)
+
+  // Sort plugins by user-defined order, preserving unordered ones at the end
+  const sortedPlugins = useMemo(() => {
+    if (!plugins || pluginOrder.length === 0) return plugins ?? []
+    const orderMap = new Map(pluginOrder.map((id, i) => [id, i]))
+    return [...plugins].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? 999
+      const bi = orderMap.get(b.id) ?? 999
+      return ai - bi
+    })
+  }, [plugins, pluginOrder])
+
   return (
     <Sidebar variant="floating" {...props}>
       <SidebarHeader>
@@ -164,16 +180,32 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {plugins && plugins.length > 0 && (
+        {sortedPlugins.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Sources</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {plugins.map((plugin) => {
+                {sortedPlugins.map((plugin) => {
                   const tabId: TabId = `plugin:${plugin.id}`
                   const isActive = activeTab === tabId
                   return (
-                    <SidebarMenuItem key={plugin.id}>
+                    <SidebarMenuItem
+                      key={plugin.id}
+                      draggable
+                      onDragStart={() => { dragItem.current = plugin.id }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (!dragItem.current || dragItem.current === plugin.id) return
+                        const ids = sortedPlugins.map((p) => p.id)
+                        const fromIdx = ids.indexOf(dragItem.current)
+                        const toIdx = ids.indexOf(plugin.id)
+                        ids.splice(fromIdx, 1)
+                        ids.splice(toIdx, 0, dragItem.current)
+                        setPluginOrder(ids)
+                        dragItem.current = null
+                      }}
+                      onDragEnd={() => { dragItem.current = null }}
+                    >
                       <SidebarMenuButton
                         tooltip={plugin.name}
                         isActive={isActive}
@@ -184,7 +216,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           if (isMobile) setOpenMobile(false)
                         }}
                       >
-                        <span>{plugin.emoji ?? "🔌"}</span>
+                        {(() => {
+                          if (plugin.emoji) return <span>{plugin.emoji}</span>
+                          const IconComponent = lucideIcons[plugin.icon as keyof typeof lucideIcons]
+                          if (IconComponent) return <IconComponent className="h-4 w-4" />
+                          return <span>🔌</span>
+                        })()}
                         <span>{plugin.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

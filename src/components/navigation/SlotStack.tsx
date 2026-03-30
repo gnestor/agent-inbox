@@ -22,17 +22,11 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   const scrollRef = useRef<HTMLDivElement>(null)
   const isProgrammaticScroll = useRef(false)
   const scrollSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const mountedKeys = useRef(new Set<string>())
 
   const activeIdx = keys.indexOf(activeKey)
   const safeIdx = activeIdx >= 0 ? activeIdx : 0
   const safeIdxRef = useRef(safeIdx)
   safeIdxRef.current = safeIdx
-
-  // Mount active tab and neighbors
-  mountedKeys.current.add(activeKey)
-  if (safeIdx > 0) mountedKeys.current.add(keys[safeIdx - 1])
-  if (safeIdx < keys.length - 1) mountedKeys.current.add(keys[safeIdx + 1])
 
   // Scroll to active tab when activeKey changes from sidebar click.
   const isUserScrolling = useRef(false)
@@ -159,7 +153,7 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
           className="h-full shrink-0"
           style={{ scrollSnapAlign: "start" }}
         >
-          {mountedKeys.current.has(key) ? renderItem(key) : null}
+          {renderItem(key)}
         </div>
       ))}
     </div>

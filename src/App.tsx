@@ -9,6 +9,7 @@ import { NavigationProvider } from "@/components/navigation"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
 import { usePlugins } from "@/hooks/use-plugins"
+import { usePreference } from "@/hooks/use-preferences"
 import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
@@ -66,22 +67,35 @@ function TabContainer() {
   const ctx = useContext(NavigationContext)
   const tabs = ctx?.state.tabs
   const { data: plugins } = usePlugins()
+  const [pluginOrderPref] = usePreference<string[]>("pluginOrder", [])
+
+  // Sort plugins by user-defined order
+  const sortedPlugins = useMemo(() => {
+    if (!plugins) return []
+    if (pluginOrderPref.length === 0) return plugins
+    const orderMap = new Map(pluginOrderPref.map((id, i) => [id, i]))
+    return [...plugins].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? 999
+      const bi = orderMap.get(b.id) ?? 999
+      return ai - bi
+    })
+  }, [plugins, pluginOrderPref])
 
   // Set plugin order for animation direction when plugins load
   useEffect(() => {
-    if (plugins && plugins.length > 0) {
-      setPluginOrder(plugins.map((p) => p.id))
+    if (sortedPlugins.length > 0) {
+      setPluginOrder(sortedPlugins.map((p) => p.id))
     }
-  }, [plugins])
+  }, [sortedPlugins])
 
   const { switchTab } = useNavigation()
 
   const keys = useMemo(() => {
     if (!tabs) return STATIC_SLOTS
 
-    // Collect plugin tabs from loaded plugins
-    const pluginKeys = plugins
-      ? plugins.map((p) => `plugin:${p.id}`)
+    // Collect plugin tabs from loaded plugins (respecting user order)
+    const pluginKeys = sortedPlugins.length > 0
+      ? sortedPlugins.map((p) => `plugin:${p.id}`)
       : Object.keys(tabs).filter((k) => k.startsWith("plugin:"))
 
     const recentKeys = Object.keys(tabs)
