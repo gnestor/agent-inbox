@@ -9,7 +9,8 @@ import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
-import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
+import { useNavigation } from "@/hooks/use-navigation"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
@@ -223,6 +224,7 @@ export function PluginDetail({
 }) {
   const queryClient = useQueryClient()
   const wsId = useWorkspaceId()
+  const { deselectItem } = useNavigation()
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
@@ -309,7 +311,7 @@ export function PluginDetail({
         <PanelHeader
           left={
             <div className="flex items-center gap-2 min-w-0">
-              <SidebarButton />
+              <BackButton onClick={deselectItem} />
               <span className="font-semibold text-sm truncate">{title}</span>
             </div>
           }
@@ -380,7 +382,7 @@ export function PluginDetail({
         <PanelHeader
           left={
             <div className="flex items-center gap-2 min-w-0">
-              <SidebarButton />
+              <BackButton onClick={deselectItem} />
               <span className="font-semibold text-sm truncate">{title}</span>
             </div>
           }
@@ -448,7 +450,7 @@ export function PluginDetail({
         <PanelHeader
           left={
             <div className="flex items-center gap-2 min-w-0">
-              <SidebarButton />
+              <BackButton onClick={deselectItem} />
               <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
             </div>
           }
@@ -526,7 +528,7 @@ export function PluginDetail({
       <PanelHeader
         left={
           <div className="flex items-center gap-2 min-w-0">
-            <SidebarButton />
+            <BackButton onClick={deselectItem} />
             <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
           </div>
         }

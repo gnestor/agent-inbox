@@ -192,6 +192,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       saveExtraPanels(tab)
       tab.selectedItemId = undefined
       tab.panels = tab.panels.slice(0, 1) // keep only list
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 

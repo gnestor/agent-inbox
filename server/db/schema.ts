@@ -35,20 +35,6 @@ export function initializeDatabase() {
       metadata TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS session_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL REFERENCES sessions(id),
-      sequence INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(session_id, sequence)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_session_messages_session
-      ON session_messages(session_id, sequence);
-
-
     CREATE TABLE IF NOT EXISTS users (
       email TEXT PRIMARY KEY,
       name TEXT NOT NULL,

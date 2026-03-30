@@ -9,10 +9,6 @@ const messagesStore = new Map<string, any[]>()
 
 vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("FROM session_messages")) {
-      const sessionId = params![0] as string
-      return messagesStore.get(sessionId) || []
-    }
     if (sql.includes("FROM sessions")) {
       return [...sessionsStore.values()]
     }
@@ -65,9 +61,6 @@ vi.mock("../../db/pool.js", () => ({
         session.status = status
         session.updated_at = new Date().toISOString()
       }
-      return { rowCount: 1 }
-    }
-    if (sql.includes("INSERT INTO session_messages")) {
       return { rowCount: 1 }
     }
     return { rowCount: 0 }

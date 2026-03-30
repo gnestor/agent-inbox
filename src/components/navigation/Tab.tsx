@@ -61,11 +61,12 @@ function useExitChildren(
 // --- MobileTab (fullscreen panels, scroll-snap, touch navigation) ---
 
 function MobileTab({ id, children }: TabProps) {
-  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab } = useNavigation()
+  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab, deselectItem } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const [snapEnabled, setSnapEnabled] = useState(false)
   const hasMounted = useRef(false)
+  const isProgrammaticScroll = useRef(false)
 
   const panels = getPanels(id)
   void getSelectedItemId(id) // trigger re-render on selection change
@@ -98,12 +99,14 @@ function MobileTab({ id, children }: TabProps) {
     const smooth = hasMounted.current
 
     const doScroll = () => {
+      isProgrammaticScroll.current = true
       el.style.scrollSnapType = "none"
       if (smooth) {
         el.scrollTo({ left: target, behavior: "smooth" })
         const onDone = () => {
           el.style.scrollSnapType = "x mandatory"
           setSnapEnabled(true)
+          isProgrammaticScroll.current = false
           if (exitChildren) clearExit()
         }
         el.addEventListener("scrollend", onDone, { once: true })
@@ -112,6 +115,7 @@ function MobileTab({ id, children }: TabProps) {
         requestAnimationFrame(() => {
           el.style.scrollSnapType = "x mandatory"
           setSnapEnabled(true)
+          isProgrammaticScroll.current = false
         })
       }
       hasMounted.current = true
@@ -131,6 +135,20 @@ function MobileTab({ id, children }: TabProps) {
 
     doScroll()
   })
+
+  // Deselect item when user swipes back to list panel
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScrollEnd = () => {
+      if (isProgrammaticScroll.current) return
+      if (el.scrollLeft < el.clientWidth * 0.5 && panels.length > 1) {
+        deselectItem()
+      }
+    }
+    el.addEventListener("scrollend", onScrollEnd)
+    return () => el.removeEventListener("scrollend", onScrollEnd)
+  }, [panels.length, deselectItem])
 
   // Vertical drag to switch tabs
   const onVerticalDrag = useCallback(

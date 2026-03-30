@@ -92,7 +92,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <>
                     <DropdownMenuGroup>
                       <DropdownMenuLabel className="p-0 font-normal text-foreground">
-                        <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                        <div className="flex items-center gap-2 px-2 py-1.5 text-left text-sm">
                           <Avatar className="h-8 w-8">
                             {user.picture && <AvatarImage src={user.picture} alt={user.name} />}
                             <AvatarFallback>
@@ -106,7 +106,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             </span>
                           </div>
                           <button
-                            className="shrink-0 rounded-md p-1 hover:bg-secondary"
+                            className="shrink-0 rounded-md p-2 hover:bg-secondary"
                             onClick={(e) => {
                               e.stopPropagation()
                               setMenuOpen(false)
@@ -150,7 +150,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             <span className="flex-1 truncate">{ws.name}</span>
                             {isActive && wsIsAdmin && (
                               <button
-                                className="shrink-0 rounded-md p-1 hover:bg-secondary"
+                                className="shrink-0 rounded-md p-2 hover:bg-secondary"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setMenuOpen(false)

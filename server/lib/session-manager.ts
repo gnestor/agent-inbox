@@ -147,47 +147,31 @@ export async function createSessionRecord(
 }
 
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
- *  Uses a targeted query (last 10 assistant messages) instead of loading the full transcript. */
+ *  Reads the JSONL file backward (last 20 lines) for efficiency. */
 export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
-  const rows = await query<{ message: string }>(
-    "SELECT message FROM session_messages WHERE session_id = $1 AND type = 'assistant' ORDER BY sequence DESC LIMIT 10",
-    [sessionId],
-  )
-  for (const row of rows) {
-    try {
-      const parsed = JSON.parse(row.message)
-      const content = parsed?.message?.content ?? parsed?.content
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return null
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    // Scan assistant messages from the end
+    for (let i = transcript.length - 1; i >= 0; i--) {
+      const msg = transcript[i]
+      if (msg.type !== "assistant") continue
+      const content = (msg.message as any)?.message?.content ?? (msg.message as any)?.content
       if (!Array.isArray(content)) continue
       for (const block of content) {
         if (block.type === "tool_use" && block.name === "AskUserQuestion" && block.input?.questions) {
           return block.input.questions
         }
       }
-    } catch {}
-  }
+    }
+  } catch {}
   return null
 }
 
-export async function appendSessionMessage(
-  sessionId: string,
-  sequence: number,
-  type: string,
-  message: unknown,
-) {
+async function touchSession(sessionId: string) {
   const now = new Date().toISOString()
-
-  await Promise.all([
-    execute(
-      `INSERT INTO session_messages (session_id, sequence, type, message, created_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT DO NOTHING`,
-      [sessionId, sequence, type, JSON.stringify(message), now],
-    ),
-    execute(
-      `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
-      [now, sessionId],
-    ),
-  ])
+  await execute(`UPDATE sessions SET updated_at = $1 WHERE id = $2`, [now, sessionId])
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {
@@ -284,11 +268,21 @@ export async function getSessionRecord(sessionId: string) {
   )
 }
 
-export async function getSessionMessages(sessionId: string) {
-  return await query<Record<string, unknown>>(
-    "SELECT * FROM session_messages WHERE session_id = $1 ORDER BY sequence",
-    [sessionId],
-  )
+/** Count lines in a session's JSONL file. */
+async function getSessionMessageCount(sessionId: string): Promise<number> {
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return 0
+    const { readFileSync } = await import("fs")
+    const { join } = await import("path")
+    const { homedir } = await import("os")
+    const encodedDir = (agentSession.cwd || defaultWorkspacePath).replace(/\//g, "-")
+    const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+    const content = readFileSync(sessionFile, "utf-8")
+    return content.trim().split("\n").length
+  } catch {
+    return 0
+  }
 }
 
 export async function getLinkedSession(
@@ -330,10 +324,9 @@ export async function listSessionRecords(filters?: {
   let sql: string
   if (filters?.q) {
     const like = `%${filters.q}%`
-    // Join session_messages to search full message content
-    sql = `SELECT DISTINCT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
-    conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++} OR sm.message LIKE $${paramIndex++})`)
-    params.push(like, like, like)
+    sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
+    conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++})`)
+    params.push(like, like)
   } else {
     sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
   }
@@ -423,11 +416,13 @@ async function autoNameSession(sessionId: string) {
     const initialSummary = (session.prompt as string).slice(0, INITIAL_SUMMARY_LENGTH)
     if (session.summary !== initialSummary) return
 
-    const messages = await getSessionMessages(sessionId)
-    if (messages.length < 2) return // Skip trivial sessions (e.g. immediate errors)
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    if (transcript.length < 2) return // Skip trivial sessions (e.g. immediate errors)
 
     const title = await generateSessionTitle(
-      messages.map((m) => ({ type: m.type as string, message: m.message as string }))
+      transcript.map((m) => ({ type: m.type as string, message: JSON.stringify(m.message) }))
     )
     if (title) {
       await updateSessionSummary(sessionId, title)
@@ -516,7 +511,7 @@ export async function startSession(
         }
 
         if (sessionId) {
-          await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+          await touchSession(sessionId)
           broadcastToSession(sessionId, { sequence, message })
           sequence++
         }
@@ -587,10 +582,9 @@ export async function resumeSessionQuery(
     sessionRecord?.linked_source_id as string | undefined,
   )
 
-  const existingMessages = await getSessionMessages(sessionId)
-  let sequence = existingMessages.length
+  let sequence = await getSessionMessageCount(sessionId)
 
-  // Save and broadcast the user's prompt as a message so it appears in the transcript
+  // Broadcast the user's prompt so it appears in the live transcript
   const userMessage = {
     type: "user",
     content: prompt,
@@ -599,7 +593,6 @@ export async function resumeSessionQuery(
       authorName: userProfile.name,
     }),
   }
-  await appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
@@ -632,7 +625,7 @@ export async function resumeSessionQuery(
   ;(async () => {
     try {
       for await (const message of q) {
-        await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+        await touchSession(sessionId)
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 
@@ -664,8 +657,7 @@ export async function attachSourceToSession(
   sessionId: string,
   source: { type: string; id: string; title: string; content: string },
 ) {
-  const messages = await getSessionMessages(sessionId)
-  const nextSequence = messages.length
+  const nextSequence = await getSessionMessageCount(sessionId)
 
   const contextMessage = {
     type: "system",
@@ -676,15 +668,23 @@ export async function attachSourceToSession(
     content: source.content,
   }
 
-  await appendSessionMessage(sessionId, nextSequence, "system", contextMessage)
+  // Append to JSONL file
+  try {
+    const { appendFileSync } = await import("fs")
+    const { join } = await import("path")
+    const { homedir } = await import("os")
+    const agentSession = await findAgentSession(sessionId)
+    const encodedDir = (agentSession?.cwd || defaultWorkspacePath).replace(/\//g, "-")
+    const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+    appendFileSync(sessionFile, JSON.stringify(contextMessage) + "\n")
+  } catch (err) {
+    console.warn(`[attachSource] Failed to append to JSONL for ${sessionId}:`, (err as Error).message)
+  }
+
   broadcastToSession(sessionId, { sequence: nextSequence, message: contextMessage })
 
-  // Update linked source columns (last attachment wins — the actual context
-  // is preserved in session_messages regardless, so multiple attachments work)
+  // Update linked source columns
   const now = new Date().toISOString()
-
-  // Persist title in metadata so listSessionRecords can surface it without joins.
-  // Uses jsonb_set so we don't need a SELECT + parse + re-serialize round-trip.
   await execute(`
     UPDATE sessions
     SET linked_source_id = $1,
@@ -1268,14 +1268,10 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
  * Handles both DB sessions and JSONL-only sessions.
  */
 export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  if (await patchArtifactInDb(sessionId, sequence, code)) return true
-
-  // Locate the JSONL file (may be in a different workspace directory)
   const agentSession = await findAgentSession(sessionId)
   if (agentSession) {
     return patchArtifactInJsonl(sessionId, sequence, code, agentSession.cwd)
   }
-
   return false
 }
 
@@ -1294,35 +1290,6 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
     return true
   }
   return false
-}
-
-async function patchArtifactInDb(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  try {
-    const row = await queryOne<{ message: string }>(
-      "SELECT message FROM session_messages WHERE session_id = $1 AND sequence = $2",
-      [sessionId, sequence],
-    )
-    if (!row) {
-      console.warn(`[patchArtifactInDb] No message at sequence=${sequence} for session=${sessionId}`)
-      return false
-    }
-
-    const msg = JSON.parse(row.message)
-    if (!patchRenderOutputCode(msg, code)) {
-      const content = msg.message?.content || msg.content || []
-      const toolNames = Array.isArray(content) ? content.filter((b: any) => b.type === "tool_use").map((b: any) => b.name) : []
-      console.warn(`[patchArtifactInDb] No render_output block at sequence=${sequence}. Tool names: ${JSON.stringify(toolNames)}, msg.type=${msg.type}`)
-      return false
-    }
-
-    await execute(
-      "UPDATE session_messages SET message = $1 WHERE session_id = $2 AND sequence = $3",
-      [JSON.stringify(msg), sessionId, sequence],
-    )
-    return true
-  } catch {
-    return false
-  }
 }
 
 async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {

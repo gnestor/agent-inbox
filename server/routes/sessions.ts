@@ -136,29 +136,11 @@ sessionRoutes.get("/:id", async (c) => {
   const session = await sessions.getSessionRecord(sessionId)
 
   if (session) {
-    // JSONL is the source of truth for session transcript.
-    // DB only stores metadata (attached_context) and ephemeral stream events.
+    // JSONL is the source of truth for session transcript
     const agentSession = await sessions.findAgentSession(sessionId)
-    const transcript = agentSession
+    const messages = agentSession
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
       : []
-
-    // Prepend any DB-only messages (e.g. attached_context) that aren't in the JSONL
-    const dbMessages = await sessions.getSessionMessages(sessionId)
-    const attachedContext = dbMessages
-      .filter((m) => {
-        const msg = JSON.parse(m.message as string)
-        return m.type === "system" && msg?.subtype === "attached_context"
-      })
-      .map((m) => ({
-        id: m.id,
-        sessionId: m.session_id,
-        sequence: m.sequence,
-        type: m.type,
-        message: JSON.parse(m.message as string),
-        createdAt: m.created_at,
-      }))
-    const messages = [...attachedContext, ...transcript]
 
     return c.json({
       session: {
