@@ -162,7 +162,7 @@ function PluginListInner({
   const items = data?.items ?? []
 
   const hasSubtitle = plugin.fieldSchema?.some((f) => f.listRole === "subtitle")
-  const rowHeight = hasSubtitle ? 100 : 80
+  const rowHeight = plugin.listRowHeight ?? (hasSubtitle ? 100 : 80)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizerSafe({

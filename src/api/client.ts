@@ -179,6 +179,7 @@ export interface PluginManifest {
   auth?: { integrationId: string; scope: "user" | "workspace" }
   fieldSchema: import("@/types/plugin").FieldDef[]
   detailSchema?: import("@/types/panels").WidgetDef[]
+  listRowHeight?: number
   hasSubItems?: boolean
   hasGetItem?: boolean
   hasFilterOptions?: boolean

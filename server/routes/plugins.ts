@@ -59,6 +59,7 @@ pluginRoutes.get("/plugins", (c) => {
       auth: p.auth,
       fieldSchema: p.fieldSchema,
       detailSchema: p.detailSchema,
+      listRowHeight: p.listRowHeight,
       hasSubItems: !!p.querySubItems,
       hasGetItem: !!p.getItem,
       hasFilterOptions: !!p.filterOptions,

@@ -202,6 +202,9 @@ export interface Plugin {
    */
   fieldSchema?: FieldDef[]
 
+  /** Row height in pixels for list items (default: 100 with subtitle, 80 without) */
+  listRowHeight?: number
+
   /**
    * Optional detail widget tree. If omitted, the detail view is auto-generated
    * from fieldSchema (fields with type "html" or "markdown" become prose widgets;
