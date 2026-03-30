@@ -1,0 +1,187 @@
+# Email backfill filter rules for qmd index
+#
+# All patterns are case-insensitive substring matches.
+# sender_patterns match against the full "From:" header value (name + address).
+# subject_patterns match against the message Subject header.
+#
+# Evaluation order:
+#   1. include.sender_patterns — override all excludes
+#   2. exclude.sender_patterns — skip thread
+#   3. exclude.subject_patterns — skip thread
+#   4. exclude.internal_senders — skip as primary contact (these are Hammies internal)
+
+include:
+  # Force-include senders even if they match an exclude pattern.
+  # Useful for invoices and receipts that are valuable to query.
+  sender_patterns: []
+
+exclude:
+  # Hammies internal addresses — not external contacts
+  internal_senders:
+    - grant@hammies.com
+    - grant@hammiesshorts.com
+    - grantnestor@gmail.com
+    - ronnestor@gmail.com
+    - sarah@hammies.com
+    - sarah@hammiesshorts.com
+    - erin@hammies.com
+
+  # Automated/bulk sender patterns
+  sender_patterns:
+    # Generic automated patterns
+    - noreply@
+    - no-reply@
+    - notifications@
+    - updates@
+    - postmaster@
+    - mailer-daemon@
+    - donotreply@
+    - do-not-reply@
+    - automated@
+    - noreply-invoice@
+
+    # Hammies-owned automated addresses
+    - support@hammiesshorts.com        # Shopify order notifications
+    - support@hammies.com
+    - hello@hammies.com
+    - news@hammies.com
+    - hello@distributionmgmt.com
+
+    # E-commerce / payments
+    - "@paypal.com"
+    - "@stripe.com"
+    - "@shopify.com"
+    - "@email.shopify.com"
+    - "@ebay.com"
+    - "@amazon.com"
+    - billing@shopify.com
+    - tradestonenotification@
+    - "@s.urbnvendor.com"
+    - "@email.mirakl.com"
+    - cx@ups.com
+    - "@goshippo.com"
+    - "@happyreturns.com"
+
+    # Wholesale / sourcing platforms
+    - "@faire.com"
+    - "@e.faire.com"
+    - "@email2.faire.com"
+    - "@email1.faire.com"
+    - "@brand.faire.com"
+    - "@info.faire.com"
+    - "@gorgias.com"
+    - gorgias.io
+
+    # Productivity / SaaS tools
+    - "@notion.so"
+    - "@mail.notion.so"
+    - "@slack.com"
+    - "@later.com"
+    - "@air.inc"
+    - "@triplewhale.com"
+    - "@calendly.com"
+    - "@zoom.us"
+    - "@loom.com"
+    - "@kive.ai"
+    - "@motionapp.com"
+    - "@amie.so"
+    - "@joinground.com"
+    - "@docusign.net"
+    - "@postscript.io"
+    - "@postmarkapp.com"
+    - "@chroniclehq.com"
+    - "@v7labs.com"
+    - "@modash.io"
+    - "@topazlabs.com"
+
+    # Marketing / ad platforms
+    - "@klaviyo.com"
+    - "@feedback.klaviyo.com"
+    - "@google.com"
+    - "@googlemail.com"
+    - adctr@microsoft.com
+    - "@marketing.pinterest.com"
+    - "@account.pinterest.com"
+    - "@squaremktg.com"
+    - "@mail.beehiiv.com"
+    - "@apparelnews.net"
+
+    # Finance / banking
+    - "@notification.capitalone.com"
+    - "@cardmessage.capitalone.com"
+    - "@message.capitalone.com"
+    - "@capitaloneshopping.com"
+    - "@chase.com"
+    - "@experience.chase.com"
+    - "@venmo.com"
+    - "@dp.intuit.com"
+    - "@notifications.intuit.com"
+    - "@mail.fidelity.com"
+    - "@kickfurther.com"
+    - "@trustaltus.com"
+
+    # Vendors / services (mass notifications)
+    - "@shipmonk.com"
+    - "@sent-via.netsuite.com"
+    - "@info.rxo.com"
+    - "@emails.bellacanvas.com"
+    - "@ftb.ca.gov"
+    - "@e.myfilingservices.com"
+    - "@disco-mail.net"
+    - "@e.atlassian.com"
+    - "@paperlesspost.com"
+    - ccsend.com
+    - "@mail.vistaprint.com"
+    - "@e.uline.com"
+    - "@numeralhq.com"
+    - "@graymalin.com"
+    - "@alexcrane.co"
+    - "@cuyamabuckhorn.com"
+    - "@ecoenclose.com"
+    - "@judge.me"
+    - "@babybathwater.com"
+    - "@peerspace.com"
+    - "@foundermade.com"
+    - "@shop.tiktok.com"
+    - care@matethelabel.com
+    - hello@charlotte-stone.com
+    - support@playbook.com
+    - "@usc.edu"
+    - "@news.manus.im"
+    - "@sbceo.org"
+
+    # Accounting (bulk notifications — manual invoices from eric@aragoncpas.com are kept)
+    - "@aragoncpas.com"
+
+    # Social / ad platforms
+    - "@support.facebook.com"             # Facebook commerce/shop notifications
+    - "@facebookmail.com"
+
+    # Other SaaS / marketing tools
+    - "@info.adobe.com"
+    - "@mail.grammarly.com"
+    - fulfillmentcustomercare@distributionmgmt.com  # DM automated alerts, not a person
+
+    # Miscellaneous noise (from old script NOISE_PATTERNS)
+    - quickbooks@notification
+    - mailer@pixieset
+    - insiderdeals@my.joinhoney
+    - digest@brandboom
+    - info@crm.moo
+    - support@figma.com
+    - "@labelbox.com"
+    - "@emotive.io"
+    - "@email.moo.com"
+
+  # Subject line patterns — skip threads whose earliest subject matches
+  subject_patterns:
+    - "[Hammies Shorts] Order #"    # Shopify order notification
+    - "[Hammies] Order #"           # Shopify order notification
+    - "Your order"
+    - "Payment received"
+    - "Payout for"
+    - "Shipping confirmation"
+    - "Receipt from"
+    - "has been shipped"
+    - "delivery notification"
+    - "placed by"                   # "Order #NNN placed by ..."

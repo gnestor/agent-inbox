@@ -1,0 +1,16 @@
+{
+  "description": "Reminds the agent to update context before stopping after meaningful work",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "You are evaluating whether Claude Code should stop or first update context.\n\nHook input: $ARGUMENTS\n\nRULES:\n1. If stop_hook_active is true, respond {\"ok\": true} — updates are already in progress.\n2. If the session was only Q&A, greetings, clarifications, or brief responses, respond {\"ok\": true}.\n3. If meaningful work was completed (code changes, data analysis, research with findings, multi-step tasks, workflow execution), respond {\"ok\": false} with the reason below.\n\nWhen returning ok: false, use this exact reason:\n\"Before stopping, update context with anything useful from this session. Use the context-management skill: review what was learned, create or update context pages in context/*.md.\"\n\nRespond with JSON only: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

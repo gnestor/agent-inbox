@@ -1,5 +1,9 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
+import { join, resolve } from "node:path"
+import { stat } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+import { build } from "esbuild"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
 import { getUserCredential } from "../lib/vault.js"
 import { refreshGoogleToken } from "../lib/credentials.js"
@@ -41,6 +45,10 @@ function getWorkspaceId(c: { get: (key: string) => unknown }): string | undefine
   return (c.get("workspace") as { id?: string } | undefined)?.id
 }
 
+const BUILTIN_PLUGINS_ROOT = resolve(fileURLToPath(import.meta.url), "../../../plugins")
+const componentCache = new Map<string, { js: string; mtime: number }>()
+const COMPONENT_CACHE_MAX = 50
+
 export const pluginRoutes = new Hono()
 
 /** GET /api/plugins — list all loaded plugin manifests (excludes skills-only plugins) */
@@ -62,6 +70,69 @@ pluginRoutes.get("/plugins", (c) => {
       hasFilterOptions: !!p.filterOptions,
     }))
   return c.json(plugins)
+})
+
+/**
+ * GET /api/:pluginId/components/:name
+ * Serve a plugin's TSX component as an ES module (esbuild-transformed).
+ */
+pluginRoutes.get("/:pluginId/components/:name", async (c) => {
+  const { pluginId, name } = c.req.param()
+  const workspace = c.get("workspace") as { id?: string; path?: string } | undefined
+
+  const candidates = [
+    workspace?.path && join(workspace.path, "plugins", pluginId, "app", "components", `${name}.tsx`),
+    join(BUILTIN_PLUGINS_ROOT, pluginId, "app", "components", `${name}.tsx`),
+  ].filter(Boolean) as string[]
+
+  let componentPath = ""
+  let mtime = 0
+  for (const candidate of candidates) {
+    try {
+      const s = await stat(candidate)
+      componentPath = candidate
+      mtime = s.mtimeMs
+      break
+    } catch {}
+  }
+
+  if (!componentPath) {
+    throw new HTTPException(404, { message: `Component "${name}" not found for plugin "${pluginId}"` })
+  }
+
+  const cacheKey = `${pluginId}:${name}:${componentPath}`
+  const cached = componentCache.get(cacheKey)
+  if (cached && cached.mtime === mtime) {
+    return new Response(cached.js, {
+      headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+    })
+  }
+
+  const result = await build({
+    entryPoints: [componentPath],
+    bundle: true,
+    format: "esm",
+    jsx: "transform",
+    jsxFactory: "React.createElement",
+    jsxFragment: "React.Fragment",
+    tsconfigRaw: '{ "compilerOptions": { "jsx": "react" } }',
+    external: ["react", "react-dom", "react-dom/client", "@hammies/frontend/*"],
+    banner: { js: 'import React from "react";' },
+    platform: "browser",
+    target: "es2020",
+    write: false,
+  })
+
+  const js = result.outputFiles[0].text
+  if (componentCache.size >= COMPONENT_CACHE_MAX) {
+    const first = componentCache.keys().next().value
+    if (first) componentCache.delete(first)
+  }
+  componentCache.set(cacheKey, { js, mtime })
+
+  return new Response(js, {
+    headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+  })
 })
 
 /** GET /api/:pluginId/items — query items with optional filters + cursor */

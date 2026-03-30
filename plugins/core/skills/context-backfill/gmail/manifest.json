@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "description": "Tracks qmd email backfill progress. Separate from email-manifest.json which tracks context page creation.",
+  "last_run": "2026-03-25T21:57:52.464Z",
+  "last_run_ms": 1774475871403,
+  "stats": {
+    "total_indexed": 7570,
+    "total_failed": 0
+  },
+  "last_status": {
+    "date": "2026-03-16T04:29:28.197Z",
+    "total_threads": 7520,
+    "saved_files": 6914,
+    "pending": 4496
+  }
+}
