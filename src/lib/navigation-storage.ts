@@ -9,7 +9,9 @@ const STORAGE_KEY = "INBOX_NAV_STATE"
 // --- IndexedDB persistence ---
 
 export async function saveNavigationState(state: NavigationState): Promise<void> {
-  await set(STORAGE_KEY, state)
+  // Strip _initialized flag — it's runtime-only, not persisted
+  const { _initialized, ...rest } = state
+  await set(STORAGE_KEY, rest)
 }
 
 export async function loadNavigationState(): Promise<NavigationState | null> {

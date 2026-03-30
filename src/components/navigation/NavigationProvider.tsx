@@ -153,7 +153,7 @@ function saveExtraPanels(tab: TabState) {
 function navReducer(state: NavigationState, action: NavAction): NavigationState {
   switch (action.type) {
     case "SET_STATE":
-      return action.state
+      return { ...action.state, _initialized: true }
 
     case "SWITCH_TAB": {
       const tabs = state.tabs[action.tabId]
@@ -338,7 +338,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   })
   const navigate = useNavigate()
   const mountStarted = useRef(false)
-  const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Keep a ref to the latest state so the URL→state effect (which intentionally
@@ -414,15 +413,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }
 
       // 5. Dispatch merged state; URL already correct, no navigate() needed
+      lastNavigatedUrl.current = buildUrl(base.activeTab, base.tabs[base.activeTab]?.selectedItemId, base.tabs[base.activeTab])
       dispatch({ type: "SET_STATE", state: base })
-      lastNavigatedUrl.current = location.pathname
-      initialized.current = true
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced persistence
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       saveNavigationState(state)
@@ -434,7 +432,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const activeTabState = state.tabs[state.activeTab]
   const activeSelectedId = activeTabState?.selectedItemId
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     const url = buildUrl(state.activeTab, activeSelectedId, activeTabState)
     if (url !== lastNavigatedUrl.current) {
       lastNavigatedUrl.current = url
@@ -444,7 +442,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // URL → state sync (browser back/forward and sidebar links)
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     if (location.pathname === lastNavigatedUrl.current) return
     lastNavigatedUrl.current = location.pathname
 

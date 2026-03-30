@@ -56,6 +56,8 @@ export interface TabState {
 export interface NavigationState {
   activeTab: TabId
   tabs: Record<string, TabState>  // string key to support dynamic plugin:* tabs
+  /** Set by SET_STATE dispatch; prevents URL sync from firing with stale reducer state */
+  _initialized?: boolean
 }
 
 // --- Helpers ---

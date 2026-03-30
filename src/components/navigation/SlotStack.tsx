@@ -76,6 +76,11 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   keysRef.current = keys
 
   useEffect(() => {
+    if (isMobile) {
+      // Clear any pending scroll sync from a previous desktop render
+      clearTimeout(scrollSyncTimer.current)
+      return
+    }
     const el = scrollRef.current
     if (!el) return
 
@@ -108,8 +113,11 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     }
 
     el.addEventListener("scroll", onScroll, { passive: true })
-    return () => el.removeEventListener("scroll", onScroll)
-  }, [])
+    return () => {
+      el.removeEventListener("scroll", onScroll)
+      clearTimeout(scrollSyncTimer.current)
+    }
+  }, [isMobile])
 
   // Set initial scroll position synchronously
   const setRef = useCallback((el: HTMLDivElement | null) => {
