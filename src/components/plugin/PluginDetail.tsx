@@ -376,7 +376,16 @@ export function PluginDetail({
     if (pluginId === "gmail") {
       return <EmailThread threadId={itemId} />
     }
-    // Workspace plugins: render via PluginFrame iframe
+
+    // Wait for item data before rendering iframe (uses app's skeleton + React Query cache)
+    const item = parentItem
+    const isLoading = hasGetItem ? fullItemPending : itemsPending
+    if (!item && isLoading) return <PanelSkeleton />
+    if (!item) {
+      return <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Item not found</div>
+    }
+
+    // Workspace plugins: render via PluginFrame iframe with pre-fetched data
     return (
       <div className="flex flex-1 flex-col min-h-0">
         <PanelHeader
@@ -388,8 +397,8 @@ export function PluginDetail({
           }
           right={
             <>
-              {hasEditableFields && parentItem && (
-                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={parentItem} />
+              {hasEditableFields && (
+                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={item} />
               )}
               {externalUrl && (
                 <a href={externalUrl} target="_blank" rel="noopener noreferrer"
@@ -413,7 +422,7 @@ export function PluginDetail({
                 )
               })}
               <SessionActionMenu
-                source={{ type: pluginId, id: itemId, title, content: JSON.stringify(parentItem) }}
+                source={{ type: pluginId, id: itemId, title, content: JSON.stringify(item) }}
                 linkedSessionId={linkedSession?.id}
               />
             </>
@@ -422,7 +431,7 @@ export function PluginDetail({
         <PluginFrame
           pluginId={pluginId}
           componentName={plugin.components.detail}
-          componentProps={{ itemId, pluginId }}
+          componentProps={{ item }}
           className="w-full flex-1 border-0"
         />
       </div>

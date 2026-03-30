@@ -15,9 +15,10 @@ interface PluginViewProps {
 }
 
 export function PluginView({ tabId: tabIdProp }: PluginViewProps) {
-  const { activeTab, getPanels, getSelectedItemId } = useNavigation()
+  const { activeTab, getPanels, getSelectedItemId, getSourceTab } = useNavigation()
   const tabId = tabIdProp ?? activeTab as TabId
-  const pluginId = pluginIdFromTab(tabId)
+  // For recent:* tabs, resolve pluginId from the source tab (e.g. "plugin:gmail")
+  const pluginId = pluginIdFromTab(tabId) ?? pluginIdFromTab(getSourceTab(tabId) ?? "")
   const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")
