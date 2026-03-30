@@ -149,7 +149,7 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
         height: "100%",
         overflowY: "scroll",
         scrollSnapType: "y mandatory",
-        scrollbarWidth: "none",
+        scrollbarWidth: "thin",
         ...outerStyle,
       }}
     >

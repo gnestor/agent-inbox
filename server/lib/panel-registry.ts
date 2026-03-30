@@ -17,9 +17,9 @@ export async function loadPanels(
   workspacePath: string,
   importer: Importer = (p) => import(p)
 ): Promise<void> {
-  // Clear existing state
-  for (const key of Object.keys(panelSchemas)) delete panelSchemas[key]
-  for (const key of Object.keys(mutations)) delete mutations[key]
+  // Build into local objects first, then swap atomically
+  const nextSchemas: Record<string, WidgetDef[]> = {}
+  const nextMutations: Record<string, MutationFn> = {}
 
   const workflowsDir = join(workspacePath, "workflows")
 
@@ -34,7 +34,6 @@ export async function loadPanels(
   for (const entry of entries) {
     const panelsPath = join(workflowsDir, entry, "inbox-panels.json")
 
-    // Read panels.json
     let panelJson: string
     try {
       panelJson = await readFile(panelsPath, "utf8")
@@ -50,25 +49,29 @@ export async function loadPanels(
       continue
     }
 
-    // Register panels
     for (const [tag, widgets] of Object.entries(schema)) {
-      panelSchemas[tag] = widgets
+      nextSchemas[tag] = widgets
     }
 
-    // Try to load mutations file — readFile to check existence, then importer
     const mutationsPath = join(workflowsDir, entry, "inbox-mutations.ts")
     try {
-      await readFile(mutationsPath, "utf8")  // throws on ENOENT; undefined is fine
+      await readFile(mutationsPath, "utf8")
       const mod = await importer(mutationsPath)
       for (const [exportName, fn] of Object.entries(mod)) {
         if (typeof fn === "function") {
-          mutations[toKebab(exportName)] = fn as MutationFn
+          nextMutations[toKebab(exportName)] = fn as MutationFn
         }
       }
     } catch {
       // mutations file doesn't exist or failed to load — skip
     }
   }
+
+  // Atomic swap — no window where registry is empty
+  for (const key of Object.keys(panelSchemas)) delete panelSchemas[key]
+  Object.assign(panelSchemas, nextSchemas)
+  for (const key of Object.keys(mutations)) delete mutations[key]
+  Object.assign(mutations, nextMutations)
 }
 
 export function getPanelSchemas(): Record<string, WidgetDef[]> {

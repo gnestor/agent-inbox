@@ -165,7 +165,7 @@ function MobileTab({ id, children }: TabProps) {
     <DragTabContext.Provider value={{ onVerticalDrag }}>
       <div
         ref={scrollRef}
-        className="flex flex-row h-full shrink-0 overflow-y-hidden overflow-x-auto scrollbar-none"
+        className="flex flex-row h-full shrink-0 overflow-y-hidden overflow-x-auto"
         style={{ scrollSnapType: snapEnabled ? "x mandatory" : "none" }}
       >
         {renderedChildren}

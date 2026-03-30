@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
+import TurndownService from "turndown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
@@ -54,6 +55,10 @@ function formatSlackText(text: string): string {
     .replace(/:([a-z0-9_+-]+):/g, (_, name) => EMOJI_MAP[name] ?? `:${name}:`)
 }
 
+const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeHighlight]
+
 const EMOJI_MAP: Record<string, string> = {
   slightly_smiling_face: "🙂", smile: "😊", grinning: "😀", joy: "😂",
   heart: "❤️", thumbsup: "+1", "+1": "👍", "-1": "👎", thumbsdown: "👎",
@@ -80,7 +85,7 @@ function HtmlMessageBody({ html }: { html: string }) {
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
     html, body { margin: 0; padding: 0; overflow: hidden; background: transparent !important;
       color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-      font-size: 13px; line-height: 1.5; }
+      font-size: 14px; line-height: 1.5; }
     img { max-width: 100%; height: auto; }
     a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
     blockquote { margin: 0.5em 0; padding-left: 0.75em; border-left: 2px solid color-mix(in srgb, var(--foreground) 20%, transparent); }
@@ -109,6 +114,7 @@ function MessageRow({ item }: { item: PluginItem }) {
   const initials = name.slice(0, 2).toUpperCase()
   const isHtml = data.bodyType === "html"
   const text = String(data.text ?? "")
+  const markdown = useMemo(() => (isHtml && text ? turndown.turndown(text) : null), [isHtml, text])
   const attachments = (data.attachments ?? []) as Array<{ url: string; contentType: string; name: string; size?: number }>
   const imageAttachments = attachments.filter((a) => a.contentType?.startsWith("image/"))
   const otherAttachments = attachments.filter((a) => !a.contentType?.startsWith("image/"))
@@ -147,8 +153,12 @@ function MessageRow({ item }: { item: PluginItem }) {
               ))}
             </div>
           )}
-          {isHtml && text ? (
-            <HtmlMessageBody html={text} />
+          {markdown ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+              <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+                {markdown}
+              </Markdown>
+            </div>
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
               {formatSlackText(text)}
@@ -162,7 +172,7 @@ function MessageRow({ item }: { item: PluginItem }) {
                   href={a.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground underline hover:text-foreground truncate max-w-[200px] inline-block"
+                  className="text-xs text-muted-foreground underline hover:text-foreground truncate inline-block"
                 >
                   {a.name}
                 </a>
@@ -194,7 +204,7 @@ function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
         <HtmlMessageBody html={body} />
       ) : bodyFormat === "markdown" ? (
         <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{body}</Markdown>
+          <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{body}</Markdown>
         </div>
       ) : (
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
@@ -291,9 +301,9 @@ export function PluginDetail({
       <div className="flex flex-1 flex-col min-h-0">
         <PanelHeader
           left={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <SidebarButton />
-              <span className="font-semibold text-sm">{title}</span>
+              <span className="font-semibold text-sm truncate">{title}</span>
             </div>
           }
           right={
@@ -377,9 +387,9 @@ export function PluginDetail({
       <div className="flex flex-1 flex-col min-h-0">
         <PanelHeader
           left={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <SidebarButton />
-              <span className="font-semibold text-sm">{getItemTitle(item)}</span>
+              <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
             </div>
           }
           right={
@@ -462,9 +472,9 @@ export function PluginDetail({
     <div className="flex flex-1 flex-col min-h-0">
       <PanelHeader
         left={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <SidebarButton />
-            <span className="font-semibold text-sm">{getItemTitle(item)}</span>
+            <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
           </div>
         }
         right={toolbarRight}
@@ -474,7 +484,7 @@ export function PluginDetail({
           <NotionBlockRenderer blocks={notionBlocks} />
         ) : bodyContent && bodyFormat === "markdown" ? (
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{bodyContent}</Markdown>
+            <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{bodyContent}</Markdown>
           </div>
         ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
           <HtmlMessageBody html={bodyContent} />

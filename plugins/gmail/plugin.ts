@@ -254,11 +254,16 @@ export const gmailPlugin: Plugin = {
   filterOptions: {
     labels: async (ctx) => {
       const accessToken = await requireToken(ctx)
+      const cacheKey = `gmail:labels:${ctx!.userEmail}`
+      const cached = await getCached<string[]>(cacheKey)
+      if (cached) return cached
       const result = await gmail.getLabels(accessToken)
-      return result.labels
+      const labels = result.labels
         .filter((l: any) => l.type === "user")
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((l: any) => l.name)
+      await setCached(cacheKey, labels, 10 * 60 * 1000) // 10min
+      return labels
     },
   },
 

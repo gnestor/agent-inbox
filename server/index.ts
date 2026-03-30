@@ -262,10 +262,8 @@ const server = serve({ fetch: app.fetch, port }, () => {
   // Prune expired cache entries on startup
   pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
   // Index all agent SDK sessions into DB (non-blocking)
-  // Skip file watchers in dev mode — tsx watch handles restarts, and watchers cause EMFILE
-  const isDev = process.env.NODE_ENV !== "production"
   indexAllAgentSessions()
-    .then(() => { if (!isDev) watchProjectsDir() })
+    .then(() => watchProjectsDir())
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
@@ -277,8 +275,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
     )
   ).then(() => {
     mountPluginRoutes(app)
-    // Watch workspace plugin dirs for hot reload (skip in dev — tsx watch restarts the server)
-    if (!isDev) watchPlugins(registeredWorkspaces, app)
+    watchPlugins(registeredWorkspaces, app)
   })
   if (registeredWorkspaces.length > 0) {
     loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))
