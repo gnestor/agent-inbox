@@ -125,7 +125,7 @@ function AuthenticatedApp() {
       <SidebarProvider>
         <LiquidGlassFilter />
         <AppSidebar />
-        <SidebarInset className="max-h-svh overflow-hidden">
+        <SidebarInset className="max-h-svh">
           <div className="flex flex-1 h-full">
             <TabContainer />
           </div>

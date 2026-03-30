@@ -93,6 +93,12 @@ export function setPluginOrder(ids: string[]): void {
   pluginOrder = ids
 }
 
+/** Get the current ordered tab list for vertical drag switching. */
+export function getTabOrder(): TabId[] {
+  const pluginTabs = pluginOrder.map((id) => `plugin:${id}` as TabId)
+  return ["settings", ...pluginTabs, "sessions"]
+}
+
 /**
  * Get the index of a tab for animation direction.
  * Order: settings (0) → plugins (1+, in manifest order) → sessions (last)

@@ -1,7 +1,7 @@
-import { useRef, useMemo } from "react"
+import { useRef, useMemo, useState } from "react"
 import { useIsRestoring, useQuery } from "@tanstack/react-query"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { SlidersHorizontal } from "lucide-react"
+import { SlidersHorizontal, Search } from "lucide-react"
 import {
   Popover, PopoverTrigger, PopoverContent,
   Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty,
@@ -30,6 +30,13 @@ function buildBadges(item: PluginItem, fieldSchema: FieldDef[], hiddenFields?: S
     const raw = item[field.id]
     if (raw == null) continue
     if (field.badge.show === "if-set" && !raw) continue
+
+    // Boolean fields: use field label as badge text (not "true")
+    if (field.type === "boolean") {
+      const label = field.badge.labelFn?.(String(raw)) ?? field.label
+      badges.push({ label, variant: field.badge.variant, className: field.badge.colorFn?.(String(raw)) })
+      continue
+    }
 
     // Split comma-separated values into individual badges (e.g. tags)
     const values = String(raw).includes(",") ? String(raw).split(",").map((s) => s.trim()) : [String(raw)]
@@ -61,6 +68,7 @@ function PluginListInner({
   onSelectedTitleChange,
 }: PluginListInnerProps) {
   const { selectItem } = useNavigation()
+  const [searchQuery, setSearchQuery] = useState("")
 
   // Persist filter state per plugin via user preferences
   const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
@@ -124,6 +132,7 @@ function PluginListInner({
   for (const [k, v] of Object.entries(filterState)) {
     if (v.length > 0) queryFilters[k] = v.join(",")
   }
+  if (searchQuery.trim()) queryFilters.q = searchQuery.trim()
 
   const hasActiveFilters = Object.values(filterState).some((v) => v.length > 0)
 
@@ -291,6 +300,17 @@ function PluginListInner({
           </>
         }
       />
+
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b">
+        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={`Search ${plugin.name.toLowerCase()}...`}
+          className="flex-1 text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground"
+        />
+      </div>
 
       {isLoading && !items.length && <ListSkeleton itemHeight={72} />}
 

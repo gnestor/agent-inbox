@@ -11,6 +11,7 @@ import {
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
+import { getTabOrder } from "@/types/navigation"
 import { DURATION, EASE_CSS } from "@/lib/navigation-constants"
 
 interface TabProps {
@@ -29,8 +30,6 @@ export const DragTabContext = createContext<DragTabContextValue | null>(null)
 export function useDragTab() {
   return useContext(DragTabContext)
 }
-
-const ALL_TABS: TabId[] = ["settings", "plugin:gmail", "plugin:notion-tasks", "plugin:notion-calendar", "sessions"]
 
 // --- Exit children helper (keeps outgoing panels in DOM during exit animation) ---
 
@@ -136,14 +135,15 @@ function MobileTab({ id, children }: TabProps) {
   const onVerticalDrag = useCallback(
     (startY: number, firstMove: PointerEvent) => {
       const threshold = 60
-      const currentIdx = ALL_TABS.indexOf(id)
+      const tabs = getTabOrder()
+      const currentIdx = tabs.indexOf(id)
 
       const trySwitch = (me: PointerEvent) => {
         const dy = me.clientY - startY
         if (Math.abs(dy) > threshold) {
           const nextIdx =
-            dy < 0 ? Math.min(currentIdx + 1, ALL_TABS.length - 1) : Math.max(currentIdx - 1, 0)
-          if (nextIdx !== currentIdx) switchTab(ALL_TABS[nextIdx])
+            dy < 0 ? Math.min(currentIdx + 1, tabs.length - 1) : Math.max(currentIdx - 1, 0)
+          if (nextIdx !== currentIdx) switchTab(tabs[nextIdx])
           document.removeEventListener("pointermove", onMove)
           document.removeEventListener("pointerup", onUp)
         }

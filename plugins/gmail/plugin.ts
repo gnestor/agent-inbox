@@ -13,6 +13,15 @@ import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
 const SYNC_TTL = 86_400_000 // 24h
 
+/** Add derived boolean fields from labelIds for badge rendering. */
+function addDerivedFields(thread: ThreadSummary): ThreadSummary & { isImportant: boolean; isStarred: boolean } {
+  return {
+    ...thread,
+    isImportant: thread.labelIds.includes("IMPORTANT"),
+    isStarred: thread.labelIds.includes("STARRED"),
+  }
+}
+
 type SyncState = {
   historyId: string
   threads: ThreadSummary[]
@@ -76,20 +85,20 @@ export const gmailPlugin: Plugin = {
   auth: { integrationId: "google", scope: "user" },
 
   fieldSchema: [
-    { id: "fromDisplay", label: "From", type: "text", listRole: "title" },
+    { id: "from", label: "From", type: "text", listRole: "title" },
     { id: "subject", label: "Subject", type: "text", listRole: "subtitle" },
     { id: "date", label: "Date", type: "date", listRole: "timestamp" },
     {
       id: "isUnread", label: "Unread", type: "boolean",
-      badge: { show: "if-set", variant: "default", colorFn: () => "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" },
+      badge: { show: "if-set", variant: "secondary" },
     },
     {
       id: "isImportant", label: "Important", type: "boolean",
-      badge: { show: "if-set", colorFn: () => "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300" },
+      badge: { show: "if-set", variant: "secondary" },
     },
     {
       id: "isStarred", label: "Starred", type: "boolean",
-      badge: { show: "if-set", colorFn: () => "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300" },
+      badge: { show: "if-set", variant: "secondary" },
     },
     { id: "body", label: "Body", type: "html", listRole: "hidden" },
     {
@@ -102,7 +111,22 @@ export const gmailPlugin: Plugin = {
   async query(filters, cursor, ctx) {
     const accessToken = await requireToken(ctx)
     const userEmail = ctx!.userEmail
-    const query = filters.q || "in:inbox"
+
+    // Build Gmail search query from filters
+    const parts: string[] = []
+    if (filters.q) parts.push(filters.q)
+    else parts.push("in:inbox")
+    if (filters.flags) {
+      for (const flag of filters.flags.split(",")) {
+        parts.push(`is:${flag.trim()}`)
+      }
+    }
+    if (filters.labels) {
+      for (const label of filters.labels.split(",")) {
+        parts.push(`label:${label.trim()}`)
+      }
+    }
+    const query = parts.join(" ")
     const max = 20
     const pageToken = cursor
 
@@ -150,7 +174,7 @@ export const gmailPlugin: Plugin = {
           }
 
           await setCached(syncKey, { historyId: newHistoryId, threads, nextPageToken: syncState.nextPageToken }, SYNC_TTL)
-          return { items: threads as any[], nextCursor: syncState.nextPageToken ?? undefined }
+          return { items: threads.map(addDerivedFields) as any[], nextCursor: syncState.nextPageToken ?? undefined }
         } catch (e: any) {
           console.warn("Incremental sync failed, falling back to full sync:", e.message)
           await invalidate(`gmail:sync:${userEmail}:${query}:${max}`)
@@ -164,7 +188,7 @@ export const gmailPlugin: Plugin = {
       const syncKey = `gmail:sync:${userEmail}:${query}:${max}`
       await setCached(syncKey, { historyId: result.historyId, threads: result.threads, nextPageToken: result.nextPageToken }, SYNC_TTL)
     }
-    return { items: result.threads as any[], nextCursor: result.nextPageToken ?? undefined }
+    return { items: result.threads.map(addDerivedFields) as any[], nextCursor: result.nextPageToken ?? undefined }
   },
 
   async getItem(threadId, ctx) {

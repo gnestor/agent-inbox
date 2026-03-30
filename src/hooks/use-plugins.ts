@@ -1,19 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
-import { getPlugins, queryPluginItems, queryPluginSubItems } from "@/api/client"
+import { getPlugins, queryPluginItems, queryPluginSubItems, getPluginItem } from "@/api/client"
 
 export function usePlugins() {
   return useQuery({
     queryKey: ["plugins"],
     queryFn: () => getPlugins(),
-    staleTime: 30_000,
-    gcTime: 60_000,
-    refetchOnMount: "always",
-    // Treat empty arrays from stale cache as placeholder — always refetch
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
     placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data || data.length === 0) {
-        // Stop polling after ~30 seconds (15 attempts × 2s) of empty results
         const fetchCount = query.state.dataUpdateCount
         return fetchCount < 15 ? 2000 : false
       }
@@ -31,6 +29,20 @@ export function usePluginItems(
     queryKey: ["plugin-items", sourceId, filters, cursor],
     queryFn: () => queryPluginItems(sourceId, filters, cursor),
     enabled: !!sourceId,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function usePluginItem(
+  pluginId: string,
+  itemId: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["plugin-item", pluginId, itemId],
+    queryFn: () => getPluginItem(pluginId, itemId),
+    enabled: enabled && !!pluginId && !!itemId,
+    staleTime: 5 * 60 * 1000,
   })
 }
 

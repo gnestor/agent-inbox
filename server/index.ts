@@ -244,8 +244,7 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500)
 })
 
-// Mount built-in plugin custom routes (gmail attachments, notion options, etc.)
-// Must be before the SPA fallback so /api/gmail/* routes aren't caught by /*
+// Mount built-in plugin custom routes (must be before the SPA fallback)
 mountPluginRoutes(app)
 
 // Serve production build if dist/ exists
@@ -262,9 +261,11 @@ const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
   // Prune expired cache entries on startup
   pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
-  // Index all agent SDK sessions into DB (non-blocking), then watch for new ones
+  // Index all agent SDK sessions into DB (non-blocking)
+  // Skip file watchers in dev mode — tsx watch handles restarts, and watchers cause EMFILE
+  const isDev = process.env.NODE_ENV !== "production"
   indexAllAgentSessions()
-    .then(() => watchProjectsDir())
+    .then(() => { if (!isDev) watchProjectsDir() })
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
@@ -276,8 +277,8 @@ const server = serve({ fetch: app.fetch, port }, () => {
     )
   ).then(() => {
     mountPluginRoutes(app)
-    // Watch workspace plugin dirs for hot reload
-    watchPlugins(registeredWorkspaces, app)
+    // Watch workspace plugin dirs for hot reload (skip in dev — tsx watch restarts the server)
+    if (!isDev) watchPlugins(registeredWorkspaces, app)
   })
   if (registeredWorkspaces.length > 0) {
     loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))

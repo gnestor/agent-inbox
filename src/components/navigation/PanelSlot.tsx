@@ -108,7 +108,7 @@ export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
           height: "100%",
           width,
           flexShrink: 0,
-          ...(group ? { transition: suppressTransition.current ? "none" : `width ${DURATION}s ${EASE_CSS}`, overflow: "hidden" } : {}),
+          ...(group ? { transition: suppressTransition.current ? "none" : `width ${DURATION}s ${EASE_CSS}` } : {}),
           ...(isMobile ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : {}),
         }}
       >

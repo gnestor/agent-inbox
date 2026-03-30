@@ -1,8 +1,11 @@
 import { useMemo } from "react"
+import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
-import { usePlugins, usePluginItems, usePluginSubItems } from "@/hooks/use-plugins"
+import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
@@ -10,6 +13,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { mutatePluginItem, getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
+import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
@@ -168,6 +172,37 @@ function MessageRow({ item }: { item: PluginItem }) {
   )
 }
 
+/** Renders a single embedded message (e.g. Gmail thread message, Notion child block). */
+function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
+  const from = String(msg.from ?? msg.userName ?? msg.userId ?? "Unknown")
+  const date = String(msg.date ?? "")
+  const body = String(msg.body ?? msg.text ?? "")
+  const bodyFormat = String(msg.bodyFormat ?? msg.bodyType ?? "plain")
+  const formattedDate = date ? new Date(date).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  }) : ""
+  // Extract display name from "Name <email>" format
+  const displayName = from.includes("<") ? from.split("<")[0].trim().replace(/^"(.*)"$/, "$1") : from
+
+  return (
+    <div className="px-4 py-3 border-b last:border-0">
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className="font-medium text-sm">{displayName}</span>
+        <span className="text-xs text-muted-foreground">{formattedDate}</span>
+      </div>
+      {bodyFormat === "html" || body.startsWith("<") ? (
+        <HtmlMessageBody html={body} />
+      ) : bodyFormat === "markdown" ? (
+        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{body}</Markdown>
+        </div>
+      ) : (
+        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
+      )}
+    </div>
+  )
+}
+
 export function PluginDetail({
   pluginId,
   itemId,
@@ -179,9 +214,11 @@ export function PluginDetail({
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
+  const hasGetItem = !!plugin?.hasGetItem
 
-  // Always call both hooks — conditionally enable based on plugin type
+  // Always call all hooks — conditionally enable based on plugin capabilities
   const { data: itemsData, isLoading: itemsLoading } = usePluginItems(pluginId, {}, undefined)
+  const { data: fullItem, isLoading: fullItemLoading } = usePluginItem(pluginId, itemId, hasGetItem)
   const { data: subData, isLoading: subLoading } = usePluginSubItems(
     pluginId,
     itemId,
@@ -197,8 +234,9 @@ export function PluginDetail({
   })
   const linkedSession = linkedData?.session
 
-  // Look up the parent item from the list query (for title, externalUrl, etc.)
-  const parentItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Use full item from getItem() if available, otherwise look up from list
+  const listItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  const parentItem = (fullItem as Record<string, unknown> | undefined) ?? listItem
   const title = parentItem ? getItemTitle(parentItem) : itemId
   const externalUrl = parentItem?.externalUrl as string | undefined
 
@@ -312,10 +350,17 @@ export function PluginDetail({
     )
   }
 
-  // Widget tree path
-  const item = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Gmail: use the EmailThread component for rich email rendering
+  // Render immediately — EmailThread fetches its own data
+  if (pluginId === "gmail") {
+    return <EmailThread threadId={itemId} />
+  }
 
-  if (!plugin || (!item && itemsLoading)) {
+  // Widget tree path — use full item from getItem() if available
+  const item = parentItem
+  const isLoading = hasGetItem ? fullItemLoading : itemsLoading
+
+  if (!plugin || (!item && isLoading)) {
     return <PanelSkeleton />
   }
   if (!item) {
@@ -324,10 +369,39 @@ export function PluginDetail({
     )
   }
 
+  // Other plugins with embedded messages: generic rendering
+  const embeddedMessages = item.messages as Record<string, unknown>[] | undefined
+  if (embeddedMessages && embeddedMessages.length > 0) {
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <PanelHeader
+          left={
+            <div className="flex items-center gap-2">
+              <SidebarButton />
+              <span className="font-semibold text-sm">{getItemTitle(item)}</span>
+            </div>
+          }
+          right={
+            <SessionActionMenu
+              source={{ type: pluginId, id: itemId, title: getItemTitle(item), content: JSON.stringify(item) }}
+              linkedSessionId={linkedSession?.id}
+            />
+          }
+        />
+        <div className="flex-1 overflow-y-auto">
+          {embeddedMessages.map((msg) => (
+            <EmbeddedMessage key={String(msg.id)} msg={msg} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const widgets = plugin.detailSchema ?? autoDetailSchema(plugin)
 
   async function handleMutate(action: string, payload: unknown) {
     await mutatePluginItem(pluginId, itemId, action, payload)
+    queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
   }
 
   const widgetSource = {
@@ -336,6 +410,15 @@ export function PluginDetail({
     title: getItemTitle(item),
     content: JSON.stringify(item),
   }
+
+  // Extract action-buttons from detailSchema for toolbar
+  const actionButtons = plugin.detailSchema
+    ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
+    .flatMap((w) => w.actions) ?? []
+
+  // If item has a markdown body (e.g. Notion page content), render as prose
+  const bodyContent = item.body as string | undefined
+  const bodyFormat = item.bodyFormat as string | undefined
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -347,14 +430,42 @@ export function PluginDetail({
           </div>
         }
         right={
-          <SessionActionMenu
-            source={widgetSource}
-            linkedSessionId={linkedSession?.id}
-          />
+          <>
+            {actionButtons.map((action) => {
+              const Icon = ACTION_ICONS[action.mutation]
+              return (
+                <button
+                  key={action.mutation}
+                  type="button"
+                  title={action.label}
+                  className={`shrink-0 p-1.5 rounded-md ${
+                    action.variant === "destructive"
+                      ? "text-destructive hover:bg-destructive/10"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                  onClick={() => handleMutate(action.mutation, undefined)}
+                >
+                  {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+                </button>
+              )
+            })}
+            <SessionActionMenu
+              source={widgetSource}
+              linkedSessionId={linkedSession?.id}
+            />
+          </>
         }
       />
       <div className="flex-1 overflow-y-auto p-4">
-        <PanelWidget widgets={widgets} data={item} onMutate={handleMutate} />
+        {bodyContent && bodyFormat === "markdown" ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{bodyContent}</Markdown>
+          </div>
+        ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
+          <HtmlMessageBody html={bodyContent} />
+        ) : (
+          <PanelWidget widgets={widgets} data={item} onMutate={handleMutate} />
+        )}
       </div>
     </div>
   )

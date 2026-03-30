@@ -94,9 +94,3 @@ export async function getGoogleAccessToken(workspaceId?: string): Promise<string
   return refreshGoogleToken(refreshToken, workspaceId)
 }
 
-/**
- * Returns the Notion API token.
- */
-export function getNotionToken(workspaceId?: string): string {
-  return getCredential("NOTION_API_TOKEN", workspaceId)
-}

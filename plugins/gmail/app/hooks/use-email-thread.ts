@@ -4,7 +4,7 @@ import type { GmailThread } from "../types"
 
 export function useEmailThread(threadId: string | undefined) {
   const { data: thread, isLoading: loading, error } = useQuery<GmailThread>({
-    queryKey: ["thread", threadId],
+    queryKey: ["plugin-item", "gmail", threadId],
     queryFn: () => getEmailThread(threadId!) as Promise<GmailThread>,
     enabled: !!threadId,
     refetchOnMount: true,
