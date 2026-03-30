@@ -388,8 +388,8 @@ export function PluginDetail({
           }
           right={
             <>
-              {hasEditableFields && (
-                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={parentItem!} />
+              {hasEditableFields && parentItem && (
+                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={parentItem} />
               )}
               {externalUrl && (
                 <a href={externalUrl} target="_blank" rel="noopener noreferrer"
