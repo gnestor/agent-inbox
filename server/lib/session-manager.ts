@@ -1,4 +1,6 @@
-import { resolve } from "path"
+import { resolve, join } from "path"
+import * as fs from "fs"
+import { homedir } from "os"
 
 const INITIAL_SUMMARY_LENGTH = 80
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
@@ -90,6 +92,18 @@ function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<
   }
 
   return env
+}
+
+/** Resolve a session's JSONL file path from its cwd (or default workspace). */
+function sessionJsonlPath(sessionId: string, cwd?: string): string {
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  return join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+}
+
+/** Resolve the projects directory for a workspace path. */
+function workspaceProjectsDir(cwd?: string): string {
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  return join(homedir(), ".claude", "projects", encodedDir)
 }
 
 // Legacy compat — default workspace path for callers not yet migrated
@@ -273,13 +287,17 @@ async function getSessionMessageCount(sessionId: string): Promise<number> {
   try {
     const agentSession = await findAgentSession(sessionId)
     if (!agentSession) return 0
-    const { readFileSync } = await import("fs")
-    const { join } = await import("path")
-    const { homedir } = await import("os")
-    const encodedDir = (agentSession.cwd || defaultWorkspacePath).replace(/\//g, "-")
-    const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
-    const content = readFileSync(sessionFile, "utf-8")
-    return content.trim().split("\n").length
+
+    const sessionFile = sessionJsonlPath(sessionId, agentSession.cwd)
+    const stat = fs.statSync(sessionFile)
+    if (stat.size === 0) return 0
+    // Count newlines by reading the buffer without splitting into strings
+    const buf = fs.readFileSync(sessionFile)
+    let count = 0
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === 0x0a) count++
+    }
+    return count
   } catch {
     return 0
   }
@@ -670,13 +688,10 @@ export async function attachSourceToSession(
 
   // Append to JSONL file
   try {
-    const { appendFileSync } = await import("fs")
-    const { join } = await import("path")
-    const { homedir } = await import("os")
+
     const agentSession = await findAgentSession(sessionId)
-    const encodedDir = (agentSession?.cwd || defaultWorkspacePath).replace(/\//g, "-")
-    const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
-    appendFileSync(sessionFile, JSON.stringify(contextMessage) + "\n")
+    const sessionFile = sessionJsonlPath(sessionId, agentSession?.cwd)
+    await fs.promises.appendFile(sessionFile, JSON.stringify(contextMessage) + "\n")
   } catch (err) {
     console.warn(`[attachSource] Failed to append to JSONL for ${sessionId}:`, (err as Error).message)
   }
@@ -806,12 +821,9 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
  * Uses polling instead of fs.watch to avoid EMFILE errors when many watchers are active.
  */
 export async function watchProjectsDir(): Promise<void> {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
 
-  const encodedDir = defaultWorkspacePath.replace(/\//g, "-")
-  const watchDir = join(homedir(), ".claude", "projects", encodedDir)
+
+  const watchDir = workspaceProjectsDir()
   if (!fs.existsSync(watchDir)) return
 
   // Track last-seen mtime for each file to detect changes
@@ -880,9 +892,7 @@ export async function listAgentSessions() {
 
 /** Find a single agent session by ID — checks workspace dir first, then scans others */
 export async function findAgentSession(sessionId: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return null
@@ -1017,9 +1027,7 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
  * are still found.
  */
 export async function searchAgentSessions(q: string, wsPath?: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1096,9 +1104,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
  * If no workspace path is given, falls back to scanning all directories.
  */
 export async function listAllAgentSessions(wsPath?: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1167,9 +1173,7 @@ export function projectLabel(cwd: string): string {
 }
 
 export async function listProjectOptions(): Promise<string[]> {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1206,11 +1210,10 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
   const { homedir } = await import("os")
 
   // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
-  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+  const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
-    const content = readFileSync(sessionFile, "utf-8")
+    const content = fs.readFileSync(sessionFile, "utf-8")
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     const messages: Array<Record<string, unknown>> = []
@@ -1293,15 +1296,12 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
 }
 
 async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {
-  const { readFileSync, writeFileSync } = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
 
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
-  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+
+  const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
-    const content = readFileSync(sessionFile, "utf-8")
+    const content = fs.readFileSync(sessionFile, "utf-8")
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     let seq = 0
@@ -1320,7 +1320,7 @@ async function patchArtifactInJsonl(sessionId: string, sequence: number, code: s
       if (seq === sequence && msg.type === "assistant") {
         if (patchRenderOutputCode(msg, code)) {
           lines[i] = JSON.stringify(msg)
-          writeFileSync(sessionFile, lines.join("\n") + "\n")
+          fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
           return true
         }
         return false

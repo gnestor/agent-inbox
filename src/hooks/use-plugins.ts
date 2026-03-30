@@ -1,6 +1,9 @@
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getPlugins, queryPluginItems, queryPluginSubItems, getPluginItem } from "@/api/client"
+import type { PluginManifest } from "@/api/client"
 import { useWorkspaceId } from "@/hooks/use-user"
+import { usePreference } from "@/hooks/use-preferences"
 
 export function usePlugins() {
   const wsId = useWorkspaceId()
@@ -59,4 +62,20 @@ export function usePluginSubItems(
     queryFn: () => queryPluginSubItems(sourceId, itemId, filters, cursor),
     enabled: enabled && !!sourceId && !!itemId,
   })
+}
+
+/** Plugins sorted by user-defined pluginOrder preference. */
+export function useSortedPlugins(): PluginManifest[] {
+  const { data: plugins } = usePlugins()
+  const [pluginOrder] = usePreference<string[]>("pluginOrder", [])
+  return useMemo(() => {
+    if (!plugins) return []
+    if (pluginOrder.length === 0) return plugins
+    const orderMap = new Map(pluginOrder.map((id, i) => [id, i]))
+    return [...plugins].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? 999
+      const bi = orderMap.get(b.id) ?? 999
+      return ai - bi
+    })
+  }, [plugins, pluginOrder])
 }

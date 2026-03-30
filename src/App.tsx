@@ -8,8 +8,7 @@ import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
 import { NavigationContext } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "@/hooks/use-navigation"
-import { usePlugins } from "@/hooks/use-plugins"
-import { usePreference } from "@/hooks/use-preferences"
+import { useSortedPlugins } from "@/hooks/use-plugins"
 import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
@@ -66,20 +65,7 @@ function TabContainer() {
   const { activeTab } = useNavigation()
   const ctx = useContext(NavigationContext)
   const tabs = ctx?.state.tabs
-  const { data: plugins } = usePlugins()
-  const [pluginOrderPref] = usePreference<string[]>("pluginOrder", [])
-
-  // Sort plugins by user-defined order
-  const sortedPlugins = useMemo(() => {
-    if (!plugins) return []
-    if (pluginOrderPref.length === 0) return plugins
-    const orderMap = new Map(pluginOrderPref.map((id, i) => [id, i]))
-    return [...plugins].sort((a, b) => {
-      const ai = orderMap.get(a.id) ?? 999
-      const bi = orderMap.get(b.id) ?? 999
-      return ai - bi
-    })
-  }, [plugins, pluginOrderPref])
+  const sortedPlugins = useSortedPlugins()
 
   // Set plugin order for animation direction when plugins load
   useEffect(() => {
@@ -110,7 +96,7 @@ function TabContainer() {
       ...recentKeys,
       ...STATIC_SLOTS.slice(sessionsIdx),
     ]
-  }, [tabs, plugins])
+  }, [tabs, sortedPlugins])
 
   // When user scroll-snaps to a different tab, sync the URL/sidebar
   const handleActiveKeyChange = useCallback((key: string) => {

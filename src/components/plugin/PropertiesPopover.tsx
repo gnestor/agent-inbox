@@ -42,8 +42,6 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
     queryFn: () => getFieldOptions(pluginId, "tags").then((r) => r.options.map((o) => ({ value: o, color: null }))),
   })
 
-  const isPending = false // mutations are fire-and-forget
-
   async function update(action: string, payload: unknown) {
     await mutatePluginItem(pluginId, itemId, action, payload)
     queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
@@ -86,7 +84,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
                 value={status}
                 options={statusOpts ?? []}
                 onChange={(v) => update("update-status", { status: v })}
-                loading={isPending}
+                loading={false}
               />
             </>
           )}
@@ -97,7 +95,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
                 value={priority}
                 options={priorityOpts ?? []}
                 onChange={(v) => update("update-properties", { Priority: { select: { name: v } } })}
-                loading={isPending}
+                loading={false}
               />
             </>
           )}
@@ -108,7 +106,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
                 value={tags}
                 options={tagOpts ?? []}
                 onChange={(v) => update("update-tags", { tags: v })}
-                loading={isPending}
+                loading={false}
                 placeholder="Add tag..."
               />
             </>

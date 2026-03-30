@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react"
+import { useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { SidebarRecentSessions } from "@/components/session/SidebarRecentSessions"
 import {
@@ -27,7 +27,7 @@ import { cn } from "@hammies/frontend/lib/utils"
 import { Check, ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { icons as lucideIcons } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
-import { usePlugins } from "@/hooks/use-plugins"
+import { useSortedPlugins } from "@/hooks/use-plugins"
 import { useNavigation } from "@/hooks/use-navigation"
 import { usePreference } from "@/hooks/use-preferences"
 import { getInitials } from "@/lib/formatters"
@@ -42,20 +42,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { switchTab, activeTab } = useNavigation()
   const savedUrls = useRef(new Map<string, string>())
   const [menuOpen, setMenuOpen] = useState(false)
-  const { data: plugins } = usePlugins()
-  const [pluginOrder, setPluginOrder] = usePreference<string[]>("pluginOrder", [])
+  const sortedPlugins = useSortedPlugins()
+  const [, setPluginOrder] = usePreference<string[]>("pluginOrder", [])
   const dragItem = useRef<string | null>(null)
-
-  // Sort plugins by user-defined order, preserving unordered ones at the end
-  const sortedPlugins = useMemo(() => {
-    if (!plugins || pluginOrder.length === 0) return plugins ?? []
-    const orderMap = new Map(pluginOrder.map((id, i) => [id, i]))
-    return [...plugins].sort((a, b) => {
-      const ai = orderMap.get(a.id) ?? 999
-      const bi = orderMap.get(b.id) ?? 999
-      return ai - bi
-    })
-  }, [plugins, pluginOrder])
 
   return (
     <Sidebar variant="floating" {...props}>

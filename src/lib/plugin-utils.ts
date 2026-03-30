@@ -1,13 +1,8 @@
 import type { PluginItem, FieldDef } from "@/types/plugin"
+import { formatEmailAddress } from "@/lib/formatters"
 
 const TITLE_KEYS = ["title", "name", "channelName", "subject", "text", "summary"]
 const SUBTITLE_KEYS = ["subtitle", "description", "latestText", "preview", "from"]
-
-/** Extract display name from "Name <email>" format, or return as-is */
-function formatDisplayName(value: string): string {
-  if (value.includes("<")) return value.split("<")[0].trim().replace(/^"(.*)"$/, "$1")
-  return value
-}
 const TIMESTAMP_KEYS = ["latestTs", "updatedAt", "createdAt", "timestamp", "date", "ts"]
 
 export function getItemTitle(item: PluginItem | Record<string, unknown>, fieldSchema?: FieldDef[]): string {
@@ -30,7 +25,7 @@ export function getItemSubtitle(item: PluginItem | Record<string, unknown>, fiel
     const subtitleField = fieldSchema.find((f) => f.listRole === "subtitle")
     if (subtitleField) {
       const val = item[subtitleField.id]
-      if (typeof val === "string" && val) return formatDisplayName(val)
+      if (typeof val === "string" && val) return formatEmailAddress(val)
     }
     // If fieldSchema exists but has no subtitle role, don't guess
     return undefined
