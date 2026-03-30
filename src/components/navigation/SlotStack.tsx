@@ -7,6 +7,7 @@
  * `onActiveKeyChange` to sync the URL and sidebar instantly.
  */
 import { useRef, useEffect, useCallback, type ReactNode } from "react"
+import { useIsMobile } from "@hammies/frontend/hooks"
 import { ACTIVE_TAB_CLASS_LIST } from "@/lib/navigation-constants"
 
 interface SlotStackProps {
@@ -19,6 +20,7 @@ interface SlotStackProps {
 }
 
 export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, className = "", style: outerStyle }: SlotStackProps) {
+  const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isProgrammaticScroll = useRef(false)
   const scrollSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -135,6 +137,16 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     return () => ro.disconnect()
   }, [])
 
+  // Mobile: no scroll-snap, just render the active tab
+  if (isMobile) {
+    return (
+      <div className={className} style={{ height: "100%", overflow: "hidden", ...outerStyle }}>
+        {renderItem(activeKey)}
+      </div>
+    )
+  }
+
+  // Desktop: vertical scroll-snap for tab switching
   return (
     <div
       ref={setRef}
@@ -143,7 +155,7 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
         height: "100%",
         overflowY: "scroll",
         scrollSnapType: "y mandatory",
-        scrollbarWidth: "thin",
+        scrollbarWidth: "none",
         ...outerStyle,
       }}
     >
