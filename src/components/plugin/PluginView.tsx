@@ -40,7 +40,7 @@ export function PluginView({ tabId: tabIdProp }: PluginViewProps) {
               ) : panel.type === "session" ? (
                 <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
               ) : panel.type === "new_session" ? (
-                <NewSessionPanel />
+                <NewSessionPanel panelId={panel.id} {...panel.props} />
               ) : (
                 <PanelContent panel={panel} />
               )}

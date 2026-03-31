@@ -68,6 +68,7 @@ function AutoStartPanel({ sourceType, sourceId }: { sourceType?: string; sourceI
         prompt,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
+        linkedItemTitle: item ? getItemTitle(item as Record<string, unknown>) || undefined : undefined,
       }),
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })

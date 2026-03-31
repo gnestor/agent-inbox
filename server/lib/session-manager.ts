@@ -117,6 +117,7 @@ function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] 
     }
   }
 
+  console.log(`[session] Loading ${plugins.length} plugins:`, plugins.map(p => p.path.split("/").slice(-2).join("/")))
   return plugins
 }
 
@@ -518,6 +519,8 @@ export async function startSession(
   const sourceContext = buildSourceContext(
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
+  if (sourceContext) console.log(`[session] Source context: ${sourceContext.slice(0, 100)}...`)
+  else console.log(`[session] No source context (type=${options?.linkedSourceType}, id=${options?.linkedSourceId})`)
 
   const q = agentQuery({
     prompt,
