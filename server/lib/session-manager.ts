@@ -8,6 +8,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -143,13 +144,15 @@ export async function createSessionRecord(
     ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
     : null
 
+  const summary = options?.linkedItemTitle || prompt.slice(0, INITIAL_SUMMARY_LENGTH)
+
   await execute(
     `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_source_type, linked_source_id, trigger_source, metadata)
      VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       sessionId,
       prompt,
-      prompt.slice(0, INITIAL_SUMMARY_LENGTH),
+      summary,
       now,
       now,
       options?.linkedSourceType || null,
@@ -463,9 +466,8 @@ function buildSourceContext(
 }
 
 function buildSystemPrompt(context: string | null) {
-  return context
-    ? { type: "preset" as const, preset: "claude_code" as const, append: context }
-    : { type: "preset" as const, preset: "claude_code" as const }
+  const append = [SESSION_INSTRUCTIONS, context].filter(Boolean).join("\n\n")
+  return { type: "preset" as const, preset: "claude_code" as const, append }
 }
 
 // Session execution using Agent SDK
@@ -475,6 +477,7 @@ export async function startSession(
     linkedSourceType?: string
     linkedSourceId?: string
     linkedSourceContent?: string
+    linkedItemTitle?: string
     triggerSource?: string
     userSessionToken?: string
     workspacePath?: string

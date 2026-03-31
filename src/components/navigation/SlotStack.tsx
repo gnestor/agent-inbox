@@ -6,7 +6,7 @@
  * tracks which tab is most visible on every frame and fires
  * `onActiveKeyChange` to sync the URL and sidebar instantly.
  */
-import { useRef, useEffect, useCallback, type ReactNode } from "react"
+import { useRef, useEffect, useCallback, useState, type ReactNode } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { ACTIVE_TAB_CLASS_LIST } from "@/lib/navigation-constants"
 
@@ -145,11 +145,53 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     return () => ro.disconnect()
   }, [])
 
-  // Mobile: no scroll-snap, just render the active tab
+  // Mobile: render only the active tab with a vertical slide transition
+  const prevKeyRef = useRef(activeKey)
+  const [slideDir, setSlideDir] = useState<"none" | "up" | "down">("none")
+
+  useEffect(() => {
+    if (!isMobile) return
+    if (prevKeyRef.current === activeKey) return
+    const prevIdx = keys.indexOf(prevKeyRef.current)
+    const nextIdx = keys.indexOf(activeKey)
+    prevKeyRef.current = activeKey
+    if (prevIdx < 0 || nextIdx < 0) return
+    setSlideDir(nextIdx > prevIdx ? "up" : "down")
+    const timer = setTimeout(() => setSlideDir("none"), 250)
+    return () => clearTimeout(timer)
+  }, [isMobile, activeKey, keys])
+
   if (isMobile) {
     return (
-      <div className={className} style={{ height: "100%", overflow: "hidden", ...outerStyle }}>
-        {renderItem(activeKey)}
+      <div
+        className={className}
+        style={{
+          height: "100%",
+          overflow: "hidden",
+          ...outerStyle,
+        }}
+      >
+        <div
+          key={activeKey}
+          style={{
+            height: "100%",
+            animation: slideDir !== "none"
+              ? `slide-${slideDir} 200ms ease-out`
+              : undefined,
+          }}
+        >
+          {renderItem(activeKey)}
+        </div>
+        <style>{`
+          @keyframes slide-up {
+            from { transform: translateY(40px); opacity: 0.7; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+          @keyframes slide-down {
+            from { transform: translateY(-40px); opacity: 0.7; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+        `}</style>
       </div>
     )
   }

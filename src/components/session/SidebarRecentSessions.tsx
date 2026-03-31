@@ -11,6 +11,7 @@ import {
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
 import { getPluginItem } from "@/api/client"
+import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
@@ -38,7 +39,6 @@ function getIndicatorColor(session: Session): string {
 }
 
 function getSessionTitle(session: Session): string {
-  if (session.linkedItemTitle) return session.linkedItemTitle
   if (session.summary) return session.summary
   return session.prompt.length > 60 ? session.prompt.slice(0, 60) + "…" : session.prompt
 }
@@ -89,7 +89,7 @@ export function SidebarRecentSessions() {
 
   const itemTitles = itemQueries.map((q) => {
     const data = q.data as Record<string, unknown> | undefined
-    return (data?.subject ?? data?.title ?? data?.name ?? "") as string
+    return getItemTitle(data as Record<string, unknown>)
   })
   const titleLookup = useMemo(() => {
     const map = new Map<string, string>()
@@ -113,9 +113,10 @@ export function SidebarRecentSessions() {
         <SidebarMenu>
           {recent.map((session, i) => {
             const color = getIndicatorColor(session)
-            const linkedId = session.linkedSourceId ?? ""
-            const linkedTitle = titleLookup.get(linkedId)
-            const title = linkedTitle || getSessionTitle(session)
+            // Prefer summary (set from linkedItemTitle or auto-named).
+            // Fall back to fetched title for sessions created before this was consolidated.
+            const linkedTitle = session.linkedSourceId ? titleLookup.get(session.linkedSourceId) : undefined
+            const title = getSessionTitle(session) || linkedTitle || session.id
             const isActive = isRecentRoute && session.id === activeSessionId
 
             const sourceTab: TabId = session.linkedSourceType

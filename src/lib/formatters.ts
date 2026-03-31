@@ -3,6 +3,11 @@ export { formatRelativeDate, formatTimeAgo, truncate, formatFileSize, getInitial
 
 // Domain-specific formatters — inbox only
 
+/** Extract a display title from a generic plugin item (email subject, task title, etc.) */
+export function getItemTitle(item: Record<string, unknown> | undefined): string {
+  return ((item?.subject ?? item?.title ?? item?.name) as string) || ""
+}
+
 export function formatEmailAddress(address: string): string {
   const match = address.match(/^(.+?)\s*<.+>$/)
   return match ? match[1].replace(/"/g, "") : address

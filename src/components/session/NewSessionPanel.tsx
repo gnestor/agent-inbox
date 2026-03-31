@@ -7,6 +7,7 @@ import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
 import { createSession, getPluginItem } from "@/api/client"
+import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
@@ -77,8 +78,7 @@ function AutoStartPanel({ sourceType, sourceId }: { sourceType?: string; sourceI
   useEffect(() => {
     if (fired.current || !item) return
     fired.current = true
-    const prompt = `<ide_opened_file>${sourceType} item: ${item.id}</ide_opened_file>\nProcess this ${sourceType}`
-    createMutation.mutate(prompt)
+    createMutation.mutate(`Process this ${sourceType}`)
   }, [item])
 
   return (
@@ -117,18 +117,16 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
     setPrompt(`Process this ${sourceType}`)
   }
 
-  const contextPrefix = item
-    ? `<ide_opened_file>${sourceType} item: ${item.id}</ide_opened_file>`
-    : ""
-  const fullPrompt = contextPrefix ? `${contextPrefix}\n${prompt}` : prompt
+  const itemTitle = getItemTitle(item as Record<string, unknown>) || undefined
 
   const createMutation = useMutation({
     mutationFn: () =>
       createSession({
-        prompt: fullPrompt,
+        prompt,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
         linkedSourceContent: sourceContent,
+        linkedItemTitle: itemTitle,
       }),
     onSuccess: ({ sessionId }) => {
       setPrompt("")
@@ -266,7 +264,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
       <div className="shrink-0 border-t p-4">
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={!fullPrompt.trim() || !ready || sending}
+          disabled={!prompt.trim() || !ready || sending}
           className="w-full"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start Session"}

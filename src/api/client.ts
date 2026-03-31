@@ -81,6 +81,7 @@ export async function createSession(body: {
   linkedSourceType?: string
   linkedSourceId?: string
   linkedSourceContent?: string
+  linkedItemTitle?: string
 }) {
   return request<{ sessionId: string }>(`/sessions`, {
     method: "POST",
