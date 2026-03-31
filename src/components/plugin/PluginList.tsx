@@ -18,7 +18,7 @@ import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import { SearchInput } from "@/components/shared/SearchInput"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import { getItemTitle, getItemSubtitle, getItemTimestamp } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem, FieldDef } from "@/types/plugin"
@@ -69,7 +69,7 @@ function PluginListInner({
   onSelectedIndexChange,
   onSelectedTitleChange,
 }: PluginListInnerProps) {
-  const { selectItem } = useNavigation()
+  const { selectItem } = useNavActions()
   const wsId = useWorkspaceId()
   const [searchQuery, setSearchQuery] = useState("")
 

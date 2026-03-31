@@ -5,7 +5,7 @@ import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import { createSession, getPluginItem } from "@/api/client"
 import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
@@ -56,7 +56,7 @@ export function NewSessionPanel({ panelId, sessionId, autoStart, sourceType, sou
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
 
 function AutoStartPanel({ sourceType, sourceId }: { sourceType?: string; sourceId?: string }) {
-  const { openSession } = useNavigation()
+  const { openSession } = useNavActions()
   const qc = useQueryClient()
   const fired = useRef(false)
 
@@ -93,7 +93,7 @@ function AutoStartPanel({ sourceType, sourceId }: { sourceType?: string; sourceI
 // ── Compose panel ────────────────────────────────────────────────────────────
 
 function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelId?: string; sourceType?: string; sourceId?: string; sourceContent?: string }) {
-  const { popPanel, replacePanel } = useNavigation()
+  const { popPanel, replacePanel } = useNavActions()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
   const [savingName, setSavingName] = useState("")

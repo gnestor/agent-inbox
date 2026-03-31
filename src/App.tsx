@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useContext, useCallback } from "react"
+import { useMemo, useEffect, useCallback } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -6,8 +6,7 @@ import { LoginPage } from "@/components/layout/LoginPage"
 import { LiquidGlassFilter } from "@hammies/frontend/components/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
-import { NavigationContext } from "@/components/navigation/NavigationProvider"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavigationStore, useActiveTab, useNavActions, useSourceTab } from "@/lib/navigation-store"
 import { useSortedPlugins } from "@/hooks/use-plugins"
 import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
@@ -53,8 +52,7 @@ function renderTab(tabId: string) {
 }
 
 function RecentTabSlot({ tabId }: { tabId: TabId }) {
-  const { getSourceTab } = useNavigation()
-  const sourceTab = getSourceTab(tabId)
+  const sourceTab = useSourceTab(tabId)
   if (sourceTab?.startsWith("plugin:")) {
     return <PluginView tabId={tabId} />
   }
@@ -62,10 +60,10 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
 }
 
 function TabContainer() {
-  const { activeTab } = useNavigation()
-  const ctx = useContext(NavigationContext)
-  const tabs = ctx?.state.tabs
+  const activeTab = useActiveTab()
+  const tabs = useNavigationStore((s) => s.tabs)
   const sortedPlugins = useSortedPlugins()
+  const { switchTab } = useNavActions()
 
   // Set plugin order for animation direction when plugins load
   useEffect(() => {
@@ -73,8 +71,6 @@ function TabContainer() {
       setPluginOrder(sortedPlugins.map((p) => p.id))
     }
   }, [sortedPlugins])
-
-  const { switchTab } = useNavigation()
 
   const keys = useMemo(() => {
     if (!tabs) return STATIC_SLOTS

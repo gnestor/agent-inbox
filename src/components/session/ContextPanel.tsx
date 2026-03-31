@@ -1,4 +1,4 @@
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import {
   Accordion,
   AccordionItem,
@@ -22,7 +22,7 @@ const ENTITY_ICONS = {
 }
 
 export function ContextPanel({ data }: ContextPanelProps) {
-  const { switchTab, selectItem } = useNavigation()
+  const { switchTab, selectItem } = useNavActions()
   const { entity, source, contextPages, relatedThreads, relatedTasks, summary } = data
   const EntityIcon = ENTITY_ICONS[entity.type] ?? User
 

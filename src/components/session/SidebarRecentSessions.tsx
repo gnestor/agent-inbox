@@ -14,7 +14,7 @@ import { getPluginItem } from "@/api/client"
 import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useSessions } from "@/hooks/use-sessions"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import type { Session } from "@/types"
 import type { TabId } from "@/types/navigation"
 import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
@@ -55,7 +55,8 @@ export function getSessionUrl(session: Session): string {
 
 
 export function SidebarRecentSessions() {
-  const { openRecent, switchTab, activeTab } = useNavigation()
+  const { openRecent, switchTab } = useNavActions()
+  const activeTab = useActiveTab()
   const { isMobile, setOpenMobile } = useSidebar()
   const wsId = useWorkspaceId()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
@@ -153,7 +154,7 @@ export function SidebarRecentSessions() {
             <SidebarMenuButton
               tooltip="All Sessions"
               isActive={isSessionsTab}
-              data-tab-id="sessions"
+
               className={isSessionsTab ? ACTIVE_TAB_CLASSES : "text-muted-foreground"}
               onClick={() => {
                 switchTab("sessions")

@@ -12,7 +12,7 @@
  */
 import { Children, useRef, useEffect, useState } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useItemDirection, usePanelTransition } from "@/lib/navigation-store"
 import { DEFAULT_PANEL_WIDTH, DURATION, EASE_CSS, ITEM_GAP } from "@/lib/navigation-constants"
 
 interface PanelSlotProps {
@@ -31,10 +31,10 @@ interface ExitingPanel {
 }
 
 export function PanelSlot({ panelId, children, group }: PanelSlotProps) {
-  const { getItemDirection, getPanelTransition } = useNavigation()
+  const transition = usePanelTransition()
+  const itemDirection = useItemDirection()
   const isMobile = useIsMobile()
-  const transition = getPanelTransition()
-  const direction = transition === "item" ? getItemDirection() : 0
+  const direction = transition === "item" ? itemDirection : 0
 
   // Cache children by panelId so exit animation shows old content
   const cacheRef = useRef(new Map<string, React.ReactNode>())

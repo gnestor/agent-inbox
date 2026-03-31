@@ -20,4 +20,3 @@ export const DEFAULT_PANEL_WIDTH = 600
 
 /** Active tab sidebar highlight classes (primary color, overrides SidebarMenuButton's default secondary) */
 export const ACTIVE_TAB_CLASSES = "bg-primary! text-primary-foreground! hover:bg-primary! hover:text-primary-foreground!"
-export const ACTIVE_TAB_CLASS_LIST = ACTIVE_TAB_CLASSES.split(" ")

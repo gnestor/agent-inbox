@@ -9,7 +9,7 @@ import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -224,7 +224,7 @@ export function PluginDetail({
 }) {
   const queryClient = useQueryClient()
   const wsId = useWorkspaceId()
-  const { deselectItem } = useNavigation()
+  const { deselectItem } = useNavActions()
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems

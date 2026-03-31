@@ -7,7 +7,7 @@ import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRend
 import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
 import { AskUserForm } from "@/components/session/AskUserForm"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import { resumeSession, answerSessionQuestion } from "@/api/client"
 import { useQueryClient } from "@tanstack/react-query"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
@@ -27,7 +27,7 @@ const CodeEditorPanel = lazy(() =>
 )
 
 function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
-  const { removePanel, pushPanel } = useNavigation()
+  const { removePanel, pushPanel } = useNavActions()
   const spec = panel.props.spec
   const { sessionId, sequence } = panel.props
   const editorKey = artifactEditorKey(sessionId, sequence)
@@ -103,7 +103,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
 }
 
 function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user" } }) {
-  const { removePanel } = useNavigation()
+  const { removePanel } = useNavActions()
   const qc = useQueryClient()
   const { questions, resultText, sessionId } = panel.props
   const isPending = !resultText && !!sessionId
