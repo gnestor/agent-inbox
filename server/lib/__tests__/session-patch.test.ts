@@ -231,8 +231,13 @@ describe("PATCH /sessions/:id", () => {
 
     const data = await getRes.json()
     expect(data.session.summary).toBe("Renamed JSONL session")
-    expect(data.messages).toHaveLength(2)
-    expect(data.messages).toEqual(mockTranscript)
+    // First message is the synthetic user prompt (prepended when JSONL doesn't include it)
+    expect(data.messages).toHaveLength(3)
+    expect(data.messages[0]).toMatchObject({ sequence: -1, type: "user" })
+    expect(data.messages[0].message.content).toBe("JSONL prompt")
+    // Remaining messages are from the JSONL transcript
+    expect(data.messages[1].type).toBe("human")
+    expect(data.messages[2].type).toBe("assistant")
   })
 
   it("truncates summary to 200 chars", async () => {

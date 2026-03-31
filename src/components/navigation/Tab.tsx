@@ -136,18 +136,28 @@ function MobileTab({ id, children }: TabProps) {
     doScroll()
   })
 
-  // Deselect item when user swipes back to list panel
+  // Deselect item when user swipes back to list panel.
+  // Uses a timeout after scroll settles to avoid iOS Safari issues with
+  // scrollend firing prematurely during programmatic smooth scrolls.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScrollEnd = () => {
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined
+    const onScroll = () => {
       if (isProgrammaticScroll.current) return
-      if (el.scrollLeft < el.clientWidth * 0.5 && panels.length > 1) {
-        deselectItem()
-      }
+      clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(() => {
+        if (isProgrammaticScroll.current) return
+        if (el.scrollLeft < el.clientWidth * 0.5 && panels.length > 1) {
+          deselectItem()
+        }
+      }, 150)
     }
-    el.addEventListener("scrollend", onScrollEnd)
-    return () => el.removeEventListener("scrollend", onScrollEnd)
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      el.removeEventListener("scroll", onScroll)
+      clearTimeout(scrollTimer)
+    }
   }, [panels.length, deselectItem])
 
   // Vertical drag to switch tabs

@@ -4,6 +4,8 @@ Standard patterns for shadcn/ui components in React artifacts. Follow these exac
 
 ## Tabs
 
+Tabs renders tab triggers above the content (horizontal layout). **Do NOT wrap Tabs in a flex-row or grid layout that puts the TabsList beside the content — tabs must be above their content, not beside it.**
+
 ```jsx
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@hammies/frontend/components/ui'
 
@@ -19,6 +21,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@hammies/frontend/comp
     <div className="flex flex-col gap-3">Details content</div>
   </TabsContent>
 </Tabs>
+```
+
+**Wrong** — do not do this:
+```jsx
+{/* WRONG: tabs and content side-by-side */}
+<div className="flex">
+  <TabsList className="flex-col">...</TabsList>
+  <TabsContent>...</TabsContent>
+</div>
 ```
 
 ## Card

@@ -526,6 +526,13 @@ export async function startSession(
 
           await createSessionRecord(sessionId!, prompt, options)
           runningQueries.set(sessionId!, abortController)
+
+          // Broadcast the user's initial prompt as a synthetic message.
+          // The SDK doesn't include it in the stream — it's sent as an argument.
+          broadcastToSession(sessionId!, {
+            sequence: sequence++,
+            message: { type: "user", role: "user", content: prompt },
+          })
         }
 
         if (sessionId) {

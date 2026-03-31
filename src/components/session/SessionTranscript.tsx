@@ -222,7 +222,7 @@ function MessageBubble({ label, align, transparent, children }: { label: string;
   return (
     <div className={`flex flex-col ${align === "right" ? "items-end" : "items-start"}`}>
       <span className="text-xs font-medium text-foreground py-1.5">{label}</span>
-      <div className={`rounded-md px-3 py-2 ${transparent ? "" : "bg-secondary"}`}>
+      <div className={`rounded-md px-3 py-2 max-w-full min-w-0 ${transparent ? "" : "bg-secondary"}`}>
         {children}
       </div>
     </div>
@@ -504,7 +504,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
     return (
       <MessageBubble label={authorLabel} align="right">
         <div className="space-y-1.5">
-          {text && <div className="text-sm whitespace-pre-wrap break-words">{text}</div>}
+          {text && <div className="text-sm whitespace-pre-wrap break-words">{text.replace(/\\\n/g, "\n")}</div>}
           {ideRefs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 justify-end">
               {ideRefs.map((ref, i) => (

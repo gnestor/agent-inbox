@@ -272,13 +272,13 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "OPEN_RECENT": {
       const tabId: TabId = `recent:${action.sessionId}`
-      const parsed: ParsedUrl = {
+      // Reuse existing tab state (preserves artifact panels) or create fresh
+      const tab = state.tabs[tabId] ? { ...state.tabs[tabId] } : createRecentTabState({
         tabId,
         sourceTab: action.sourceTab,
         selectedId: action.selectedId,
         sessionId: action.sessionId,
-      }
-      const tab = createRecentTabState(parsed)
+      })
 
       // Compute direction from previous recent tab's sidebar position
       const oldTab = state.activeTab.startsWith("recent:") ? state.tabs[state.activeTab] : undefined
@@ -449,10 +449,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     const parsed = parseUrl(location.pathname)
     const currentState = stateRef.current
 
-    // For recent:* tabs, create ephemeral tab state and switch
+    // For recent:* tabs, reuse existing tab state or create fresh
     if (parsed.tabId.startsWith("recent:")) {
+      if (currentState.tabs[parsed.tabId] && currentState.activeTab === parsed.tabId) return
       const newTabs = { ...currentState.tabs }
-      newTabs[parsed.tabId] = createRecentTabState(parsed)
+      if (!newTabs[parsed.tabId]) {
+        newTabs[parsed.tabId] = createRecentTabState(parsed)
+      }
       dispatch({ type: "SET_STATE", state: { ...currentState, activeTab: parsed.tabId, tabs: newTabs } })
       return
     }

@@ -33,8 +33,10 @@ The `render_output` MCP tool renders structured outputs inline in the session tr
 
 ### Globals (do not import)
 
-- **`sendAction(intent, data?)`** — Send an action back to the session for agent follow-up. Include relevant component state in `data` so the agent has context. The agent receives: `<artifact_action intent="...">JSON</artifact_action>`.
+- **`sendAction(intent, data?)`** — Send an action back to the session for agent follow-up. Include relevant component state in `data` so the agent has context. Use for actions that need agent processing (submit form, approve/reject, update record). **Do NOT use for navigation** — use `<a href="..." target="_blank">` for external links (Shopify admin, Gmail, Notion pages, etc.).
 - **`saveState(state)`** — Persist UI state across page reloads. Restored automatically on remount.
+
+**Links vs sendAction:** Use `<a href>` with `target="_blank"` for URLs the user should open directly (e.g. "Open in Shopify", "View in Gmail"). Use `sendAction` only when the agent needs to do something in response (e.g. "Approve", "Submit changes", "Save draft").
 
 ### Design Rules
 
@@ -60,7 +62,7 @@ Follow these to match the app's visual style:
 
 **Borders:** `border border-border rounded-lg` (containers), `border-b` (list separators), `rounded-md` (buttons/inputs)
 
-**Layout:** `flex flex-col` (stacks), `flex items-center justify-between` (rows), `flex-1 min-w-0` (shrinkable items), `shrink-0` (icons/buttons)
+**Layout:** `flex flex-col` (stacks), `flex items-center justify-between` (rows), `flex-1 min-w-0` (shrinkable items), `shrink-0` (icons/buttons). **Tabs must stack vertically** (TabsList above TabsContent) — never put them side-by-side in a flex-row.
 
 ### Available Components
 
