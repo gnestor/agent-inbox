@@ -1,4 +1,4 @@
-import { watch, readdirSync, existsSync, type FSWatcher } from "node:fs"
+import { watch, existsSync, type FSWatcher } from "node:fs"
 import { join } from "node:path"
 import { loadPlugins } from "./plugin-loader.js"
 import { mountPluginRoutes } from "../routes/plugins.js"
@@ -21,34 +21,16 @@ export function watchPlugins(
     if (!existsSync(pluginsDir)) continue
 
     try {
-      // Use non-recursive watch to avoid EMFILE with large plugin dirs.
-      // This catches renames/creates/deletes of plugin subdirectories.
-      const watcher = watch(pluginsDir, { recursive: false }, (_event, filename) => {
+      const watcher = watch(pluginsDir, { recursive: true }, (_event, filename) => {
         if (!filename) return
+        // Ignore node_modules and hidden files
+        if (filename.includes("node_modules") || filename.startsWith(".")) return
         scheduleReload(ws, app)
       })
       watcher.on("error", (err) => {
         console.warn(`[plugin-watcher] Watcher error for ${pluginsDir}:`, err.message)
       })
       watchers.push(watcher)
-
-      // Also watch each plugin's plugin.ts directly for edits
-      try {
-        for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
-          if (!entry.isDirectory()) continue
-          for (const name of ["plugin.ts", "plugin.js"]) {
-            const pluginFile = join(pluginsDir, entry.name, name)
-            if (!existsSync(pluginFile)) continue
-            try {
-              const fw = watch(pluginFile, () => scheduleReload(ws, app))
-              fw.on("error", () => {}) // ignore individual file watch errors
-              watchers.push(fw)
-            } catch {}
-            break
-          }
-        }
-      } catch {}
-
       console.log(`[plugin-watcher] Watching ${pluginsDir}`)
     } catch (err: any) {
       console.warn(`[plugin-watcher] Failed to watch ${pluginsDir}:`, err.message)

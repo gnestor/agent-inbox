@@ -15,6 +15,7 @@ import { webhookRoutes } from "./routes/webhooks.js"
 import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
 import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
+import { backfillRoutes } from "./routes/backfill.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
@@ -223,6 +224,7 @@ app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
+app.route("/api/backfill", backfillRoutes)
 // Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
 app.route("/api", pluginRoutes)
 

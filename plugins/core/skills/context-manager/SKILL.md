@@ -1,5 +1,5 @@
 ---
-name: context-management
+name: context-manager
 description: Query and update the context/ knowledge base. Handles semantic search via qmd, entity identification, and structured context page writes. Use whenever gathering context for any task, creating/updating context pages, or documenting session findings.
 ---
 

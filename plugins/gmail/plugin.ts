@@ -295,6 +295,30 @@ export const gmailPlugin: Plugin = {
       return c.json({ messages: result.items, nextPageToken: result.nextCursor ?? null })
     })
   },
+
+  itemToContext(item) {
+    const subject = String(item.subject || "")
+    const from = String(item.from || "")
+    const body = String(item.body || item.snippet || "")
+    if (!subject && !body) return null
+    const lower = from.toLowerCase()
+    if (["noreply@", "no-reply@", "notifications@", "automated@", "donotreply@"].some((p) => lower.includes(p))) return null
+    const date = String(item.date || "")
+    return [
+      "---",
+      "type: email-thread",
+      `thread-id: ${item.id}`,
+      `subject: "${subject.replace(/"/g, '\\"')}"`,
+      `date: ${date}`,
+      "---",
+      "",
+      `# ${subject}`,
+      `From: ${from}`,
+      date ? `Date: ${date}` : "",
+      "",
+      body,
+    ].filter(Boolean).join("\n")
+  },
 }
 
 export default gmailPlugin

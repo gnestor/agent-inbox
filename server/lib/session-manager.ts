@@ -95,6 +95,31 @@ function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<
   return env
 }
 
+/**
+ * Discover Agent SDK plugin directories for a workspace session.
+ * Returns paths to core plugin (inbox/plugins/core) and all workspace plugins.
+ */
+function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] {
+  const inboxPluginsDir = resolve(wsPath, "../inbox/plugins/core")
+  const wsPluginsDir = resolve(wsPath, "plugins")
+
+  const plugins: { type: "local"; path: string }[] = []
+
+  if (fs.existsSync(inboxPluginsDir)) {
+    plugins.push({ type: "local", path: inboxPluginsDir })
+  }
+
+  if (fs.existsSync(wsPluginsDir)) {
+    for (const entry of fs.readdirSync(wsPluginsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        plugins.push({ type: "local", path: resolve(wsPluginsDir, entry.name) })
+      }
+    }
+  }
+
+  return plugins
+}
+
 /** Resolve a session's JSONL file path from its cwd (or default workspace). */
 function sessionJsonlPath(sessionId: string, cwd?: string): string {
   const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
@@ -494,8 +519,6 @@ export async function startSession(
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
 
-  const workflowPluginPath = resolve(wsPath, "../workflow-plugin")
-
   const q = agentQuery({
     prompt,
     options: {
@@ -509,9 +532,7 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(undefined, options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: workflowPluginPath },
-      ],
+      plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
@@ -625,7 +646,6 @@ export async function resumeSessionQuery(
   sequence++
 
   const wsPath = defaultWorkspacePath
-  const resumeWorkflowPluginPath = resolve(wsPath, "../workflow-plugin")
 
   const q = agentQuery({
     prompt,
@@ -641,9 +661,7 @@ export async function resumeSessionQuery(
       abortController,
       env: buildAgentEnv(undefined, userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: resumeWorkflowPluginPath },
-      ],
+      plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },

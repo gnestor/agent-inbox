@@ -5,39 +5,11 @@ import { stat } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { build } from "esbuild"
 import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
-import { getUserCredential } from "../lib/vault.js"
-import { refreshGoogleToken } from "../lib/credentials.js"
-import type { PluginContext } from "../../src/types/plugin.js"
-
-/**
- * Build a PluginContext from the Hono request context.
- * The auth middleware has already set userEmail on all /api/* routes.
- */
-async function buildPluginContext(c: { get: (key: string) => unknown }): Promise<PluginContext> {
-  const userEmail = c.get("userEmail") as string
-  return {
-    userEmail,
-    async getCredential(integration: string): Promise<string | null> {
-      // Per-user OAuth credential (e.g. Google)
-      const cred = await getUserCredential(userEmail, integration)
-      if (cred?.refreshToken) {
-        if (integration === "google") {
-          return refreshGoogleToken(cred.refreshToken)
-        }
-        return cred.refreshToken
-      }
-      return null
-    },
-  }
-}
+import { buildPluginContext, getWorkspaceId } from "../lib/plugin-context.js"
 
 // ---------------------------------------------------------------------------
 // Auto-generated routes for all plugins, mounted at /api/:pluginId/*
 // ---------------------------------------------------------------------------
-
-function getWorkspaceId(c: { get: (key: string) => unknown }): string | undefined {
-  return (c.get("workspace") as { id?: string } | undefined)?.id
-}
 
 const BUILTIN_PLUGINS_ROOT = resolve(fileURLToPath(import.meta.url), "../../../plugins")
 const componentCache = new Map<string, { js: string; mtime: number }>()
