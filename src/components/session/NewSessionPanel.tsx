@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button, Input } from "@hammies/frontend/components/ui"
-import { RichTextEditor } from "@/components/shared/RichTextEditor"
+
+const RichTextEditor = lazy(() =>
+  import("@/components/shared/RichTextEditor").then((m) => ({ default: m.RichTextEditor })),
+)
 import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
@@ -210,14 +213,16 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         )}
 
         {/* Prompt editor */}
-        <RichTextEditor
-          value={ready ? prompt : ""}
-          onChange={setPrompt}
-          onCmdEnter={() => createMutation.mutate()}
-          placeholder={ready ? "Describe what you want the agent to do..." : "Loading..."}
-          disabled={!ready}
-          className="flex-1 min-h-[200px]"
-        />
+        <Suspense fallback={<div className="flex-1 min-h-[200px]" />}>
+          <RichTextEditor
+            value={ready ? prompt : ""}
+            onChange={setPrompt}
+            onCmdEnter={() => createMutation.mutate()}
+            placeholder={ready ? "Describe what you want the agent to do..." : "Loading..."}
+            disabled={!ready}
+            className="flex-1 min-h-[200px]"
+          />
+        </Suspense>
 
         {/* Save as template */}
         {showSaveInput ? (

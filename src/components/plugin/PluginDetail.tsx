@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import rehypeHighlight from "rehype-highlight"
+import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import TurndownService from "turndown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -59,7 +59,6 @@ function formatSlackText(text: string): string {
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
 const REMARK_PLUGINS = [remarkGfm]
-const REHYPE_PLUGINS = [rehypeHighlight]
 
 const EMOJI_MAP: Record<string, string> = {
   slightly_smiling_face: "🙂", smile: "😊", grinning: "😀", joy: "😂",
@@ -157,7 +156,7 @@ function MessageRow({ item }: { item: PluginItem }) {
           )}
           {markdown ? (
             <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-              <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+              <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>
                 {markdown}
               </Markdown>
             </div>
@@ -206,7 +205,7 @@ function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
         <HtmlMessageBody html={body} />
       ) : bodyFormat === "markdown" ? (
         <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-          <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{body}</Markdown>
+          <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>{body}</Markdown>
         </div>
       ) : (
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
@@ -546,7 +545,7 @@ export function PluginDetail({
       <div className="flex-1 overflow-y-auto p-4">
         {bodyContent && bodyFormat === "markdown" ? (
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{bodyContent}</Markdown>
+            <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>{bodyContent}</Markdown>
           </div>
         ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
           <HtmlMessageBody html={bodyContent} />

@@ -45,23 +45,35 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
 
   // Transform JSX in parent context — no Babel needed in iframe.
   // Keep last valid result so syntax errors during editing don't crash the app.
+  // Babel is loaded lazily (async) on first artifact render.
   const lastValidRef = useRef<{ code: string; exportedName: string | null } | null>(null)
-  const transformResult = useMemo(() => {
-    try {
-      return { ...transformArtifactCode(code), error: null as string | null }
-    } catch (e) {
-      const prev = lastValidRef.current
-      return {
-        code: prev?.code ?? "",
-        exportedName: prev?.exportedName ?? null,
-        error: e instanceof Error ? e.message : String(e),
-      }
-    }
-  }, [code])
-  // Update last valid ref outside useMemo to keep it pure
+  const [transformResult, setTransformResult] = useState<{
+    code: string; exportedName: string | null; error: string | null
+  }>({ code: "", exportedName: null, error: null })
+
   useEffect(() => {
-    if (!transformResult.error) lastValidRef.current = transformResult
-  }, [transformResult])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const result = await transformArtifactCode(code)
+        if (!cancelled) {
+          lastValidRef.current = result
+          setTransformResult({ ...result, error: null })
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const prev = lastValidRef.current
+          setTransformResult({
+            code: prev?.code ?? "",
+            exportedName: prev?.exportedName ?? null,
+            error: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [code])
+
   const { code: transformedCode, exportedName, error: transformError } = transformResult
 
   const srcDoc = useMemo(() => {

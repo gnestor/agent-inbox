@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback } from "react"
+import { useMemo, useEffect, useCallback, lazy, Suspense } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -12,11 +12,16 @@ import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
 import { SessionTab } from "@/components/session/SessionTab"
-import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
-import { WorkspaceSettings } from "@/components/workspace/WorkspaceSettings"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
+
+const IntegrationsPage = lazy(() =>
+  import("@/components/settings/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })),
+)
+const WorkspaceSettings = lazy(() =>
+  import("@/components/workspace/WorkspaceSettings").then((m) => ({ default: m.WorkspaceSettings })),
+)
 
 const STATIC_SLOTS = [
   "settings",
@@ -29,7 +34,7 @@ function renderTab(tabId: string) {
     return (
       <Tab id="settings">
         <Panel id="settings" variant="settings">
-          <IntegrationsPage />
+          <Suspense><IntegrationsPage /></Suspense>
         </Panel>
       </Tab>
     )
@@ -38,7 +43,7 @@ function renderTab(tabId: string) {
     return (
       <Tab id="workspace-settings">
         <Panel id="workspace-settings" variant="settings">
-          <WorkspaceSettings />
+          <Suspense><WorkspaceSettings /></Suspense>
         </Panel>
       </Tab>
     )

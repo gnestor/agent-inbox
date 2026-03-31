@@ -2,59 +2,59 @@ import { describe, it, expect } from "vitest"
 import { transformArtifactCode, escapeForScript } from "../artifact-transform"
 
 describe("transformArtifactCode", () => {
-  it("returns empty code for empty input", () => {
-    const result = transformArtifactCode("")
+  it("returns empty code for empty input", async () => {
+    const result = await transformArtifactCode("")
     expect(result.code).toBe("")
     expect(result.exportedName).toBeNull()
   })
 
-  it("preserves React imports (resolved by import map)", () => {
+  it("preserves React imports (resolved by import map)", async () => {
     const source = `import { useState, useEffect } from 'react'
 import React from 'react'
 function App() { return <div>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // React imports are kept — the import map resolves them
     expect(result.code).toContain("from 'react'")
     expect(result.code).toContain("createElement")
   })
 
-  it("preserves react-dom imports", () => {
+  it("preserves react-dom imports", async () => {
     const source = `import { createRoot } from 'react-dom/client'
 function App() { return <div>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("from 'react-dom/client'")
   })
 
-  it("preserves @hammies/frontend imports", () => {
+  it("preserves @hammies/frontend imports", async () => {
     const source = `import { Button, Card } from '@hammies/frontend/components/ui'
 function App() { return <Button>Click</Button> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("from '@hammies/frontend/components/ui'")
   })
 
-  it("preserves @hammies/frontend/lib/utils imports", () => {
+  it("preserves @hammies/frontend/lib/utils imports", async () => {
     const source = `import { cn } from '@hammies/frontend/lib/utils'
 function App() { return <div className={cn("a", "b")}>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
   })
 
-  it("strips unknown package imports", () => {
+  it("strips unknown package imports", async () => {
     const source = `import axios from 'axios'
 import { something } from 'lodash'
 function App() { return <div>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).not.toContain("axios")
     expect(result.code).not.toContain("lodash")
   })
 
-  it("auto-injects React import when hooks are used without import", () => {
+  it("auto-injects React import when hooks are used without import", async () => {
     const source = `function App() {
   const [count, setCount] = useState(0)
   useEffect(() => {}, [])
   return <div>{count}</div>
 }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // Should inject import for used hooks
     expect(result.code).toContain("from 'react'")
     expect(result.code).toContain("useState")
@@ -62,27 +62,27 @@ function App() { return <div>Hello</div> }`
     expect(result.code).toContain("createElement")
   })
 
-  it("auto-injects React default import even with no hooks", () => {
+  it("auto-injects React default import even with no hooks", async () => {
     const source = `function App() { return <div>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // Needs React for createElement calls
     expect(result.code).toContain("from 'react'")
   })
 
-  it("does not double-inject if React import already exists", () => {
+  it("does not double-inject if React import already exists", async () => {
     const source = `import { useState } from 'react'
 function App() { const [x] = useState(0); return <div>{x}</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // Should have exactly one import from react
     const matches = result.code.match(/from 'react'/g)
     expect(matches?.length).toBe(1)
   })
 
-  it("auto-injects component imports when used without import", () => {
+  it("auto-injects component imports when used without import", async () => {
     const source = `function App() {
   return <Card><CardContent><Input placeholder="Name" /><Button>Submit</Button></CardContent></Card>
 }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("from '@hammies/frontend/components/ui'")
     expect(result.code).toContain("Card")
     expect(result.code).toContain("CardContent")
@@ -90,24 +90,24 @@ function App() { const [x] = useState(0); return <div>{x}</div> }`
     expect(result.code).toContain("Button")
   })
 
-  it("auto-injects cn import when used without import", () => {
+  it("auto-injects cn import when used without import", async () => {
     const source = `function App() { return <div className={cn("a", "b")}>Hi</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
   })
 
-  it("does not double-inject component imports", () => {
+  it("does not double-inject component imports", async () => {
     const source = `import { Button } from '@hammies/frontend/components/ui'
 function App() { return <Button>Click</Button> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     const matches = result.code.match(/@hammies\/frontend\/components\/ui/g)
     expect(matches?.length).toBe(1)
   })
 
-  it("merges missing components into existing import", () => {
+  it("merges missing components into existing import", async () => {
     const source = `import { Button } from '@hammies/frontend/components/ui'
 function App() { return <Card><Button>Click</Button><Input /></Card> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // Should have one import with Button, Card, and Input
     const matches = result.code.match(/@hammies\/frontend\/components\/ui/g)
     expect(matches?.length).toBe(1)
@@ -115,55 +115,55 @@ function App() { return <Card><Button>Click</Button><Input /></Card> }`
     expect(result.code).toContain("Input")
   })
 
-  it("strips side-effect imports", () => {
+  it("strips side-effect imports", async () => {
     const source = `import './styles.css'
 function App() { return <div>Hello</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).not.toContain("styles.css")
   })
 
-  it("detects export default function", () => {
+  it("detects export default function", async () => {
     const source = `export default function EmailEditor() { return <div>Editor</div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.exportedName).toBe("EmailEditor")
     expect(result.code).toContain("EmailEditor")
   })
 
-  it("detects standalone export default Name", () => {
+  it("detects standalone export default Name", async () => {
     const source = `function MyComponent() { return <div>Hi</div> }
 export default MyComponent;`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.exportedName).toBe("MyComponent")
   })
 
-  it("transforms JSX to React.createElement", () => {
+  it("transforms JSX to React.createElement", async () => {
     const source = `function App() { return <div className="test"><span>Hello</span></div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("createElement")
     expect(result.code).not.toContain("<div")
     expect(result.code).not.toContain("<span")
   })
 
-  it("uses sourceType module (supports import/export syntax)", () => {
+  it("uses sourceType module (supports import/export syntax)", async () => {
     const source = `import { Button } from '@hammies/frontend/components/ui'
 export default function App() { return <Button>Click</Button> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // Should not throw — sourceType: "module" allows import/export
     expect(result.code).toContain("createElement")
     expect(result.exportedName).toBe("App")
   })
 
-  it("fixes multiline regex literals (LLM bug)", () => {
+  it("fixes multiline regex literals (LLM bug)", async () => {
     const source = `function App() {
   const text = "hello\\nworld".replace(/
 /g, '<br>')
   return <div>{text}</div>
 }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.code).toContain("createElement")
   })
 
-  it("handles complex component with multiple features", () => {
+  it("handles complex component with multiple features", async () => {
     const source = `import { useState } from 'react'
 import { Button, Card, CardContent } from '@hammies/frontend/components/ui'
 import { cn } from '@hammies/frontend/lib/utils'
@@ -179,7 +179,7 @@ export default function Dashboard() {
     </Card>
   )
 }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     expect(result.exportedName).toBe("Dashboard")
     expect(result.code).toContain("from 'react'")
     expect(result.code).toContain("from '@hammies/frontend/components/ui'")
@@ -188,26 +188,26 @@ export default function Dashboard() {
   })
 })
 
-  it("consolidates multiple @hammies/frontend barrel imports without duplicates", () => {
+  it("consolidates multiple @hammies/frontend barrel imports without duplicates", async () => {
     const source = `import { Button, Badge, Input, Textarea, Label } from '@hammies/frontend/components/ui'
 import { Input } from '@hammies/frontend/components/ui'
 import { Textarea } from '@hammies/frontend/components/ui'
 
 export default function App() { return <div><Button>Go</Button><Input /><Badge>x</Badge></div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     const imports = result.code.match(/from '@hammies\/frontend\/components\/ui'/g)
     expect(imports).toHaveLength(1)
     expect(result.code).toContain("createElement")
   })
 
-  it("consolidates per-component path imports into a single barrel import", () => {
+  it("consolidates per-component path imports into a single barrel import", async () => {
     const source = `import { Button } from '@hammies/frontend/components/ui/button'
 import { Badge } from '@hammies/frontend/components/ui/badge'
 import { Input } from '@hammies/frontend/components/ui/input'
 import { Textarea } from '@hammies/frontend/components/ui/textarea'
 
 export default function App() { return <div><Button>Go</Button><Input /><Badge>x</Badge></div> }`
-    const result = transformArtifactCode(source)
+    const result = await transformArtifactCode(source)
     // All per-component imports consolidated into one barrel import
     const imports = result.code.match(/from '@hammies\/frontend\/components\/ui'/g)
     expect(imports).toHaveLength(1)
@@ -221,17 +221,17 @@ export default function App() { return <div><Button>Go</Button><Input /><Badge>x
   })
 
 describe("escapeForScript", () => {
-  it("escapes </script> tags", () => {
+  it("escapes </script> tags", async () => {
     expect(escapeForScript('var x = "</script>";')).toBe('var x = "<\\/script>";')
   })
 
-  it("is case-insensitive", () => {
+  it("is case-insensitive", async () => {
     const result = escapeForScript("</Script>")
     expect(result).not.toContain("</Script>")
     expect(result).toContain("<\\/script")
   })
 
-  it("does not alter code without </script>", () => {
+  it("does not alter code without </script>", async () => {
     const code = "var x = 1; function App() { return null; }"
     expect(escapeForScript(code)).toBe(code)
   })

@@ -12,9 +12,7 @@ import { getPanelSchemas } from "@/api/client"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import rehypeHighlight from "rehype-highlight"
-import hljs from "highlight.js/lib/core"
-import json from "highlight.js/lib/languages/json"
+import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import { cn } from "@hammies/frontend/lib/utils"
 import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
@@ -23,7 +21,6 @@ import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { AskUserForm } from "./AskUserForm"
 
-hljs.registerLanguage("json", json)
 
 // Unwrap immediate children matching `tag` — e.g. strip <strong> inside headings,
 // <p> inside <li> (ReactMarkdown wraps loose-list items in <p>).
@@ -86,7 +83,7 @@ export function SessionTranscript({
   onArtifactsReady,
   children,
 }: SessionTranscriptProps) {
-  const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
+  const { scrollRef, visibleMessages, handleScroll } = useTranscriptScroll({
     messages,
     visibility,
     sessionId,
@@ -137,8 +134,6 @@ export function SessionTranscript({
     }
   }, [expectedArtifacts, visibleMessages.length, onArtifactsReady])
 
-  const virtualItems = virtualizer.getVirtualItems()
-
   return (
     <div
       ref={scrollRef}
@@ -146,29 +141,20 @@ export function SessionTranscript({
       onScroll={handleScroll}
     >
       <div className="p-4 min-w-0 pb-4">
-        {virtualItems.length > 0 ? (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualItems.map((virtualRow) => (
+        {visibleMessages.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {visibleMessages.map((message) => (
               <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 12,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
+                key={message.sequence}
+                style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
+                <TranscriptEntry message={message} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
               </div>
             ))}
           </div>
-        ) : visibleMessages.length === 0 ? (
+        ) : (
           <PanelSkeleton />
-        ) : null}
+        )}
         {children}
       </div>
     </div>
@@ -447,7 +433,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
           defaultOpen
         >
           <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
               {msg.result || "Session completed"}
             </ReactMarkdown>
           </div>
@@ -487,7 +473,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
           bold={false}
         >
           <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
               {skillBlock.content}
             </ReactMarkdown>
           </div>
@@ -574,7 +560,7 @@ function MarkdownEntry({ text, label = "Claude" }: { text: string; label?: strin
   return (
     <MessageBubble label={label} align="left" transparent>
       <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
           {text}
         </ReactMarkdown>
       </div>
@@ -721,7 +707,7 @@ function ContentBlockView({
         defaultOpen
       >
         <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
             {block.thinking}
           </ReactMarkdown>
         </div>
