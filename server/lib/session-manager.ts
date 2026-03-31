@@ -99,14 +99,19 @@ function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<
  * Discover Agent SDK plugin directories for a workspace session.
  * Returns paths to core plugin (inbox/plugins/core) and all workspace plugins.
  */
+import { fileURLToPath } from "url"
+
+// Resolve inbox package root from this file's location (server/lib/session-manager.ts → ../../)
+const INBOX_PLUGINS_DIR = resolve(fileURLToPath(import.meta.url), "../../../plugins/core")
+console.log(`[session] INBOX_PLUGINS_DIR: ${INBOX_PLUGINS_DIR}, exists: ${fs.existsSync(INBOX_PLUGINS_DIR)}`)
+
 function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] {
-  const inboxPluginsDir = resolve(wsPath, "../inbox/plugins/core")
   const wsPluginsDir = resolve(wsPath, "plugins")
 
   const plugins: { type: "local"; path: string }[] = []
 
-  if (fs.existsSync(inboxPluginsDir)) {
-    plugins.push({ type: "local", path: inboxPluginsDir })
+  if (fs.existsSync(INBOX_PLUGINS_DIR)) {
+    plugins.push({ type: "local", path: INBOX_PLUGINS_DIR })
   }
 
   if (fs.existsSync(wsPluginsDir)) {
