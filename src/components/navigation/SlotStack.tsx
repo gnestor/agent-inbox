@@ -31,8 +31,12 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   // Scroll to active tab when activeKey changes from sidebar click.
   const isUserScrolling = useRef(false)
   const prevActiveKey = useRef(activeKey)
+  const prevKeysLenRef = useRef(keys.length)
   useEffect(() => {
-    if (prevActiveKey.current === activeKey) return
+    const keysChanged = prevKeysLenRef.current !== keys.length
+    prevKeysLenRef.current = keys.length
+
+    if (prevActiveKey.current === activeKey && !keysChanged) return
     prevActiveKey.current = activeKey
 
     if (isUserScrolling.current) {
@@ -48,21 +52,29 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     const target = idx * el.clientHeight
     if (Math.abs(el.scrollTop - target) < 1) return
 
+    // Use instant scroll when keys changed (tab inserted/removed) to avoid
+    // the glitch of smooth-scrolling through shifted positions.
     isProgrammaticScroll.current = true
     el.style.scrollSnapType = "none"
-    el.scrollTo({ top: target, behavior: "smooth" })
-    // Re-enable snap and clear flag after scroll completes
-    const onEnd = () => {
-      el.style.scrollSnapType = "y mandatory"
-      isProgrammaticScroll.current = false
-      el.removeEventListener("scrollend", onEnd)
+    if (keysChanged) {
+      el.scrollTop = target
+      requestAnimationFrame(() => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+      })
+    } else {
+      el.scrollTo({ top: target, behavior: "smooth" })
+      const onEnd = () => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+        el.removeEventListener("scrollend", onEnd)
+      }
+      el.addEventListener("scrollend", onEnd, { once: true })
+      setTimeout(() => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+      }, 1000)
     }
-    el.addEventListener("scrollend", onEnd, { once: true })
-    // Fallback in case scrollend doesn't fire (e.g. already at target)
-    setTimeout(() => {
-      el.style.scrollSnapType = "y mandatory"
-      isProgrammaticScroll.current = false
-    }, 1000)
   })
 
   // Track which tab is most visible on every scroll event

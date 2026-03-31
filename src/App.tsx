@@ -24,10 +24,10 @@ const WorkspaceSettings = lazy(() =>
 )
 
 const STATIC_SLOTS = [
-  "settings",
-  "workspace-settings",
   "sessions",
 ]
+
+const SETTINGS_TABS = new Set(["settings", "workspace-settings"])
 
 function renderTab(tabId: string) {
   if (tabId === "settings") {
@@ -89,15 +89,16 @@ function TabContainer() {
       .filter((k) => k.startsWith("recent:"))
       .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
 
-    // Insert plugin tabs before sessions, recent tabs after plugins
-    const sessionsIdx = STATIC_SLOTS.indexOf("sessions")
+    // Settings tabs: mount at the top, unmount on navigate away
+    const settingsKey = SETTINGS_TABS.has(activeTab) ? [activeTab] : []
+
     return [
-      ...STATIC_SLOTS.slice(0, sessionsIdx),
+      ...settingsKey,
       ...pluginKeys,
       ...recentKeys,
-      ...STATIC_SLOTS.slice(sessionsIdx),
+      ...STATIC_SLOTS,
     ]
-  }, [tabs, sortedPlugins])
+  }, [tabs, sortedPlugins, activeTab])
 
   // When user scroll-snaps to a different tab, sync the URL/sidebar
   const handleActiveKeyChange = useCallback((key: string) => {
