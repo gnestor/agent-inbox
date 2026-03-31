@@ -1,13 +1,6 @@
-import { useRef, useEffect, useMemo, useCallback } from "react"
-import { useVirtualizerSafe } from "./use-virtualizer-safe"
+import { useRef, useEffect, useMemo } from "react"
 import type { SessionMessage } from "@/types"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
-
-// Module-level cache: measured row heights persist across remounts.
-// Key: "sessionId:sequence", Value: measured height in px.
-// Capped at 5000 entries (~10 sessions worth) to prevent unbounded growth.
-const heightCache = new Map<string, number>()
-const HEIGHT_CACHE_MAX = 5000
 
 interface UseTranscriptScrollOptions {
   messages: SessionMessage[]
@@ -16,6 +9,14 @@ interface UseTranscriptScrollOptions {
   shouldRenderMessage: (message: SessionMessage, visibility: TranscriptVisibility) => boolean
 }
 
+/**
+ * Manages transcript scroll behavior without JS virtualization.
+ *
+ * Messages render in normal document flow — no absolute positioning, no
+ * estimated heights, no measurement dance. Offscreen messages use CSS
+ * `content-visibility: auto` (set in SessionTranscript) for rendering
+ * performance. This gives native-feeling scroll with zero layout jumps.
+ */
 export function useTranscriptScroll({
   messages,
   visibility,
@@ -31,116 +32,37 @@ export function useTranscriptScroll({
     [messages, visibility, shouldRenderMessage],
   )
 
-  // Use cached height if available (from a previous visit), otherwise estimate.
-  // Estimates must be <= actual height to avoid the cascade bug.
-  const estimateSize = useCallback((index: number) => {
-    const msg = visibleMessages[index]
-    if (!msg) return 72
-    const cached = sessionId ? heightCache.get(`${sessionId}:${msg.sequence}`) : undefined
-    if (cached) return cached
-    const payload = msg.message
-    if (payload.type === "assistant") {
-      const blocks = Array.isArray(payload.content) ? payload.content
-        : Array.isArray((payload as any).message?.content) ? (payload as any).message.content
-        : []
-      for (const b of blocks) {
-        if (b.type === "tool_use" && (b.name === "render_output" || b.name === "mcp__render_output__render_output")) {
-          return 200
-        }
-      }
-    }
-    return 72
-  }, [visibleMessages, sessionId])
-
-  // Start at the bottom
-  const initialOffset = useMemo(() => {
-    let total = 0
-    for (let i = 0; i < visibleMessages.length; i++) total += estimateSize(i)
-    return total
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- only on mount
-
-  const virtualizer = useVirtualizerSafe({
-    count: visibleMessages.length,
-    getScrollElement: () => scrollRef.current,
-    getItemKey: (index) => visibleMessages[index]?.sequence ?? index,
-    estimateSize,
-    overscan: 5,
-    initialOffset,
-    useAnimationFrameWithResizeObserver: true,
-  })
-
-  // Cache measured heights so revisits use correct sizes from frame 1
-  useEffect(() => {
-    if (!sessionId) return
-    const measurements = virtualizer.getVirtualItems()
-    for (const item of measurements) {
-      if (item.size > 0) {
-        heightCache.set(`${sessionId}:${visibleMessages[item.index]?.sequence}`, item.size)
-      }
-    }
-    // Evict oldest entries when cache exceeds limit
-    if (heightCache.size > HEIGHT_CACHE_MAX) {
-      const excess = heightCache.size - HEIGHT_CACHE_MAX
-      const iter = heightCache.keys()
-      for (let i = 0; i < excess; i++) {
-        const key = iter.next().value
-        if (key) heightCache.delete(key)
-      }
-    }
-  })
-
   // Reset when session changes
   useEffect(() => {
     hasScrolledToBottom.current = false
     shouldAutoScroll.current = true
   }, [sessionId])
 
-  // Scroll to the last item once messages are available.
-  // Uses virtualizer.scrollToIndex which works with the virtualizer's
-  // measurement system rather than fighting it with raw scrollTop.
+  // Scroll to bottom once messages are available
   useEffect(() => {
     if (hasScrolledToBottom.current) return
     if (visibleMessages.length === 0) return
+    const el = scrollRef.current
+    if (!el) return
 
     hasScrolledToBottom.current = true
-    const lastIndex = visibleMessages.length - 1
-
-    // scrollToIndex needs a frame for the virtualizer to initialize
+    // Use rAF to ensure layout has completed
     requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(lastIndex, { align: "end" })
-      // Second call after measurements settle
-      requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(lastIndex, { align: "end" })
-      })
+      el.scrollTop = el.scrollHeight
     })
-  }, [visibleMessages.length, virtualizer])
+  }, [visibleMessages.length])
 
-  // Auto-scroll when virtualizer content grows (new messages, item
-  // remeasurement after artifacts load, etc.). Runs as a useEffect
-  // so scrollHeight is accurate in the same commit that updated getTotalSize().
-  const totalSize = virtualizer.getTotalSize()
-  const prevTotalSize = useRef(0)
-  useEffect(() => {
-    const grew = totalSize > prevTotalSize.current
-    prevTotalSize.current = totalSize
-    if (grew && hasScrolledToBottom.current && shouldAutoScroll.current) {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-    }
-  }, [totalSize])
-
-  // Auto-scroll when non-virtualizer content appears (e.g. working indicator).
-  // ResizeObserver catches content wrapper growth that isn't from getTotalSize().
+  // Auto-scroll when content grows (new messages, artifacts loading, etc.)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const content = el.firstElementChild
     if (!content) return
 
-    let prevHeight = 0
+    let prevHeight = content.scrollHeight
 
-    const observer = new ResizeObserver((entries) => {
-      const newHeight = entries[0].contentRect.height
+    const observer = new ResizeObserver(() => {
+      const newHeight = content.scrollHeight
       const grew = newHeight > prevHeight
       prevHeight = newHeight
       if (grew && hasScrolledToBottom.current && shouldAutoScroll.current) {
@@ -161,7 +83,6 @@ export function useTranscriptScroll({
 
   return {
     scrollRef,
-    virtualizer,
     visibleMessages,
     handleScroll,
   }

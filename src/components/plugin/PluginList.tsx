@@ -1,6 +1,5 @@
-import { useRef, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { SlidersHorizontal } from "lucide-react"
 import {
   Popover, PopoverTrigger, PopoverContent,
@@ -164,14 +163,6 @@ function PluginListInner({
   const hasSubtitle = plugin.fieldSchema?.some((f) => f.listRole === "subtitle")
   const rowHeight = plugin.listRowHeight ?? (hasSubtitle ? 100 : 80)
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const rowVirtualizer = useVirtualizerSafe({
-    count: items.length,
-    getScrollElement: () => containerRef.current,
-    estimateSize: () => rowHeight,
-    getItemKey: (index) => items[index]?.id ?? index,
-    overscan: 5,
-  })
 
   const filterUI = filterableFields.length > 0 ? (
     <Popover>
@@ -328,42 +319,31 @@ function PluginListInner({
       )}
 
       {items.length > 0 && (
-        <div ref={containerRef} className="flex-1 overflow-y-auto">
-          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const item = items[virtualRow.index]
-              const title = getItemTitle(item, plugin.fieldSchema)
-              const badges = buildBadges(item, plugin.fieldSchema, hiddenBadgeFields)
+        <div className="flex-1 overflow-y-auto">
+          {items.map((item, index) => {
+            const title = getItemTitle(item, plugin.fieldSchema)
+            const badges = buildBadges(item, plugin.fieldSchema, hiddenBadgeFields)
 
-              return (
-                <div
-                  key={item.id}
-                  data-index={virtualRow.index}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: rowHeight,
-                    transform: `translateY(${virtualRow.start}px)`,
+            return (
+              <div
+                key={item.id}
+                style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${rowHeight}px` }}
+              >
+                <ListItem
+                  title={title}
+                  subtitle={getItemSubtitle(item, plugin.fieldSchema)}
+                  timestamp={getItemTimestamp(item, plugin.fieldSchema)}
+                  badges={badges}
+                  isSelected={selectedItemId === item.id}
+                  onClick={() => {
+                    if (onSelectedIndexChange) onSelectedIndexChange(index)
+                    if (onSelectedTitleChange) onSelectedTitleChange(title)
+                    selectItem(item.id, index)
                   }}
-                >
-                  <ListItem
-                    title={title}
-                    subtitle={getItemSubtitle(item, plugin.fieldSchema)}
-                    timestamp={getItemTimestamp(item, plugin.fieldSchema)}
-                    badges={badges}
-                    isSelected={selectedItemId === item.id}
-                    onClick={() => {
-                      if (onSelectedIndexChange) onSelectedIndexChange(virtualRow.index)
-                      if (onSelectedTitleChange) onSelectedTitleChange(title)
-                      selectItem(item.id, virtualRow.index)
-                    }}
-                  />
-                </div>
-              )
-            })}
-          </div>
+                />
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

@@ -78,6 +78,9 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     const el = scrollRef.current
     if (!el) return
 
+    // Fire onActiveKeyChange synchronously during scroll so the sidebar
+    // highlights instantly. With Zustand selectors, switchTab only re-renders
+    // activeTab subscribers (~4 components), so this is cheap.
     const onScroll = () => {
       if (isProgrammaticScroll.current) return
       const height = el.clientHeight
@@ -87,8 +90,6 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
       if (key && key !== activeKeyRef.current) {
         isUserScrolling.current = true
         activeKeyRef.current = key
-        // With Zustand selectors, switchTab only re-renders activeTab subscribers
-        // so this is cheap enough to call synchronously during scroll.
         onActiveKeyChangeRef.current?.(key)
       }
     }
