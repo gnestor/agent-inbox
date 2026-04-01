@@ -1,24 +1,26 @@
 import { useReducer, useEffect, useRef, useCallback, useState } from "react"
-import type { SessionMessage, PendingQuestion, PresenceUser } from "@/types"
+import { useQueryClient } from "@tanstack/react-query"
+import type { PendingQuestion, PresenceUser, SessionMessage } from "@/types"
 import { normalizeMessagePayload, getMessageType } from "@/types/session-message"
 
 // ---------------------------------------------------------------------------
-// State machine — prevents impossible states like connected=false + status="awaiting_user_input"
+// State machine — tracks connection status, session lifecycle, and pending questions.
+// Messages are pushed directly to the React Query cache (not accumulated here).
 // ---------------------------------------------------------------------------
 
 type StreamState =
-  | { status: "idle"; messages: SessionMessage[]; connected: false; sessionStatus: null; pendingQuestion: null }
-  | { status: "connected"; messages: SessionMessage[]; connected: true; sessionStatus: null; pendingQuestion: null }
-  | { status: "streaming"; messages: SessionMessage[]; connected: true; sessionStatus: null; pendingQuestion: null }
-  | { status: "awaiting_input"; messages: SessionMessage[]; connected: true; sessionStatus: "awaiting_user_input"; pendingQuestion: PendingQuestion }
-  | { status: "complete"; messages: SessionMessage[]; connected: true; sessionStatus: "complete"; pendingQuestion: null }
-  | { status: "errored"; messages: SessionMessage[]; connected: true; sessionStatus: "errored"; pendingQuestion: null }
-  | { status: "disconnected"; messages: SessionMessage[]; connected: false; sessionStatus: string | null; pendingQuestion: null }
+  | { status: "idle"; connected: false; sessionStatus: null; pendingQuestion: null }
+  | { status: "connected"; connected: true; sessionStatus: null; pendingQuestion: null }
+  | { status: "streaming"; connected: true; sessionStatus: null; pendingQuestion: null }
+  | { status: "awaiting_input"; connected: true; sessionStatus: "awaiting_user_input"; pendingQuestion: PendingQuestion }
+  | { status: "complete"; connected: true; sessionStatus: "complete"; pendingQuestion: null }
+  | { status: "errored"; connected: true; sessionStatus: "errored"; pendingQuestion: null }
+  | { status: "disconnected"; connected: false; sessionStatus: string | null; pendingQuestion: null }
 
 type StreamAction =
   | { type: "RESET" }
   | { type: "CONNECTED" }
-  | { type: "MESSAGE"; message: SessionMessage }
+  | { type: "STREAMING" }
   | { type: "ASK_USER"; pendingQuestion: PendingQuestion }
   | { type: "CLEAR_QUESTION" }
   | { type: "COMPLETE" }
@@ -27,7 +29,6 @@ type StreamAction =
 
 const INITIAL_STATE: StreamState = {
   status: "idle",
-  messages: [],
   connected: false,
   sessionStatus: null,
   pendingQuestion: null,
@@ -39,8 +40,8 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
       return INITIAL_STATE
     case "CONNECTED":
       return { ...state, status: "connected", connected: true, sessionStatus: null, pendingQuestion: null }
-    case "MESSAGE":
-      return { ...state, status: "streaming", messages: [...state.messages, action.message], connected: true, sessionStatus: null, pendingQuestion: null }
+    case "STREAMING":
+      return { ...state, status: "streaming", connected: true, sessionStatus: null, pendingQuestion: null }
     case "ASK_USER":
       return { ...state, status: "awaiting_input", connected: true, sessionStatus: "awaiting_user_input", pendingQuestion: action.pendingQuestion }
     case "CLEAR_QUESTION":
@@ -61,6 +62,7 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
 // ---------------------------------------------------------------------------
 
 export function useSessionStream(sessionId: string | undefined, enabled = true) {
+  const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(streamReducer, INITIAL_STATE)
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
   const [eventCount, setEventCount] = useState(0)
@@ -83,16 +85,24 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
       try {
         const data = JSON.parse(event.data)
         setEventCount((c) => c + 1)
-        if (import.meta.env.DEV && data?.message) {
-          console.log(data.message)
-        }
 
         if (data.type === "session_complete") {
           dispatch({ type: "COMPLETE" })
+          // Update session status in React Query cache
+          queryClient.setQueryData(["session", sessionId], (old: any) => {
+            if (!old) return old
+            return { ...old, session: { ...old.session, status: "complete" } }
+          })
+          queryClient.invalidateQueries({ queryKey: ["sessions"] })
           return
         }
         if (data.type === "session_error") {
           dispatch({ type: "ERROR" })
+          queryClient.setQueryData(["session", sessionId], (old: any) => {
+            if (!old) return old
+            return { ...old, session: { ...old.session, status: "errored" } }
+          })
+          queryClient.invalidateQueries({ queryKey: ["sessions"] })
           return
         }
         if (data.type === "ask_user_question") {
@@ -104,19 +114,27 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
           return
         }
 
+        // Push message to React Query cache (single source of truth)
         if (data.sequence !== undefined && data.message) {
           if (seenSequences.current.has(data.sequence)) return
           seenSequences.current.add(data.sequence)
-          dispatch({
-            type: "MESSAGE",
-            message: {
-              id: data.sequence,
-              sessionId: sessionId,
-              sequence: data.sequence,
-              type: getMessageType(data.message),
-              message: normalizeMessagePayload(data.message),
-              createdAt: new Date().toISOString(),
-            },
+
+          dispatch({ type: "STREAMING" })
+
+          const msg: SessionMessage = {
+            id: data.sequence,
+            sessionId: sessionId,
+            sequence: data.sequence,
+            type: getMessageType(data.message),
+            message: normalizeMessagePayload(data.message),
+            createdAt: new Date().toISOString(),
+          }
+
+          queryClient.setQueryData(["session", sessionId], (old: any) => {
+            if (!old) return old
+            const messages = old.messages ?? []
+            if (messages.some((m: SessionMessage) => m.sequence === data.sequence)) return old
+            return { ...old, messages: [...messages, msg].sort((a: SessionMessage, b: SessionMessage) => a.sequence - b.sequence) }
           })
         }
       } catch {
@@ -125,19 +143,19 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
     })
 
     es.addEventListener("open", () => {
-      if (import.meta.env.DEV) console.log(`[session:${sessionId}]`, "connected")
       dispatch({ type: "CONNECTED" })
     })
     es.addEventListener("error", () => {
-      if (import.meta.env.DEV) console.log(`[session:${sessionId}]`, "disconnected")
       dispatch({ type: "DISCONNECTED" })
+      // Refetch true DB status when SSE disconnects
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] })
     })
 
     return () => {
       es.close()
       eventSourceRef.current = null
     }
-  }, [enabled, sessionId])
+  }, [enabled, sessionId, queryClient])
 
   const disconnect = useCallback(() => {
     eventSourceRef.current?.close()
@@ -147,9 +165,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
 
   const clearPendingQuestion = useCallback(() => dispatch({ type: "CLEAR_QUESTION" }), [])
 
-  // Return flat object — same API as before for backward compatibility
   return {
-    messages: state.messages,
     connected: state.connected,
     sessionStatus: state.sessionStatus,
     pendingQuestion: state.pendingQuestion,

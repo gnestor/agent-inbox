@@ -137,30 +137,12 @@ sessionRoutes.get("/:id", async (c) => {
   const session = await sessions.getSessionRecord(sessionId)
 
   if (session) {
-    // JSONL is the source of truth for session transcript
+    // JSONL is the source of truth for session transcript.
+    // SSE pushes new messages to the client's React Query cache in real-time.
     const agentSession = await sessions.findAgentSession(sessionId)
     const messages = agentSession
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
       : []
-
-    // Ensure the user's initial prompt is the first message.
-    // The SDK writes it to JSONL asynchronously, so for running sessions
-    // the transcript may not include it yet.
-    if (session.prompt && messages.length > 0) {
-      const first = messages[0] as any
-      const firstIsUserPrompt = first?.type === "user" && (
-        first?.message?.content === session.prompt ||
-        (Array.isArray(first?.message?.content) && first.message.content[0]?.text === session.prompt) ||
-        first?.content === session.prompt
-      )
-      if (!firstIsUserPrompt) {
-        messages.unshift({
-          sequence: -1,
-          type: "user",
-          message: { role: "user", content: session.prompt },
-        } as any)
-      }
-    }
 
     return c.json({
       session: {

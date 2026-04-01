@@ -484,9 +484,11 @@ const TranscriptEntry = memo(function TranscriptEntry({
     if (!visibility.messages) return null
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
-    const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
+    const raw = message.message as unknown as Record<string, unknown>
+    const isSubagent = !!(raw.isSidechain || raw.parentUuid || (raw.agentId && msg.type === "user"))
+    const isCurrentUser = !isSubagent && (!msg.authorEmail || msg.authorEmail === currentUserEmail)
     const profile = msg.authorEmail ? userProfiles?.get(msg.authorEmail) : undefined
-    const authorLabel = isCurrentUser ? "You" : (profile?.name || msg.authorName || "User")
+    const authorLabel = isCurrentUser ? "You" : isSubagent ? getAgentLabel(message) : (profile?.name || msg.authorName || "User")
     return (
       <MessageBubble label={authorLabel} align="right">
         <div className="space-y-1.5">
