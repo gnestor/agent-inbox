@@ -28,8 +28,11 @@ The `render_output` MCP tool renders structured outputs inline in the session tr
 ### Environment
 
 - **Tailwind CSS** — all styling via utility classes
-- **shadcn/ui** — import from `@hammies/frontend/components/ui`
-- **React hooks** — import from `react`
+- **shadcn/ui** — `import { Button, Badge, ... } from "@hammies/frontend/components/ui"`
+- **React hooks** — `import { useState, useEffect, ... } from "react"`
+- **Utilities** — `import { cn } from "@hammies/frontend/lib/utils"`
+
+**IMPORTANT:** Always use ES module `import` syntax. NEVER use `window["@hammies/..."]` or `require()` — the artifact runs in an ES module context with import maps.
 
 ### Globals (do not import)
 
