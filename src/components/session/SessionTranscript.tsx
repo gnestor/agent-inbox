@@ -1058,21 +1058,49 @@ function buildToolResultMap(messages: SessionMessage[]): Map<string, string> {
   return map
 }
 
-/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event. */
+/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event.
+ *  Dots bounce in a continuous loop while active. On each new event, the currently-bouncing
+ *  dot flashes foreground color for one tick, then returns to muted. */
 export function WorkingIndicator({ eventCount }: { eventCount: number }) {
+  const TICK_MS = 450
+  const [tick, setTick] = useState(0)
+  const [flash, setFlash] = useState(false)
+  const prevCountRef = useRef(eventCount)
+
+  // Continuous tick loop — drives which dot is bouncing
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  // Flash the active dot when a new event arrives
+  useEffect(() => {
+    if (eventCount !== prevCountRef.current) {
+      prevCountRef.current = eventCount
+      setFlash(true)
+    }
+  }, [eventCount])
+
+  // Clear flash after one tick
+  useEffect(() => {
+    if (!flash) return
+    const id = setTimeout(() => setFlash(false), TICK_MS)
+    return () => clearTimeout(id)
+  }, [flash])
+
+  const activeDot = tick % 3
+
   return (
     <div className="flex justify-center py-4">
       <div className="flex items-center gap-1">
         {[0, 1, 2].map((i) => {
-          const active = eventCount % 3 === i
+          const isBouncing = activeDot === i
+          const color = isBouncing && flash ? "bg-foreground" : "bg-muted-foreground"
           return (
             <span
-              key={active ? `${i}-${eventCount}` : i}
-              className={`size-1.5 rounded-full ${active ? "bg-foreground" : "bg-muted-foreground"}`}
-              style={{
-                animation: "dot-bounce 0.6s ease-out",
-                animationDelay: `${i * 0.15}s`,
-              }}
+              key={isBouncing ? `${i}-${tick}` : i}
+              className={`size-1.5 rounded-full ${color}`}
+              style={isBouncing ? { animation: `dot-bounce ${TICK_MS}ms ease-out` } : undefined}
             />
           )
         })}
