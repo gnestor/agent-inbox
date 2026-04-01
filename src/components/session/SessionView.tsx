@@ -100,7 +100,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
             />
           ) : (
             <h2
-              className="font-semibold text-sm truncate min-w-0 flex-1 cursor-pointer hover:text-foreground/70"
+              className="font-semibold text-sm truncate min-w-0 cursor-pointer hover:text-foreground/70"
               onClick={handleStartEdit}
               title="Click to rename"
             >

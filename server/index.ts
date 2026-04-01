@@ -258,24 +258,23 @@ if (existsSync(distPath)) {
 
 const port = parseInt(process.env.PORT || "3002", 10)
 
+// Load workspace plugins before starting the server
+for (const ws of registeredWorkspaces) {
+  console.log(`Loading plugins for workspace ${ws.id} from ${ws.path}`)
+  await loadPlugins(ws.path, ws.id).catch((err) => console.warn(`Failed to load plugins for ${ws.id}:`, err.message))
+}
+mountPluginRoutes(app)
+
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
+  watchPlugins(registeredWorkspaces, app)
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions()
     .then(() => watchProjectsDir())
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
-  // Load workspace plugins and workflow panel schemas (non-blocking)
   process.env.WORKSPACE_PATH = workspacePaths[0]
-  Promise.all(
-    registeredWorkspaces.map((ws) =>
-      loadPlugins(ws.path, ws.id).catch((err) => console.warn(`Failed to load plugins for ${ws.id}:`, err.message))
-    )
-  ).then(() => {
-    mountPluginRoutes(app)
-    watchPlugins(registeredWorkspaces, app)
-  })
   if (registeredWorkspaces.length > 0) {
     loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))
   }
