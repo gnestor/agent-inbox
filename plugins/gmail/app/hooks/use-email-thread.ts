@@ -7,6 +7,7 @@ export function useEmailThread(threadId: string | undefined) {
     queryKey: ["plugin-item", "gmail", threadId],
     queryFn: () => getEmailThread(threadId!) as Promise<GmailThread>,
     enabled: !!threadId,
+    staleTime: 0,
   })
   return {
     thread: thread ?? undefined,

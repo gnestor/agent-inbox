@@ -1,31 +1,34 @@
-import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { trashThread, modifyThreadLabels } from "../api"
 import { toast } from "sonner"
-import type { GmailThread, GmailMessage } from "../types"
+import type { GmailThread } from "../types"
 
 interface EmailActionsOptions {
   onRemove?: () => void
 }
 
-type EmailPage = { messages: GmailMessage[]; nextPageToken: string | null }
+interface PluginListData {
+  items: { id: string; [key: string]: unknown }[]
+  nextCursor?: string
+}
 
 export function useEmailActions(threadId: string, thread?: GmailThread | null, options?: EmailActionsOptions) {
   const queryClient = useQueryClient()
   const labelIds = thread?.labelIds ?? []
 
   const invalidateEmailQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ["emails"] })
-    queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+    queryClient.invalidateQueries({ queryKey: ["plugin-items"] })
+    queryClient.invalidateQueries({ queryKey: ["plugin-item", "gmail", threadId] })
   }
 
   function optimisticLabelUpdate(add: string[], remove: string[]) {
-    const previous = queryClient.getQueryData<GmailThread>(["thread", threadId])
+    const previous = queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", threadId])
     if (previous) {
       const newLabels = [
         ...previous.labelIds.filter((l) => !remove.includes(l)),
         ...add.filter((l) => !previous.labelIds.includes(l)),
       ]
-      queryClient.setQueryData<GmailThread>(["thread", threadId], {
+      queryClient.setQueryData<GmailThread>(["plugin-item", "gmail", threadId], {
         ...previous,
         labelIds: newLabels,
       })
@@ -34,22 +37,16 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
   }
 
   function removeFromEmailList() {
-    const previousEmails = queryClient.getQueriesData<InfiniteData<EmailPage>>({ queryKey: ["emails"] })
-    queryClient.setQueriesData<InfiniteData<EmailPage>>({ queryKey: ["emails"] }, (old) => {
+    const previousList = queryClient.getQueriesData<PluginListData>({ queryKey: ["plugin-items"] })
+    queryClient.setQueriesData<PluginListData>({ queryKey: ["plugin-items"] }, (old) => {
       if (!old) return old
-      return {
-        ...old,
-        pages: old.pages.map((page) => ({
-          ...page,
-          messages: page.messages.filter((m) => m.threadId !== threadId),
-        })),
-      }
+      return { ...old, items: old.items.filter((item) => item.id !== threadId) }
     })
-    return { previousEmails }
+    return { previousList }
   }
 
-  function rollbackEmailList(previousEmails: [readonly unknown[], InfiniteData<EmailPage> | undefined][]) {
-    for (const [key, data] of previousEmails) {
+  function rollbackList(previousList: [readonly unknown[], PluginListData | undefined][]) {
+    for (const [key, data] of previousList) {
       queryClient.setQueryData(key, data)
     }
   }
@@ -68,10 +65,10 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["thread", threadId], context.previous)
+        queryClient.setQueryData(["plugin-item", "gmail", threadId], context.previous)
       }
-      if (context?.previousEmails) {
-        rollbackEmailList(context.previousEmails)
+      if (context?.previousList) {
+        rollbackList(context.previousList)
       }
       toast.error(`Archive failed: ${err.message}`)
     },
@@ -91,10 +88,10 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["thread", threadId], context.previous)
+        queryClient.setQueryData(["plugin-item", "gmail", threadId], context.previous)
       }
-      if (context?.previousEmails) {
-        rollbackEmailList(context.previousEmails)
+      if (context?.previousList) {
+        rollbackList(context.previousList)
       }
       toast.error(`Delete failed: ${err.message}`)
     },
@@ -114,7 +111,7 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["thread", threadId], context.previous)
+        queryClient.setQueryData(["plugin-item", "gmail", threadId], context.previous)
       }
       toast.error(`Star update failed: ${err.message}`)
     },
@@ -134,7 +131,7 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["thread", threadId], context.previous)
+        queryClient.setQueryData(["plugin-item", "gmail", threadId], context.previous)
       }
       toast.error(`Important update failed: ${err.message}`)
     },
@@ -148,7 +145,7 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     onSuccess: () => invalidateEmailQueries(),
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["thread", threadId], context.previous)
+        queryClient.setQueryData(["plugin-item", "gmail", threadId], context.previous)
       }
       toast.error(`Label update failed: ${err.message}`)
     },
