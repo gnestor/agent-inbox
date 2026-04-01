@@ -79,6 +79,15 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
 
     if (!sessionId || !enabled) return
 
+    // Seed seenSequences with messages already in the cache (from REST)
+    // to prevent SSE from re-pushing them as duplicates
+    const cached = queryClient.getQueryData<SessionQueryData>(["session", sessionId])
+    if (cached?.messages) {
+      for (const m of cached.messages) {
+        if (m.sequence >= 0) seenSequences.current.add(m.sequence)
+      }
+    }
+
     const es = new EventSource(`/api/sessions/${sessionId}/stream`)
     eventSourceRef.current = es
 
@@ -135,9 +144,11 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
           queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
             if (!old) return old
             const messages = old.messages ?? []
+            // Skip if already in cache (defensive — seenSequences should prevent this)
+            if (messages.some((m) => m.sequence === data.sequence)) return old
             // Strip optimistic messages (negative sequences) when real messages arrive
-            const cleaned = messages.some((m: SessionMessage) => m.sequence < 0)
-              ? messages.filter((m: SessionMessage) => m.sequence >= 0)
+            const cleaned = messages.some((m) => m.sequence < 0)
+              ? messages.filter((m) => m.sequence >= 0)
               : messages
             return { ...old, messages: [...cleaned, msg] }
           })
