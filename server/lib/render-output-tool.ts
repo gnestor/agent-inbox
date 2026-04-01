@@ -13,6 +13,8 @@ export function buildRenderOutputMcpServer() {
     "render_output",
     `Render a structured output in the inbox UI. The output appears inline in the session transcript (600px x 600px) and can be expanded to its own panel (600px x calc(100vh - 77px)).
 
+UPDATING: To update or fix a previously rendered output, call render_output again with the same title. The previous version is automatically replaced — only the latest version is shown. Use this to iterate on errors, apply user-requested changes, or refine outputs without cluttering the session.
+
 For type "react": the sandbox includes Tailwind CSS, the app's shadcn/ui dark theme, and shadcn components from @hammies/frontend. Use Tailwind classes for all styling unless absolutely necessary.
 
 COMPONENTS — Import from '@hammies/frontend/components/ui'. 
@@ -58,25 +60,68 @@ sendAction(intent: string, data?: object) — Sends a message to the session. Th
 saveState(state: object) — Persists UI state across page reloads. Automatically restored on remount via window.__onStateRestored callback.
   Example: saveState({ selectedTab: 'details', scrollY: 100 })`,
     {
-      type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]),
-      data: z.any().describe(
-        "Output content. Format depends on type: " +
-        "markdown/html = string, " +
-        "table = { columns: string[], rows: any[][] }, " +
-        "json = any, " +
-        "chart = { type?: 'bar'|'line'|'area'|'pie', data: [{xField: val, yField: val}...], xKey: string, yKeys: string[], labels?: {key: label}, colors?: {key: cssColor} } (simple charts only — for Vega-Lite specs, use type 'react' with vega-embed: import vegaEmbed from 'https://esm.sh/vega-embed@6?deps=vega@5,vega-lite@5'), " +
-        "file = { name: string, path: string, mimeType?: string }, " +
-        "conversation = { messages: [{role, content}] }, " +
-        "react = { code: string, title?: string }"
+      type: z.enum(["markdown", "html", "table", "json", "chart", "file", "conversation", "react"]).describe(
+        "Choose the simplest type that represents the data well:\n" +
+        "- table: structured data with rows/columns (orders, line items, comparisons)\n" +
+        "- json: raw data inspection, API responses, debug output\n" +
+        "- markdown: formatted text with headings, lists, links\n" +
+        "- html: formatted content needing custom styling\n" +
+        "- chart: bar/line/area/pie data visualization\n" +
+        "- react: custom UI that doesn't fit the other types (interactive forms, multi-section layouts, styled cards). Requires writing JSX code as a string.\n" +
+        "- file: reference to a file on disk\n" +
+        "- conversation: chat-style message list"
       ),
-      title: z.string().optional().describe("Optional title shown above the output"),
+      data: z.any().describe(
+        "Content format depends on type:\n" +
+        "- markdown/html: string\n" +
+        "- table: { columns: string[], rows: any[][] }\n" +
+        "- json: any JSON value\n" +
+        "- chart: { type?: 'bar'|'line'|'area'|'pie', data: [{xField: val, yField: val}...], xKey: string, yKeys: string[], labels?: {key: label}, colors?: {key: cssColor} }\n" +
+        "- file: { name: string, path: string, mimeType?: string }\n" +
+        "- conversation: { messages: [{role, content}] }\n" +
+        "- react: { code: string, title?: string } — code MUST be a string of JSX/React code, NOT a data object. If you just have data to display, use 'table' or 'json' instead."
+      ),
+      title: z.string().describe("Title shown above the output. Also used as the key for updates — calling render_output again with the same title replaces the previous version."),
     },
     async (args) => {
+      // Validate react type has actual code
+      if (args.type === "react") {
+        const code = typeof args.data === "string" ? args.data : args.data?.code
+        if (!code || typeof code !== "string") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: type "react" requires data to be { code: "<JSX string>" } or a plain string of JSX code. You passed a data object without a code field. Use type "table" or "json" instead if you just want to display data.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+      }
+      // Confirm what was received so the agent knows it worked
+      let detail: string
+      switch (args.type) {
+        case "react": {
+          const code = typeof args.data === "string" ? args.data : args.data?.code
+          detail = `react component (${code.length} chars)`
+          break
+        }
+        case "table":
+          detail = `table: ${args.data?.columns?.length ?? 0} columns, ${args.data?.rows?.length ?? 0} rows`
+          break
+        case "markdown":
+        case "html":
+          detail = `${args.type}: ${typeof args.data === "string" ? args.data.length : 0} chars`
+          break
+        default:
+          detail = args.type
+      }
       return {
         content: [
           {
             type: "text" as const,
-            text: `Output rendered: ${args.title || args.type}`,
+            text: `Output rendered: ${args.title || "(untitled)"} — ${detail}`,
           },
         ],
       }

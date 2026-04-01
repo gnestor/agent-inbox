@@ -1253,6 +1253,9 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     const messages: Array<Record<string, unknown>> = []
+    // Collect thinking blocks from partial assistant messages so they can be
+    // merged into the next complete assistant message.
+    let pendingThinking: Array<Record<string, unknown>> = []
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       const msg = JSON.parse(lines[lineIdx])
@@ -1282,11 +1285,26 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
       }
 
       if (displayTypes.has(msg.type)) {
-        // Skip partial assistant messages (streaming updates without stop_reason).
-        // The complete version follows with stop_reason set.
         if (msg.type === "assistant") {
           const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
-          if (!stop) continue
+          if (!stop) {
+            // Partial message — collect thinking blocks for the next complete message
+            const content = msg.message?.content
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                if (block?.type === "thinking" && block.thinking) {
+                  pendingThinking.push(block)
+                }
+              }
+            }
+            continue
+          }
+
+          // Complete message — prepend any collected thinking blocks
+          if (pendingThinking.length > 0 && Array.isArray(msg.message?.content)) {
+            msg.message.content = [...pendingThinking, ...msg.message.content]
+            pendingThinking = []
+          }
         }
 
         messages.push({
@@ -1297,6 +1315,35 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
           message: msg,
           createdAt: msg.timestamp || new Date().toISOString(),
         })
+      }
+    }
+
+    // Deduplicate render_output blocks: when the agent retries with the same
+    // title, keep only the last attempt. Walk backwards to find which titles
+    // have already been seen, then strip earlier duplicates.
+    const seenOutputTitles = new Set<string>()
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i] as any
+      const content = msg.message?.message?.content ?? msg.message?.content
+      if (!Array.isArray(content)) continue
+      const renderBlock = content.find((b: any) =>
+        b?.type === "tool_use" &&
+        (b.name === "render_output" || b.name === "mcp__render_output__render_output"),
+      )
+      if (!renderBlock) continue
+      const title = renderBlock.input?.title ?? ""
+      if (seenOutputTitles.has(title)) {
+        // Remove this earlier duplicate's render_output block
+        const filtered = content.filter((b: any) => b !== renderBlock)
+        if (filtered.length === 0) {
+          messages.splice(i, 1)
+        } else if (msg.message?.message?.content) {
+          msg.message.message.content = filtered
+        } else if (msg.message?.content) {
+          msg.message.content = filtered
+        }
+      } else {
+        seenOutputTitles.add(title)
       }
     }
 
