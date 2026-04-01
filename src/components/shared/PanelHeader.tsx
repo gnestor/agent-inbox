@@ -47,7 +47,7 @@ export function PanelHeader({ left, right }: { left: React.ReactNode; right?: Re
       className="flex h-12 shrink-0 items-center justify-between px-4 border-b touch-pan-x"
       onPointerDown={onPointerDown}
     >
-      <div className="flex items-center gap-2 min-w-0 flex-1">{left}</div>
+      <div className="flex items-center justify-start gap-2 min-w-0 flex-1">{left}</div>
       {right && <div className="flex items-center gap-2 shrink-0">{right}</div>}
     </div>
   )
