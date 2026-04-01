@@ -1284,6 +1284,13 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
       }
 
       if (displayTypes.has(msg.type)) {
+        // Skip partial assistant messages (streaming updates without stop_reason).
+        // The complete version follows with stop_reason set.
+        if (msg.type === "assistant") {
+          const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
+          if (!stop) continue
+        }
+
         messages.push({
           id: sequence,
           sessionId,
