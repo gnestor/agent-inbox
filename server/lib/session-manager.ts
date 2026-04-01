@@ -1,4 +1,6 @@
-import { resolve } from "path"
+import { resolve, join } from "path"
+import * as fs from "fs"
+import { homedir } from "os"
 
 const INITIAL_SUMMARY_LENGTH = 80
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
@@ -6,6 +8,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
 
@@ -92,6 +95,49 @@ function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<
   return env
 }
 
+/**
+ * Discover Agent SDK plugin directories for a workspace session.
+ * Returns paths to core plugin (inbox/plugins/core) and all workspace plugins.
+ */
+import { fileURLToPath } from "url"
+
+// Resolve inbox package root from this file's location (server/lib/session-manager.ts → ../../)
+const INBOX_PLUGINS_DIR = resolve(fileURLToPath(import.meta.url), "../../../plugins/core")
+console.log(`[session] INBOX_PLUGINS_DIR: ${INBOX_PLUGINS_DIR}, exists: ${fs.existsSync(INBOX_PLUGINS_DIR)}`)
+
+function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] {
+  const wsPluginsDir = resolve(wsPath, "plugins")
+
+  const plugins: { type: "local"; path: string }[] = []
+
+  if (fs.existsSync(INBOX_PLUGINS_DIR)) {
+    plugins.push({ type: "local", path: INBOX_PLUGINS_DIR })
+  }
+
+  if (fs.existsSync(wsPluginsDir)) {
+    for (const entry of fs.readdirSync(wsPluginsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        plugins.push({ type: "local", path: resolve(wsPluginsDir, entry.name) })
+      }
+    }
+  }
+
+  console.log(`[session] Loading ${plugins.length} plugins:`, plugins.map(p => p.path.split("/").slice(-2).join("/")))
+  return plugins
+}
+
+/** Resolve a session's JSONL file path from its cwd (or default workspace). */
+function sessionJsonlPath(sessionId: string, cwd?: string): string {
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  return join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+}
+
+/** Resolve the projects directory for a workspace path. */
+function workspaceProjectsDir(cwd?: string): string {
+  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  return join(homedir(), ".claude", "projects", encodedDir)
+}
+
 // Legacy compat — default workspace path for callers not yet migrated
 let defaultWorkspacePath = ""
 let defaultWorkspaceName = ""
@@ -118,9 +164,6 @@ export async function createSessionRecord(
   sessionId: string,
   prompt: string,
   options?: {
-    linkedEmailId?: string
-    linkedEmailThreadId?: string
-    linkedTaskId?: string
     linkedSourceType?: string
     linkedSourceId?: string
     triggerSource?: string
@@ -132,26 +175,19 @@ export async function createSessionRecord(
     ? JSON.stringify({ linkedItemTitle: options.linkedItemTitle })
     : null
 
-  // Derive generic linked_source_type/id from legacy fields if not provided
-  const sourceType = options?.linkedSourceType
-    ?? (options?.linkedEmailThreadId ? "gmail" : options?.linkedTaskId ? "notion-tasks" : null)
-  const sourceId = options?.linkedSourceId
-    ?? options?.linkedEmailThreadId ?? options?.linkedTaskId ?? null
+  const summary = options?.linkedItemTitle || prompt.slice(0, INITIAL_SUMMARY_LENGTH)
 
   await execute(
-    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_email_id, linked_email_thread_id, linked_task_id, linked_source_type, linked_source_id, trigger_source, metadata)
-     VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `INSERT INTO sessions (id, status, prompt, summary, started_at, updated_at, linked_source_type, linked_source_id, trigger_source, metadata)
+     VALUES ($1, 'running', $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       sessionId,
       prompt,
-      prompt.slice(0, INITIAL_SUMMARY_LENGTH),
+      summary,
       now,
       now,
-      options?.linkedEmailId || null,
-      options?.linkedEmailThreadId || null,
-      options?.linkedTaskId || null,
-      sourceType,
-      sourceId,
+      options?.linkedSourceType || null,
+      options?.linkedSourceId || null,
       options?.triggerSource || "manual",
       metadata,
     ],
@@ -159,47 +195,31 @@ export async function createSessionRecord(
 }
 
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
- *  Uses a targeted query (last 10 assistant messages) instead of loading the full transcript. */
+ *  Reads the JSONL file backward (last 20 lines) for efficiency. */
 export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
-  const rows = await query<{ message: string }>(
-    "SELECT message FROM session_messages WHERE session_id = $1 AND type = 'assistant' ORDER BY sequence DESC LIMIT 10",
-    [sessionId],
-  )
-  for (const row of rows) {
-    try {
-      const parsed = JSON.parse(row.message)
-      const content = parsed?.message?.content ?? parsed?.content
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return null
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    // Scan assistant messages from the end
+    for (let i = transcript.length - 1; i >= 0; i--) {
+      const msg = transcript[i]
+      if (msg.type !== "assistant") continue
+      const content = (msg.message as any)?.message?.content ?? (msg.message as any)?.content
       if (!Array.isArray(content)) continue
       for (const block of content) {
         if (block.type === "tool_use" && block.name === "AskUserQuestion" && block.input?.questions) {
           return block.input.questions
         }
       }
-    } catch {}
-  }
+    }
+  } catch {}
   return null
 }
 
-export async function appendSessionMessage(
-  sessionId: string,
-  sequence: number,
-  type: string,
-  message: unknown,
-) {
+async function touchSession(sessionId: string) {
   const now = new Date().toISOString()
-
-  await Promise.all([
-    execute(
-      `INSERT INTO session_messages (session_id, sequence, type, message, created_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT DO NOTHING`,
-      [sessionId, sequence, type, JSON.stringify(message), now],
-    ),
-    execute(
-      `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
-      [now, sessionId],
-    ),
-  ])
+  await execute(`UPDATE sessions SET updated_at = $1 WHERE id = $2`, [now, sessionId])
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {
@@ -296,43 +316,36 @@ export async function getSessionRecord(sessionId: string) {
   )
 }
 
-export async function getSessionMessages(sessionId: string) {
-  return await query<Record<string, unknown>>(
-    "SELECT * FROM session_messages WHERE session_id = $1 ORDER BY sequence",
-    [sessionId],
-  )
+/** Count lines in a session's JSONL file. */
+async function getSessionMessageCount(sessionId: string): Promise<number> {
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return 0
+
+    const sessionFile = sessionJsonlPath(sessionId, agentSession.cwd)
+    const stat = fs.statSync(sessionFile)
+    if (stat.size === 0) return 0
+    // Count newlines by reading the buffer without splitting into strings
+    const buf = fs.readFileSync(sessionFile)
+    let count = 0
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === 0x0a) count++
+    }
+    return count
+  } catch {
+    return 0
+  }
 }
 
 export async function getLinkedSession(
-  linkedEmailThreadId?: string,
-  linkedTaskId?: string,
   linkedSourceType?: string,
   linkedSourceId?: string,
 ): Promise<Record<string, unknown> | undefined> {
-  // Prefer generic linked_source_type/id
-  const srcType = linkedSourceType ?? (linkedEmailThreadId ? "gmail" : linkedTaskId ? "notion-tasks" : undefined)
-  const srcId = linkedSourceId ?? linkedEmailThreadId ?? linkedTaskId
-  if (srcType && srcId) {
-    const result = await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
-      [srcType, srcId],
-    )
-    if (result) return result
-  }
-  // Fallback: check legacy columns for backward compat
-  if (linkedEmailThreadId) {
-    return await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_email_thread_id = $1 ORDER BY updated_at DESC LIMIT 1",
-      [linkedEmailThreadId],
-    )
-  }
-  if (linkedTaskId) {
-    return await queryOne<Record<string, unknown>>(
-      "SELECT * FROM sessions WHERE linked_task_id = $1 ORDER BY updated_at DESC LIMIT 1",
-      [linkedTaskId],
-    )
-  }
-  return undefined
+  if (!linkedSourceType || !linkedSourceId) return undefined
+  return await queryOne<Record<string, unknown>>(
+    "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
+    [linkedSourceType, linkedSourceId],
+  )
 }
 
 export async function listSessionRecords(filters?: {
@@ -363,10 +376,9 @@ export async function listSessionRecords(filters?: {
   let sql: string
   if (filters?.q) {
     const like = `%${filters.q}%`
-    // Join session_messages to search full message content
-    sql = `SELECT DISTINCT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s LEFT JOIN session_messages sm ON sm.session_id = s.id`
-    conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++} OR sm.message LIKE $${paramIndex++})`)
-    params.push(like, like, like)
+    sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
+    conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++})`)
+    params.push(like, like)
   } else {
     sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
   }
@@ -456,11 +468,13 @@ async function autoNameSession(sessionId: string) {
     const initialSummary = (session.prompt as string).slice(0, INITIAL_SUMMARY_LENGTH)
     if (session.summary !== initialSummary) return
 
-    const messages = await getSessionMessages(sessionId)
-    if (messages.length < 2) return // Skip trivial sessions (e.g. immediate errors)
+    const agentSession = await findAgentSession(sessionId)
+    if (!agentSession) return
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    if (transcript.length < 2) return // Skip trivial sessions (e.g. immediate errors)
 
     const title = await generateSessionTitle(
-      messages.map((m) => ({ type: m.type as string, message: m.message as string }))
+      transcript.map((m) => ({ type: m.type as string, message: JSON.stringify(m.message) }))
     )
     if (title) {
       await updateSessionSummary(sessionId, title)
@@ -471,18 +485,10 @@ async function autoNameSession(sessionId: string) {
 }
 
 function buildSourceContext(
-  emailThreadId?: string | null,
-  emailId?: string | null,
-  taskId?: string | null,
   sourceType?: string | null,
   sourceId?: string | null,
   sourceContent?: string | null,
 ): string | null {
-  if (emailThreadId) {
-    return `Source context: Email thread ${emailThreadId}` +
-      (emailId ? ` (message: ${emailId})` : "")
-  }
-  if (taskId) return `Source context: Notion task ${taskId}`
   if (sourceType && sourceId) {
     const header = `Source context: ${sourceType} item ${sourceId}`
     return sourceContent ? `${header}\n\n${sourceContent}` : header
@@ -491,21 +497,18 @@ function buildSourceContext(
 }
 
 function buildSystemPrompt(context: string | null) {
-  return context
-    ? { type: "preset" as const, preset: "claude_code" as const, append: context }
-    : { type: "preset" as const, preset: "claude_code" as const }
+  const append = [SESSION_INSTRUCTIONS, context].filter(Boolean).join("\n\n")
+  return { type: "preset" as const, preset: "claude_code" as const, append }
 }
 
 // Session execution using Agent SDK
 export async function startSession(
   prompt: string,
   options?: {
-    linkedEmailId?: string
-    linkedEmailThreadId?: string
-    linkedTaskId?: string
     linkedSourceType?: string
     linkedSourceId?: string
     linkedSourceContent?: string
+    linkedItemTitle?: string
     triggerSource?: string
     userSessionToken?: string
     workspacePath?: string
@@ -519,11 +522,10 @@ export async function startSession(
   let sessionId: string | null = null
 
   const sourceContext = buildSourceContext(
-    options?.linkedEmailThreadId, options?.linkedEmailId, options?.linkedTaskId,
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
-
-  const workflowPluginPath = resolve(wsPath, "../workflow-plugin")
+  if (sourceContext) console.log(`[session] Source context: ${sourceContext.slice(0, 100)}...`)
+  else console.log(`[session] No source context (type=${options?.linkedSourceType}, id=${options?.linkedSourceId})`)
 
   const q = agentQuery({
     prompt,
@@ -538,9 +540,7 @@ export async function startSession(
       abortController,
       env: buildAgentEnv(undefined, options?.userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: workflowPluginPath },
-      ],
+      plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
@@ -558,10 +558,17 @@ export async function startSession(
 
           await createSessionRecord(sessionId!, prompt, options)
           runningQueries.set(sessionId!, abortController)
+
+          // Broadcast the user's initial prompt as a synthetic message.
+          // The SDK doesn't include it in the stream — it's sent as an argument.
+          broadcastToSession(sessionId!, {
+            sequence: sequence++,
+            message: { type: "user", role: "user", content: prompt },
+          })
         }
 
         if (sessionId) {
-          await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+          await touchSession(sessionId)
           broadcastToSession(sessionId, { sequence, message })
           sequence++
         }
@@ -628,17 +635,13 @@ export async function resumeSessionQuery(
 
   const sessionRecord = await getSessionRecord(sessionId)
   const resumeSourceContext = buildSourceContext(
-    sessionRecord?.linked_email_thread_id as string | undefined,
-    sessionRecord?.linked_email_id as string | undefined,
-    sessionRecord?.linked_task_id as string | undefined,
     sessionRecord?.linked_source_type as string | undefined,
     sessionRecord?.linked_source_id as string | undefined,
   )
 
-  const existingMessages = await getSessionMessages(sessionId)
-  let sequence = existingMessages.length
+  let sequence = await getSessionMessageCount(sessionId)
 
-  // Save and broadcast the user's prompt as a message so it appears in the transcript
+  // Broadcast the user's prompt so it appears in the live transcript
   const userMessage = {
     type: "user",
     content: prompt,
@@ -647,12 +650,10 @@ export async function resumeSessionQuery(
       authorName: userProfile.name,
     }),
   }
-  await appendSessionMessage(sessionId, sequence, "user", userMessage)
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
   const wsPath = defaultWorkspacePath
-  const resumeWorkflowPluginPath = resolve(wsPath, "../workflow-plugin")
 
   const q = agentQuery({
     prompt,
@@ -668,9 +669,7 @@ export async function resumeSessionQuery(
       abortController,
       env: buildAgentEnv(undefined, userSessionToken),
       canUseTool: makeCanUseTool(() => sessionId),
-      plugins: [
-        { type: "local" as const, path: resumeWorkflowPluginPath },
-      ],
+      plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
@@ -680,7 +679,7 @@ export async function resumeSessionQuery(
   ;(async () => {
     try {
       for await (const message of q) {
-        await appendSessionMessage(sessionId, sequence, (message as any).type || "unknown", message)
+        await touchSession(sessionId)
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 
@@ -712,8 +711,7 @@ export async function attachSourceToSession(
   sessionId: string,
   source: { type: string; id: string; title: string; content: string },
 ) {
-  const messages = await getSessionMessages(sessionId)
-  const nextSequence = messages.length
+  const nextSequence = await getSessionMessageCount(sessionId)
 
   const contextMessage = {
     type: "system",
@@ -724,32 +722,28 @@ export async function attachSourceToSession(
     content: source.content,
   }
 
-  await appendSessionMessage(sessionId, nextSequence, "system", contextMessage)
+  // Append to JSONL file
+  try {
+
+    const agentSession = await findAgentSession(sessionId)
+    const sessionFile = sessionJsonlPath(sessionId, agentSession?.cwd)
+    await fs.promises.appendFile(sessionFile, JSON.stringify(contextMessage) + "\n")
+  } catch (err) {
+    console.warn(`[attachSource] Failed to append to JSONL for ${sessionId}:`, (err as Error).message)
+  }
+
   broadcastToSession(sessionId, { sequence: nextSequence, message: contextMessage })
 
-  // Update linked source columns (last attachment wins — the actual context
-  // is preserved in session_messages regardless, so multiple attachments work)
+  // Update linked source columns
   const now = new Date().toISOString()
-
-  // Persist title in metadata so listSessionRecords can surface it without joins.
-  // Uses jsonb_set so we don't need a SELECT + parse + re-serialize round-trip.
-  const isEmail = source.type === "email" || source.type === "gmail"
-  const isTask = source.type === "task" || source.type === "notion-tasks"
   await execute(`
     UPDATE sessions
     SET linked_source_id = $1,
         linked_source_type = $2,
         metadata = jsonb_set(COALESCE(metadata, '{}')::jsonb, '{linkedItemTitle}', to_jsonb($3::text)),
-        linked_email_thread_id = CASE WHEN $4::boolean THEN $5 ELSE linked_email_thread_id END,
-        linked_task_id = CASE WHEN $6::boolean THEN $7 ELSE linked_task_id END,
-        updated_at = $8
-    WHERE id = $9
-  `, [
-    source.id, source.type, source.title,
-    isEmail, isEmail ? source.id : null,
-    isTask, isTask ? source.id : null,
-    now, sessionId,
-  ])
+        updated_at = $4
+    WHERE id = $5
+  `, [source.id, source.type, source.title, now, sessionId])
 }
 
 /** Check if a session has an active agent process (in-memory query) */
@@ -858,32 +852,45 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
 }
 
 /**
- * Watch the ~/.claude/projects/ directory for new/changed JSONL session files.
- * When a change is detected, indexes the new session into the DB so that
- * metadata (summaries, linked items) stays up-to-date without a server restart.
+ * Poll the ~/.claude/projects/{workspace} directory for new/changed JSONL session files.
+ * Only checks the project directory for the active workspace, not all projects.
+ * Uses polling instead of fs.watch to avoid EMFILE errors when many watchers are active.
  */
 export async function watchProjectsDir(): Promise<void> {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
 
-  const projectsDir = join(homedir(), ".claude", "projects")
-  if (!fs.existsSync(projectsDir)) return
 
-  // Debounce: collect changed files for 2s before indexing
-  let pending = new Set<string>()
-  let timer: ReturnType<typeof setTimeout> | null = null
+  const watchDir = workspaceProjectsDir()
+  if (!fs.existsSync(watchDir)) return
 
-  function flush() {
-    timer = null
-    const files = [...pending]
-    pending = new Set()
-    indexNewSessions(files).catch((err) =>
-      console.warn("[watcher] Failed to index sessions:", err)
-    )
+  // Track last-seen mtime for each file to detect changes
+  const knownMtimes = new Map<string, number>()
+
+  async function poll() {
+    try {
+      const files = fs.readdirSync(watchDir).filter((f: string) => f.endsWith(".jsonl"))
+      const changed: string[] = []
+
+      for (const file of files) {
+        const fullPath = join(watchDir, file)
+        try {
+          const stat = fs.statSync(fullPath)
+          const prev = knownMtimes.get(fullPath)
+          if (prev === undefined || stat.mtimeMs > prev) {
+            knownMtimes.set(fullPath, stat.mtimeMs)
+            if (prev !== undefined) changed.push(fullPath) // skip first scan
+          }
+        } catch { /* skip unreadable */ }
+      }
+
+      if (changed.length > 0) {
+        await indexNewSessions(changed, fs)
+      }
+    } catch (err) {
+      console.warn("[watcher] Poll error:", err)
+    }
   }
 
-  async function indexNewSessions(filePaths: string[]) {
+  async function indexNewSessions(filePaths: string[], fs: typeof import("fs")) {
     for (const filePath of filePaths) {
       try {
         const stat = fs.statSync(filePath)
@@ -901,16 +908,13 @@ export async function watchProjectsDir(): Promise<void> {
     }
   }
 
-  // Watch recursively — new subdirs (new workspaces) will be picked up
-  fs.watch(projectsDir, { recursive: true }, (_event, filename) => {
-    if (!filename || !filename.endsWith(".jsonl")) return
-    const filePath = join(projectsDir, filename)
-    pending.add(filePath)
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(flush, 2000)
-  })
+  // Initial scan to populate known mtimes
+  await poll()
 
-  console.log(`[watcher] Watching ${projectsDir} for new sessions`)
+  // Poll every 5 seconds
+  setInterval(poll, 5000)
+
+  console.log(`[watcher] Polling ${watchDir} for new sessions (every 5s)`)
 }
 
 export async function listAgentSessions() {
@@ -924,9 +928,7 @@ export async function listAgentSessions() {
 
 /** Find a single agent session by ID — checks workspace dir first, then scans others */
 export async function findAgentSession(sessionId: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return null
@@ -1061,9 +1063,7 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
  * are still found.
  */
 export async function searchAgentSessions(q: string, wsPath?: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1140,9 +1140,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
  * If no workspace path is given, falls back to scanning all directories.
  */
 export async function listAllAgentSessions(wsPath?: string) {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1211,9 +1209,7 @@ export function projectLabel(cwd: string): string {
 }
 
 export async function listProjectOptions(): Promise<string[]> {
-  const fs = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
+
 
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
@@ -1250,11 +1246,10 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
   const { homedir } = await import("os")
 
   // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
-  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+  const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
-    const content = readFileSync(sessionFile, "utf-8")
+    const content = fs.readFileSync(sessionFile, "utf-8")
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     const messages: Array<Record<string, unknown>> = []
@@ -1312,14 +1307,10 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
  * Handles both DB sessions and JSONL-only sessions.
  */
 export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  if (await patchArtifactInDb(sessionId, sequence, code)) return true
-
-  // Locate the JSONL file (may be in a different workspace directory)
   const agentSession = await findAgentSession(sessionId)
   if (agentSession) {
     return patchArtifactInJsonl(sessionId, sequence, code, agentSession.cwd)
   }
-
   return false
 }
 
@@ -1340,45 +1331,13 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
   return false
 }
 
-async function patchArtifactInDb(sessionId: string, sequence: number, code: string): Promise<boolean> {
-  try {
-    const row = await queryOne<{ message: string }>(
-      "SELECT message FROM session_messages WHERE session_id = $1 AND sequence = $2",
-      [sessionId, sequence],
-    )
-    if (!row) {
-      console.warn(`[patchArtifactInDb] No message at sequence=${sequence} for session=${sessionId}`)
-      return false
-    }
-
-    const msg = JSON.parse(row.message)
-    if (!patchRenderOutputCode(msg, code)) {
-      const content = msg.message?.content || msg.content || []
-      const toolNames = Array.isArray(content) ? content.filter((b: any) => b.type === "tool_use").map((b: any) => b.name) : []
-      console.warn(`[patchArtifactInDb] No render_output block at sequence=${sequence}. Tool names: ${JSON.stringify(toolNames)}, msg.type=${msg.type}`)
-      return false
-    }
-
-    await execute(
-      "UPDATE session_messages SET message = $1 WHERE session_id = $2 AND sequence = $3",
-      [JSON.stringify(msg), sessionId, sequence],
-    )
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {
-  const { readFileSync, writeFileSync } = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
 
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
-  const sessionFile = join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
+
+  const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
-    const content = readFileSync(sessionFile, "utf-8")
+    const content = fs.readFileSync(sessionFile, "utf-8")
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     let seq = 0
@@ -1397,7 +1356,7 @@ async function patchArtifactInJsonl(sessionId: string, sequence: number, code: s
       if (seq === sequence && msg.type === "assistant") {
         if (patchRenderOutputCode(msg, code)) {
           lines[i] = JSON.stringify(msg)
-          writeFileSync(sessionFile, lines.join("\n") + "\n")
+          fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
           return true
         }
         return false

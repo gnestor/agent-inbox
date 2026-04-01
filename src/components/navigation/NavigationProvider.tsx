@@ -2,8 +2,9 @@
 import { createContext, useEffect, useRef, useReducer, type ReactNode } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, LEGACY_URL_TO_PLUGIN, pluginIdFromTab } from "@/types/navigation"
-import { saveNavigationState, loadNavigationState, migrateFromLocalStorage } from "@/lib/navigation-storage"
+import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel, pluginIdFromTab } from "@/types/navigation"
+
+import { saveNavigationState, loadNavigationState } from "@/lib/navigation-storage"
 
 // --- URL helpers ---
 
@@ -68,7 +69,7 @@ export function parseUrl(pathname: string): ParsedUrl {
       const selectedId = decodeURIComponent(parts[2])
       const sessionId = parts[3] === "session" && parts[4] ? decodeURIComponent(parts[4]) : undefined
       const key = sessionId ?? selectedId
-      const pluginId = LEGACY_URL_TO_PLUGIN[parts[1]] ?? parts[1]
+      const pluginId = parts[1]
       return { tabId: `recent:${key}`, sourceTab: `plugin:${pluginId}`, selectedId, sessionId }
     }
     return { tabId: "sessions" }
@@ -81,11 +82,11 @@ export function parseUrl(pathname: string): ParsedUrl {
     return { tabId: `plugin:${parts[1]}` as TabId, selectedId: parts[2] ? decodeURIComponent(parts[2]) : undefined }
   // All other paths: treat as plugin ID (or legacy name)
   // /gmail/{id}, /notion-tasks/{id}, /emails/{id} (backward compat), etc.
-  const pluginId = LEGACY_URL_TO_PLUGIN[parts[0]] ?? parts[0]
+  const pluginId = parts[0]
   if (pluginId) {
     return { tabId: `plugin:${pluginId}` as TabId, selectedId: parts[1] ? decodeURIComponent(parts[1]) : undefined }
   }
-  return { tabId: "plugin:gmail" }
+  return { tabId: "sessions" }
 }
 
 /** Build an ephemeral tab state for a /recent/ route (no list panel). */
@@ -152,7 +153,7 @@ function saveExtraPanels(tab: TabState) {
 function navReducer(state: NavigationState, action: NavAction): NavigationState {
   switch (action.type) {
     case "SET_STATE":
-      return action.state
+      return { ...action.state, _initialized: true }
 
     case "SWITCH_TAB": {
       const tabs = state.tabs[action.tabId]
@@ -191,6 +192,7 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
       saveExtraPanels(tab)
       tab.selectedItemId = undefined
       tab.panels = tab.panels.slice(0, 1) // keep only list
+      tab.panelTransition = "none"
       return { ...state, tabs: { ...state.tabs, [state.activeTab]: tab } }
     }
 
@@ -270,13 +272,13 @@ function navReducer(state: NavigationState, action: NavAction): NavigationState 
 
     case "OPEN_RECENT": {
       const tabId: TabId = `recent:${action.sessionId}`
-      const parsed: ParsedUrl = {
+      // Reuse existing tab state (preserves artifact panels) or create fresh
+      const tab = state.tabs[tabId] ? { ...state.tabs[tabId] } : createRecentTabState({
         tabId,
         sourceTab: action.sourceTab,
         selectedId: action.selectedId,
         sessionId: action.sessionId,
-      }
-      const tab = createRecentTabState(parsed)
+      })
 
       // Compute direction from previous recent tab's sidebar position
       const oldTab = state.activeTab.startsWith("recent:") ? state.tabs[state.activeTab] : undefined
@@ -336,7 +338,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   })
   const navigate = useNavigate()
   const mountStarted = useRef(false)
-  const initialized = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Keep a ref to the latest state so the URL→state effect (which intentionally
@@ -361,7 +362,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
       // 2. Persisted state supplements (panel stacks, filters, scroll, savedPanels)
       let base = await loadNavigationState()
-      if (!base) base = await migrateFromLocalStorage()
       if (!base) base = createDefaultNavigationState()
 
       // 3. Override activeTab and selectedItemId from URL
@@ -413,15 +413,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }
 
       // 5. Dispatch merged state; URL already correct, no navigate() needed
+      lastNavigatedUrl.current = buildUrl(base.activeTab, base.tabs[base.activeTab]?.selectedItemId, base.tabs[base.activeTab])
       dispatch({ type: "SET_STATE", state: base })
-      lastNavigatedUrl.current = location.pathname
-      initialized.current = true
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced persistence
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       saveNavigationState(state)
@@ -433,7 +432,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const activeTabState = state.tabs[state.activeTab]
   const activeSelectedId = activeTabState?.selectedItemId
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     const url = buildUrl(state.activeTab, activeSelectedId, activeTabState)
     if (url !== lastNavigatedUrl.current) {
       lastNavigatedUrl.current = url
@@ -443,17 +442,20 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // URL → state sync (browser back/forward and sidebar links)
   useEffect(() => {
-    if (!initialized.current) return
+    if (!state._initialized) return
     if (location.pathname === lastNavigatedUrl.current) return
     lastNavigatedUrl.current = location.pathname
 
     const parsed = parseUrl(location.pathname)
     const currentState = stateRef.current
 
-    // For recent:* tabs, create ephemeral tab state and switch
+    // For recent:* tabs, reuse existing tab state or create fresh
     if (parsed.tabId.startsWith("recent:")) {
+      if (currentState.tabs[parsed.tabId] && currentState.activeTab === parsed.tabId) return
       const newTabs = { ...currentState.tabs }
-      newTabs[parsed.tabId] = createRecentTabState(parsed)
+      if (!newTabs[parsed.tabId]) {
+        newTabs[parsed.tabId] = createRecentTabState(parsed)
+      }
       dispatch({ type: "SET_STATE", state: { ...currentState, activeTab: parsed.tabId, tabs: newTabs } })
       return
     }

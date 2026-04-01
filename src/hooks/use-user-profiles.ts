@@ -23,7 +23,6 @@ export function useUserProfiles(messages: SessionMessage[]) {
     queryKey: ["user-profiles", emailsKey],
     queryFn: () => getUserProfiles(emails),
     enabled: emails.length > 0,
-    staleTime: 5 * 60 * 1000,
   })
 
   return useMemo(() => {

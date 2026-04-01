@@ -51,14 +51,24 @@ function ListItemInner({
     >
       <div className="flex items-start gap-2">
         {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium truncate">{title}</span>
-            <span className={cn("text-xs whitespace-nowrap shrink-0", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
-              {timestamp}
-            </span>
-          </div>
-          {subtitle && <div className={cn("text-xs truncate", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>{subtitle}</div>}
+        <div className="flex-1 min-w-0 space-y-2">
+          {subtitle && (
+            <div className="flex items-center justify-between gap-2">
+              <span className={cn("text-xs truncate", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>{subtitle}</span>
+              <span className={cn("text-xs whitespace-nowrap shrink-0", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                {timestamp}
+              </span>
+            </div>
+          )}
+          {!subtitle && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium truncate">{title}</span>
+              <span className={cn("text-xs whitespace-nowrap shrink-0", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                {timestamp}
+              </span>
+            </div>
+          )}
+          {subtitle && <div className="text-sm font-medium truncate">{title}</div>}
           {badges && badges.length > 0 && (
             <div className="flex items-center gap-1 overflow-hidden">
               {badges.map((badge, i) => (

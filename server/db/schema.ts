@@ -29,32 +29,10 @@ export function initializeDatabase() {
       started_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
-      linked_email_id TEXT,
-      linked_email_thread_id TEXT,
-      linked_task_id TEXT,
+      linked_source_type TEXT,
+      linked_source_id TEXT,
       trigger_source TEXT DEFAULT 'manual',
       metadata TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS session_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL REFERENCES sessions(id),
-      sequence INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(session_id, sequence)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_session_messages_session
-      ON session_messages(session_id, sequence);
-
-    CREATE TABLE IF NOT EXISTS notion_options (
-      property TEXT NOT NULL,
-      value TEXT NOT NULL,
-      color TEXT,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (property, value)
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -80,15 +58,6 @@ export function initializeDatabase() {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (user_email, key)
     );
-
-    CREATE TABLE IF NOT EXISTS api_cache (
-      key TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      expires_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_api_cache_expires
-      ON api_cache(expires_at);
 
     CREATE TABLE IF NOT EXISTS user_credentials (
       user_email TEXT NOT NULL REFERENCES users(email),
@@ -130,24 +99,5 @@ export function initializeDatabase() {
 
   // Migrations for existing tables
   const sessionCols = (database.pragma("table_info(sessions)") as { name: string }[]).map(c => c.name)
-  if (!sessionCols.includes("linked_source_id")) {
-    database.exec("ALTER TABLE sessions ADD COLUMN linked_source_id TEXT")
-  }
-  if (!sessionCols.includes("linked_source_type")) {
-    database.exec("ALTER TABLE sessions ADD COLUMN linked_source_type TEXT")
-  }
-  // Migrate existing linked_email_thread_id/linked_task_id to generic linked_source_type/id
-  const needsMigration = database.prepare(
-    "SELECT COUNT(*) as count FROM sessions WHERE linked_source_id IS NULL AND (linked_email_thread_id IS NOT NULL OR linked_task_id IS NOT NULL)"
-  ).get() as { count: number }
-  if (needsMigration.count > 0) {
-    database.prepare(
-      "UPDATE sessions SET linked_source_type = 'gmail', linked_source_id = linked_email_thread_id WHERE linked_email_thread_id IS NOT NULL AND linked_source_id IS NULL"
-    ).run()
-    database.prepare(
-      "UPDATE sessions SET linked_source_type = 'notion-tasks', linked_source_id = linked_task_id WHERE linked_task_id IS NOT NULL AND linked_source_id IS NULL"
-    ).run()
-  }
-
   console.log("Database initialized at", DB_PATH)
 }

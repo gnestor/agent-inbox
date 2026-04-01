@@ -97,7 +97,7 @@ describe("resumeSessionQuery author attribution", () => {
     mockQuery.mockResolvedValue([])
   })
 
-  it("stores authorEmail/authorName/authorPicture on user message when userProfile provided", async () => {
+  it("broadcasts user message with authorEmail/authorName when userProfile provided", async () => {
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
         [Symbol.asyncIterator]: async function* () {},
@@ -106,24 +106,12 @@ describe("resumeSessionQuery author attribution", () => {
       createSdkMcpServer: vi.fn(),
     }))
 
-    // Capture all JSON values passed to execute()
-    const storedJsonArgs: unknown[] = []
-    mockExecute.mockImplementation(async (...args: unknown[]) => {
-      const params = (args as any[])[1] as unknown[] | undefined
-      if (params) {
-        for (const arg of params) {
-          if (typeof arg === "string" && arg.startsWith("{")) {
-            try {
-              storedJsonArgs.push(JSON.parse(arg))
-            } catch { /* ignore */ }
-          }
-        }
-      }
-      return { rowCount: 1 }
-    })
-    mockQuery.mockResolvedValue([]) // no existing messages
+    const { resumeSessionQuery, broadcastToSession, addSseClient } = await import("../session-manager.js")
 
-    const { resumeSessionQuery } = await import("../session-manager.js")
+    // Add an SSE client to capture broadcasts
+    const broadcasts: unknown[] = []
+    const send = (data: string) => { broadcasts.push(JSON.parse(data)) }
+    await addSseClient("sess-auth-1", send)
 
     await resumeSessionQuery("sess-auth-1", "Hello world", undefined, {
       email: "alice@test.com",
@@ -131,12 +119,10 @@ describe("resumeSessionQuery author attribution", () => {
       picture: "https://example.com/alice.jpg",
     })
 
-    const userMsgs = storedJsonArgs.filter((m: any) => m?.type === "user")
-    expect(userMsgs.length).toBeGreaterThan(0)
-    const userMsg = userMsgs[0] as any
-    expect(userMsg.authorEmail).toBe("alice@test.com")
-    expect(userMsg.authorName).toBe("Alice")
-    expect(userMsg.authorPicture).toBeUndefined()
+    const userBroadcast = broadcasts.find((b: any) => b?.message?.type === "user") as any
+    expect(userBroadcast).toBeDefined()
+    expect(userBroadcast.message.authorEmail).toBe("alice@test.com")
+    expect(userBroadcast.message.authorName).toBe("Alice")
   })
 
   it("omits author fields when no userProfile provided (backward compat)", async () => {
@@ -148,31 +134,17 @@ describe("resumeSessionQuery author attribution", () => {
       createSdkMcpServer: vi.fn(),
     }))
 
-    const storedJsonArgs: unknown[] = []
-    mockExecute.mockImplementation(async (...args: unknown[]) => {
-      const params = (args as any[])[1] as unknown[] | undefined
-      if (params) {
-        for (const arg of params) {
-          if (typeof arg === "string" && arg.startsWith("{")) {
-            try {
-              storedJsonArgs.push(JSON.parse(arg))
-            } catch { /* ignore */ }
-          }
-        }
-      }
-      return { rowCount: 1 }
-    })
-    mockQuery.mockResolvedValue([])
+    const { resumeSessionQuery, addSseClient } = await import("../session-manager.js")
 
-    const { resumeSessionQuery } = await import("../session-manager.js")
+    const broadcasts: unknown[] = []
+    const send = (data: string) => { broadcasts.push(JSON.parse(data)) }
+    await addSseClient("sess-auth-2", send)
 
     await resumeSessionQuery("sess-auth-2", "Hello world", undefined, undefined)
 
-    const userMsgs = storedJsonArgs.filter((m: any) => m?.type === "user")
-    expect(userMsgs.length).toBeGreaterThan(0)
-    const userMsg = userMsgs[0] as any
-    expect(userMsg.authorEmail).toBeUndefined()
-    expect(userMsg.authorName).toBeUndefined()
-    expect(userMsg.authorPicture).toBeUndefined()
+    const userBroadcast = broadcasts.find((b: any) => b?.message?.type === "user") as any
+    expect(userBroadcast).toBeDefined()
+    expect(userBroadcast.message.authorEmail).toBeUndefined()
+    expect(userBroadcast.message.authorName).toBeUndefined()
   })
 })

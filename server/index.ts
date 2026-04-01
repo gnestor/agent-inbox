@@ -15,6 +15,7 @@ import { webhookRoutes } from "./routes/webhooks.js"
 import { preferencesRoutes } from "./routes/preferences.js"
 import { authRoutes, SESSION_COOKIE } from "./routes/auth.js"
 import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
+import { backfillRoutes } from "./routes/backfill.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
@@ -26,13 +27,9 @@ import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy } from "./lib/credential-proxy.js"
 import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
-import { syncPropertyOptions, syncCalendarPropertyOptions } from "./lib/notion.js"
-import { pruneExpired } from "./lib/cache.js"
-import { loadPlugins, registerPlugin } from "./lib/plugin-loader.js"
+import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
+import { watchPlugins } from "./lib/plugin-watcher.js"
 import { loadPanels } from "./lib/panel-registry.js"
-import { gmailPlugin } from "./plugins/gmail-plugin.js"
-import { notionTasksPlugin } from "./plugins/notion-tasks-plugin.js"
-import { notionCalendarPlugin } from "./plugins/notion-calendar-plugin.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -217,10 +214,8 @@ app.use("/api/*", async (c, next) => {
   await next()
 })
 
-// Register built-in plugins (before workspace plugins are loaded)
-registerPlugin(gmailPlugin)
-registerPlugin(notionTasksPlugin)
-registerPlugin(notionCalendarPlugin)
+// Load built-in plugins from plugins/ directory
+await loadBuiltinPlugins(resolve(__dirname, "../plugins"))
 
 // Protected routes (static routes first, plugin catch-all last)
 app.route("/api/workspaces", workspaceRoutes)
@@ -229,6 +224,7 @@ app.route("/api/webhooks", webhookRoutes)
 app.route("/api/preferences", preferencesRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
+app.route("/api/backfill", backfillRoutes)
 // Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
 app.route("/api", pluginRoutes)
 
@@ -249,8 +245,7 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500)
 })
 
-// Mount built-in plugin custom routes (gmail attachments, notion options, etc.)
-// Must be before the SPA fallback so /api/gmail/* routes aren't caught by /*
+// Mount built-in plugin custom routes (must be before the SPA fallback)
 mountPluginRoutes(app)
 
 // Serve production build if dist/ exists
@@ -265,17 +260,12 @@ const port = parseInt(process.env.PORT || "3002", 10)
 
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
-  // Prune expired cache entries on startup
-  pruneExpired().catch((err: unknown) => console.warn("Failed to prune cache:", err))
-  // Index all agent SDK sessions into DB (non-blocking), then watch for new ones
+  // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions()
     .then(() => watchProjectsDir())
     .catch((err: unknown) => console.warn("Failed to index sessions:", err))
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
-  // Sync Notion property options on startup (non-blocking)
-  syncPropertyOptions().catch((err) => console.warn("Failed to sync Notion options:", err.message))
-  syncCalendarPropertyOptions().catch((err) => console.warn("Failed to sync Calendar options:", err.message))
   // Load workspace plugins and workflow panel schemas (non-blocking)
   process.env.WORKSPACE_PATH = workspacePaths[0]
   Promise.all(
@@ -284,6 +274,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
     )
   ).then(() => {
     mountPluginRoutes(app)
+    watchPlugins(registeredWorkspaces, app)
   })
   if (registeredWorkspaces.length > 0) {
     loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))

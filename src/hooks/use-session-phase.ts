@@ -31,10 +31,9 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   // Reset auto-resume guard when switching sessions
   useEffect(() => { autoResumedRef.current = false }, [sessionId])
 
-  const { data, isLoading, error: queryError } = useQuery({
+  const { data, isPending, error: queryError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
-    refetchOnMount: true,
   })
 
   const mutations = useSessionMutations({ sessionId, onResume, onArchive })
@@ -43,7 +42,7 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
   // Connect SSE when actively viewing (for presence) or when session is running.
   // Disconnect for background tabs to avoid exhausting browser connection limit.
-  const stream = useSessionStream(sessionId, !isLoading && !queryError && (isActive || isRunning))
+  const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning))
 
   // Auto-resume orphaned sessions: DB says "running" but server has no active agent process.
   // This happens when the server restarts while a session is in progress.
@@ -79,7 +78,7 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   // "archived" is a user-initiated terminal state that stream events must not override.
   const effectiveStatus = queryStatus === "archived" ? "archived" : (stream.sessionStatus ?? queryStatus)
   const phase: SessionPhase =
-    isLoading ? { status: "loading" } :
+    isPending ? { status: "loading" } :
     queryError ? { status: "error", message: queryError.message } :
     mutations.resume.isPending ? { status: "sending" } :
     stream.pendingQuestion ? { status: "awaiting_input", question: stream.pendingQuestion } :
@@ -103,17 +102,27 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   const resumePrompt = mutations.resume.variables as string | undefined
   const allMessages = useMemo(() => {
     const merged = new Map<number, SessionMessage>()
-    const hasUserMessage = initialMessages.some(m => m.type === "user")
-      || stream.messages.some(m => m.type === "user")
-    if (sessionPrompt && !hasUserMessage) {
-      merged.set(-1, {
-        id: -1,
-        sessionId,
-        sequence: -1,
-        type: "user",
-        message: { type: "user", content: sessionPrompt },
-        createdAt: data?.session.startedAt ?? "",
-      } as SessionMessage)
+    // Always include the initial prompt as the first message.
+    // Check if it already exists in the transcript to avoid duplicates.
+    if (sessionPrompt) {
+      const promptExists = initialMessages.some(m => {
+        if (m.type !== "user") return false
+        const msg = m.message as any
+        const content = msg?.content ?? msg?.message?.content
+        if (content === sessionPrompt) return true
+        if (Array.isArray(content) && content[0]?.text === sessionPrompt) return true
+        return false
+      })
+      if (!promptExists) {
+        merged.set(-1, {
+          id: -1,
+          sessionId,
+          sequence: -1,
+          type: "user",
+          message: { type: "user", content: sessionPrompt },
+          createdAt: data?.session.startedAt ?? "",
+        } as SessionMessage)
+      }
     }
     for (const message of initialMessages) {
       merged.set(message.sequence, { ...message, message: normalizeMessagePayload(message.message) })

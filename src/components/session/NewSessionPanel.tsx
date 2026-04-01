@@ -6,13 +6,14 @@ import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavigation } from "@/hooks/use-navigation"
-import { createSession, getTask } from "@/api/client"
-import { useEmailThread } from "@/hooks/use-email-thread"
+import { createSession, getPluginItem } from "@/api/client"
+import { getItemTitle } from "@/lib/formatters"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import { NEW_SESSION_PANEL } from "@/types/navigation"
-import type { NotionTaskDetail } from "@/types"
+import type { PluginItem } from "@/types/plugin"
 
 
 interface PromptTemplate {
@@ -22,8 +23,6 @@ interface PromptTemplate {
 
 interface NewSessionPanelProps {
   panelId?: string
-  threadId?: string
-  taskId?: string
   sessionId?: string
   autoStart?: boolean
   sourceType?: string
@@ -31,39 +30,45 @@ interface NewSessionPanelProps {
   sourceContent?: string
 }
 
+/** Fetch a plugin item generically — works for any source type */
+function useSourceItem(sourceType?: string, sourceId?: string) {
+  const wsId = useWorkspaceId()
+  return useQuery<PluginItem>({
+    queryKey: ["plugin-item", wsId, sourceType, sourceId],
+    queryFn: () => getPluginItem(sourceType!, sourceId!),
+    enabled: !!sourceType && !!sourceId,
+  })
+}
+
 // ── Active session (delegates to SessionView) ────────────────────────────────
 
-export function NewSessionPanel({ panelId, threadId, taskId, sessionId, autoStart, sourceType, sourceId, sourceContent }: NewSessionPanelProps) {
+export function NewSessionPanel({ panelId, sessionId, autoStart, sourceType, sourceId, sourceContent }: NewSessionPanelProps) {
   if (sessionId) {
     return <SessionView sessionId={sessionId} panelId={`session:${sessionId}`} />
   }
-  if (autoStart && (threadId || taskId)) {
-    return <AutoStartPanel threadId={threadId} taskId={taskId} />
+
+  if (autoStart && sourceId) {
+    return <AutoStartPanel sourceType={sourceType} sourceId={sourceId} />
   }
-  return <ComposePanel panelId={panelId} threadId={threadId} taskId={taskId} sourceType={sourceType} sourceId={sourceId} sourceContent={sourceContent} />
+  return <ComposePanel panelId={panelId} sourceType={sourceType} sourceId={sourceId} sourceContent={sourceContent} />
 }
 
 // ── Auto-start panel (fires createSession immediately, no compose UI) ─────────
 
-function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: string }) {
+function AutoStartPanel({ sourceType, sourceId }: { sourceType?: string; sourceId?: string }) {
   const { openSession } = useNavigation()
   const qc = useQueryClient()
   const fired = useRef(false)
 
-  const { thread } = useEmailThread(threadId)
-  const { data: task } = useQuery<NotionTaskDetail>({
-    queryKey: ["task", taskId],
-    queryFn: () => getTask(taskId!),
-    enabled: !!taskId,
-  })
+  const { data: item } = useSourceItem(sourceType, sourceId)
 
   const createMutation = useMutation({
     mutationFn: (prompt: string) =>
       createSession({
         prompt,
-        linkedEmailThreadId: thread?.id,
-        linkedEmailId: thread?.messages[0]?.id,
-        linkedTaskId: task?.id,
+        linkedSourceType: sourceType,
+        linkedSourceId: sourceId,
+        linkedItemTitle: item ? getItemTitle(item as Record<string, unknown>) || undefined : undefined,
       }),
     onSuccess: ({ sessionId }) => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
@@ -72,17 +77,10 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
   })
 
   useEffect(() => {
-    if (fired.current) return
-    if (threadId && thread) {
-      fired.current = true
-      const prompt = `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>\nProcess this email`
-      createMutation.mutate(prompt)
-    } else if (taskId && task) {
-      fired.current = true
-      const prompt = `<ide_opened_file>Notion task: ${task.id}</ide_opened_file>\nProcess this task`
-      createMutation.mutate(prompt)
-    }
-  }, [thread, task])
+    if (fired.current || !item) return
+    fired.current = true
+    createMutation.mutate(`Process this ${sourceType}`)
+  }, [item])
 
   return (
     <div className="flex flex-col h-full items-center justify-center gap-3 text-muted-foreground">
@@ -94,7 +92,7 @@ function AutoStartPanel({ threadId, taskId }: { threadId?: string; taskId?: stri
 
 // ── Compose panel ────────────────────────────────────────────────────────────
 
-function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId, sourceContent }: { panelId?: string; threadId?: string; taskId?: string; sourceType?: string; sourceId?: string; sourceContent?: string }) {
+function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelId?: string; sourceType?: string; sourceId?: string; sourceContent?: string }) {
   const { popPanel, replacePanel } = useNavigation()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
@@ -102,54 +100,37 @@ function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId, sourceC
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [templates, setTemplates] = usePreference<PromptTemplate[]>("session_prompt_templates", [])
 
-  const draftKey = threadId
-    ? `inbox:draft:thread:${threadId}`
-    : taskId
-      ? `inbox:draft:task:${taskId}`
-      : ""
+  const draftKey = sourceId ? `inbox:draft:${sourceType}:${sourceId}` : ""
 
   const [prompt, setPrompt] = useLocalDraft(draftKey)
   const hasSavedDraft = useRef(!!prompt)
 
-  // Fetch linked data — reuses cache from EmailThread / TaskDetail if already loaded
-  const { thread } = useEmailThread(threadId)
-  const { data: task } = useQuery<NotionTaskDetail>({
-    queryKey: ["task", taskId],
-    queryFn: () => getTask(taskId!),
-    enabled: !!taskId,
-  })
+  // Fetch linked data — reuses cache if already loaded
+  const { data: item } = useSourceItem(sourceType, sourceId)
 
   // Derived — no useState needed
-  const ready = hasSavedDraft.current || (!threadId && !taskId) || !!(threadId && thread) || !!(taskId && task)
+  const ready = hasSavedDraft.current || !sourceId || !!item
 
   // Seed prompt once when linked data first arrives (render-time, no effect needed)
   const seeded = useRef(hasSavedDraft.current)
-  if (!seeded.current && (thread || task)) {
+  if (!seeded.current && item) {
     seeded.current = true
-    if (threadId && thread) setPrompt("Process this email")
-    else if (taskId && task) setPrompt("Process this task")
+    setPrompt(`Process this ${sourceType}`)
   }
 
-  const contextPrefix = thread
-    ? `<ide_opened_file>Email thread: ${thread.id} (message: ${thread.messages[0]?.id ?? ""})</ide_opened_file>`
-    : task
-      ? `<ide_opened_file>Notion task: ${task.id}</ide_opened_file>`
-      : ""
-  const fullPrompt = contextPrefix ? `${contextPrefix}\n${prompt}` : prompt
+  const itemTitle = getItemTitle(item as Record<string, unknown>) || undefined
 
   const createMutation = useMutation({
     mutationFn: () =>
       createSession({
-        prompt: fullPrompt,
-        linkedEmailThreadId: thread?.id,
-        linkedEmailId: thread?.messages[0]?.id,
-        linkedTaskId: task?.id,
+        prompt,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
         linkedSourceContent: sourceContent,
+        linkedItemTitle: itemTitle,
       }),
     onSuccess: ({ sessionId }) => {
-      if (draftKey) try { localStorage.removeItem(draftKey) } catch {}
+      setPrompt("")
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["linked-session"] })
       replacePanel(panelId ?? NEW_SESSION_PANEL.id, {
@@ -284,7 +265,7 @@ function ComposePanel({ panelId, threadId, taskId, sourceType, sourceId, sourceC
       <div className="shrink-0 border-t p-4">
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={!fullPrompt.trim() || !ready || sending}
+          disabled={!prompt.trim() || !ready || sending}
           className="w-full"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start Session"}

@@ -4,11 +4,16 @@
 @source "../../frontend/src";
 @plugin "@tailwindcss/typography";
 
-/* Inbox-specific: allow text selection in Notion content */
-@media (max-width: 767px) {
-  .notion-content,
-  .notion-content * {
-    -webkit-user-select: text;
-    user-select: text;
-  }
+* {
+  scrollbar-width: thin;
+}
+
+:root {
+  --primary: oklch(0.54 0.27 259.29 / 0.7);
+  --secondary: oklch(1 0 0 / 0.05);
+}
+
+:root:not(.dark) {
+  --primary: oklch(0.54 0.27 259.29 / 0.7);
+  --secondary: oklch(0 0 0 / 0.05);
 }

@@ -3,6 +3,7 @@ import {
   Children,
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   createContext,
   useContext,
@@ -11,6 +12,7 @@ import {
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
+import { getTabOrder } from "@/types/navigation"
 import { DURATION, EASE_CSS } from "@/lib/navigation-constants"
 
 interface TabProps {
@@ -29,8 +31,6 @@ export const DragTabContext = createContext<DragTabContextValue | null>(null)
 export function useDragTab() {
   return useContext(DragTabContext)
 }
-
-const ALL_TABS: TabId[] = ["settings", "plugin:gmail", "plugin:notion-tasks", "plugin:notion-calendar", "sessions"]
 
 // --- Exit children helper (keeps outgoing panels in DOM during exit animation) ---
 
@@ -61,11 +61,12 @@ function useExitChildren(
 // --- MobileTab (fullscreen panels, scroll-snap, touch navigation) ---
 
 function MobileTab({ id, children }: TabProps) {
-  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab } = useNavigation()
+  const { activeTab, getSelectedItemId, getPanels, getPanelTransition, switchTab, deselectItem } = useNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isActive = activeTab === id
   const [snapEnabled, setSnapEnabled] = useState(false)
   const hasMounted = useRef(false)
+  const isProgrammaticScroll = useRef(false)
 
   const panels = getPanels(id)
   void getSelectedItemId(id) // trigger re-render on selection change
@@ -98,12 +99,14 @@ function MobileTab({ id, children }: TabProps) {
     const smooth = hasMounted.current
 
     const doScroll = () => {
+      isProgrammaticScroll.current = true
       el.style.scrollSnapType = "none"
       if (smooth) {
         el.scrollTo({ left: target, behavior: "smooth" })
         const onDone = () => {
           el.style.scrollSnapType = "x mandatory"
           setSnapEnabled(true)
+          isProgrammaticScroll.current = false
           if (exitChildren) clearExit()
         }
         el.addEventListener("scrollend", onDone, { once: true })
@@ -112,6 +115,7 @@ function MobileTab({ id, children }: TabProps) {
         requestAnimationFrame(() => {
           el.style.scrollSnapType = "x mandatory"
           setSnapEnabled(true)
+          isProgrammaticScroll.current = false
         })
       }
       hasMounted.current = true
@@ -132,18 +136,43 @@ function MobileTab({ id, children }: TabProps) {
     doScroll()
   })
 
+  // Deselect item when user swipes back to list panel.
+  // Uses a timeout after scroll settles to avoid iOS Safari issues with
+  // scrollend firing prematurely during programmatic smooth scrolls.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined
+    const onScroll = () => {
+      if (isProgrammaticScroll.current) return
+      clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(() => {
+        if (isProgrammaticScroll.current) return
+        if (el.scrollLeft < el.clientWidth * 0.5 && panels.length > 1) {
+          deselectItem()
+        }
+      }, 150)
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      el.removeEventListener("scroll", onScroll)
+      clearTimeout(scrollTimer)
+    }
+  }, [panels.length, deselectItem])
+
   // Vertical drag to switch tabs
   const onVerticalDrag = useCallback(
     (startY: number, firstMove: PointerEvent) => {
       const threshold = 60
-      const currentIdx = ALL_TABS.indexOf(id)
+      const tabs = getTabOrder()
+      const currentIdx = tabs.indexOf(id)
 
       const trySwitch = (me: PointerEvent) => {
         const dy = me.clientY - startY
         if (Math.abs(dy) > threshold) {
           const nextIdx =
-            dy < 0 ? Math.min(currentIdx + 1, ALL_TABS.length - 1) : Math.max(currentIdx - 1, 0)
-          if (nextIdx !== currentIdx) switchTab(ALL_TABS[nextIdx])
+            dy < 0 ? Math.min(currentIdx + 1, tabs.length - 1) : Math.max(currentIdx - 1, 0)
+          if (nextIdx !== currentIdx) switchTab(tabs[nextIdx])
           document.removeEventListener("pointermove", onMove)
           document.removeEventListener("pointerup", onUp)
         }
@@ -164,7 +193,7 @@ function MobileTab({ id, children }: TabProps) {
     <DragTabContext.Provider value={{ onVerticalDrag }}>
       <div
         ref={scrollRef}
-        className="flex flex-row h-full shrink-0 overflow-y-hidden overflow-x-auto scrollbar-none"
+        className="flex flex-row h-full shrink-0 overflow-y-hidden overflow-x-auto"
         style={{ scrollSnapType: snapEnabled ? "x mandatory" : "none" }}
       >
         {renderedChildren}
@@ -210,6 +239,13 @@ function DesktopTab({ id, children }: TabProps) {
   const panelCount = panels.length
   const mountedAt = useRef(performance.now())
   useEffect(() => { hasMounted.current = true }, [])
+
+  // On first mount, start scrolled to the last panel
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    el.scrollLeft = el.scrollWidth - el.clientWidth
+  }, [])
 
   // Scroll when panels are added or removed inside the group
   useEffect(() => {

@@ -105,11 +105,14 @@ export async function createCredentialProxy(
       (tlsSocket) => {
         // Read the decrypted HTTP request from the agent
         let rawData = ""
+        let handled = false
         tlsSocket.on("data", async (chunk) => {
           rawData += chunk.toString()
 
           // Wait for headers to be complete
           if (!rawData.includes("\r\n\r\n")) return
+          if (handled) return
+          handled = true
           tlsSocket.pause()
 
           // Parse HTTP request
@@ -160,6 +163,9 @@ export async function createCredentialProxy(
         })
       }
     )
+
+    // Clean up TLS server when the client disconnects
+    clientSocket.once("close", () => tlsServer.close())
 
     // Send 200 BEFORE emitting the TLS connection — otherwise the client
     // hasn't received the tunnel confirmation yet when the TLS handshake starts,

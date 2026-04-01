@@ -29,94 +29,6 @@ export interface WorkspaceMember {
   picture?: string
 }
 
-// Gmail types
-
-export interface GmailAttachment {
-  attachmentId: string
-  filename: string
-  mimeType: string
-  size: number
-}
-
-export interface GmailMessage {
-  id: string
-  threadId: string
-  labelIds: string[]
-  snippet: string
-  from: string
-  to: string
-  subject: string
-  date: string
-  body: string
-  bodyFormat: 'markdown' | 'plain'
-  isUnread: boolean
-  attachments: GmailAttachment[]
-}
-
-export interface GmailThread {
-  id: string
-  messages: GmailMessage[]
-  subject: string
-  snippet: string
-  from: string
-  date: string
-  messageCount: number
-  isUnread: boolean
-  labelIds: string[]
-}
-
-export interface GmailLabel {
-  id: string
-  name: string
-  type: string
-  messagesTotal?: number
-  messagesUnread?: number
-}
-
-// Notion types
-
-export interface NotionTask {
-  id: string
-  title: string
-  status: string
-  tags: string[]
-  priority: string
-  assignee: string
-  createdAt: string
-  updatedAt: string
-  url: string
-}
-
-export interface NotionProperty {
-  date?: { start?: string }
-  created_by?: { name?: string }
-  [key: string]: unknown
-}
-
-export interface NotionTaskDetail extends NotionTask {
-  body: string
-  properties: Record<string, NotionProperty>
-  children: import("../components/task/NotionBlockRenderer").NotionBlock[]
-}
-
-export interface NotionCalendarItem {
-  id: string
-  title: string
-  status: string
-  tags: string[]
-  assignee: string
-  date: string
-  createdAt: string
-  updatedAt: string
-  url: string
-}
-
-export interface NotionCalendarItemDetail extends NotionCalendarItem {
-  body: string
-  properties: Record<string, NotionProperty>
-  children: import("../components/task/NotionBlockRenderer").NotionBlock[]
-}
-
 // Session types
 
 export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input" | "archived"
@@ -137,7 +49,7 @@ export interface AskUserQuestion {
 export interface PendingQuestion {
   questions: AskUserQuestion[]
 }
-export type TriggerSource = "manual" | "inbox" | "email_triage" | "webhook_notion" | "webhook_slack"
+export type TriggerSource = "manual" | "inbox" | "webhook" | (string & {})
 
 // Inbox workflow structured output types (from <inbox-context> and <inbox-result> XML blocks)
 
@@ -169,6 +81,8 @@ export type InboxResultAction = "draft" | "task" | "context_updated" | "skipped"
 
 export interface InboxResultData {
   action: InboxResultAction
+  /** Plugin that produced this result (e.g. "gmail", "notion-tasks") */
+  pluginId?: string
   draft?: {
     to: string
     subject: string
@@ -189,9 +103,6 @@ export interface Session {
   startedAt: string
   updatedAt: string
   completedAt: string | null
-  linkedEmailId: string | null
-  linkedEmailThreadId: string | null
-  linkedTaskId: string | null
   linkedSourceType: string | null
   linkedSourceId: string | null
   triggerSource: TriggerSource
@@ -210,15 +121,6 @@ export interface SessionMessage {
   createdAt: string
 }
 
-// Link types
-
-export interface EmailTaskLink {
-  emailId: string
-  emailThreadId: string
-  taskId: string
-  createdAt: string
-}
-
 // Integration types
 
 export interface Integration {
@@ -231,18 +133,6 @@ export interface Integration {
 }
 
 // Filter types
-
-export interface EmailFilters {
-  query: string
-  label: string
-}
-
-export interface TaskFilters {
-  status: string
-  tags: string[]
-  assignee: string
-  priority: string
-}
 
 export interface SessionFilters {
   status: SessionStatus | ""

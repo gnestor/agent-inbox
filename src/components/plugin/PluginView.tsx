@@ -10,10 +10,15 @@ import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import type { TabId } from "@/types/navigation"
 import { pluginIdFromTab } from "@/types/navigation"
 
-export function PluginView() {
-  const { activeTab, getPanels, getSelectedItemId } = useNavigation()
-  const tabId = activeTab as TabId
-  const pluginId = pluginIdFromTab(activeTab)
+interface PluginViewProps {
+  tabId?: TabId
+}
+
+export function PluginView({ tabId: tabIdProp }: PluginViewProps) {
+  const { activeTab, getPanels, getSelectedItemId, getSourceTab } = useNavigation()
+  const tabId = tabIdProp ?? activeTab as TabId
+  // For recent:* tabs, resolve pluginId from the source tab (e.g. "plugin:gmail")
+  const pluginId = pluginIdFromTab(tabId) ?? pluginIdFromTab(getSourceTab(tabId) ?? "")
   const panels = getPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")
@@ -35,7 +40,7 @@ export function PluginView() {
               ) : panel.type === "session" ? (
                 <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
               ) : panel.type === "new_session" ? (
-                <NewSessionPanel />
+                <NewSessionPanel panelId={panel.id} {...panel.props} />
               ) : (
                 <PanelContent panel={panel} />
               )}

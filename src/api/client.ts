@@ -1,29 +1,20 @@
 const BASE = "/api"
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const method = options?.method ?? "GET"
-  if (import.meta.env.DEV) {
-    console.log(`[api] ${method} ${path}`)
-  }
-  const start = import.meta.env.DEV ? performance.now() : 0
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   })
   if (!res.ok) {
     const text = await res.text()
-    if (import.meta.env.DEV) {
-      console.error(`[api] ${method} ${path} → ${res.status} (${(performance.now() - start).toFixed(0)}ms)`, text)
-    }
     throw new Error(`API ${res.status}: ${text}`)
-  }
-  if (import.meta.env.DEV) {
-    console.log(`[api] ${method} ${path} → ${res.status} (${(performance.now() - start).toFixed(0)}ms)`)
   }
   return res.json()
 }
 
+// ---------------------------------------------------------------------------
 // Auth
+// ---------------------------------------------------------------------------
 
 export async function getAuthClientId() {
   return request<{ clientId: string }>(`/auth/client-id`)
@@ -48,142 +39,9 @@ export async function logout() {
   return request<{ ok: boolean }>(`/auth/logout`, { method: "POST" })
 }
 
-// Gmail
-
-export async function searchEmails(query: string, maxResults = 50, pageToken?: string) {
-  const params = new URLSearchParams({ q: query, max: String(maxResults) })
-  if (pageToken) params.set("pageToken", pageToken)
-  return request<{ messages: import("@/types").GmailMessage[]; nextPageToken: string | null }>(
-    `/gmail/messages?${params}`,
-  )
-}
-
-export async function getEmailThread(threadId: string) {
-  return request<import("@/types").GmailThread>(`/gmail/threads/${threadId}`)
-}
-
-export async function getEmailLabels() {
-  return request<{ labels: import("@/types").GmailLabel[] }>(`/gmail/labels`)
-}
-
-export async function createDraft(body: {
-  to: string
-  subject: string
-  body: string
-  threadId?: string
-  inReplyTo?: string
-}) {
-  return request<{ id: string }>(`/gmail/drafts`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
-}
-
-export async function sendEmail(body: {
-  to: string
-  subject: string
-  body: string
-  threadId?: string
-  inReplyTo?: string
-}) {
-  return request<{ id: string }>(`/gmail/send`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
-}
-
-export async function trashThread(threadId: string) {
-  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/trash`, {
-    method: "POST",
-  })
-}
-
-export async function modifyThreadLabels(
-  threadId: string,
-  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
-) {
-  return request<{ ok: boolean }>(`/gmail/threads/${threadId}/labels`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  })
-}
-
-// Notion
-
-export async function getNotionOptions(property: string) {
-  return request<{ options: { value: string; color: string | null }[] }>(
-    `/notion-tasks/options/${encodeURIComponent(property)}`,
-  )
-}
-
-export async function getTaskAssignees() {
-  return request<{ assignees: string[] }>(`/notion-tasks/assignees`)
-}
-
-export async function getTasks(filters?: {
-  status?: string
-  tags?: string
-  assignee?: string
-  priority?: string
-  cursor?: string
-}) {
-  const params = new URLSearchParams()
-  if (filters?.status) params.set("status", filters.status)
-  if (filters?.tags) params.set("tags", filters.tags)
-  if (filters?.assignee) params.set("assignee", filters.assignee)
-  if (filters?.priority) params.set("priority", filters.priority)
-  if (filters?.cursor) params.set("cursor", filters.cursor)
-  const qs = params.toString()
-  const result = await request<{ items: import("@/types").NotionTask[]; nextCursor?: string }>(
-    `/notion-tasks/items${qs ? `?${qs}` : ""}`,
-  )
-  return { tasks: result.items, nextCursor: result.nextCursor ?? null }
-}
-
-export async function getTask(taskId: string) {
-  return request<import("@/types").NotionTaskDetail>(`/notion-tasks/items/${taskId}`)
-}
-
-export async function updateTask(taskId: string, properties: import("@/types/notion-mutations").TaskPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion-tasks/items/${taskId}/mutate`, {
-    method: "POST",
-    body: JSON.stringify({ action: "update-properties", payload: properties }),
-  })
-}
-
-export async function getCalendarItems(filters?: {
-  status?: string
-  tags?: string
-  assignee?: string
-  cursor?: string
-}) {
-  const params = new URLSearchParams()
-  if (filters?.status) params.set("status", filters.status)
-  if (filters?.tags) params.set("tags", filters.tags)
-  if (filters?.assignee) params.set("assignee", filters.assignee)
-  if (filters?.cursor) params.set("cursor", filters.cursor)
-  const qs = params.toString()
-  return request<{ items: import("@/types").NotionCalendarItem[]; nextCursor: string | null }>(
-    `/notion-calendar/items${qs ? `?${qs}` : ""}`,
-  )
-}
-
-export async function getCalendarItem(itemId: string) {
-  return request<import("@/types").NotionCalendarItemDetail>(`/notion-calendar/items/${itemId}`)
-}
-
-export async function updateCalendarItem(itemId: string, properties: import("@/types/notion-mutations").CalendarPropertyUpdate) {
-  return request<{ ok: boolean }>(`/notion-calendar/items/${itemId}/mutate`, {
-    method: "POST",
-    body: JSON.stringify({ action: "update-properties", payload: properties }),
-  })
-}
-
-export async function getCalendarAssignees() {
-  return request<{ assignees: string[] }>(`/notion-calendar/calendar-assignees`)
-}
-
+// ---------------------------------------------------------------------------
 // Sessions
+// ---------------------------------------------------------------------------
 
 export async function getSessions(filters?: {
   status?: string
@@ -220,12 +78,10 @@ export async function updateSession(sessionId: string, body: { summary: string }
 
 export async function createSession(body: {
   prompt: string
-  linkedEmailId?: string
-  linkedEmailThreadId?: string
-  linkedTaskId?: string
   linkedSourceType?: string
   linkedSourceId?: string
   linkedSourceContent?: string
+  linkedItemTitle?: string
 }) {
   return request<{ sessionId: string }>(`/sessions`, {
     method: "POST",
@@ -311,7 +167,9 @@ export async function getLinkedSession(sourceId: string, sourceType: string) {
   )
 }
 
+// ---------------------------------------------------------------------------
 // Plugins
+// ---------------------------------------------------------------------------
 
 export interface PluginManifest {
   id: string
@@ -322,6 +180,7 @@ export interface PluginManifest {
   auth?: { integrationId: string; scope: "user" | "workspace" }
   fieldSchema: import("@/types/plugin").FieldDef[]
   detailSchema?: import("@/types/panels").WidgetDef[]
+  listRowHeight?: number
   hasSubItems?: boolean
   hasGetItem?: boolean
   hasFilterOptions?: boolean
@@ -392,7 +251,9 @@ export async function mutatePluginItem(
   })
 }
 
+// ---------------------------------------------------------------------------
 // Connections
+// ---------------------------------------------------------------------------
 
 export async function getConnections() {
   return request<{ integrations: import("@/types").Integration[] }>(`/connections`)
@@ -404,15 +265,13 @@ export async function disconnectIntegration(integration: string) {
   })
 }
 
-/**
- * Get the OAuth connect URL for an integration.
- * Returns the URL to redirect to (browser navigation, not fetch).
- */
 export function getConnectUrl(integration: string): string {
   return `${BASE}/connections/connect/${integration}`
 }
 
+// ---------------------------------------------------------------------------
 // Preferences
+// ---------------------------------------------------------------------------
 
 export async function getPreferences() {
   return request<Record<string, unknown>>(`/preferences`)
@@ -429,7 +288,9 @@ export async function getUserProfiles(emails: string[]): Promise<{ users: { emai
   return request(`/users?emails=${emails.map(encodeURIComponent).join(",")}`)
 }
 
+// ---------------------------------------------------------------------------
 // Workspaces
+// ---------------------------------------------------------------------------
 
 export async function getWorkspaces() {
   return request<{ workspaces: import("@/types").Workspace[]; activeWorkspaceId: string | null }>(`/workspaces`)

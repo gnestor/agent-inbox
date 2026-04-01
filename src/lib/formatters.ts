@@ -3,6 +3,11 @@ export { formatRelativeDate, formatTimeAgo, truncate, formatFileSize, getInitial
 
 // Domain-specific formatters — inbox only
 
+/** Extract a display title from a generic plugin item (email subject, task title, etc.) */
+export function getItemTitle(item: Record<string, unknown> | undefined): string {
+  return ((item?.subject ?? item?.title ?? item?.name) as string) || ""
+}
+
 export function formatEmailAddress(address: string): string {
   const match = address.match(/^(.+?)\s*<.+>$/)
   return match ? match[1].replace(/"/g, "") : address
@@ -63,21 +68,3 @@ export function sessionStatusBadgeClass(status: string): string {
   }
 }
 
-export function taskStatusBadgeClass(status: string): string {
-  switch (status) {
-    case "Not started":
-      return "bg-foreground/10 text-muted-foreground"
-    case "Next Up":
-      return "bg-chart-2/20 text-chart-2"
-    case "In Progress":
-    case "In progress":
-      return "bg-chart-3/20 text-chart-3"
-    case "Completed":
-    case "Done":
-      return "bg-chart-1/20 text-chart-1"
-    case "Archive":
-      return "bg-foreground/10 text-muted-foreground"
-    default:
-      return ""
-  }
-}

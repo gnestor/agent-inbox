@@ -9,10 +9,6 @@ const messagesStore = new Map<string, any[]>()
 
 vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("FROM session_messages")) {
-      const sessionId = params![0] as string
-      return messagesStore.get(sessionId) || []
-    }
     if (sql.includes("FROM sessions")) {
       return [...sessionsStore.values()]
     }

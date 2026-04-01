@@ -1,15 +1,25 @@
 import { useMemo } from "react"
+import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
+import TurndownService from "turndown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
-import { usePlugins, usePluginItems, usePluginSubItems } from "@/hooks/use-plugins"
+import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
-import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
+import { useNavigation } from "@/hooks/use-navigation"
+import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
 import { mutatePluginItem, getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
+import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
+import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
+import { PluginFrame } from "@/components/plugin/PluginFrame"
+import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
@@ -47,6 +57,10 @@ function formatSlackText(text: string): string {
     .replace(/:([a-z0-9_+-]+):/g, (_, name) => EMOJI_MAP[name] ?? `:${name}:`)
 }
 
+const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeHighlight]
+
 const EMOJI_MAP: Record<string, string> = {
   slightly_smiling_face: "🙂", smile: "😊", grinning: "😀", joy: "😂",
   heart: "❤️", thumbsup: "+1", "+1": "👍", "-1": "👎", thumbsdown: "👎",
@@ -71,9 +85,9 @@ function formatTs(ts: string): string {
 function HtmlMessageBody({ html }: { html: string }) {
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: var(--card, transparent) !important;
+    html, body { margin: 0; padding: 0; overflow: hidden; background: transparent !important;
       color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-      font-size: 13px; line-height: 1.5; }
+      font-size: 14px; line-height: 1.5; }
     img { max-width: 100%; height: auto; }
     a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
     blockquote { margin: 0.5em 0; padding-left: 0.75em; border-left: 2px solid color-mix(in srgb, var(--foreground) 20%, transparent); }
@@ -89,7 +103,7 @@ function HtmlMessageBody({ html }: { html: string }) {
       ref={iframeRef}
       srcDoc={srcDoc}
       sandbox="allow-same-origin"
-      className="w-full border-0 bg-card overflow-hidden h-0"
+      className="w-full border-0 overflow-hidden h-0"
     />
   )
 }
@@ -102,13 +116,14 @@ function MessageRow({ item }: { item: PluginItem }) {
   const initials = name.slice(0, 2).toUpperCase()
   const isHtml = data.bodyType === "html"
   const text = String(data.text ?? "")
+  const markdown = useMemo(() => (isHtml && text ? turndown.turndown(text) : null), [isHtml, text])
   const attachments = (data.attachments ?? []) as Array<{ url: string; contentType: string; name: string; size?: number }>
   const imageAttachments = attachments.filter((a) => a.contentType?.startsWith("image/"))
   const otherAttachments = attachments.filter((a) => !a.contentType?.startsWith("image/"))
 
   return (
-    <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary">
-      <div className="flex gap-2.5">
+    <div className="px-4 py-3 border-b last:border-0 hover:bg-secondary overflow-hidden">
+      <div className="flex gap-2.5 min-w-0">
         {avatar ? (
           <img src={avatar} alt={name} className="h-8 w-8 rounded-full shrink-0 mt-0.5" />
         ) : (
@@ -140,8 +155,12 @@ function MessageRow({ item }: { item: PluginItem }) {
               ))}
             </div>
           )}
-          {isHtml && text ? (
-            <HtmlMessageBody html={text} />
+          {markdown ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+              <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+                {markdown}
+              </Markdown>
+            </div>
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
               {formatSlackText(text)}
@@ -155,7 +174,7 @@ function MessageRow({ item }: { item: PluginItem }) {
                   href={a.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                  className="text-xs text-muted-foreground underline hover:text-foreground truncate inline-block"
                 >
                   {a.name}
                 </a>
@@ -168,6 +187,34 @@ function MessageRow({ item }: { item: PluginItem }) {
   )
 }
 
+/** Renders a single embedded message (e.g. Gmail thread message, Notion child block). */
+function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
+  const from = String(msg.from ?? msg.userName ?? msg.userId ?? "Unknown")
+  const date = String(msg.date ?? "")
+  const body = String(msg.body ?? msg.text ?? "")
+  const bodyFormat = String(msg.bodyFormat ?? msg.bodyType ?? "plain")
+  const formattedDate = date ? formatRelativeDate(date) : ""
+  const displayName = formatEmailAddress(from)
+
+  return (
+    <div className="px-4 py-3 border-b last:border-0">
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className="font-medium text-sm">{displayName}</span>
+        <span className="text-xs text-muted-foreground">{formattedDate}</span>
+      </div>
+      {bodyFormat === "html" || body.startsWith("<") ? (
+        <HtmlMessageBody html={body} />
+      ) : bodyFormat === "markdown" ? (
+        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+          <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{body}</Markdown>
+        </div>
+      ) : (
+        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
+      )}
+    </div>
+  )
+}
+
 export function PluginDetail({
   pluginId,
   itemId,
@@ -176,13 +223,17 @@ export function PluginDetail({
   itemId: string
 }) {
   const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
+  const { deselectItem } = useNavigation()
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
+  const hasGetItem = !!plugin?.hasGetItem
 
-  // Always call both hooks — conditionally enable based on plugin type
-  const { data: itemsData, isLoading: itemsLoading } = usePluginItems(pluginId, {}, undefined)
-  const { data: subData, isLoading: subLoading } = usePluginSubItems(
+  // Fetch list items only as fallback when getItem isn't available
+  const { data: itemsData, isPending: itemsPending } = usePluginItems(pluginId, {}, undefined, !hasGetItem)
+  const { data: fullItem, isPending: fullItemPending } = usePluginItem(pluginId, itemId, hasGetItem)
+  const { data: subData, isPending: subPending } = usePluginSubItems(
     pluginId,
     itemId,
     {},
@@ -197,10 +248,31 @@ export function PluginDetail({
   })
   const linkedSession = linkedData?.session
 
-  // Look up the parent item from the list query (for title, externalUrl, etc.)
-  const parentItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Use full item from getItem() if available, otherwise look up from list
+  const listItem = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  const parentItem = (fullItem as Record<string, unknown> | undefined) ?? listItem
   const title = parentItem ? getItemTitle(parentItem) : itemId
-  const externalUrl = parentItem?.externalUrl as string | undefined
+  const externalUrl = (parentItem?.externalUrl ?? parentItem?.url) as string | undefined
+
+  // Shared mutation handler for both sub-items and widget-tree paths
+  async function handleMutate(action: string, payload: unknown) {
+    try {
+      await mutatePluginItem(pluginId, itemId, action, payload)
+      queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
+    } catch (err) {
+      console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
+    }
+  }
+
+  // Action buttons from detailSchema (shared across render paths)
+  const actionButtons = plugin?.detailSchema
+    ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
+    .flatMap((w) => w.actions) ?? []
+
+  // Properties popover for items with editable fields (e.g. Notion tasks/calendar)
+  const hasEditableFields = plugin?.fieldSchema?.some((f) =>
+    (f.type === "select" || f.type === "multiselect") && f.filter?.filterable
+  )
 
   // Build session context from sub-items for session linking
   const sessionSource = useMemo(() => {
@@ -225,11 +297,6 @@ export function PluginDetail({
   if (hasSubItems) {
     const items = subData?.items ?? []
 
-    // Extract action-buttons from detailSchema for toolbar rendering
-    const actionButtons = plugin?.detailSchema
-      ?.filter((w): w is import("@/types/panels").ActionButtonsWidget => w.type === "action-buttons")
-      .flatMap((w) => w.actions) ?? []
-
     // Resolve dynamic actions: archive ↔ reopen based on item status
     const itemStatus = parentItem?.status as string | undefined
     const resolvedActions = actionButtons.map((action) => {
@@ -239,22 +306,13 @@ export function PluginDetail({
       return action
     })
 
-    async function handleMutate(action: string, payload: unknown) {
-      try {
-        await mutatePluginItem(pluginId, itemId, action, payload)
-        queryClient.invalidateQueries({ queryKey: ["plugin-items", pluginId] })
-      } catch (err) {
-        console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
-      }
-    }
-
     return (
       <div className="flex flex-1 flex-col min-h-0">
         <PanelHeader
           left={
-            <div className="flex items-center gap-2">
-              <SidebarButton />
-              <span className="font-semibold text-sm">{title}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <BackButton onClick={deselectItem} />
+              <span className="font-semibold text-sm truncate">{title}</span>
             </div>
           }
           right={
@@ -297,8 +355,8 @@ export function PluginDetail({
             </>
           }
         />
-        {subLoading && !items.length && <ListSkeleton itemHeight={72} />}
-        {!subLoading && !items.length && (
+        {subPending && !items.length && <ListSkeleton itemHeight={72} />}
+        {!subPending && !items.length && (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No messages</div>
         )}
         {items.length > 0 && (
@@ -312,10 +370,79 @@ export function PluginDetail({
     )
   }
 
-  // Widget tree path
-  const item = itemsData?.items.find((i) => i.id === itemId) as Record<string, unknown> | undefined
+  // Plugins with a dedicated detail component
+  if (plugin?.components?.detail) {
+    // Gmail: direct import (will move to iframe when EmailThread is self-contained)
+    if (pluginId === "gmail") {
+      return <EmailThread threadId={itemId} />
+    }
 
-  if (!plugin || (!item && itemsLoading)) {
+    // Wait for item data before rendering iframe (uses app's skeleton + React Query cache)
+    const item = parentItem
+    const isLoading = hasGetItem ? fullItemPending : itemsPending
+    if (!item && isLoading) return <PanelSkeleton />
+    if (!item) {
+      return <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Item not found</div>
+    }
+
+    // Workspace plugins: render via PluginFrame iframe with pre-fetched data
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <PanelHeader
+          left={
+            <div className="flex items-center gap-2 min-w-0">
+              <BackButton onClick={deselectItem} />
+              <span className="font-semibold text-sm truncate">{title}</span>
+            </div>
+          }
+          right={
+            <>
+              {hasEditableFields && (
+                <PropertiesPopover pluginId={pluginId} itemId={itemId} item={item} />
+              )}
+              {externalUrl && (
+                <a href={externalUrl} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+                  title={`Open in ${plugin?.name ?? "app"}`}>
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+              {actionButtons.map((action) => {
+                const Icon = ACTION_ICONS[action.mutation]
+                return (
+                  <button key={action.mutation} type="button" title={action.label}
+                    className={`shrink-0 p-1.5 rounded-md ${
+                      action.variant === "destructive"
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-muted-foreground hover:bg-secondary"
+                    }`}
+                    onClick={() => handleMutate(action.mutation, undefined)}>
+                    {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+                  </button>
+                )
+              })}
+              <SessionActionMenu
+                source={{ type: pluginId, id: itemId, title, content: JSON.stringify(item) }}
+                linkedSessionId={linkedSession?.id}
+              />
+            </>
+          }
+        />
+        <PluginFrame
+          pluginId={pluginId}
+          componentName={plugin.components.detail}
+          componentProps={{ item }}
+          className="w-full flex-1 border-0"
+        />
+      </div>
+    )
+  }
+
+  // Widget tree path — use full item from getItem() if available
+  const item = parentItem
+  const isLoading = hasGetItem ? fullItemPending : itemsPending
+
+  if (!plugin || (!item && isLoading)) {
     return <PanelSkeleton />
   }
   if (!item) {
@@ -324,11 +451,35 @@ export function PluginDetail({
     )
   }
 
-  const widgets = plugin.detailSchema ?? autoDetailSchema(plugin)
-
-  async function handleMutate(action: string, payload: unknown) {
-    await mutatePluginItem(pluginId, itemId, action, payload)
+  // Other plugins with embedded messages: generic rendering
+  const embeddedMessages = item.messages as Record<string, unknown>[] | undefined
+  if (embeddedMessages && embeddedMessages.length > 0) {
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <PanelHeader
+          left={
+            <div className="flex items-center gap-2 min-w-0">
+              <BackButton onClick={deselectItem} />
+              <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
+            </div>
+          }
+          right={
+            <SessionActionMenu
+              source={{ type: pluginId, id: itemId, title: getItemTitle(item), content: JSON.stringify(item) }}
+              linkedSessionId={linkedSession?.id}
+            />
+          }
+        />
+        <div className="flex-1 overflow-y-auto">
+          {embeddedMessages.map((msg) => (
+            <EmbeddedMessage key={String(msg.id)} msg={msg} />
+          ))}
+        </div>
+      </div>
+    )
   }
+
+  const widgets = plugin.detailSchema ?? autoDetailSchema(plugin)
 
   const widgetSource = {
     type: pluginId,
@@ -337,24 +488,71 @@ export function PluginDetail({
     content: JSON.stringify(item),
   }
 
+  const bodyContent = item.body as string | undefined
+  const bodyFormat = item.bodyFormat as string | undefined
+
+  const toolbarRight = (
+    <>
+      {hasEditableFields && (
+        <PropertiesPopover pluginId={pluginId} itemId={itemId} item={item} />
+      )}
+      {externalUrl && (
+        <a
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          title={`Open in ${plugin?.name ?? "app"}`}
+        >
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      )}
+      {actionButtons.map((action) => {
+        const Icon = ACTION_ICONS[action.mutation]
+        return (
+          <button
+            key={action.mutation}
+            type="button"
+            title={action.label}
+            className={`shrink-0 p-1.5 rounded-md ${
+              action.variant === "destructive"
+                ? "text-destructive hover:bg-destructive/10"
+                : "text-muted-foreground hover:bg-secondary"
+            }`}
+            onClick={() => handleMutate(action.mutation, undefined)}
+          >
+            {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
+          </button>
+        )
+      })}
+      <SessionActionMenu
+        source={widgetSource}
+        linkedSessionId={linkedSession?.id}
+      />
+    </>
+  )
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <PanelHeader
         left={
-          <div className="flex items-center gap-2">
-            <SidebarButton />
-            <span className="font-semibold text-sm">{getItemTitle(item)}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <BackButton onClick={deselectItem} />
+            <span className="font-semibold text-sm truncate">{getItemTitle(item)}</span>
           </div>
         }
-        right={
-          <SessionActionMenu
-            source={widgetSource}
-            linkedSessionId={linkedSession?.id}
-          />
-        }
+        right={toolbarRight}
       />
       <div className="flex-1 overflow-y-auto p-4">
-        <PanelWidget widgets={widgets} data={item} onMutate={handleMutate} />
+        {bodyContent && bodyFormat === "markdown" ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>{bodyContent}</Markdown>
+          </div>
+        ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
+          <HtmlMessageBody html={bodyContent} />
+        ) : (
+          <PanelWidget widgets={widgets} data={item} onMutate={handleMutate} />
+        )}
       </div>
     </div>
   )

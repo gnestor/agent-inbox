@@ -98,7 +98,7 @@ export function LoginPage() {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <p className="px-6 text-center text-xs text-muted-foreground">
-          Your Gmail and Notion data stays on this device.
+          Your data is stored in your workspace and not our servers.
         </p>
       </div>
     </div>

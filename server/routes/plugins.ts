@@ -1,61 +1,118 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
-import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
-import { getUserCredential } from "../lib/vault.js"
-import { refreshGoogleToken } from "../lib/credentials.js"
-import type { PluginContext } from "../../src/types/plugin.js"
-
-/**
- * Build a PluginContext from the Hono request context.
- * The auth middleware has already set userEmail on all /api/* routes.
- */
-async function buildPluginContext(c: { get: (key: string) => unknown }): Promise<PluginContext> {
-  const userEmail = c.get("userEmail") as string
-  return {
-    userEmail,
-    async getCredential(integration: string): Promise<string | null> {
-      // Per-user OAuth credential (e.g. Google)
-      const cred = await getUserCredential(userEmail, integration)
-      if (cred?.refreshToken) {
-        if (integration === "google") {
-          return refreshGoogleToken(cred.refreshToken)
-        }
-        return cred.refreshToken
-      }
-      return null
-    },
-  }
-}
+import { join, resolve } from "node:path"
+import { stat } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+import { build } from "esbuild"
+import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
+import { buildPluginContext, getWorkspaceId } from "../lib/plugin-context.js"
 
 // ---------------------------------------------------------------------------
 // Auto-generated routes for all plugins, mounted at /api/:pluginId/*
 // ---------------------------------------------------------------------------
 
+const BUILTIN_PLUGINS_ROOT = resolve(fileURLToPath(import.meta.url), "../../../plugins")
+const componentCache = new Map<string, { js: string; mtime: number }>()
+const COMPONENT_CACHE_MAX = 50
+
 export const pluginRoutes = new Hono()
 
-/** GET /api/plugins — list all loaded plugin manifests */
+/** GET /api/plugins — list all loaded plugin manifests (excludes skills-only plugins) */
 pluginRoutes.get("/plugins", (c) => {
-  const plugins = getPlugins().map((p) => ({
-    id: p.id,
-    name: p.name,
-    icon: p.icon,
-    emoji: p.emoji,
-    components: p.components,
-    auth: p.auth,
-    fieldSchema: p.fieldSchema,
-    detailSchema: p.detailSchema,
-    hasSubItems: !!p.querySubItems,
-    hasGetItem: !!p.getItem,
-    hasFilterOptions: !!p.filterOptions,
-  }))
+  const workspaceId = getWorkspaceId(c)
+  const plugins = getPlugins(workspaceId)
+    .filter((p) => p.fieldSchema && p.fieldSchema.length > 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      icon: p.icon,
+      emoji: p.emoji,
+      components: p.components,
+      auth: p.auth,
+      fieldSchema: p.fieldSchema,
+      detailSchema: p.detailSchema,
+      listRowHeight: p.listRowHeight,
+      hasSubItems: !!p.querySubItems,
+      hasGetItem: !!p.getItem,
+      hasFilterOptions: !!p.filterOptions,
+    }))
   return c.json(plugins)
+})
+
+/**
+ * GET /api/:pluginId/components/:name
+ * Serve a plugin's TSX component as an ES module (esbuild-transformed).
+ */
+pluginRoutes.get("/:pluginId/components/:name", async (c) => {
+  const { pluginId, name } = c.req.param()
+  const workspace = c.get("workspace") as { id?: string; path?: string } | undefined
+
+  // Resolve component file: use plugin's actual directory (handles multi-tab plugins
+  // where plugin ID differs from directory name, e.g. "notion-tasks" → "notion/")
+  const pluginDir = getPluginDir(pluginId)
+  const candidates = [
+    pluginDir && join(pluginDir, "app", "components", `${name}.tsx`),
+    workspace?.path && join(workspace.path, "plugins", pluginId, "app", "components", `${name}.tsx`),
+    join(BUILTIN_PLUGINS_ROOT, pluginId, "app", "components", `${name}.tsx`),
+  ].filter(Boolean) as string[]
+
+  let componentPath = ""
+  let mtime = 0
+  for (const candidate of candidates) {
+    try {
+      const s = await stat(candidate)
+      componentPath = candidate
+      mtime = s.mtimeMs
+      break
+    } catch {}
+  }
+
+  if (!componentPath) {
+    throw new HTTPException(404, { message: `Component "${name}" not found for plugin "${pluginId}"` })
+  }
+
+  const cacheKey = `${pluginId}:${name}:${componentPath}`
+  const cached = componentCache.get(cacheKey)
+  if (cached && cached.mtime === mtime) {
+    return new Response(cached.js, {
+      headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+    })
+  }
+
+  const result = await build({
+    entryPoints: [componentPath],
+    bundle: true,
+    format: "esm",
+    jsx: "transform",
+    jsxFactory: "React.createElement",
+    jsxFragment: "React.Fragment",
+    tsconfigRaw: '{ "compilerOptions": { "jsx": "react" } }',
+    external: ["react", "react-dom", "react-dom/client", "@hammies/frontend/*"],
+    banner: { js: 'import React from "react";' },
+    platform: "browser",
+    target: "es2020",
+    write: false,
+  })
+
+  const js = result.outputFiles[0].text
+  if (componentCache.size >= COMPONENT_CACHE_MAX) {
+    const first = componentCache.keys().next().value
+    if (first) componentCache.delete(first)
+  }
+  componentCache.set(cacheKey, { js, mtime })
+
+  return new Response(js, {
+    headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache" },
+  })
 })
 
 /** GET /api/:pluginId/items — query items with optional filters + cursor */
 pluginRoutes.get("/:pluginId/items", async (c) => {
   const { pluginId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const workspaceId = getWorkspaceId(c)
+  const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+  if (!plugin.query) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support query` })
 
   const raw = c.req.query()
   const cursor = raw.cursor
@@ -71,7 +128,8 @@ pluginRoutes.get("/:pluginId/items", async (c) => {
 /** GET /api/:pluginId/items/:itemId — get a single item by ID */
 pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const workspaceId = getWorkspaceId(c)
+  const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.getItem) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support getItem` })
 
@@ -84,7 +142,8 @@ pluginRoutes.get("/:pluginId/items/:itemId", async (c) => {
 /** GET /api/:pluginId/items/:itemId/subitems — query sub-items (e.g. messages in a channel) */
 pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const workspaceId = getWorkspaceId(c)
+  const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
   if (!plugin.querySubItems) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support sub-items` })
 
@@ -102,8 +161,11 @@ pluginRoutes.get("/:pluginId/items/:itemId/subitems", async (c) => {
 /** POST /api/:pluginId/items/:itemId/mutate — perform an item mutation */
 pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
   const { pluginId, itemId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const workspaceId = getWorkspaceId(c)
+  const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+
+  if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutations` })
 
   const { action, payload } = await c.req.json()
   if (!action) throw new HTTPException(400, { message: "action is required" })
@@ -129,7 +191,8 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
 /** GET /api/:pluginId/fields/:fieldId/options — fetch dynamic filter options */
 pluginRoutes.get("/:pluginId/fields/:fieldId/options", async (c) => {
   const { pluginId, fieldId } = c.req.param()
-  const plugin = getPlugin(pluginId)
+  const workspaceId = getWorkspaceId(c)
+  const plugin = getPlugin(pluginId, workspaceId)
   if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
 
   const fetcher = plugin.filterOptions?.[fieldId]

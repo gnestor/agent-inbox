@@ -1,19 +1,19 @@
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { getPlugins, queryPluginItems, queryPluginSubItems } from "@/api/client"
+import { getPlugins, queryPluginItems, queryPluginSubItems, getPluginItem } from "@/api/client"
+import type { PluginManifest } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
+import { usePreference } from "@/hooks/use-preferences"
 
 export function usePlugins() {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugins"],
+    queryKey: ["plugins", wsId],
     queryFn: () => getPlugins(),
-    staleTime: 30_000,
-    gcTime: 60_000,
-    refetchOnMount: "always",
-    // Treat empty arrays from stale cache as placeholder — always refetch
     placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data || data.length === 0) {
-        // Stop polling after ~30 seconds (15 attempts × 2s) of empty results
         const fetchCount = query.state.dataUpdateCount
         return fetchCount < 15 ? 2000 : false
       }
@@ -25,12 +25,27 @@ export function usePlugins() {
 export function usePluginItems(
   sourceId: string,
   filters: Record<string, string>,
-  cursor?: string
+  cursor?: string,
+  enabled = true,
 ) {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugin-items", sourceId, filters, cursor],
+    queryKey: ["plugin-items", wsId, sourceId, filters, cursor],
     queryFn: () => queryPluginItems(sourceId, filters, cursor),
-    enabled: !!sourceId,
+    enabled: enabled && !!sourceId,
+  })
+}
+
+export function usePluginItem(
+  pluginId: string,
+  itemId: string,
+  enabled = true,
+) {
+  const wsId = useWorkspaceId()
+  return useQuery({
+    queryKey: ["plugin-item", wsId, pluginId, itemId],
+    queryFn: () => getPluginItem(pluginId, itemId),
+    enabled: enabled && !!pluginId && !!itemId,
   })
 }
 
@@ -41,9 +56,26 @@ export function usePluginSubItems(
   cursor?: string,
   enabled = true,
 ) {
+  const wsId = useWorkspaceId()
   return useQuery({
-    queryKey: ["plugin-subitems", sourceId, itemId, filters, cursor],
+    queryKey: ["plugin-subitems", wsId, sourceId, itemId, filters, cursor],
     queryFn: () => queryPluginSubItems(sourceId, itemId, filters, cursor),
     enabled: enabled && !!sourceId && !!itemId,
   })
+}
+
+/** Plugins sorted by user-defined pluginOrder preference. */
+export function useSortedPlugins(): PluginManifest[] {
+  const { data: plugins } = usePlugins()
+  const [pluginOrder] = usePreference<string[]>("pluginOrder", [])
+  return useMemo(() => {
+    if (!plugins) return []
+    if (pluginOrder.length === 0) return plugins
+    const orderMap = new Map(pluginOrder.map((id, i) => [id, i]))
+    return [...plugins].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? 999
+      const bi = orderMap.get(b.id) ?? 999
+      return ai - bi
+    })
+  }, [plugins, pluginOrder])
 }

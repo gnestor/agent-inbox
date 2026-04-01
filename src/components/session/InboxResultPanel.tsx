@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Button, Badge } from "@hammies/frontend/components/ui"
 import { RichTextEditor } from "@/components/shared/RichTextEditor"
 import { CheckCircle2, FileText, ExternalLink, Loader2 } from "lucide-react"
-import { createDraft, updateTask } from "@/api/client"
+import { mutatePluginItem } from "@/api/client"
+import { useWorkspaceId } from "@/hooks/use-user"
 import type { InboxResultData } from "@/types"
 
 interface InboxResultPanelProps {
@@ -37,7 +38,8 @@ function DraftResult({ data }: { data: InboxResultData }) {
   async function handleSend() {
     setState("pending")
     try {
-      await createDraft({
+      // pluginId comes from agent structured output; fallback for legacy sessions
+      await mutatePluginItem(data.pluginId || "gmail", draft.threadId ?? "new", "save-draft", {
         to: draft.to,
         subject: draft.subject,
         body,
@@ -54,7 +56,7 @@ function DraftResult({ data }: { data: InboxResultData }) {
     return (
       <div className="border rounded-lg mx-3 my-2 p-3 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20">
         <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-        Draft saved — review and send from Gmail
+        Draft saved
       </div>
     )
   }
@@ -96,14 +98,16 @@ function DraftResult({ data }: { data: InboxResultData }) {
 }
 
 function TaskResult({ data, qc }: { data: InboxResultData; qc: ReturnType<typeof useQueryClient> }) {
+  const wsId = useWorkspaceId()
   const task = data.task!
   const [state, setState] = useState<ActionState>("idle")
 
   async function handleComplete() {
     setState("pending")
     try {
-      await updateTask(task.id, { Status: { status: { name: "Done" } } })
-      qc.invalidateQueries({ queryKey: ["tasks"] })
+      const pluginId = data.pluginId ?? "notion-tasks"
+      await mutatePluginItem(pluginId, task.id, "update-status", { status: "Done" })
+      qc.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
       setState("success")
     } catch {
       setState("error")

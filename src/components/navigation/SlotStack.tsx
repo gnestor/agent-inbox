@@ -1,219 +1,223 @@
 /**
- * SlotStack — vertical scroll container for tab transitions.
+ * SlotStack — vertical scroll-snap container for tab switching.
  *
- * Uses native scrollTop positioning with an explicit animation state machine.
- * The reducer makes the scroll state visible and prevents the ResizeObserver
- * from fighting an in-progress animation.
+ * Tabs are full-height slots with CSS scroll-snap. The active tab is driven
+ * by the `activeKey` prop (from URL/navigation state). A scroll listener
+ * tracks which tab is most visible on every frame and fires
+ * `onActiveKeyChange` to sync the URL and sidebar instantly.
  */
-import { useRef, useEffect, useLayoutEffect, useReducer, useCallback, memo, type ReactNode } from "react"
-import { EASE } from "@/lib/navigation-constants"
-
-/** Fixed duration for tab scroll transitions (ms) */
-const TAB_SCROLL_DURATION = 1000
-
-/** Evaluate cubic-bezier(EASE) at progress t ∈ [0,1] using binary search */
-function cubicBezier(t: number): number {
-  const [x1, y1, x2, y2] = EASE
-  let lo = 0, hi = 1
-  for (let i = 0; i < 16; i++) {
-    const mid = (lo + hi) / 2
-    const x = 3 * x1 * mid * (1 - mid) ** 2 + 3 * x2 * mid ** 2 * (1 - mid) + mid ** 3
-    if (x < t) lo = mid; else hi = mid
-  }
-  const u = (lo + hi) / 2
-  return 3 * y1 * u * (1 - u) ** 2 + 3 * y2 * u ** 2 * (1 - u) + u ** 3
-}
-
-// --- Animation state machine ---
-
-type ScrollState =
-  | { status: "initial" }
-  | { status: "idle" }
-  | { status: "animating"; from: number; to: number; startTime: number }
-
-type ScrollAction =
-  | { type: "INITIALIZED" }
-  | { type: "ANIMATE"; from: number; to: number }
-  | { type: "COMPLETE" }
-
-function scrollReducer(state: ScrollState, action: ScrollAction): ScrollState {
-  switch (action.type) {
-    case "INITIALIZED":
-      return { status: "idle" }
-    case "ANIMATE":
-      return { status: "animating", from: action.from, to: action.to, startTime: performance.now() }
-    case "COMPLETE":
-      return { status: "idle" }
-    default:
-      return state
-  }
-}
-
-// --- Component ---
+import { useRef, useEffect, useCallback, useState, type ReactNode } from "react"
+import { useIsMobile } from "@hammies/frontend/hooks"
+import { ACTIVE_TAB_CLASS_LIST } from "@/lib/navigation-constants"
 
 interface SlotStackProps {
   activeKey: string
   keys: string[]
   renderItem: (key: string) => ReactNode
+  onActiveKeyChange?: (key: string) => void
   className?: string
   style?: React.CSSProperties
 }
 
-export function SlotStack({ activeKey, keys, renderItem, className = "", style: outerStyle }: SlotStackProps) {
+export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, className = "", style: outerStyle }: SlotStackProps) {
+  const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollState, dispatch] = useReducer(scrollReducer, { status: "initial" })
-  const prevKeyRef = useRef(activeKey)
+  const isProgrammaticScroll = useRef(false)
+  const scrollSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const activeIdx = keys.indexOf(activeKey)
   const safeIdx = activeIdx >= 0 ? activeIdx : 0
   const safeIdxRef = useRef(safeIdx)
   safeIdxRef.current = safeIdx
 
-  // Keep scrollState accessible to ResizeObserver without re-subscribing
-  const scrollStateRef = useRef(scrollState)
-  scrollStateRef.current = scrollState
+  // Scroll to active tab when activeKey changes from sidebar click.
+  const isUserScrolling = useRef(false)
+  const prevActiveKey = useRef(activeKey)
+  useEffect(() => {
+    if (prevActiveKey.current === activeKey) return
+    prevActiveKey.current = activeKey
 
-  // Set initial scroll position synchronously via ref callback (before first paint).
-  // Only transition to "idle" (which makes the container visible) if clientHeight > 0,
-  // otherwise the scroll position is wrong and the ResizeObserver will correct it.
-  const setRef = useCallback((el: HTMLDivElement | null) => {
-    scrollRef.current = el
-    if (el && scrollStateRef.current.status === "initial") {
-      el.scrollTop = safeIdxRef.current * el.clientHeight
-      if (el.clientHeight > 0) {
-        dispatch({ type: "INITIALIZED" })
+    if (isUserScrolling.current) {
+      isUserScrolling.current = false
+      return
+    }
+
+    const el = scrollRef.current
+    if (!el || el.clientHeight === 0) return
+
+    const idx = keys.indexOf(activeKey)
+    if (idx < 0) return
+    const target = idx * el.clientHeight
+    if (Math.abs(el.scrollTop - target) < 1) return
+
+    isProgrammaticScroll.current = true
+    el.style.scrollSnapType = "none"
+    el.scrollTo({ top: target, behavior: "smooth" })
+    // Re-enable snap and clear flag after scroll completes
+    const onEnd = () => {
+      el.style.scrollSnapType = "y mandatory"
+      isProgrammaticScroll.current = false
+      el.removeEventListener("scrollend", onEnd)
+    }
+    el.addEventListener("scrollend", onEnd, { once: true })
+    // Fallback in case scrollend doesn't fire (e.g. already at target)
+    setTimeout(() => {
+      el.style.scrollSnapType = "y mandatory"
+      isProgrammaticScroll.current = false
+    }, 1000)
+  })
+
+  // Track which tab is most visible on every scroll event
+  const activeKeyRef = useRef(activeKey)
+  activeKeyRef.current = activeKey
+  const onActiveKeyChangeRef = useRef(onActiveKeyChange)
+  onActiveKeyChangeRef.current = onActiveKeyChange
+  const keysRef = useRef(keys)
+  keysRef.current = keys
+
+  useEffect(() => {
+    if (isMobile) {
+      // Clear any pending scroll sync from a previous desktop render
+      clearTimeout(scrollSyncTimer.current)
+      return
+    }
+    const el = scrollRef.current
+    if (!el) return
+
+    const onScroll = () => {
+      if (isProgrammaticScroll.current) return
+      const height = el.clientHeight
+      if (height === 0) return
+      const idx = Math.round(el.scrollTop / height)
+      const key = keysRef.current[idx]
+      if (key && key !== activeKeyRef.current) {
+        isUserScrolling.current = true
+        activeKeyRef.current = key
+        // Update sidebar highlight instantly via DOM (bypass React)
+        const primaryClasses = ACTIVE_TAB_CLASS_LIST
+        document.querySelectorAll<HTMLElement>("[data-tab-id]").forEach((el) => {
+          if (el.dataset.tabId === key) {
+            el.setAttribute("data-active", "")
+            el.classList.add(...primaryClasses)
+          } else {
+            el.removeAttribute("data-active")
+            el.classList.remove(...primaryClasses)
+          }
+        })
+        // Debounce the React state update (URL sync) to avoid blocking scroll
+        clearTimeout(scrollSyncTimer.current)
+        scrollSyncTimer.current = setTimeout(() => {
+          onActiveKeyChangeRef.current?.(key)
+        }, 150)
       }
     }
+
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      el.removeEventListener("scroll", onScroll)
+      clearTimeout(scrollSyncTimer.current)
+    }
+  }, [isMobile])
+
+  // Set initial scroll position synchronously
+  const setRef = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el
+    if (el && el.clientHeight > 0) {
+      el.style.scrollSnapType = "none"
+      el.scrollTop = safeIdx * el.clientHeight
+      requestAnimationFrame(() => { el.style.scrollSnapType = "y mandatory" })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // On resize, instantly reposition — but only when idle (don't fight animations).
-  // Also handles deferred initialization when clientHeight was 0 at ref callback time.
+  // Reposition on resize (subscribe once, read safeIdx from ref)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
-      const status = scrollStateRef.current.status
-      if (status === "initial" && el.clientHeight > 0) {
+      if (el.clientHeight > 0 && !isUserScrolling.current) {
+        el.style.scrollSnapType = "none"
         el.scrollTop = safeIdxRef.current * el.clientHeight
-        dispatch({ type: "INITIALIZED" })
-      } else if (status === "idle") {
-        el.scrollTop = safeIdxRef.current * el.clientHeight
+        requestAnimationFrame(() => { el.style.scrollSnapType = "y mandatory" })
       }
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  // When activeIdx changes due to keys array reordering (e.g. recent tab inserted)
-  // but activeKey stays the same, instantly reposition before paint.
-  const prevIdxRef = useRef(activeIdx)
-  const prevKeyForIdxRef = useRef(activeKey)
-  useLayoutEffect(() => {
-    const keyChanged = activeKey !== prevKeyForIdxRef.current
-    if (!keyChanged && activeIdx >= 0 && activeIdx !== prevIdxRef.current) {
-      const el = scrollRef.current
-      if (el) el.scrollTop = activeIdx * el.clientHeight
-    }
-    prevIdxRef.current = activeIdx
-    prevKeyForIdxRef.current = activeKey
-  }, [activeIdx, activeKey])
+  // Mobile: render only the active tab with a vertical slide transition
+  const prevKeyRef = useRef(activeKey)
+  const [slideDir, setSlideDir] = useState<"none" | "up" | "down">("none")
 
-  // Suppress scroll animation during the initial mount/hydration settling period.
-  // Async state loading (persisted navigation) can cause multiple key/index changes
-  // in the first few frames — all should snap instantly.
-  const mountedAt = useRef(performance.now())
-
-  // Start animation when activeKey changes
   useEffect(() => {
-    if (activeKey === prevKeyRef.current) return
+    if (!isMobile) return
+    if (prevKeyRef.current === activeKey) return
+    const prevIdx = keys.indexOf(prevKeyRef.current)
+    const nextIdx = keys.indexOf(activeKey)
     prevKeyRef.current = activeKey
+    if (prevIdx < 0 || nextIdx < 0) return
+    setSlideDir(nextIdx > prevIdx ? "up" : "down")
+    const timer = setTimeout(() => setSlideDir("none"), 250)
+    return () => clearTimeout(timer)
+  }, [isMobile, activeKey, keys])
 
-    const el = scrollRef.current
-    if (!el) return
+  if (isMobile) {
+    return (
+      <div
+        className={className}
+        style={{
+          height: "100%",
+          overflow: "hidden",
+          ...outerStyle,
+        }}
+      >
+        <div
+          key={activeKey}
+          style={{
+            height: "100%",
+            animation: slideDir !== "none"
+              ? `slide-${slideDir} 200ms ease-out`
+              : undefined,
+          }}
+        >
+          {renderItem(activeKey)}
+        </div>
+        <style>{`
+          @keyframes slide-up {
+            from { transform: translateY(40px); opacity: 0.7; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+          @keyframes slide-down {
+            from { transform: translateY(-40px); opacity: 0.7; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+        `}</style>
+      </div>
+    )
+  }
 
-    const to = safeIdx * el.clientHeight
-    const from = el.scrollTop
-    if (Math.abs(to - from) < 1) return
-
-    // Snap instantly during initial settling (first 500ms)
-    if (performance.now() - mountedAt.current < 500) {
-      el.scrollTop = to
-      return
-    }
-
-    dispatch({ type: "ANIMATE", from, to })
-  }, [activeKey, safeIdx])
-
-  // Drive the RAF loop when animating
-  useEffect(() => {
-    if (scrollState.status !== "animating") return
-    const el = scrollRef.current
-    if (!el) return
-
-    const { from, to, startTime } = scrollState
-    const delta = to - from
-    let raf: number
-
-    const step = (now: number) => {
-      const t = Math.min((now - startTime) / TAB_SCROLL_DURATION, 1)
-      el.scrollTop = from + delta * cubicBezier(t)
-      if (t < 1) {
-        raf = requestAnimationFrame(step)
-      } else {
-        dispatch({ type: "COMPLETE" })
-      }
-    }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
-  }, [scrollState])
-
-  // On the very first render, only mount the active tab's slot so the browser's
-  // scroll restoration can't show a different tab. After initialization, mount all
-  // slots so tab-switch animations work normally.
-  const allMounted = scrollState.status !== "initial"
-
+  // Desktop: vertical scroll-snap for tab switching
   return (
     <div
       ref={setRef}
       className={className}
       style={{
         height: "100%",
-        overflow: "hidden",
+        overflowY: "scroll",
+        scrollSnapType: "y mandatory",
+        scrollbarWidth: "none",
         ...outerStyle,
       }}
     >
       {keys.map((key) => (
-        allMounted || key === activeKey ? (
-          <MemoizedSlot
-            key={key}
-            tabKey={key}
-            activeKey={activeKey}
-            renderItem={renderItem}
-          />
-        ) : (
-          <div key={key} className="h-full shrink-0" />
-        )
+        <div
+          key={key}
+          className="h-full shrink-0"
+          style={{ scrollSnapAlign: "start" }}
+        >
+          {renderItem(key)}
+        </div>
       ))}
     </div>
   )
 }
-
-// --- Memoized slot wrapper (prevents non-active tabs from re-rendering) ---
-
-interface MemoizedSlotProps {
-  tabKey: string
-  activeKey: string
-  renderItem: (key: string) => ReactNode
-}
-
-const MemoizedSlot = memo(function MemoizedSlot({ tabKey, renderItem }: MemoizedSlotProps) {
-  return (
-    <div className="h-full shrink-0">
-      {renderItem(tabKey)}
-    </div>
-  )
-}, (prev, next) => {
-  const wasActive = prev.tabKey === prev.activeKey
-  const isActive = next.tabKey === next.activeKey
-  return prev.tabKey === next.tabKey && wasActive === isActive
-})

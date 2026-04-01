@@ -1,5 +1,4 @@
 import { useMemo } from "react"
-import { useLocation } from "react-router-dom"
 import { useQueries } from "@tanstack/react-query"
 import {
   SidebarGroup,
@@ -11,11 +10,14 @@ import {
   useSidebar,
 } from "@hammies/frontend/components/ui"
 import { cn } from "@hammies/frontend/lib/utils"
-import { getEmailThread, getTask } from "@/api/client"
+import { getPluginItem } from "@/api/client"
+import { getItemTitle } from "@/lib/formatters"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { useSessions } from "@/hooks/use-sessions"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { Session } from "@/types"
 import type { TabId } from "@/types/navigation"
+import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
 
 const ONE_DAY_MS = 86_400_000
 
@@ -37,112 +39,72 @@ function getIndicatorColor(session: Session): string {
 }
 
 function getSessionTitle(session: Session): string {
-  if (session.linkedItemTitle) return session.linkedItemTitle
   if (session.summary) return session.summary
   return session.prompt.length > 60 ? session.prompt.slice(0, 60) + "…" : session.prompt
 }
 
 export function getSessionUrl(session: Session): string {
-  if (session.linkedSourceType && session.linkedSourceId) {
-    return `/recent/${session.linkedSourceType}/${encodeURIComponent(session.linkedSourceId)}/session/${session.id}`
-  }
-  // Fallback to legacy fields
-  if (session.linkedEmailThreadId) {
-    return `/recent/gmail/${encodeURIComponent(session.linkedEmailThreadId)}/session/${session.id}`
-  }
-  if (session.linkedTaskId) {
-    return `/recent/notion-tasks/${encodeURIComponent(session.linkedTaskId)}/session/${session.id}`
+  const sourceType = session.linkedSourceType
+  const sourceId = session.linkedSourceId
+  if (sourceType && sourceId) {
+    return `/recent/${sourceType}/${encodeURIComponent(sourceId)}/session/${session.id}`
   }
   return `/recent/sessions/${session.id}`
 }
 
-// Extract the active session ID from the current URL
-function activeSessionIdFromPath(pathname: string): string | null {
-  // /recent/{source}/{id}/session/{sessionId}
-  const m = pathname.match(/^\/recent\/[^/]+\/[^/]+\/session\/([^/]+)/)
-  if (m) return decodeURIComponent(m[1])
-  // /recent/sessions/{sessionId}
-  const m2 = pathname.match(/^\/recent\/sessions\/([^/]+)/)
-  if (m2) return decodeURIComponent(m2[1])
-  return null
-}
 
-function loadReadSet(): Set<string> {
-  try {
-    const raw = localStorage.getItem("inbox:sessions-read")
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-export function markSessionRead(sessionId: string): void {
-  try {
-    const set = loadReadSet()
-    set.add(sessionId)
-    localStorage.setItem("inbox:sessions-read", JSON.stringify([...set]))
-  } catch {
-    // ignore
-  }
-}
 
 export function SidebarRecentSessions() {
-  const location = useLocation()
-  const { openRecent, switchTab } = useNavigation()
+  const { openRecent, switchTab, activeTab } = useNavigation()
   const { isMobile, setOpenMobile } = useSidebar()
+  const wsId = useWorkspaceId()
   const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
 
   const recent = sessions.filter(isRecentSession).slice(0, 10)
 
-  // Collect linked IDs that need title lookups (no linkedItemTitle yet)
-  const linkedEmailIds = useMemo(
-    () =>
-      [...new Set(recent.filter((s) => s.linkedEmailThreadId && !s.linkedItemTitle).map((s) => s.linkedEmailThreadId!))],
-    [recent],
-  )
-  const linkedTaskIds = useMemo(
-    () =>
-      [...new Set(recent.filter((s) => s.linkedTaskId && !s.linkedItemTitle).map((s) => s.linkedTaskId!))],
+  // Collect linked items that need title lookups (no linkedItemTitle yet)
+  const linkedItems = useMemo(
+    () => {
+      const seen = new Set<string>()
+      return recent
+        .filter((s) => s.linkedSourceType && s.linkedSourceId && !s.linkedItemTitle)
+        .map((s) => ({ type: s.linkedSourceType!, id: s.linkedSourceId! }))
+        .filter((item) => {
+          const key = `${item.type}:${item.id}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+    },
     [recent],
   )
 
-  // Fetch email subjects and task titles in parallel
-  const emailQueries = useQueries({
-    queries: linkedEmailIds.map((threadId) => ({
-      queryKey: ["gmail-thread", threadId],
-      queryFn: () => getEmailThread(threadId),
-      staleTime: 5 * 60 * 1000,
-    })),
-  })
-  const taskQueries = useQueries({
-    queries: linkedTaskIds.map((taskId) => ({
-      queryKey: ["task", taskId],
-      queryFn: () => getTask(taskId),
-      staleTime: 5 * 60 * 1000,
+  // Fetch linked item titles in parallel via generic plugin API
+  const itemQueries = useQueries({
+    queries: linkedItems.map((item) => ({
+      queryKey: ["plugin-item", wsId, item.type, item.id],
+      queryFn: () => getPluginItem(item.type, item.id),
     })),
   })
 
-  // Build lookup maps: linkedId → title
-  // Derive stable dep keys from query data (not the query arrays themselves, which are new each render)
-  const emailSubjects = emailQueries.map((q) => q.data?.subject ?? "")
-  const taskTitles = taskQueries.map((q) => q.data?.title ?? "")
+  const itemTitles = itemQueries.map((q) => {
+    const data = q.data as Record<string, unknown> | undefined
+    return getItemTitle(data as Record<string, unknown>)
+  })
   const titleLookup = useMemo(() => {
     const map = new Map<string, string>()
-    linkedEmailIds.forEach((id, i) => {
-      if (emailSubjects[i]) map.set(id, emailSubjects[i])
-    })
-    linkedTaskIds.forEach((id, i) => {
-      if (taskTitles[i]) map.set(id, taskTitles[i])
+    linkedItems.forEach((item, i) => {
+      if (itemTitles[i]) map.set(item.id, itemTitles[i])
     })
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedEmailIds, linkedTaskIds, emailSubjects.join("\0"), taskTitles.join("\0")])
+  }, [linkedItems, itemTitles.join("\0")])
 
 
 
-  const isRecentRoute = location.pathname.startsWith("/recent/")
-  const activeSessionId = activeSessionIdFromPath(location.pathname)
-  const isSessionsTab = location.pathname.startsWith("/sessions")
+  const isRecentRoute = activeTab.startsWith("recent:")
+  const activeSessionId = isRecentRoute ? activeTab.slice("recent:".length) : null
+  const isSessionsTab = activeTab === "sessions"
 
   return (
     <SidebarGroup>
@@ -151,26 +113,22 @@ export function SidebarRecentSessions() {
         <SidebarMenu>
           {recent.map((session, i) => {
             const color = getIndicatorColor(session)
-            const linkedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? ""
-            const linkedTitle = titleLookup.get(linkedId)
-            const title = linkedTitle || getSessionTitle(session)
+            // Prefer summary (set from linkedItemTitle or auto-named).
+            // Fall back to fetched title for sessions created before this was consolidated.
+            const linkedTitle = session.linkedSourceId ? titleLookup.get(session.linkedSourceId) : undefined
+            const title = getSessionTitle(session) || linkedTitle || session.id
             const isActive = isRecentRoute && session.id === activeSessionId
 
             const sourceTab: TabId = session.linkedSourceType
               ? `plugin:${session.linkedSourceType}`
-              : session.linkedEmailThreadId
-                ? "plugin:gmail"
-                : session.linkedTaskId
-                  ? "plugin:notion-tasks"
-                  : "sessions"
-            const selectedId = session.linkedSourceId ?? session.linkedEmailThreadId ?? session.linkedTaskId ?? undefined
+              : "sessions"
+            const selectedId = session.linkedSourceId ?? undefined
 
             return (
               <SidebarMenuItem key={session.id}>
                 <SidebarMenuButton
                   tooltip={title}
                   onClick={() => {
-                    markSessionRead(session.id)
                     openRecent(session.id, sourceTab, selectedId, i)
                     if (isMobile) setOpenMobile(false)
                   }}
@@ -194,11 +152,9 @@ export function SidebarRecentSessions() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="All Sessions"
-              className={cn(
-                isSessionsTab
-                  ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary active:text-foreground",
-              )}
+              isActive={isSessionsTab}
+              data-tab-id="sessions"
+              className={isSessionsTab ? ACTIVE_TAB_CLASSES : "text-muted-foreground"}
               onClick={() => {
                 switchTab("sessions")
                 if (isMobile) setOpenMobile(false)

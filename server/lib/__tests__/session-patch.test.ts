@@ -9,10 +9,6 @@ const messagesStore = new Map<string, any[]>()
 
 vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("FROM session_messages")) {
-      const sessionId = params![0] as string
-      return messagesStore.get(sessionId) || []
-    }
     if (sql.includes("FROM sessions")) {
       return [...sessionsStore.values()]
     }
@@ -65,9 +61,6 @@ vi.mock("../../db/pool.js", () => ({
         session.status = status
         session.updated_at = new Date().toISOString()
       }
-      return { rowCount: 1 }
-    }
-    if (sql.includes("INSERT INTO session_messages")) {
       return { rowCount: 1 }
     }
     return { rowCount: 0 }
@@ -238,8 +231,13 @@ describe("PATCH /sessions/:id", () => {
 
     const data = await getRes.json()
     expect(data.session.summary).toBe("Renamed JSONL session")
-    expect(data.messages).toHaveLength(2)
-    expect(data.messages).toEqual(mockTranscript)
+    // First message is the synthetic user prompt (prepended when JSONL doesn't include it)
+    expect(data.messages).toHaveLength(3)
+    expect(data.messages[0]).toMatchObject({ sequence: -1, type: "user" })
+    expect(data.messages[0].message.content).toBe("JSONL prompt")
+    // Remaining messages are from the JSONL transcript
+    expect(data.messages[1].type).toBe("human")
+    expect(data.messages[2].type).toBe("assistant")
   })
 
   it("truncates summary to 200 chars", async () => {

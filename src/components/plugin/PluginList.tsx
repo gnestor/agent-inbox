@@ -1,5 +1,5 @@
-import { useRef, useMemo } from "react"
-import { useIsRestoring, useQuery } from "@tanstack/react-query"
+import { useRef, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
 import { SlidersHorizontal } from "lucide-react"
 import {
@@ -8,6 +8,7 @@ import {
   ComboboxCollection, ComboboxGroup, ComboboxLabel, ComboboxSeparator,
 } from "@hammies/frontend/components/ui"
 import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
+import { useWorkspaceId } from "@/hooks/use-user"
 import { getFieldOptions } from "@/api/client"
 import { ListItem } from "@/components/shared/ListItem"
 import type { ListItemBadge } from "@/components/shared/ListItem"
@@ -16,6 +17,7 @@ import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { FilterCombobox } from "@/components/shared/FilterCombobox"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
+import { SearchInput } from "@/components/shared/SearchInput"
 import { useNavigation } from "@/hooks/use-navigation"
 import { getItemTitle, getItemSubtitle, getItemTimestamp } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
@@ -30,6 +32,13 @@ function buildBadges(item: PluginItem, fieldSchema: FieldDef[], hiddenFields?: S
     const raw = item[field.id]
     if (raw == null) continue
     if (field.badge.show === "if-set" && !raw) continue
+
+    // Boolean fields: use field label as badge text (not "true")
+    if (field.type === "boolean") {
+      const label = field.badge.labelFn?.(String(raw)) ?? field.label
+      badges.push({ label, variant: field.badge.variant, className: field.badge.colorFn?.(String(raw)) })
+      continue
+    }
 
     // Split comma-separated values into individual badges (e.g. tags)
     const values = String(raw).includes(",") ? String(raw).split(",").map((s) => s.trim()) : [String(raw)]
@@ -61,6 +70,8 @@ function PluginListInner({
   onSelectedTitleChange,
 }: PluginListInnerProps) {
   const { selectItem } = useNavigation()
+  const wsId = useWorkspaceId()
+  const [searchQuery, setSearchQuery] = useState("")
 
   // Persist filter state per plugin via user preferences
   const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
@@ -83,7 +94,7 @@ function PluginListInner({
     [plugin.hasFilterOptions, filterableFields],
   )
   const { data: dynamicOptions } = useQuery({
-    queryKey: ["plugin-field-options", plugin.id, dynamicFieldIds],
+    queryKey: ["plugin-field-options", wsId, plugin.id, dynamicFieldIds],
     queryFn: async () => {
       const results: Record<string, string[]> = {}
       await Promise.all(
@@ -124,6 +135,7 @@ function PluginListInner({
   for (const [k, v] of Object.entries(filterState)) {
     if (v.length > 0) queryFilters[k] = v.join(",")
   }
+  if (searchQuery.trim()) queryFilters.q = searchQuery.trim()
 
   const hasActiveFilters = Object.values(filterState).some((v) => v.length > 0)
 
@@ -146,16 +158,17 @@ function PluginListInner({
     },
   }))
 
-  const isRestoring = useIsRestoring()
-  const { data, isLoading: queryLoading } = usePluginItems(plugin.id, queryFilters)
-  const isLoading = queryLoading || isRestoring
+  const { data, isPending } = usePluginItems(plugin.id, queryFilters)
   const items = data?.items ?? []
+
+  const hasSubtitle = plugin.fieldSchema?.some((f) => f.listRole === "subtitle")
+  const rowHeight = plugin.listRowHeight ?? (hasSubtitle ? 100 : 80)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizerSafe({
     count: items.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => rowHeight,
     getItemKey: (index) => items[index]?.id ?? index,
     overscan: 5,
   })
@@ -175,8 +188,10 @@ function PluginListInner({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3 space-y-1.5">
         {filterableFields.map((field) => {
-          const options = (field.filter?.filterOptions as string[] | undefined)?.length
-            ? (field.filter!.filterOptions as string[])
+          type LabeledItem = { value: string; label: string }
+          const staticOpts = field.filter?.filterOptions as (string | LabeledItem)[] | undefined
+          const options: string[] | LabeledItem[] = staticOpts?.length
+            ? (typeof staticOpts[0] === "object" ? staticOpts as LabeledItem[] : staticOpts as string[])
             : (dynamicOptions?.[field.id] ?? [])
 
           if (field.filter?.filterType === "select") {
@@ -259,6 +274,11 @@ function PluginListInner({
             )
           }
 
+          // Build labelMap for labeled items (so chips show display names)
+          const labelMap = options.length > 0 && typeof options[0] === "object"
+            ? Object.fromEntries((options as { value: string; label: string }[]).map((o) => [o.value, o.label]))
+            : undefined
+
           return (
             <FilterCombobox
               key={field.id}
@@ -268,6 +288,7 @@ function PluginListInner({
               onValueChange={(vals) =>
                 setFilterState({ ...filterState, [field.id]: vals })
               }
+              labelMap={labelMap}
             />
           )
         })}
@@ -292,9 +313,15 @@ function PluginListInner({
         }
       />
 
-      {isLoading && !items.length && <ListSkeleton itemHeight={72} />}
+      <SearchInput
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder={`Search ${plugin.name.toLowerCase()}...`}
+      />
 
-      {!isLoading && !items.length && (
+      {isPending && !items.length && <ListSkeleton itemHeight={72} />}
+
+      {!isPending && !items.length && (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
           No {plugin.name} items
         </div>
@@ -305,26 +332,26 @@ function PluginListInner({
           <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index]
-              const title = getItemTitle(item)
+              const title = getItemTitle(item, plugin.fieldSchema)
               const badges = buildBadges(item, plugin.fieldSchema, hiddenBadgeFields)
 
               return (
                 <div
                   key={item.id}
-                  ref={rowVirtualizer.measureElement}
                   data-index={virtualRow.index}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
+                    height: rowHeight,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
                   <ListItem
                     title={title}
-                    subtitle={getItemSubtitle(item)}
-                    timestamp={getItemTimestamp(item)}
+                    subtitle={getItemSubtitle(item, plugin.fieldSchema)}
+                    timestamp={getItemTimestamp(item, plugin.fieldSchema)}
                     badges={badges}
                     isSelected={selectedItemId === item.id}
                     onClick={() => {
@@ -354,10 +381,10 @@ export function PluginList({
   onSelectedIndexChange?: (index: number) => void
   onSelectedTitleChange?: (title: string) => void
 }) {
-  const { data: plugins, isLoading } = usePlugins()
+  const { data: plugins, isPending } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
 
-  if (isLoading || (pluginId && !plugin)) return <ListSkeleton itemHeight={72} />
+  if (isPending || (pluginId && !plugin)) return <ListSkeleton itemHeight={80} />
   if (!plugin) return null
 
   return (

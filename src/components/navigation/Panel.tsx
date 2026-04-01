@@ -19,8 +19,8 @@ export function Panel({ id, variant, width = DEFAULT_PANEL_WIDTH, children }: Pa
       data-panel-variant={variant}
       className={
         isMobile
-          // Mobile: full screen, no card styling, snap alignment
-          ? "shrink-0 h-full w-full bg-card overflow-hidden snap-start snap-always"
+          // Mobile: full screen, flex column so children can use flex-1 + overflow-y-auto
+          ? "shrink-0 h-full w-full bg-card overflow-x-hidden flex flex-col snap-start snap-always"
           // Desktop: fixed width card
           : "shrink-0 h-full flex flex-col overflow-hidden bg-card rounded-lg shadow-sm outline outline-1 -outline-offset-1 outline-border"
       }

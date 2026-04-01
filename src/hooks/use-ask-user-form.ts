@@ -63,8 +63,11 @@ export function useAskUserForm(questions: AskUserQuestion[]): AskUserFormState {
       const parts = [...sel, ...(other ? [`Other: ${other}`] : [])]
       answers[q.question] = parts.join(", ")
     }
-    await onSubmit(answers)
-    setSubmitting(false)
+    try {
+      await onSubmit(answers)
+    } finally {
+      setSubmitting(false)
+    }
   }, [questions, selections, otherText])
 
   return { selections, otherText, submitting, toggleOption, setOther, isComplete, handleSubmit }

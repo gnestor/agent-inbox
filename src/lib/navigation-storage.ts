@@ -1,18 +1,17 @@
 // src/lib/navigation-storage.ts
 import { get, set } from "idb-keyval"
 import type { NavigationState } from "@/types/navigation"
-import { createDefaultNavigationState, createDefaultTabState, normalizeTabId, LEGACY_TAB_MAP } from "@/types/navigation"
+import { createDefaultTabState } from "@/types/navigation"
 
 const STORAGE_KEY = "INBOX_NAV_STATE"
-const OLD_STORAGE_KEY = "spatial-nav-state"
 
-// Static source plugin tabs that should always exist
-const REQUIRED_TABS = ["plugin:gmail", "plugin:notion-tasks", "plugin:notion-calendar", "sessions"]
 
 // --- IndexedDB persistence ---
 
 export async function saveNavigationState(state: NavigationState): Promise<void> {
-  await set(STORAGE_KEY, state)
+  // Strip _initialized flag — it's runtime-only, not persisted
+  const { _initialized, ...rest } = state
+  await set(STORAGE_KEY, rest)
 }
 
 export async function loadNavigationState(): Promise<NavigationState | null> {
@@ -25,25 +24,10 @@ export async function loadNavigationState(): Promise<NavigationState | null> {
   }
 }
 
-/** Remove panels with unknown types, ensure all static tabs exist, migrate legacy tab IDs */
+/** Remove panels with unknown types, ensure sessions tab exists, migrate legacy tab IDs */
 function validateState(state: NavigationState): NavigationState {
   // new_session is intentionally excluded — transient panel that shouldn't persist across reloads
-  const validTypes = new Set(["list", "detail", "session", "output", "code_editor", "compose", "settings"])
-
-  // Migrate legacy tab IDs: emails → plugin:gmail, tasks → plugin:notion-tasks, calendar → plugin:notion-calendar
-  const legacyIds = ["emails", "tasks", "calendar"]
-  for (const oldId of legacyIds) {
-    if (state.tabs[oldId]) {
-      const newId = normalizeTabId(oldId)
-      if (!state.tabs[newId]) {
-        state.tabs[newId] = state.tabs[oldId]
-      }
-      delete state.tabs[oldId]
-    }
-  }
-
-  // Normalize activeTab
-  state.activeTab = normalizeTabId(state.activeTab)
+  const validTypes = new Set(["list", "detail", "session", "artifact", "ask_user", "output", "code_editor", "compose", "settings"])
 
   for (const [tabId, tabState] of Object.entries(state.tabs)) {
     // Validate savedPanels entries too
@@ -59,8 +43,8 @@ function validateState(state: NavigationState): NavigationState {
       ...tabState,
       panels: tabState.panels.filter((p) => validTypes.has(p.type)),
     }
-    // Ensure at least a list panel for source/session tabs
-    if (REQUIRED_TABS.includes(tabId)) {
+    // Ensure at least a list panel for plugin and session tabs
+    if (tabId.startsWith("plugin:") || tabId === "sessions") {
       if (cleaned.panels.length === 0 || cleaned.panels[0].type !== "list") {
         cleaned.panels = [{ id: "list", type: "list", props: {} }, ...cleaned.panels]
       }
@@ -68,11 +52,9 @@ function validateState(state: NavigationState): NavigationState {
     state.tabs[tabId] = cleaned
   }
 
-  // Ensure all required tabs exist
-  for (const tabId of REQUIRED_TABS) {
-    if (!state.tabs[tabId]) {
-      state.tabs[tabId] = createDefaultTabState()
-    }
+  // Ensure sessions tab exists
+  if (!state.tabs.sessions) {
+    state.tabs.sessions = createDefaultTabState()
   }
 
   // Clean up stale recent:* tabs (keep only the active one, if any)
@@ -85,70 +67,3 @@ function validateState(state: NavigationState): NavigationState {
   return state
 }
 
-// --- Migration from old localStorage format ---
-
-interface OldSavedNavState {
-  pathname: string
-  tabs: Record<string, { selectedId?: string; sessionOpen?: boolean; sessionId?: string }>
-  itemSessions?: Array<[string, { sessionOpen: boolean; sessionId?: string }]>
-}
-
-export async function migrateFromLocalStorage(): Promise<NavigationState | null> {
-  try {
-    const raw = localStorage.getItem(OLD_STORAGE_KEY)
-    if (!raw) return null
-
-    const old: OldSavedNavState = JSON.parse(raw)
-    if (!old.pathname || !old.tabs) return null
-
-    // Handle inbox → emails rename from old migration
-    if ("inbox" in old.tabs && !("emails" in old.tabs)) {
-      old.tabs.emails = old.tabs.inbox
-      delete old.tabs.inbox
-    }
-
-    const state = createDefaultNavigationState()
-
-    // Derive activeTab from pathname
-    const firstSegment = old.pathname.split("/").filter(Boolean)[0] || "emails"
-    state.activeTab = normalizeTabId(firstSegment === "inbox" ? "emails" : firstSegment)
-
-    const migrationMap = { ...LEGACY_TAB_MAP, sessions: "sessions" as const }
-
-    for (const [oldTabId, newTabId] of Object.entries(migrationMap)) {
-      const oldTab = old.tabs[oldTabId]
-      if (!oldTab) continue
-
-      const panels: any[] = [{ id: "list", type: "list", props: {} }]
-
-      if (oldTab.selectedId) {
-        state.tabs[newTabId].selectedItemId = oldTab.selectedId
-        panels.push({
-          id: `detail:${oldTab.selectedId}`,
-          type: "detail",
-          props: { itemId: oldTab.selectedId },
-        })
-
-        if (oldTab.sessionOpen && oldTab.sessionId) {
-          panels.push({
-            id: `session:${oldTab.sessionId}`,
-            type: "session",
-            props: { sessionId: oldTab.sessionId },
-          })
-        }
-      }
-
-      state.tabs[newTabId].panels = panels
-    }
-
-    // Save to IndexedDB and remove old key
-    await saveNavigationState(state)
-    localStorage.removeItem(OLD_STORAGE_KEY)
-
-    return state
-  } catch {
-    // Migration failed — clear old state and start fresh
-    localStorage.removeItem(OLD_STORAGE_KEY)
-    return null
-  }
-}
