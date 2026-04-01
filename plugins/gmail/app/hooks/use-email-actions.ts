@@ -1,11 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query"
 import { trashThread, modifyThreadLabels } from "../api"
 import { toast } from "sonner"
-import type { GmailThread } from "../types"
+import type { GmailThread, GmailMessage } from "../types"
 
 interface EmailActionsOptions {
   onRemove?: () => void
 }
+
+type EmailPage = { messages: GmailMessage[]; nextPageToken: string | null }
 
 export function useEmailActions(threadId: string, thread?: GmailThread | null, options?: EmailActionsOptions) {
   const queryClient = useQueryClient()
@@ -16,7 +18,6 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
   }
 
-  // Helper: optimistically update thread labelIds in the cache
   function optimisticLabelUpdate(add: string[], remove: string[]) {
     const previous = queryClient.getQueryData<GmailThread>(["thread", threadId])
     if (previous) {
@@ -32,9 +33,34 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
     return { previous }
   }
 
+  function removeFromEmailList() {
+    const previousEmails = queryClient.getQueriesData<InfiniteData<EmailPage>>({ queryKey: ["emails"] })
+    queryClient.setQueriesData<InfiniteData<EmailPage>>({ queryKey: ["emails"] }, (old) => {
+      if (!old) return old
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          messages: page.messages.filter((m) => m.threadId !== threadId),
+        })),
+      }
+    })
+    return { previousEmails }
+  }
+
+  function rollbackEmailList(previousEmails: [readonly unknown[], InfiniteData<EmailPage> | undefined][]) {
+    for (const [key, data] of previousEmails) {
+      queryClient.setQueryData(key, data)
+    }
+  }
+
   const archiveMutation = useMutation({
     mutationFn: () => modifyThreadLabels(threadId, { removeLabelIds: ["INBOX"] }),
-    onMutate: () => optimisticLabelUpdate([], ["INBOX"]),
+    onMutate: () => {
+      const threadCtx = optimisticLabelUpdate([], ["INBOX"])
+      const listCtx = removeFromEmailList()
+      return { ...threadCtx, ...listCtx }
+    },
     onSuccess: () => {
       invalidateEmailQueries()
       toast.success("Thread archived")
@@ -44,18 +70,34 @@ export function useEmailActions(threadId: string, thread?: GmailThread | null, o
       if (context?.previous) {
         queryClient.setQueryData(["thread", threadId], context.previous)
       }
+      if (context?.previousEmails) {
+        rollbackEmailList(context.previousEmails)
+      }
       toast.error(`Archive failed: ${err.message}`)
     },
   })
 
   const trashMutation = useMutation({
     mutationFn: () => trashThread(threadId),
+    onMutate: () => {
+      const threadCtx = optimisticLabelUpdate(["TRASH"], ["INBOX"])
+      const listCtx = removeFromEmailList()
+      return { ...threadCtx, ...listCtx }
+    },
     onSuccess: () => {
       invalidateEmailQueries()
       toast.success("Thread deleted")
       options?.onRemove?.()
     },
-    onError: (err) => toast.error(`Delete failed: ${err.message}`),
+    onError: (err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["thread", threadId], context.previous)
+      }
+      if (context?.previousEmails) {
+        rollbackEmailList(context.previousEmails)
+      }
+      toast.error(`Delete failed: ${err.message}`)
+    },
   })
 
   const starMutation = useMutation({
