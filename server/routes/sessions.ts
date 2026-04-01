@@ -144,10 +144,18 @@ sessionRoutes.get("/:id", async (c) => {
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
       : []
 
+    // If DB says "running" but no active process and JSONL has ended,
+    // correct the status to "complete" (stale from server restart)
+    let status = session.status as string
+    if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id as string)) {
+      status = "complete"
+      sessions.updateSessionStatus(session.id as string, "complete").catch(() => {})
+    }
+
     return c.json({
       session: {
         id: session.id,
-        status: session.status,
+        status,
         prompt: session.prompt,
         summary: session.summary,
         startedAt: session.started_at,
@@ -157,7 +165,7 @@ sessionRoutes.get("/:id", async (c) => {
         linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(c.get("workspace")?.path || sessions.getWorkspacePath()),
-        hasActiveProcess: sessions.isSessionRunning(session.id),
+        hasActiveProcess: sessions.isSessionRunning(session.id as string),
       },
       messages,
     })
