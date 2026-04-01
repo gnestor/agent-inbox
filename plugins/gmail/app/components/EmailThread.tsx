@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { useLocation } from "react-router-dom"
@@ -56,6 +56,12 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   })
 
   const draft = useEmailDraft(threadId, thread)
+  const [draftOpen, setDraftOpen] = useState<string[]>([])
+  const draftAutoOpened = useRef(false)
+  if (!draftAutoOpened.current && (draft.body || draft.hasGmailDraft)) {
+    draftAutoOpened.current = true
+    setDraftOpen(["draft-reply"])
+  }
 
   // Scroll to bottom when thread loads
   useEffect(() => {
@@ -199,7 +205,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 
         {/* Draft reply accordion */}
         <div className="border-b">
-          <Accordion key={threadId} defaultValue={draft.body || draft.hasGmailDraft ? ["draft-reply"] : []}>
+          <Accordion value={draftOpen} onValueChange={setDraftOpen}>
             <AccordionItem value="draft-reply" className="border-0">
               <AccordionTrigger className="px-[15px] py-3 mx-px hover:no-underline hover:bg-secondary">
                 <div className="flex items-center gap-2 w-full min-w-0">
@@ -222,14 +228,14 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                     disabled={draft.phase !== "idle"}
                     onCmdEnter={draft.send}
                   />
-                  <div className="flex items-center gap-4 justify-end">
+                  <div className="flex items-center gap-2 justify-end">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={draft.save}
                       disabled={!draft.canSubmit}
                     >
-                      <Save className="h-3.5 w-3.5 mr-1" />
+                      <Save className="size-3.5 mr-1" />
                       Save Draft
                     </Button>
                     <Button
@@ -237,7 +243,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
                       onClick={draft.send}
                       disabled={!draft.canSubmit}
                     >
-                      <Send className="h-3.5 w-3.5 mr-1" />
+                      <Send className="size-3.5 mr-1" />
                       Send
                     </Button>
                   </div>
