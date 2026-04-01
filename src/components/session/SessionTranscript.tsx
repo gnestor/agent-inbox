@@ -598,6 +598,8 @@ function ContentBlockView({
     queryFn: getPanelSchemas,
     staleTime: 60_000,
   })
+  const rehypePlugins = useRehypeHighlight()
+
   if (block.type === "text") {
     if (!block.text || !visibility.messages) return null
 
@@ -709,7 +711,7 @@ function ContentBlockView({
         defaultOpen
       >
         <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>
             {block.thinking}
           </ReactMarkdown>
         </div>
