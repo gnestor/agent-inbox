@@ -1,6 +1,4 @@
-import { createContext, useContext, useRef, useMemo, useCallback, useState } from "react"
-import { useVirtualizerSafe } from "@/hooks/use-virtualizer-safe"
-import { useVirtualInfiniteScroll } from "@/hooks/use-infinite-scroll"
+import { createContext, useContext, useRef, useMemo, useCallback, useState, useEffect } from "react"
 import { ListItem, type ListItemBadge } from "./ListItem"
 import { PanelHeader, SidebarButton } from "./PanelHeader"
 import { SearchInput } from "./SearchInput"
@@ -17,8 +15,6 @@ import {
   extractFieldValue,
 } from "@/lib/field-schema"
 import { formatRelativeDate, truncate } from "@/lib/formatters"
-
-const NOOP = () => {}
 
 // ---------------------------------------------------------------------------
 // Context
@@ -180,15 +176,20 @@ function ListViewBody({
   const badgeFields = useMemo(() => getBadgeFields(fieldSchema), [fieldSchema])
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const virtualizer = useVirtualizerSafe({
-    count: items.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => itemHeight,
-    getItemKey: (index) => getItemId(items[index]) ?? index,
-    overscan: 5,
-  })
 
-  useVirtualInfiniteScroll(virtualizer, loadMore ?? NOOP, hasMore ?? false, !!loading)
+  // IntersectionObserver-based infinite scroll
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef(loadMore)
+  loadMoreRef.current = loadMore
+  useEffect(() => {
+    if (!hasMore || loading || !sentinelRef.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreRef.current?.() },
+      { root: scrollRef.current, rootMargin: "200px" },
+    )
+    observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, loading])
 
   const buildBadges = useCallback((item: Record<string, unknown>): ListItemBadge[] => {
     const badges: ListItemBadge[] = []
@@ -230,11 +231,9 @@ function ListViewBody({
       {loading && <ListSkeleton itemHeight={itemHeight} />}
       {error && (errorContent || <div className="p-3 text-sm text-destructive">{error}</div>)}
       {!loading && items.length > 0 && (
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const item = items[virtualRow.index]
+        <div>
+          {items.map((item, index) => {
             const id = getItemId(item)
-
             const itemTitle = titleField
               ? String(extractFieldValue(item, titleField.id) ?? "")
               : truncate(String(item.id ?? ""), 60)
@@ -248,14 +247,7 @@ function ListViewBody({
             return (
               <div
                 key={id}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: `${itemHeight}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
+                style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${itemHeight}px` }}
               >
                 <ListItem
                   title={itemTitle}
@@ -263,7 +255,7 @@ function ListViewBody({
                   timestamp={timestamp}
                   badges={buildBadges(item)}
                   isSelected={selectedId === id}
-                  onClick={() => onSelect(id, virtualRow.index)}
+                  onClick={() => onSelect(id, index)}
                 />
               </div>
             )
@@ -271,7 +263,7 @@ function ListViewBody({
         </div>
       )}
       {hasMore && !loading && (
-        <div className="flex justify-center p-3">
+        <div ref={sentinelRef} className="flex justify-center p-3">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
       )}

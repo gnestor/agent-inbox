@@ -29,6 +29,10 @@ interface SessionViewProps {
   title?: string
 }
 
+// Module-level: shared across all SessionView instances so a session viewed
+// from one route (sessions/, recent/, plugin detail) skips the skeleton on another.
+const readySessions = new Set<string>()
+
 export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   const { user } = useUser()
   const { getPanels } = useNavigation()
@@ -53,16 +57,23 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     handleBack, handleOpenPanel, isFromSidebar,
   } = useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession })
 
-  // Show skeleton overlay until query data matches AND visible artifacts have
-  // reported their rendered height. Tracks which sessionId is ready so switching
-  // sessions naturally invalidates without a reset effect (which races the callback).
-  // Timeout fallback (must be > the 2s fallback in build-artifact-html.ts):
-  // off-screen artifacts not rendered by the virtualizer can never report.
+  // Show skeleton overlay on first load only. Once a session has been viewed,
+  // returning to it renders instantly from cache.
   const dataReady = session?.id === sessionId
   const [readySessionId, setReadySessionId] = useState<string | null>(null)
-  const handleArtifactsReady = useCallback(() => setReadySessionId(sessionId), [sessionId])
+  const handleArtifactsReady = useCallback(() => {
+    readySessions.add(sessionId)
+    setReadySessionId(sessionId)
+  }, [sessionId])
   useEffect(() => {
-    const timer = setTimeout(() => setReadySessionId(sessionId), 3000)
+    if (readySessions.has(sessionId)) {
+      setReadySessionId(sessionId)
+      return
+    }
+    const timer = setTimeout(() => {
+      readySessions.add(sessionId)
+      setReadySessionId(sessionId)
+    }, 3000)
     return () => clearTimeout(timer)
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
   const isReady = dataReady && readySessionId === sessionId
@@ -89,7 +100,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
             />
           ) : (
             <h2
-              className="font-semibold text-sm truncate min-w-0 flex-1 cursor-pointer hover:text-foreground/70"
+              className="font-semibold text-sm truncate min-w-0 cursor-pointer hover:text-foreground/70"
               onClick={handleStartEdit}
               title="Click to rename"
             >

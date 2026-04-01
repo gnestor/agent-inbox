@@ -6,7 +6,6 @@ import { PanelContent } from "@/components/navigation/PanelContent"
 import { PluginList } from "@/components/plugin/PluginList"
 import { PluginDetail } from "@/components/plugin/PluginDetail"
 import { SessionView } from "@/components/session/SessionView"
-import { NewSessionPanel } from "@/components/session/NewSessionPanel"
 import type { TabId } from "@/types/navigation"
 import { pluginIdFromTab } from "@/types/navigation"
 
@@ -39,8 +38,6 @@ export function PluginView({ tabId: tabIdProp }: PluginViewProps) {
                 <PluginDetail pluginId={pluginId} itemId={panel.props.itemId} />
               ) : panel.type === "session" ? (
                 <SessionView sessionId={panel.props.sessionId} panelId={panel.id} />
-              ) : panel.type === "new_session" ? (
-                <NewSessionPanel panelId={panel.id} {...panel.props} />
               ) : (
                 <PanelContent panel={panel} />
               )}

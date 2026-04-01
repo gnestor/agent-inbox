@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo } from "react"
 import { buildPluginComponentHtml } from "@/lib/build-plugin-component-html"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import { pluginIdFromTab } from "@/types/navigation"
 import type { TabId } from "@/types/navigation"
 
@@ -37,7 +37,7 @@ export function PluginFrame({
   className,
 }: PluginFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const { switchTab, selectItem } = useNavigation()
+  const { switchTab, selectItem } = useNavActions()
 
   // Build srcDoc — rebuilt when pluginId, componentName, or props change
   const srcDoc = useMemo(() => {
@@ -106,7 +106,7 @@ export function PluginFrame({
  * Wraps PluginFrame with the active tab context.
  */
 export function PluginTab({ tabId }: { tabId?: TabId }) {
-  const { activeTab } = useNavigation()
+  const activeTab = useActiveTab()
   const resolvedTab = tabId ?? activeTab
   const pluginId = pluginIdFromTab(resolvedTab)
 

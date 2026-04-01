@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { useLocalDraft } from "./use-local-draft"
-import { useNavigation } from "./use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import { usePreference } from "./use-preferences"
 import { DEFAULT_TRANSCRIPT_VISIBILITY } from "@/components/session/SessionTranscript"
 import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
@@ -23,7 +23,7 @@ interface UseSessionViewOptions {
 
 export function useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession }: UseSessionViewOptions) {
   const location = useLocation()
-  const { removePanel, pushPanel } = useNavigation()
+  const { removePanel, pushPanel } = useNavActions()
   const isFromSidebar = location.pathname.startsWith("/recent/")
 
   function handleBack() {

@@ -101,6 +101,24 @@ body {
   margin: 0;
   overflow: hidden;
 }
+/* Prose typography styles (subset of @tailwindcss/typography) */
+.prose { line-height: 1.625; color: var(--foreground); }
+.prose > * + * { margin-top: 1em; }
+.prose p { margin-top: 0.5em; margin-bottom: 0.5em; }
+.prose h1 { font-size: 1.5em; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.6em; line-height: 1.2; }
+.prose h2 { font-size: 1.25em; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.6em; line-height: 1.3; }
+.prose h3 { font-size: 1.1em; font-weight: 600; margin-top: 1em; margin-bottom: 0.4em; line-height: 1.4; }
+.prose blockquote { border-left: 3px solid var(--border); padding-left: 0.75em; margin: 0.5em 0; color: var(--muted-foreground); }
+.prose code { font-size: 0.875em; font-family: var(--font-mono); }
+.prose pre { font-size: 0.875em; line-height: 1.6; overflow-x: auto; padding: 0.75em 1em; border-radius: 0.375rem; background: hsl(var(--muted) / 0.3); }
+.prose hr { border-color: var(--border); margin: 1em 0; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 0.875em; }
+.prose th, .prose td { padding: 0.4em 0.75em; text-align: left; border-bottom: 1px solid var(--border); }
+.prose th { font-weight: 600; }
+.prose img { max-width: 100%; border-radius: 0.25rem; }
+.prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.prose-sm { font-size: 0.875rem; }
+.dark\\:prose-invert { color: var(--foreground); }
 </style>
 <script>
 // Sync CSS variables from parent document (live — updates on theme change)

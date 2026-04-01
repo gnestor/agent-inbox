@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useContext, useCallback } from "react"
+import { useMemo, useEffect, useCallback, lazy, Suspense } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -6,31 +6,35 @@ import { LoginPage } from "@/components/layout/LoginPage"
 import { LiquidGlassFilter } from "@hammies/frontend/components/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
-import { NavigationContext } from "@/components/navigation/NavigationProvider"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavigationStore, useActiveTab, useNavActions, useSourceTab } from "@/lib/navigation-store"
 import { useSortedPlugins } from "@/hooks/use-plugins"
 import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
 import { SessionTab } from "@/components/session/SessionTab"
-import { IntegrationsPage } from "@/components/settings/IntegrationsPage"
-import { WorkspaceSettings } from "@/components/workspace/WorkspaceSettings"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
 
+const IntegrationsPage = lazy(() =>
+  import("@/components/settings/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })),
+)
+const WorkspaceSettings = lazy(() =>
+  import("@/components/workspace/WorkspaceSettings").then((m) => ({ default: m.WorkspaceSettings })),
+)
+
 const STATIC_SLOTS = [
-  "settings",
-  "workspace-settings",
   "sessions",
 ]
+
+const SETTINGS_TABS = new Set(["settings", "workspace-settings"])
 
 function renderTab(tabId: string) {
   if (tabId === "settings") {
     return (
       <Tab id="settings">
         <Panel id="settings" variant="settings">
-          <IntegrationsPage />
+          <Suspense><IntegrationsPage /></Suspense>
         </Panel>
       </Tab>
     )
@@ -39,7 +43,7 @@ function renderTab(tabId: string) {
     return (
       <Tab id="workspace-settings">
         <Panel id="workspace-settings" variant="settings">
-          <WorkspaceSettings />
+          <Suspense><WorkspaceSettings /></Suspense>
         </Panel>
       </Tab>
     )
@@ -53,8 +57,7 @@ function renderTab(tabId: string) {
 }
 
 function RecentTabSlot({ tabId }: { tabId: TabId }) {
-  const { getSourceTab } = useNavigation()
-  const sourceTab = getSourceTab(tabId)
+  const sourceTab = useSourceTab(tabId)
   if (sourceTab?.startsWith("plugin:")) {
     return <PluginView tabId={tabId} />
   }
@@ -62,10 +65,10 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
 }
 
 function TabContainer() {
-  const { activeTab } = useNavigation()
-  const ctx = useContext(NavigationContext)
-  const tabs = ctx?.state.tabs
+  const activeTab = useActiveTab()
+  const tabs = useNavigationStore((s) => s.tabs)
   const sortedPlugins = useSortedPlugins()
+  const { switchTab } = useNavActions()
 
   // Set plugin order for animation direction when plugins load
   useEffect(() => {
@@ -73,8 +76,6 @@ function TabContainer() {
       setPluginOrder(sortedPlugins.map((p) => p.id))
     }
   }, [sortedPlugins])
-
-  const { switchTab } = useNavigation()
 
   const keys = useMemo(() => {
     if (!tabs) return STATIC_SLOTS
@@ -88,15 +89,16 @@ function TabContainer() {
       .filter((k) => k.startsWith("recent:"))
       .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
 
-    // Insert plugin tabs before sessions, recent tabs after plugins
-    const sessionsIdx = STATIC_SLOTS.indexOf("sessions")
+    // Settings tabs: mount at the top, unmount on navigate away
+    const settingsKey = SETTINGS_TABS.has(activeTab) ? [activeTab] : []
+
     return [
-      ...STATIC_SLOTS.slice(0, sessionsIdx),
+      ...settingsKey,
       ...pluginKeys,
       ...recentKeys,
-      ...STATIC_SLOTS.slice(sessionsIdx),
+      ...STATIC_SLOTS,
     ]
-  }, [tabs, sortedPlugins])
+  }, [tabs, sortedPlugins, activeTab])
 
   // When user scroll-snaps to a different tab, sync the URL/sidebar
   const handleActiveKeyChange = useCallback((key: string) => {

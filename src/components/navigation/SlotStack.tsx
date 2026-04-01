@@ -8,7 +8,6 @@
  */
 import { useRef, useEffect, useCallback, useState, type ReactNode } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
-import { ACTIVE_TAB_CLASS_LIST } from "@/lib/navigation-constants"
 
 interface SlotStackProps {
   activeKey: string
@@ -23,7 +22,6 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
   const isProgrammaticScroll = useRef(false)
-  const scrollSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const activeIdx = keys.indexOf(activeKey)
   const safeIdx = activeIdx >= 0 ? activeIdx : 0
@@ -33,8 +31,12 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   // Scroll to active tab when activeKey changes from sidebar click.
   const isUserScrolling = useRef(false)
   const prevActiveKey = useRef(activeKey)
+  const prevKeysLenRef = useRef(keys.length)
   useEffect(() => {
-    if (prevActiveKey.current === activeKey) return
+    const keysChanged = prevKeysLenRef.current !== keys.length
+    prevKeysLenRef.current = keys.length
+
+    if (prevActiveKey.current === activeKey && !keysChanged) return
     prevActiveKey.current = activeKey
 
     if (isUserScrolling.current) {
@@ -50,21 +52,29 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     const target = idx * el.clientHeight
     if (Math.abs(el.scrollTop - target) < 1) return
 
+    // Use instant scroll when keys changed (tab inserted/removed) to avoid
+    // the glitch of smooth-scrolling through shifted positions.
     isProgrammaticScroll.current = true
     el.style.scrollSnapType = "none"
-    el.scrollTo({ top: target, behavior: "smooth" })
-    // Re-enable snap and clear flag after scroll completes
-    const onEnd = () => {
-      el.style.scrollSnapType = "y mandatory"
-      isProgrammaticScroll.current = false
-      el.removeEventListener("scrollend", onEnd)
+    if (keysChanged) {
+      el.scrollTop = target
+      requestAnimationFrame(() => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+      })
+    } else {
+      el.scrollTo({ top: target, behavior: "smooth" })
+      const onEnd = () => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+        el.removeEventListener("scrollend", onEnd)
+      }
+      el.addEventListener("scrollend", onEnd, { once: true })
+      setTimeout(() => {
+        el.style.scrollSnapType = "y mandatory"
+        isProgrammaticScroll.current = false
+      }, 1000)
     }
-    el.addEventListener("scrollend", onEnd, { once: true })
-    // Fallback in case scrollend doesn't fire (e.g. already at target)
-    setTimeout(() => {
-      el.style.scrollSnapType = "y mandatory"
-      isProgrammaticScroll.current = false
-    }, 1000)
   })
 
   // Track which tab is most visible on every scroll event
@@ -76,14 +86,13 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   keysRef.current = keys
 
   useEffect(() => {
-    if (isMobile) {
-      // Clear any pending scroll sync from a previous desktop render
-      clearTimeout(scrollSyncTimer.current)
-      return
-    }
+    if (isMobile) return
     const el = scrollRef.current
     if (!el) return
 
+    // Fire onActiveKeyChange synchronously during scroll so the sidebar
+    // highlights instantly. With Zustand selectors, switchTab only re-renders
+    // activeTab subscribers (~4 components), so this is cheap.
     const onScroll = () => {
       if (isProgrammaticScroll.current) return
       const height = el.clientHeight
@@ -93,30 +102,12 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
       if (key && key !== activeKeyRef.current) {
         isUserScrolling.current = true
         activeKeyRef.current = key
-        // Update sidebar highlight instantly via DOM (bypass React)
-        const primaryClasses = ACTIVE_TAB_CLASS_LIST
-        document.querySelectorAll<HTMLElement>("[data-tab-id]").forEach((el) => {
-          if (el.dataset.tabId === key) {
-            el.setAttribute("data-active", "")
-            el.classList.add(...primaryClasses)
-          } else {
-            el.removeAttribute("data-active")
-            el.classList.remove(...primaryClasses)
-          }
-        })
-        // Debounce the React state update (URL sync) to avoid blocking scroll
-        clearTimeout(scrollSyncTimer.current)
-        scrollSyncTimer.current = setTimeout(() => {
-          onActiveKeyChangeRef.current?.(key)
-        }, 150)
+        onActiveKeyChangeRef.current?.(key)
       }
     }
 
     el.addEventListener("scroll", onScroll, { passive: true })
-    return () => {
-      el.removeEventListener("scroll", onScroll)
-      clearTimeout(scrollSyncTimer.current)
-    }
+    return () => el.removeEventListener("scroll", onScroll)
   }, [isMobile])
 
   // Set initial scroll position synchronously

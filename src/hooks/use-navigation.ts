@@ -1,129 +1,62 @@
 // src/hooks/use-navigation.ts
-import { useContext, useCallback } from "react"
-import { NavigationContext } from "@/components/navigation/NavigationProvider"
+//
+// Backward-compatible wrapper around the Zustand navigation store.
+// Returns the same interface as the old Context-based hook so existing
+// consumers work without changes during incremental migration.
+//
+// New code should prefer the granular hooks from navigation-store.ts:
+//   useActiveTab, useTabPanels, useSelectedItemId, useNavActions, etc.
+
+import {
+  useNavigationStore,
+  useActiveTab,
+  useNavActions,
+} from "@/lib/navigation-store"
 import type { PanelState, TabId } from "@/types/navigation"
 
 export function useNavigation() {
-  const ctx = useContext(NavigationContext)
-  if (!ctx) throw new Error("useNavigation must be used within NavigationProvider")
+  const activeTab = useActiveTab()
+  const {
+    switchTab, selectItem, deselectItem, pushPanel, popPanel,
+    removePanel, replacePanel, openSession, openNewSession,
+    openRecent, setFilter, clearFilters,
+  } = useNavActions()
 
-  const { state, dispatch } = ctx
+  // Read full state for getter functions (backward compat)
+  const tabs = useNavigationStore((s) => s.tabs)
 
-  const switchTab = useCallback(
-    (tabId: TabId) => dispatch({ type: "SWITCH_TAB", tabId }),
-    [dispatch],
-  )
+  const getPanels = (tab?: TabId): PanelState[] => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.panels ?? []
+  }
 
-  const selectItem = useCallback(
-    (itemId: string, listIndex?: number) => {
-      dispatch({ type: "SELECT_ITEM", itemId, listIndex })
-    },
-    [dispatch],
-  )
+  const getSelectedItemId = (tab?: TabId): string | undefined => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.selectedItemId
+  }
 
-  const deselectItem = useCallback(
-    () => dispatch({ type: "DESELECT_ITEM" }),
-    [dispatch],
-  )
+  const getItemDirection = (tab?: TabId): number => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.itemDirection ?? 1
+  }
 
-  const pushPanel = useCallback(
-    (panel: PanelState) => dispatch({ type: "PUSH_PANEL", panel }),
-    [dispatch],
-  )
+  const getPanelTransition = (tab?: TabId): "item" | "none" => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.panelTransition ?? "none"
+  }
 
-  const popPanel = useCallback(
-    (panelId: string) => dispatch({ type: "POP_PANEL", panelId }),
-    [dispatch],
-  )
+  const getSourceTab = (tab?: TabId): TabId | undefined => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.sourceTab
+  }
 
-  const removePanel = useCallback(
-    (panelId: string) => dispatch({ type: "REMOVE_PANEL", panelId }),
-    [dispatch],
-  )
-
-  const replacePanel = useCallback(
-    (panelId: string, newPanel: PanelState, selectedItemId?: string) =>
-      dispatch({ type: "REPLACE_PANEL", panelId, newPanel, selectedItemId }),
-    [dispatch],
-  )
-
-  const openSession = useCallback(
-    (sessionId?: string) => dispatch({ type: "OPEN_SESSION", sessionId }),
-    [dispatch],
-  )
-
-  const openNewSession = useCallback(
-    (source?: { type: string; id: string; content?: string }) => dispatch({ type: "OPEN_NEW_SESSION", source }),
-    [dispatch],
-  )
-
-  const openRecent = useCallback(
-    (sessionId: string, sourceTab: TabId, selectedId: string | undefined, sidebarIndex: number) =>
-      dispatch({ type: "OPEN_RECENT", sessionId, sourceTab, selectedId, sidebarIndex }),
-    [dispatch],
-  )
-
-  const getPanels = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.panels ?? []
-    },
-    [state],
-  )
-
-  const getSelectedItemId = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.selectedItemId
-    },
-    [state],
-  )
-
-  const getItemDirection = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.itemDirection ?? 1
-    },
-    [state],
-  )
-
-  const getPanelTransition = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.panelTransition ?? "none"
-    },
-    [state],
-  )
-
-  const setFilter = useCallback(
-    (key: string, value: string) => dispatch({ type: "SET_FILTER", key, value }),
-    [dispatch],
-  )
-
-  const clearFilters = useCallback(
-    () => dispatch({ type: "CLEAR_FILTERS" }),
-    [dispatch],
-  )
-
-
-  const getSourceTab = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.sourceTab
-    },
-    [state],
-  )
-
-  const getFilters = useCallback(
-    (tab?: TabId) => {
-      const tabId = tab ?? state.activeTab
-      return state.tabs[tabId]?.activeFilters ?? {}
-    },
-    [state],
-  )
+  const getFilters = (tab?: TabId): Record<string, string> => {
+    const tabId = tab ?? activeTab
+    return tabs[tabId]?.activeFilters ?? {}
+  }
 
   return {
-    activeTab: state.activeTab,
+    activeTab,
     switchTab,
     selectItem,
     deselectItem,
@@ -134,14 +67,14 @@ export function useNavigation() {
     openSession,
     openNewSession,
     openRecent,
+    setFilter,
+    clearFilters,
     getPanels,
     getSelectedItemId,
     getItemDirection,
     getPanelTransition,
     getSourceTab,
-    activeFilters: state.tabs[state.activeTab]?.activeFilters ?? {},
+    activeFilters: tabs[activeTab]?.activeFilters ?? {},
     getFilters,
-    setFilter,
-    clearFilters,
   }
 }

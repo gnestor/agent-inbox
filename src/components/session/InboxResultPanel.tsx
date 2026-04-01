@@ -1,7 +1,10 @@
-import { useState } from "react"
+import { useState, lazy, Suspense } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Button, Badge } from "@hammies/frontend/components/ui"
-import { RichTextEditor } from "@/components/shared/RichTextEditor"
+
+const RichTextEditor = lazy(() =>
+  import("@/components/shared/RichTextEditor").then((m) => ({ default: m.RichTextEditor })),
+)
 import { CheckCircle2, FileText, ExternalLink, Loader2 } from "lucide-react"
 import { mutatePluginItem } from "@/api/client"
 import { useWorkspaceId } from "@/hooks/use-user"
@@ -74,11 +77,13 @@ function DraftResult({ data }: { data: InboxResultData }) {
         </div>
       </div>
       <div className="p-2">
-        <RichTextEditor
-          value={body}
-          onChange={setBody}
-          className="min-h-[200px] max-h-[400px]"
-        />
+        <Suspense fallback={<div className="min-h-[200px]" />}>
+          <RichTextEditor
+            value={body}
+            onChange={setBody}
+            className="min-h-[200px] max-h-[400px]"
+          />
+        </Suspense>
       </div>
       <div className="px-3 pb-3 flex items-center gap-2">
         <Button

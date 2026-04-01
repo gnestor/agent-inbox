@@ -1,5 +1,5 @@
 import { useState, useDeferredValue, useRef } from "react"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useNavActions } from "@/lib/navigation-store"
 import {
   Button,
   DropdownMenu,
@@ -29,7 +29,7 @@ export function SessionActionMenu({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
-  const { openSession, openNewSession } = useNavigation()
+  const { openSession, openNewSession } = useNavActions()
   const filters = deferredSearch ? { q: deferredSearch } : undefined
   const { sessions } = useSessions(filters, { enabled: open })
   const attachMutation = useAttachToSession()

@@ -156,13 +156,17 @@ export async function loadPlugins(
 
 /** Get all plugins for a workspace (built-ins merged with workspace-specific). */
 export function getPlugins(workspaceId?: string): Plugin[] {
-  const builtins = [...registry.values()]
-  if (!workspaceId) return builtins
-  const wsPlugins = workspacePluginRegistries.get(workspaceId)
-  if (!wsPlugins) return builtins
   const merged = new Map<string, Plugin>()
-  for (const p of builtins) merged.set(p.id, p)
-  for (const [id, p] of wsPlugins) merged.set(id, p)
+  for (const p of registry.values()) merged.set(p.id, p)
+  if (workspaceId) {
+    const wsPlugins = workspacePluginRegistries.get(workspaceId)
+    if (wsPlugins) for (const [id, p] of wsPlugins) merged.set(id, p)
+  } else {
+    // No workspace ID — merge all workspace registries (fallback)
+    for (const wsRegistry of workspacePluginRegistries.values()) {
+      for (const [id, p] of wsRegistry) merged.set(id, p)
+    }
+  }
   return [...merged.values()]
 }
 
@@ -176,7 +180,14 @@ export function getPlugin(id: string, workspaceId?: string): Plugin | undefined 
     const wsPlugin = workspacePluginRegistries.get(workspaceId)?.get(id)
     if (wsPlugin) return wsPlugin
   }
-  return registry.get(id)
+  const builtin = registry.get(id)
+  if (builtin) return builtin
+  // Fallback: search all workspace registries (handles missing workspace cookie)
+  for (const wsRegistry of workspacePluginRegistries.values()) {
+    const plugin = wsRegistry.get(id)
+    if (plugin) return plugin
+  }
+  return undefined
 }
 
 // Exposed for test isolation only — do not call in production

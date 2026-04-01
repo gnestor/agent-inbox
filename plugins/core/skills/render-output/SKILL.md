@@ -28,15 +28,18 @@ The `render_output` MCP tool renders structured outputs inline in the session tr
 ### Environment
 
 - **Tailwind CSS** — all styling via utility classes
-- **shadcn/ui** — import from `@hammies/frontend/components/ui`
-- **React hooks** — import from `react`
+- **shadcn/ui** — `import { Button, Badge, ... } from "@hammies/frontend/components/ui"`
+- **React hooks** — `import { useState, useEffect, ... } from "react"`
+- **Utilities** — `import { cn } from "@hammies/frontend/lib/utils"`
+
+**IMPORTANT:** Always use ES module `import` syntax. NEVER use `window["@hammies/..."]` or `require()` — the artifact runs in an ES module context with import maps.
 
 ### Globals (do not import)
 
-- **`sendAction(intent, data?)`** — Send an action back to the session for agent follow-up. Include relevant component state in `data` so the agent has context. Use for actions that need agent processing (submit form, approve/reject, update record). **Do NOT use for navigation** — use `<a href="..." target="_blank">` for external links (Shopify admin, Gmail, Notion pages, etc.).
+- **`sendAction(intent, data?)`** — Sends a message to the agent on the user's behalf, requesting it to take action. Include relevant component state in `data` so the agent has context. Use only when the agent needs to process the action (submit form, approve/reject, update record). **Do NOT use for navigation.**
 - **`saveState(state)`** — Persist UI state across page reloads. Restored automatically on remount.
 
-**Links vs sendAction:** Use `<a href>` with `target="_blank"` for URLs the user should open directly (e.g. "Open in Shopify", "View in Gmail"). Use `sendAction` only when the agent needs to do something in response (e.g. "Approve", "Submit changes", "Save draft").
+**Links vs sendAction:** **Links are preferred.** Use `<a href="..." target="_blank">` for any URL the user should open directly (e.g. "Open in Shopify", "View in Gmail", "Open draft"). Use `sendAction` only when a link isn't enough — when the agent must do something in response to the click (e.g. "Approve & Send", "Submit changes", "Save draft").
 
 ### Design Rules
 

@@ -42,6 +42,20 @@ export default defineConfig({
       "@plugins": path.resolve(__dirname, "./plugins"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("react-dom") || id.includes("react-router") || (id.includes("/react/") && !id.includes("react-markdown"))) return "vendor"
+            if (id.includes("@tiptap") || id.includes("tiptap-markdown") || id.includes("prosemirror")) return "editor"
+            if (id.includes("highlight.js") || id.includes("rehype-highlight") || id.includes("lowlight")) return "markdown"
+            if (id.includes("@babel/standalone")) return "babel"
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5175,
     host: true,

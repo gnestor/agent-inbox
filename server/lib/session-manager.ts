@@ -1253,10 +1253,9 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     const messages: Array<Record<string, unknown>> = []
-    let sequence = 0
 
-    for (const line of lines) {
-      const msg = JSON.parse(line)
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const msg = JSON.parse(lines[lineIdx])
 
       // Detect plan file updates (Write/Edit to ~/.claude/plans/) and inject
       // a synthetic plan message so the frontend can render the plan content.
@@ -1268,9 +1267,9 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
         toolResult.content
       ) {
         messages.push({
-          id: sequence,
+          id: lineIdx,
           sessionId,
-          sequence,
+          sequence: lineIdx,
           type: "plan",
           message: {
             type: "plan",
@@ -1279,20 +1278,25 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
           },
           createdAt: msg.timestamp || new Date().toISOString(),
         })
-        sequence++
         continue
       }
 
       if (displayTypes.has(msg.type)) {
+        // Skip partial assistant messages (streaming updates without stop_reason).
+        // The complete version follows with stop_reason set.
+        if (msg.type === "assistant") {
+          const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
+          if (!stop) continue
+        }
+
         messages.push({
-          id: sequence,
+          id: lineIdx,
           sessionId,
-          sequence,
+          sequence: lineIdx,
           type: msg.type,
           message: msg,
           createdAt: msg.timestamp || new Date().toISOString(),
         })
-        sequence++
       }
     }
 
@@ -1332,36 +1336,34 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
 }
 
 async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {
-
-
   const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
     const content = fs.readFileSync(sessionFile, "utf-8")
     const lines = content.trim().split("\n")
-    const displayTypes = new Set(["user", "assistant", "system"])
-    let seq = 0
 
-    for (let i = 0; i < lines.length; i++) {
+    // Try by line index first (matches getAgentSessionTranscript)
+    if (sequence >= 0 && sequence < lines.length) {
+      const msg = JSON.parse(lines[sequence])
+      if (msg.type === "assistant" && patchRenderOutputCode(msg, code)) {
+        lines[sequence] = JSON.stringify(msg)
+        fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
+        return true
+      }
+    }
+
+    // Fallback: scan all assistant messages for a render_output to patch.
+    // Handles SSE-cached sessions where sequence doesn't match line index.
+    for (let i = lines.length - 1; i >= 0; i--) {
       const msg = JSON.parse(lines[i])
-
-      const toolResult = msg.toolUseResult
-      if (toolResult && typeof toolResult.filePath === "string" && toolResult.filePath.includes(".claude/plans/") && toolResult.content) {
-        seq++
-        continue
+      if (msg.type !== "assistant") continue
+      const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
+      if (!stop) continue
+      if (patchRenderOutputCode(msg, code)) {
+        lines[i] = JSON.stringify(msg)
+        fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
+        return true
       }
-
-      if (!displayTypes.has(msg.type)) continue
-
-      if (seq === sequence && msg.type === "assistant") {
-        if (patchRenderOutputCode(msg, code)) {
-          lines[i] = JSON.stringify(msg)
-          fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
-          return true
-        }
-        return false
-      }
-      seq++
     }
 
     return false

@@ -5,6 +5,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData, AskUserQuestion } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
+import { isSubagentMessage, getAgentLabel } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -12,9 +13,7 @@ import { getPanelSchemas } from "@/api/client"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import rehypeHighlight from "rehype-highlight"
-import hljs from "highlight.js/lib/core"
-import json from "highlight.js/lib/languages/json"
+import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import { cn } from "@hammies/frontend/lib/utils"
 import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
@@ -23,7 +22,6 @@ import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { AskUserForm } from "./AskUserForm"
 
-hljs.registerLanguage("json", json)
 
 // Unwrap immediate children matching `tag` — e.g. strip <strong> inside headings,
 // <p> inside <li> (ReactMarkdown wraps loose-list items in <p>).
@@ -86,7 +84,7 @@ export function SessionTranscript({
   onArtifactsReady,
   children,
 }: SessionTranscriptProps) {
-  const { scrollRef, virtualizer, visibleMessages, handleScroll } = useTranscriptScroll({
+  const { scrollRef, visibleMessages, handleScroll } = useTranscriptScroll({
     messages,
     visibility,
     sessionId,
@@ -137,8 +135,6 @@ export function SessionTranscript({
     }
   }, [expectedArtifacts, visibleMessages.length, onArtifactsReady])
 
-  const virtualItems = virtualizer.getVirtualItems()
-
   return (
     <div
       ref={scrollRef}
@@ -146,29 +142,20 @@ export function SessionTranscript({
       onScroll={handleScroll}
     >
       <div className="p-4 min-w-0 pb-4">
-        {virtualItems.length > 0 ? (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualItems.map((virtualRow) => (
+        {visibleMessages.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {visibleMessages.map((message) => (
               <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  paddingBottom: virtualRow.index === visibleMessages.length - 1 ? 0 : 12,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
+                key={message.sequence}
+                style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
               >
-                <TranscriptEntry message={visibleMessages[virtualRow.index]} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
+                <TranscriptEntry message={message} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
               </div>
             ))}
           </div>
-        ) : visibleMessages.length === 0 ? (
+        ) : (
           <PanelSkeleton />
-        ) : null}
+        )}
         {children}
       </div>
     </div>
@@ -447,7 +434,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
           defaultOpen
         >
           <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
               {msg.result || "Session completed"}
             </ReactMarkdown>
           </div>
@@ -487,7 +474,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
           bold={false}
         >
           <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
               {skillBlock.content}
             </ReactMarkdown>
           </div>
@@ -498,9 +485,10 @@ const TranscriptEntry = memo(function TranscriptEntry({
     if (!visibility.messages) return null
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
-    const isCurrentUser = !msg.authorEmail || msg.authorEmail === currentUserEmail
+    const subagent = isSubagentMessage(message)
+    const isCurrentUser = !subagent && (!msg.authorEmail || msg.authorEmail === currentUserEmail)
     const profile = msg.authorEmail ? userProfiles?.get(msg.authorEmail) : undefined
-    const authorLabel = isCurrentUser ? "You" : (profile?.name || msg.authorName || "User")
+    const authorLabel = isCurrentUser ? "You" : subagent ? getAgentLabel(message) : (profile?.name || msg.authorName || "User")
     return (
       <MessageBubble label={authorLabel} align="right">
         <div className="space-y-1.5">
@@ -574,7 +562,7 @@ function MarkdownEntry({ text, label = "Claude" }: { text: string; label?: strin
   return (
     <MessageBubble label={label} align="left" transparent>
       <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
           {text}
         </ReactMarkdown>
       </div>
@@ -610,6 +598,8 @@ function ContentBlockView({
     queryFn: getPanelSchemas,
     staleTime: 60_000,
   })
+  const rehypePlugins = useRehypeHighlight()
+
   if (block.type === "text") {
     if (!block.text || !visibility.messages) return null
 
@@ -721,7 +711,7 @@ function ContentBlockView({
         defaultOpen
       >
         <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>
             {block.thinking}
           </ReactMarkdown>
         </div>
@@ -906,14 +896,6 @@ function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisi
   return false
 }
 
-/** Extract a display label for the agent that produced a message.
- *  Subagent messages have a `slug` (human-readable name) or `agentId` field. */
-function getAgentLabel(message: SessionMessage): string {
-  const raw = message.message as unknown as Record<string, unknown>
-  if (raw.slug) return String(raw.slug)
-  if (raw.agentId) return String(raw.agentId)
-  return "Claude"
-}
 
 function shouldRenderContentBlock(
   block: ContentBlockType,
@@ -1072,21 +1054,49 @@ function buildToolResultMap(messages: SessionMessage[]): Map<string, string> {
   return map
 }
 
-/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event. */
+/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event.
+ *  Dots bounce in a continuous loop while active. On each new event, the currently-bouncing
+ *  dot flashes foreground color for one tick, then returns to muted. */
 export function WorkingIndicator({ eventCount }: { eventCount: number }) {
+  const TICK_MS = 450
+  const [tick, setTick] = useState(0)
+  const [flash, setFlash] = useState(false)
+  const prevCountRef = useRef(eventCount)
+
+  // Continuous tick loop — drives which dot is bouncing
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  // Flash the active dot when a new event arrives
+  useEffect(() => {
+    if (eventCount !== prevCountRef.current) {
+      prevCountRef.current = eventCount
+      setFlash(true)
+    }
+  }, [eventCount])
+
+  // Clear flash after one tick
+  useEffect(() => {
+    if (!flash) return
+    const id = setTimeout(() => setFlash(false), TICK_MS)
+    return () => clearTimeout(id)
+  }, [flash])
+
+  const activeDot = tick % 3
+
   return (
     <div className="flex justify-center py-4">
       <div className="flex items-center gap-1">
         {[0, 1, 2].map((i) => {
-          const active = eventCount % 3 === i
+          const isBouncing = activeDot === i
+          const color = isBouncing && flash ? "bg-foreground" : "bg-muted-foreground"
           return (
             <span
-              key={active ? `${i}-${eventCount}` : i}
-              className={`size-1.5 rounded-full ${active ? "bg-foreground" : "bg-muted-foreground"}`}
-              style={{
-                animation: "dot-bounce 0.6s ease-out",
-                animationDelay: `${i * 0.15}s`,
-              }}
+              key={isBouncing ? `${i}-${tick}` : i}
+              className={`size-1.5 rounded-full ${color}`}
+              style={isBouncing ? { animation: `dot-bounce ${TICK_MS}ms ease-out` } : undefined}
             />
           )
         })}

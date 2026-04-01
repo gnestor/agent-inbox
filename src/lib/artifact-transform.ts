@@ -11,7 +11,15 @@
  * - Fixes common LLM code mistakes (multiline regex literals)
  * - Transforms JSX → React.createElement via @babel/standalone
  */
-import { transform } from "@babel/standalone"
+// Lazy-load @babel/standalone (~37MB) — only needed when viewing React artifacts
+let _babelTransform: ((code: string, opts: any) => { code: string | null }) | null = null
+async function ensureBabel() {
+  if (!_babelTransform) {
+    const babel = await import("@babel/standalone")
+    _babelTransform = babel.transform
+  }
+  return _babelTransform
+}
 
 export interface TransformResult {
   /** Transformed vanilla JS code (no JSX, valid ES module) */
@@ -27,7 +35,7 @@ function isAllowedImport(line: string): boolean {
   return ALLOWED_IMPORTS.some((pkg) => new RegExp(`from\\s+['"]${pkg.replace("/", "\\/")}`, "").test(line))
 }
 
-export function transformArtifactCode(source: string): TransformResult {
+export async function transformArtifactCode(source: string): Promise<TransformResult> {
   if (!source) return { code: "", exportedName: null }
 
   const lines = source.split("\n")
@@ -130,6 +138,7 @@ export function transformArtifactCode(source: string): TransformResult {
   code = code.replace(/\/\n\/([gimsuy]*)/g, "/\\n/$1")
 
   // Transform JSX → React.createElement (sourceType: "module" to support import/export)
+  const transform = await ensureBabel()
   const result = transform(code, {
     presets: ["react"],
     sourceType: "module",

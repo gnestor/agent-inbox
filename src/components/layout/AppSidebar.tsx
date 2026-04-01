@@ -28,7 +28,7 @@ import { Check, ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { icons as lucideIcons } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { useSortedPlugins } from "@/hooks/use-plugins"
-import { useNavigation } from "@/hooks/use-navigation"
+import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import { usePreference } from "@/hooks/use-preferences"
 import { getInitials } from "@/lib/formatters"
 import type { TabId } from "@/types/navigation"
@@ -39,7 +39,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const navigate = useNavigate()
   const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout, activeWorkspace, workspaces, switchWorkspace } = useUser()
-  const { switchTab, activeTab } = useNavigation()
+  const { switchTab } = useNavActions()
+  const activeTab = useActiveTab()
   const savedUrls = useRef(new Map<string, string>())
   const [menuOpen, setMenuOpen] = useState(false)
   const sortedPlugins = useSortedPlugins()
@@ -72,8 +73,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 <ChevronsUpDown className="ml-auto size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-[--anchor-width] min-w-56 rounded-lg"
-                side={isMobile ? "bottom" : "bottom"}
+                className="rounded-lg"
+                side="bottom"
                 align="start"
                 sideOffset={4}
               >
@@ -198,7 +199,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuButton
                         tooltip={plugin.name}
                         isActive={isActive}
-                        data-tab-id={tabId}
+
                         className={isActive ? ACTIVE_TAB_CLASSES : ""}
                         onClick={() => {
                           switchTab(tabId)
