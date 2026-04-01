@@ -38,7 +38,7 @@ export function useEmailDraft(threadId: string, thread: GmailThread | undefined)
     },
     onSuccess: () => {
       setBody("")
-      qc.invalidateQueries({ queryKey: ["thread", threadId] })
+      qc.invalidateQueries({ queryKey: ["plugin-item", "gmail", threadId] })
       qc.invalidateQueries({ queryKey: ["emails"] })
       toast.success("Reply sent")
     },

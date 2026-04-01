@@ -4,22 +4,22 @@ import remarkGfm from "remark-gfm"
 import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import TurndownService from "turndown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
 import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
-import { useWorkspaceId } from "@/hooks/use-user"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { useNavActions } from "@/lib/navigation-store"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { ListSkeleton } from "@/components/shared/ListSkeleton"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { SessionActionMenu } from "@/components/session/AttachToSessionMenu"
-import { mutatePluginItem, getLinkedSession } from "@/api/client"
+import { getLinkedSession } from "@/api/client"
 import { getItemTitle } from "@/lib/plugin-utils"
 import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
 import { PluginFrame } from "@/components/plugin/PluginFrame"
 import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
+import { usePluginMutations } from "@/hooks/use-plugin-mutations"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
@@ -221,9 +221,8 @@ export function PluginDetail({
   pluginId: string
   itemId: string
 }) {
-  const queryClient = useQueryClient()
-  const wsId = useWorkspaceId()
   const { deselectItem } = useNavActions()
+  const { mutate: pluginMutate } = usePluginMutations(pluginId, itemId)
   const { data: plugins } = usePlugins()
   const plugin = plugins?.find((p) => p.id === pluginId)
   const hasSubItems = !!plugin?.hasSubItems
@@ -252,16 +251,6 @@ export function PluginDetail({
   const parentItem = (fullItem as Record<string, unknown> | undefined) ?? listItem
   const title = parentItem ? getItemTitle(parentItem) : itemId
   const externalUrl = (parentItem?.externalUrl ?? parentItem?.url) as string | undefined
-
-  // Shared mutation handler for both sub-items and widget-tree paths
-  async function handleMutate(action: string, payload: unknown) {
-    try {
-      await mutatePluginItem(pluginId, itemId, action, payload)
-      queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
-    } catch (err) {
-      console.error(`[${pluginId}] ${action} failed:`, (err as Error).message)
-    }
-  }
 
   // Action buttons from detailSchema (shared across render paths)
   const actionButtons = plugin?.detailSchema
@@ -328,7 +317,7 @@ export function PluginDetail({
                         ? "text-destructive hover:bg-destructive/10"
                         : "text-muted-foreground hover:bg-secondary"
                     }`}
-                    onClick={() => handleMutate(action.mutation, undefined)}
+                    onClick={() => pluginMutate(action.mutation, undefined)}
                   >
                     {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
                   </button>
@@ -415,7 +404,7 @@ export function PluginDetail({
                         ? "text-destructive hover:bg-destructive/10"
                         : "text-muted-foreground hover:bg-secondary"
                     }`}
-                    onClick={() => handleMutate(action.mutation, undefined)}>
+                    onClick={() => pluginMutate(action.mutation, undefined)}>
                     {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
                   </button>
                 )
@@ -518,7 +507,7 @@ export function PluginDetail({
                 ? "text-destructive hover:bg-destructive/10"
                 : "text-muted-foreground hover:bg-secondary"
             }`}
-            onClick={() => handleMutate(action.mutation, undefined)}
+            onClick={() => pluginMutate(action.mutation, undefined)}
           >
             {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{action.label}</span>}
           </button>
@@ -550,7 +539,7 @@ export function PluginDetail({
         ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
           <HtmlMessageBody html={bodyContent} />
         ) : (
-          <PanelWidget widgets={widgets} data={item} onMutate={handleMutate} />
+          <PanelWidget widgets={widgets} data={item} onMutate={pluginMutate} />
         )}
       </div>
     </div>

@@ -3,7 +3,7 @@
  * Shows editable Status, Priority, Tags, and read-only Assignee/Date/Updated fields.
  * Uses the generic plugin filterOptions API for select options and mutatePluginItem for updates.
  */
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import {
   Button,
   Popover,
@@ -12,8 +12,9 @@ import {
 } from "@hammies/frontend/components/ui"
 import { SlidersHorizontal } from "lucide-react"
 import { PropertySelect, PropertyMultiSelect } from "@/components/shared/PropertyEditor"
-import { getFieldOptions, mutatePluginItem } from "@/api/client"
+import { getFieldOptions } from "@/api/client"
 import { useWorkspaceId } from "@/hooks/use-user"
+import { usePluginMutations } from "@/hooks/use-plugin-mutations"
 import { formatRelativeDate } from "@/lib/formatters"
 
 interface PropertiesPopoverProps {
@@ -23,8 +24,8 @@ interface PropertiesPopoverProps {
 }
 
 export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverProps) {
-  const queryClient = useQueryClient()
   const wsId = useWorkspaceId()
+  const { mutate } = usePluginMutations(pluginId, itemId)
 
   const { data: statusOpts } = useQuery({
     queryKey: ["plugin-field-options", wsId, pluginId, "status"],
@@ -41,12 +42,6 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
     queryKey: ["plugin-field-options", wsId, pluginId, "tags"],
     queryFn: () => getFieldOptions(pluginId, "tags").then((r) => r.options.map((o) => ({ value: o, color: null }))),
   })
-
-  async function update(action: string, payload: unknown) {
-    await mutatePluginItem(pluginId, itemId, action, payload)
-    queryClient.invalidateQueries({ queryKey: ["plugin-items", wsId, pluginId] })
-    queryClient.invalidateQueries({ queryKey: ["plugin-item", wsId, pluginId, itemId] })
-  }
 
   const status = item.status as string | undefined
   const priority = item.priority as string | undefined
@@ -83,7 +78,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
               <PropertySelect
                 value={status}
                 options={statusOpts ?? []}
-                onChange={(v) => update("update-status", { status: v })}
+                onChange={(v) => mutate("update-status", { status: v })}
                 loading={false}
               />
             </>
@@ -94,7 +89,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
               <PropertySelect
                 value={priority}
                 options={priorityOpts ?? []}
-                onChange={(v) => update("update-properties", { Priority: { select: { name: v } } })}
+                onChange={(v) => mutate("update-properties", { Priority: { select: { name: v } } })}
                 loading={false}
               />
             </>
@@ -105,7 +100,7 @@ export function PropertiesPopover({ pluginId, itemId, item }: PropertiesPopoverP
               <PropertyMultiSelect
                 value={tags}
                 options={tagOpts ?? []}
-                onChange={(v) => update("update-tags", { tags: v })}
+                onChange={(v) => mutate("update-tags", { tags: v })}
                 loading={false}
                 placeholder="Add tag..."
               />

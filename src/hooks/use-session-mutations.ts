@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { resumeSession, abortSession, archiveSession, unarchiveSession, updateSession } from "@/api/client"
+import { toast } from "sonner"
 import type { SessionStatus } from "@/types"
 
 interface UseSessionMutationsOptions {
@@ -92,9 +93,37 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
 
   const rename = useMutation({
     mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
-    onSuccess: () => {
+    onMutate: async (newTitle: string) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ["sessions"] }),
+        qc.cancelQueries({ queryKey: ["session", sessionId] }),
+      ])
+      const previousDetail = qc.getQueryData<any>(["session", sessionId])
+      const previousList = qc.getQueriesData<any[]>({ queryKey: ["sessions"] })
+      qc.setQueryData<any>(["session", sessionId], (old: any) => {
+        if (!old) return old
+        return { ...old, session: { ...old.session, summary: newTitle } }
+      })
+      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
+        if (!Array.isArray(old)) return old
+        return old.map((s) => (s.id === sessionId ? { ...s, summary: newTitle } : s))
+      })
+      return { previousDetail, previousList }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
       qc.invalidateQueries({ queryKey: ["sessions"] })
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previousDetail) {
+        qc.setQueryData(["session", sessionId], context.previousDetail)
+      }
+      if (context?.previousList) {
+        for (const [key, data] of context.previousList) {
+          qc.setQueryData(key, data)
+        }
+      }
+      toast.error(`Rename failed: ${(err as Error).message}`)
     },
   })
 

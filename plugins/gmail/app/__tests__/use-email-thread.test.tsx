@@ -63,17 +63,12 @@ describe("useEmailThread", () => {
     await waitFor(() => expect(vi.mocked(client.getEmailThread).mock.calls.length).toBe(1))
   })
 
-  it("does not refetch when threadId changes back to a cached value (staleTime: Infinity)", async () => {
-    // Use production-equivalent config: staleTime Infinity + refetchOnMount false
-    const stableQc = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
-    })
-    const stableWrapper = makeWrapper(stableQc)
+  it("refetches when threadId changes back to a cached value (staleTime: 0)", async () => {
     const mockThread = { id: "t1", subject: "Hello", messages: [] } as any
     vi.mocked(client.getEmailThread).mockResolvedValue(mockThread)
 
     const { result, rerender } = renderHook(({ id }) => useEmailThread(id), {
-      wrapper: stableWrapper,
+      wrapper,
       initialProps: { id: "t1" as string | undefined },
     })
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -81,8 +76,8 @@ describe("useEmailThread", () => {
     rerender({ id: undefined })
     rerender({ id: "t1" })
 
-    // Should still be 1 call — data is in cache and staleTime is Infinity
-    expect(client.getEmailThread).toHaveBeenCalledTimes(1)
+    // staleTime: 0 means it refetches on remount to pick up new messages
+    await waitFor(() => expect(client.getEmailThread).toHaveBeenCalledTimes(2))
     expect(result.current.thread).toEqual(mockThread)
   })
 })

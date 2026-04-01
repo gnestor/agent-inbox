@@ -32,6 +32,7 @@ import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { getInitials } from "@/lib/formatters"
 import { ExternalLink, GitBranch, Trash2, UserPlus } from "lucide-react"
+import { toast } from "sonner"
 import type { WorkspaceMember } from "@/types"
 
 export function WorkspaceSettings() {
@@ -46,9 +47,22 @@ export function WorkspaceSettings() {
 
   const rename = useMutation({
     mutationFn: (name: string) => renameWorkspace(workspaceId, name),
-    onSuccess: () => {
+    onMutate: (name: string) => {
+      const previous = queryClient.getQueryData(["workspace-details", workspaceId])
+      queryClient.setQueryData<any>(["workspace-details", workspaceId], (old: any) =>
+        old ? { ...old, name } : old,
+      )
+      return { previous }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace-details", workspaceId] })
       refreshUser()
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["workspace-details", workspaceId], context.previous)
+      }
+      toast.error(`Rename failed: ${(err as Error).message}`)
     },
   })
 
@@ -95,14 +109,18 @@ export function WorkspaceSettings() {
       queryClient.invalidateQueries({ queryKey: ["workspace-details", workspaceId] })
       queryClient.invalidateQueries({ queryKey: ["workspace-available-users", workspaceId] })
       setAddMemberOpen(false)
+      toast.success("Member added")
     },
+    onError: (err) => toast.error(`Failed to add member: ${(err as Error).message}`),
   })
 
   const removeMember = useMutation({
     mutationFn: (email: string) => removeWorkspaceMember(workspaceId, email),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace-details", workspaceId] })
+      toast.success("Member removed")
     },
+    onError: (err) => toast.error(`Failed to remove member: ${(err as Error).message}`),
   })
 
   const changeMemberRole = useMutation({
@@ -110,7 +128,9 @@ export function WorkspaceSettings() {
       updateMemberRole(workspaceId, email, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace-details", workspaceId] })
+      toast.success("Role updated")
     },
+    onError: (err) => toast.error(`Failed to update role: ${(err as Error).message}`),
   })
 
   const members = (data?.members || []) as WorkspaceMember[]

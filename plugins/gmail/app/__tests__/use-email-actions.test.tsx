@@ -57,7 +57,7 @@ describe("useEmailActions", () => {
   it("archive calls modifyThreadLabels to remove INBOX", async () => {
     vi.mocked(client.modifyThreadLabels).mockResolvedValueOnce({ ok: true })
     const thread = makeThread()
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
@@ -71,13 +71,13 @@ describe("useEmailActions", () => {
   it("archive optimistically removes INBOX label from cache", async () => {
     vi.mocked(client.modifyThreadLabels).mockResolvedValueOnce({ ok: true })
     const thread = makeThread({ labelIds: ["INBOX", "STARRED"] })
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
     act(() => result.current.archive())
 
-    const cached = queryClient.getQueryData<GmailThread>(["thread", "t1"])
+    const cached = queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", "t1"])
     expect(cached?.labelIds).toEqual(["STARRED"])
   })
 
@@ -97,7 +97,7 @@ describe("useEmailActions", () => {
   it("toggleStar adds STARRED when not starred", async () => {
     vi.mocked(client.modifyThreadLabels).mockResolvedValueOnce({ ok: true })
     const thread = makeThread({ labelIds: ["INBOX"] })
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
@@ -107,14 +107,14 @@ describe("useEmailActions", () => {
       expect(client.modifyThreadLabels).toHaveBeenCalledWith("t1", { addLabelIds: ["STARRED"] })
     })
 
-    const cached = queryClient.getQueryData<GmailThread>(["thread", "t1"])
+    const cached = queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", "t1"])
     expect(cached?.labelIds).toContain("STARRED")
   })
 
   it("toggleStar removes STARRED when already starred", async () => {
     vi.mocked(client.modifyThreadLabels).mockResolvedValueOnce({ ok: true })
     const thread = makeThread({ labelIds: ["INBOX", "STARRED"] })
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
@@ -124,14 +124,14 @@ describe("useEmailActions", () => {
       expect(client.modifyThreadLabels).toHaveBeenCalledWith("t1", { removeLabelIds: ["STARRED"] })
     })
 
-    const cached = queryClient.getQueryData<GmailThread>(["thread", "t1"])
+    const cached = queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", "t1"])
     expect(cached?.labelIds).not.toContain("STARRED")
   })
 
   it("toggleImportant adds IMPORTANT when not important", async () => {
     vi.mocked(client.modifyThreadLabels).mockResolvedValueOnce({ ok: true })
     const thread = makeThread({ labelIds: ["INBOX"] })
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
@@ -145,18 +145,18 @@ describe("useEmailActions", () => {
   it("rolls back optimistic update on error", async () => {
     vi.mocked(client.modifyThreadLabels).mockRejectedValueOnce(new Error("fail"))
     const thread = makeThread({ labelIds: ["INBOX"] })
-    queryClient.setQueryData(["thread", "t1"], thread)
+    queryClient.setQueryData(["plugin-item", "gmail", "t1"], thread)
 
     const { result } = renderHook(() => useEmailActions("t1", thread), { wrapper })
 
     act(() => result.current.toggleStar())
 
     // Optimistic: STARRED added
-    expect(queryClient.getQueryData<GmailThread>(["thread", "t1"])?.labelIds).toContain("STARRED")
+    expect(queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", "t1"])?.labelIds).toContain("STARRED")
 
     // After error: rolled back
     await waitFor(() => {
-      expect(queryClient.getQueryData<GmailThread>(["thread", "t1"])?.labelIds).not.toContain("STARRED")
+      expect(queryClient.getQueryData<GmailThread>(["plugin-item", "gmail", "t1"])?.labelIds).not.toContain("STARRED")
     })
   })
 })
