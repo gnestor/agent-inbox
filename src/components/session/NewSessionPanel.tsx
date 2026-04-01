@@ -218,7 +218,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
             value={ready ? prompt : ""}
             onChange={setPrompt}
             onCmdEnter={() => createMutation.mutate()}
-            placeholder={ready ? "Describe what you want the agent to do..." : "Loading..."}
+            placeholder={ready ? "Write a prompt..." : "Loading..."}
             disabled={!ready}
             className="flex-1 min-h-[200px]"
           />

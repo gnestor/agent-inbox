@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { getSession, answerSessionQuestion } from "@/api/client"
 import { useSessionStream } from "./use-session-stream"
 import { useSessionMutations } from "./use-session-mutations"
-import type { PendingQuestion, SessionMessage } from "@/types"
+import type { Session, PendingQuestion, SessionMessage } from "@/types"
+
+type SessionQueryData = { session: Session; messages: SessionMessage[] }
 import { normalizeMessagePayload } from "@/types/session-message"
 
 // --- Session phase discriminated union ---
@@ -63,20 +65,21 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
   // Messages come directly from React Query cache (SSE updates it in place).
   // Normalize REST-loaded messages; SSE-pushed messages are already normalized.
   const dataMatchesSession = data?.session.id === sessionId
-  const messages: SessionMessage[] = dataMatchesSession
-    ? (data?.messages ?? []).map((m: SessionMessage) => ({
-        ...m,
-        message: normalizeMessagePayload(m.message),
-      }))
-    : []
+  const rawMessages = dataMatchesSession ? (data?.messages ?? []) : []
+  const messages = useMemo(
+    () => rawMessages.map((m: SessionMessage) => ({
+      ...m,
+      message: normalizeMessagePayload(m.message),
+    })),
+    [rawMessages],
+  )
 
-  // Resume: append optimistic user message to cache, then call API
   function resumeSession(prompt: string) {
-    // Optimistic: add user message to cache immediately
-    qc.setQueryData(["session", sessionId], (old: any) => {
+    qc.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
       if (!old) return old
       const msgs = old.messages ?? []
-      const seq = msgs.length > 0 ? Math.max(...msgs.map((m: any) => m.sequence)) + 1 : 0
+      // Use negative sequence to avoid collision with server-assigned sequences
+      const seq = msgs.length > 0 ? -(msgs.length + 1) : -1
       const optimistic: SessionMessage = {
         id: seq,
         sessionId,

@@ -1,6 +1,8 @@
 import { useReducer, useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { PendingQuestion, PresenceUser, SessionMessage } from "@/types"
+import type { Session, PendingQuestion, PresenceUser, SessionMessage } from "@/types"
+
+type SessionQueryData = { session: Session; messages: SessionMessage[] }
 import { normalizeMessagePayload, getMessageType } from "@/types/session-message"
 
 // ---------------------------------------------------------------------------
@@ -89,8 +91,8 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         if (data.type === "session_complete") {
           dispatch({ type: "COMPLETE" })
           // Update session status in React Query cache
-          queryClient.setQueryData(["session", sessionId], (old: any) => {
-            if (!old) return old
+          queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
+            if (!old || old.session.status === "complete") return old
             return { ...old, session: { ...old.session, status: "complete" } }
           })
           queryClient.invalidateQueries({ queryKey: ["sessions"] })
@@ -98,8 +100,8 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         }
         if (data.type === "session_error") {
           dispatch({ type: "ERROR" })
-          queryClient.setQueryData(["session", sessionId], (old: any) => {
-            if (!old) return old
+          queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
+            if (!old || old.session.status === "errored") return old
             return { ...old, session: { ...old.session, status: "errored" } }
           })
           queryClient.invalidateQueries({ queryKey: ["sessions"] })
@@ -130,11 +132,14 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
             createdAt: new Date().toISOString(),
           }
 
-          queryClient.setQueryData(["session", sessionId], (old: any) => {
+          queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
             if (!old) return old
             const messages = old.messages ?? []
-            if (messages.some((m: SessionMessage) => m.sequence === data.sequence)) return old
-            return { ...old, messages: [...messages, msg].sort((a: SessionMessage, b: SessionMessage) => a.sequence - b.sequence) }
+            // Strip optimistic messages (negative sequences) when real messages arrive
+            const cleaned = messages.some((m: SessionMessage) => m.sequence < 0)
+              ? messages.filter((m: SessionMessage) => m.sequence >= 0)
+              : messages
+            return { ...old, messages: [...cleaned, msg] }
           })
         }
       } catch {

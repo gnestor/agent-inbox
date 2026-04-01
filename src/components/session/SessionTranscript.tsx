@@ -5,6 +5,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData, AskUserQuestion } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
+import { isSubagentMessage, getAgentLabel } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -484,11 +485,10 @@ const TranscriptEntry = memo(function TranscriptEntry({
     if (!visibility.messages) return null
     const ideRefs = parseIdeContext(msg)
     if (!text && ideRefs.length === 0) return null
-    const raw = message.message as unknown as Record<string, unknown>
-    const isSubagent = !!(raw.isSidechain || raw.parentUuid || (raw.agentId && msg.type === "user"))
-    const isCurrentUser = !isSubagent && (!msg.authorEmail || msg.authorEmail === currentUserEmail)
+    const subagent = isSubagentMessage(message)
+    const isCurrentUser = !subagent && (!msg.authorEmail || msg.authorEmail === currentUserEmail)
     const profile = msg.authorEmail ? userProfiles?.get(msg.authorEmail) : undefined
-    const authorLabel = isCurrentUser ? "You" : isSubagent ? getAgentLabel(message) : (profile?.name || msg.authorName || "User")
+    const authorLabel = isCurrentUser ? "You" : subagent ? getAgentLabel(message) : (profile?.name || msg.authorName || "User")
     return (
       <MessageBubble label={authorLabel} align="right">
         <div className="space-y-1.5">
@@ -894,14 +894,6 @@ function shouldRenderMessage(message: SessionMessage, visibility: TranscriptVisi
   return false
 }
 
-/** Extract a display label for the agent that produced a message.
- *  Subagent messages have a `slug` (human-readable name) or `agentId` field. */
-function getAgentLabel(message: SessionMessage): string {
-  const raw = message.message as unknown as Record<string, unknown>
-  if (raw.slug) return String(raw.slug)
-  if (raw.agentId) return String(raw.agentId)
-  return "Claude"
-}
 
 function shouldRenderContentBlock(
   block: ContentBlockType,
