@@ -732,7 +732,8 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
       block.type === "tool_use" &&
       block.name !== "render_output" &&
       block.name !== "mcp__render_output__render_output" &&
-      block.name !== "AskUserQuestion"
+      block.name !== "AskUserQuestion" &&
+      block.name !== "ToolSearch"
     ) {
       toolGroup.push(block)
     } else {
@@ -806,16 +807,19 @@ function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: strin
   const [showOutput, setShowOutput] = useState(false)
   const command = toolUseCommand(name, input)
   const resultText = toolUseId ? toolResultMap?.get(toolUseId) : undefined
+  // Tools with a description have a natural 3-level structure: description (label) → input → output.
+  // Tools without one (Glob, Grep, Skill, etc.) show the result directly since the label already shows the input.
+  const hasDescription = name === "Bash" || name === "Agent"
 
   return (
     <div className="border-l-2 border-border pl-3 py-1 min-w-0">
-      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{name}</div>
-      {command && (
+      {/* <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{name}</div> */}
+      {hasDescription && command && (
         <div className="overflow-x-auto">
           <pre className="text-[11px] text-muted-foreground font-mono whitespace-pre">{command}</pre>
         </div>
       )}
-      {resultText && (
+      {hasDescription && resultText && (
         <>
           <button
             type="button"
@@ -830,6 +834,11 @@ function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: strin
             </pre>
           )}
         </>
+      )}
+      {!hasDescription && resultText && (
+        <pre className="text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto text-muted-foreground font-mono whitespace-pre-wrap break-words mt-1">
+          {resultText}
+        </pre>
       )}
     </div>
   )
@@ -1044,7 +1053,7 @@ function buildToolResultMap(messages: SessionMessage[]): Map<string, string> {
           const text = typeof block.content === "string"
             ? block.content
             : Array.isArray(block.content)
-              ? block.content.map((c: any) => c.text || "").join("\n")
+              ? block.content.map((c: any) => c.text || c.tool_name || "").join("\n")
               : ""
           if (text) map.set(block.tool_use_id, text)
         }
