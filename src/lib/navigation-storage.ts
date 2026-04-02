@@ -57,13 +57,6 @@ function validateState(state: NavigationState): NavigationState {
     state.tabs.sessions = createDefaultTabState()
   }
 
-  // Clean up stale recent:* tabs (keep only the active one, if any)
-  for (const tabId of Object.keys(state.tabs)) {
-    if (tabId.startsWith("recent:") && tabId !== state.activeTab) {
-      delete state.tabs[tabId]
-    }
-  }
-
   return state
 }
 
