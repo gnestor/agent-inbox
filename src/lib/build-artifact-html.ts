@@ -95,7 +95,10 @@ export function buildArtifactHtml(
 body {
   font-size: 14px;
   padding: 1px;
+  overflow-x: hidden;
 }
+/* Allow horizontal scroll for wide content without scrolling the whole artifact */
+pre { overflow-x: auto; max-width: 100%; }
 </style>
 <script>
 // Sync CSS variables from parent document (live — updates on theme change)
@@ -133,12 +136,18 @@ window.addEventListener('message', function(e) {
     window.__onStateRestored(e.data.state);
   }
 });
-// Forward horizontal scroll to parent so panel navigation works
+// Forward horizontal scroll to parent so panel navigation works,
+// but NOT when over a horizontally scrollable element (e.g. table wrapper)
 document.addEventListener('wheel', function(e) {
-  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-    window.parent.postMessage({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }, '*');
-    e.preventDefault();
+  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+  // Check if the event target or any ancestor can scroll horizontally
+  var el = e.target;
+  while (el && el !== document.body) {
+    if (el.scrollWidth > el.clientWidth + 1) return; // scrollable — let it scroll
+    el = el.parentElement;
   }
+  window.parent.postMessage({ type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY }, '*');
+  e.preventDefault();
 }, { passive: false });
 </script>
 <script>
@@ -187,8 +196,25 @@ if (_Component) {
   _root.textContent = 'No component found';
 }
 
-// Report height after component renders
-window.__reportHeight();
+// Wrap tables in scrollable containers so wide tables scroll independently.
+// The table keeps w-full but the wrapper constrains visible width and scrolls.
+requestAnimationFrame(function() {
+  var tables = document.querySelectorAll('[data-slot="table"], table');
+  if (!tables.length) { window.__reportHeight(); return; }
+  tables.forEach(function(table) {
+    if (table.parentElement?.classList.contains('table-scroll-wrap')) return;
+    // Remove w-full so the table can be wider than its container
+    table.classList.remove('w-full');
+    table.style.width = 'max-content';
+    table.style.minWidth = '100%';
+    var wrapper = document.createElement('div');
+    wrapper.className = 'table-scroll-wrap';
+    wrapper.style.overflowX = 'auto';
+    table.parentElement.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+  window.__reportHeight();
+});
 </script>
 </body>
 </html>`

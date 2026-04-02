@@ -84,7 +84,6 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
       title: z.string().describe("Title shown above the output. Also used as the key for updates — calling render_output again with the same title replaces the previous version."),
     },
     async (args) => {
-      // Validate react type has actual code
       if (args.type === "react") {
         const code = typeof args.data === "string" ? args.data : args.data?.code
         if (!code || typeof code !== "string") {
@@ -99,7 +98,6 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
           }
         }
       }
-      // Confirm what was received so the agent knows it worked
       let detail: string
       switch (args.type) {
         case "react": {

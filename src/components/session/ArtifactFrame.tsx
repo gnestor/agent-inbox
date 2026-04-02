@@ -5,8 +5,10 @@ import { transformArtifactCode } from "@/lib/artifact-transform"
 import { buildArtifactHtml } from "@/lib/build-artifact-html"
 import { Skeleton } from "@hammies/frontend/components/ui"
 
-// Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes
+// Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes.
+// Capped to prevent unbounded growth in long sessions.
 const srcDocCache = new Map<string, string>()
+const SRCDOC_CACHE_MAX = 50
 // Cache reported content heights so remounts start at the correct size
 // instead of flashing the default height before the iframe postMessage arrives.
 // Capped at 500 entries to prevent unbounded growth.
@@ -72,7 +74,13 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       if (key.startsWith(prefix)) srcDocCache.delete(key)
     }
     const html = buildArtifactHtml(transformedCode, title, exportedName, transformError)
-    if (!transformError) srcDocCache.set(cacheKey, html)
+    if (!transformError) {
+      if (srcDocCache.size >= SRCDOC_CACHE_MAX) {
+        const first = srcDocCache.keys().next().value
+        if (first) srcDocCache.delete(first)
+      }
+      srcDocCache.set(cacheKey, html)
+    }
     return html
   }, [transformedCode, title, exportedName, sessionId, sequence, transformError, transformLoading])
 
