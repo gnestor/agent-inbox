@@ -53,6 +53,8 @@ export function useTranscriptScroll({
   }, [visibleMessages.length])
 
   // Auto-scroll when content grows (new messages, artifacts loading, etc.)
+  // Re-create observer when visibility changes so prevHeight resets (toggling
+  // tool calls / thinking dramatically changes content height).
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -72,7 +74,7 @@ export function useTranscriptScroll({
 
     observer.observe(content)
     return () => observer.disconnect()
-  }, [sessionId])
+  }, [sessionId, visibility])
 
   function handleScroll() {
     if (!hasScrolledToBottom.current) return

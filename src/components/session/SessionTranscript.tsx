@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useCallback, memo, useState, Children, isValidElement, type ReactNode } from "react"
+import { useMemo, useRef, useEffect, useCallback, memo, useState, createContext, useContext, Children, isValidElement, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { useUserProfiles } from "@/hooks/use-user-profiles"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
@@ -50,6 +50,9 @@ export interface TranscriptVisibility {
   artifacts: boolean
 }
 
+const ToolResultMapContext = createContext<Map<string, string>>(new Map())
+function useToolResultMap() { return useContext(ToolResultMapContext) }
+
 export const DEFAULT_TRANSCRIPT_VISIBILITY: TranscriptVisibility = {
   messages: true,
   toolCalls: true,
@@ -91,7 +94,15 @@ export function SessionTranscript({
     shouldRenderMessage,
   })
   const userProfiles = useUserProfiles(messages)
-  const toolResultMap = useMemo(() => buildToolResultMap(messages), [messages])
+  // Stabilize reference — most SSE events don't add tool results
+  const prevToolResultMapRef = useRef(new Map<string, string>())
+  const toolResultMap = useMemo(() => {
+    const next = buildToolResultMap(messages)
+    const prev = prevToolResultMapRef.current
+    if (next.size === prev.size && [...next].every(([k, v]) => prev.get(k) === v)) return prev
+    prevToolResultMapRef.current = next
+    return next
+  }, [messages])
 
   // Track artifact loading: count expected render_output blocks vs reported heights
   const expectedArtifacts = useMemo(() => {
@@ -113,11 +124,11 @@ export function SessionTranscript({
 
   const artifactsLoadedRef = useRef(0)
   const artifactsReadyFired = useRef(false)
-  // Reset when session changes
-  if (artifactsLoadedRef.current > expectedArtifacts) {
+  // Reset when expected count drops (session change or visibility toggle)
+  useEffect(() => {
     artifactsLoadedRef.current = 0
     artifactsReadyFired.current = false
-  }
+  }, [expectedArtifacts])
 
   const handleArtifactLoaded = useCallback(() => {
     artifactsLoadedRef.current++
@@ -136,29 +147,31 @@ export function SessionTranscript({
   }, [expectedArtifacts, visibleMessages.length, onArtifactsReady])
 
   return (
-    <div
-      ref={scrollRef}
-      className="h-full overflow-y-auto overflow-x-hidden overscroll-contain"
-      onScroll={handleScroll}
-    >
-      <div className="p-4 min-w-0 pb-4">
-        {visibleMessages.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {visibleMessages.map((message) => (
-              <div
-                key={message.sequence}
-                style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
-              >
-                <TranscriptEntry message={message} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PanelSkeleton />
-        )}
-        {children}
+    <ToolResultMapContext.Provider value={toolResultMap}>
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto overflow-x-hidden overscroll-contain"
+        onScroll={handleScroll}
+      >
+        <div className="p-4 min-w-0 pb-4">
+          {visibleMessages.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {visibleMessages.map((message) => (
+                <div
+                  key={message.sequence}
+                  style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
+                >
+                  <TranscriptEntry message={message} visibility={visibility} sessionId={sessionId} currentUserEmail={currentUserEmail} userProfiles={userProfiles} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={handleArtifactLoaded} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <PanelSkeleton />
+          )}
+          {children}
+        </div>
       </div>
-    </div>
+    </ToolResultMapContext.Provider>
   )
 }
 
@@ -391,7 +404,6 @@ const TranscriptEntry = memo(function TranscriptEntry({
   sessionId,
   currentUserEmail,
   userProfiles,
-  toolResultMap,
   onOpenPanel,
   onAction,
   onAnswer,
@@ -402,7 +414,6 @@ const TranscriptEntry = memo(function TranscriptEntry({
   sessionId?: string
   currentUserEmail?: string
   userProfiles?: Map<string, { name: string; picture?: string }>
-  toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
   onAnswer?: (answers: Record<string, string>) => Promise<void>
@@ -530,9 +541,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
         {grouped.map((item, i) => {
           if (Array.isArray(item)) {
             if (!visibility.toolCalls) return null
-            return <ToolCallGroup key={i} blocks={item} sequence={message.sequence} startIndex={contentBlocks.indexOf(item[0])} toolResultMap={toolResultMap} />
+            return <ToolCallGroup key={i} blocks={item} sequence={message.sequence} startIndex={contentBlocks.indexOf(item[0])} />
           }
-          return <ContentBlockView key={i} block={item} sequence={message.sequence} visibility={visibility} sessionId={sessionId} agentLabel={agentLabel} toolResultMap={toolResultMap} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={onArtifactLoaded} />
+          return <ContentBlockView key={i} block={item} sequence={message.sequence} visibility={visibility} sessionId={sessionId} agentLabel={agentLabel} onOpenPanel={onOpenPanel} onAction={onAction} onAnswer={onAnswer} onArtifactLoaded={onArtifactLoaded} />
         })}
       </div>
     )
@@ -576,7 +587,6 @@ function ContentBlockView({
   visibility,
   sessionId,
   agentLabel = "Claude",
-  toolResultMap,
   onOpenPanel,
   onAction,
   onAnswer,
@@ -587,12 +597,12 @@ function ContentBlockView({
   visibility: TranscriptVisibility
   sessionId?: string
   agentLabel?: string
-  toolResultMap?: Map<string, string>
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void
   onAction?: (intent: string) => void
   onAnswer?: (answers: Record<string, string>) => Promise<void>
   onArtifactLoaded?: () => void
 }) {
+  const toolResultMap = useToolResultMap()
   const { data: panelSchemas } = useQuery({
     queryKey: ["panel-schemas"],
     queryFn: getPanelSchemas,
@@ -695,7 +705,7 @@ function ContentBlockView({
         color="text-muted-foreground"
         bold={false}
       >
-        <ToolCallDetail name={block.name} input={block.input} toolUseId={block.id} toolResultMap={toolResultMap} />
+        <ToolCallDetail name={block.name} input={block.input} toolUseId={block.id} />
       </TranscriptAccordionEntry>
     )
   }
@@ -748,7 +758,7 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
 }
 
 /** A single accordion containing multiple tool calls. */
-function ToolCallGroup({ blocks, toolResultMap }: { blocks: ToolUseBlock[]; sequence?: number; startIndex?: number; toolResultMap?: Map<string, string> }) {
+function ToolCallGroup({ blocks }: { blocks: ToolUseBlock[]; sequence?: number; startIndex?: number }) {
   const summary = blocks.length === 1 ? toolUseSummary(blocks[0].name, blocks[0].input) : ""
   const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
   const label = blocks.length === 1
@@ -764,7 +774,7 @@ function ToolCallGroup({ blocks, toolResultMap }: { blocks: ToolUseBlock[]; sequ
     >
       <div className="space-y-2">
         {blocks.map((block, i) => (
-          <ToolCallDetail key={i} name={block.name} input={block.input} toolUseId={block.id} toolResultMap={toolResultMap} />
+          <ToolCallDetail key={i} name={block.name} input={block.input} toolUseId={block.id} />
         ))}
       </div>
     </TranscriptAccordionEntry>
@@ -802,7 +812,8 @@ function ArtifactActionDetail({ intent, dataStr }: { intent: string; dataStr: st
   )
 }
 
-function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: string; input: Record<string, unknown>; toolUseId?: string; toolResultMap?: Map<string, string> }) {
+function ToolCallDetail({ name, input, toolUseId }: { name: string; input: Record<string, unknown>; toolUseId?: string }) {
+  const toolResultMap = useToolResultMap()
   const [showOutput, setShowOutput] = useState(false)
   const command = toolUseCommand(name, input)
   const resultText = toolUseId ? toolResultMap?.get(toolUseId) : undefined

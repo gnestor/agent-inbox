@@ -233,7 +233,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
           sessionId={sessionId}
           currentUserEmail={user?.email}
           onOpenPanel={handleOpenPanel}
-          onAction={(intent) => resumeSession(intent)}
+          onAction={resumeSession}
           onAnswer={answerQuestion}
           onArtifactsReady={handleArtifactsReady}
         >

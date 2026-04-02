@@ -74,7 +74,7 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
     [rawMessages],
   )
 
-  function resumeSession(prompt: string) {
+  const resumeSession = useCallback((prompt: string) => {
     qc.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
       if (!old) return old
       const msgs = old.messages ?? []
@@ -91,13 +91,14 @@ export function useSessionPhase({ sessionId, isActive = true, onResume, onArchiv
       return { ...old, messages: [...msgs, optimistic] }
     })
     mutations.resume.mutate(prompt)
-  }
+  }, [sessionId, qc, mutations.resume])
 
+  const clearPendingQuestion = stream.clearPendingQuestion
   const answerQuestion = useCallback(async (answers: Record<string, string>) => {
     await answerSessionQuestion(sessionId, answers)
-    stream.clearPendingQuestion()
+    clearPendingQuestion()
     qc.invalidateQueries({ queryKey: ["sessions"] })
-  }, [sessionId, stream, qc])
+  }, [sessionId, clearPendingQuestion, qc])
 
   return {
     phase,
