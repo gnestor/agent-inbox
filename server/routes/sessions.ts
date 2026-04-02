@@ -140,9 +140,25 @@ sessionRoutes.get("/:id", async (c) => {
     // JSONL is the source of truth for session transcript.
     // SSE pushes new messages to the client's React Query cache in real-time.
     const agentSession = await sessions.findAgentSession(sessionId)
-    const messages = agentSession
+    const transcript = agentSession
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
       : []
+
+    // The Agent SDK JSONL doesn't include the initial user prompt (it's passed
+    // as an argument, not emitted in the message stream). Prepend it from the
+    // DB record so the REST response matches what SSE broadcasts at seq 0.
+    const hasUserPrompt = transcript.length > 0 && transcript[0].type === "user"
+    const messages = hasUserPrompt ? transcript : [
+      {
+        id: 0,
+        sessionId,
+        sequence: 0,
+        type: "user",
+        message: { type: "user", role: "user", content: session.prompt },
+        createdAt: session.started_at,
+      },
+      ...transcript,
+    ]
 
     // If DB says "running" but no active process and JSONL has ended,
     // correct the status to "complete" (stale from server restart)
@@ -179,13 +195,26 @@ sessionRoutes.get("/:id", async (c) => {
   }
 
   // Read the transcript from the Agent SDK session (pass cwd so we find the right project)
-  const transcript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+  const sdkTranscript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+  const sdkHasUserPrompt = sdkTranscript.length > 0 && sdkTranscript[0].type === "user"
+  const prompt = agentSession.firstPrompt || ""
+  const transcript = sdkHasUserPrompt ? sdkTranscript : [
+    {
+      id: 0,
+      sessionId,
+      sequence: 0,
+      type: "user",
+      message: { type: "user", role: "user", content: prompt },
+      createdAt: new Date(agentSession.lastModified).toISOString(),
+    },
+    ...sdkTranscript,
+  ]
 
   return c.json({
     session: {
       id: agentSession.sessionId,
       status: "complete",
-      prompt: agentSession.firstPrompt || "",
+      prompt,
       summary: agentSession.summary || agentSession.firstPrompt || null,
       startedAt: new Date(agentSession.lastModified).toISOString(),
       updatedAt: new Date(agentSession.lastModified).toISOString(),
