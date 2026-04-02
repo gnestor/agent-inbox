@@ -79,7 +79,7 @@ function getWorkspacePaths(): string[] {
 }
 
 const workspacePaths = getWorkspacePaths()
-console.log(`Workspaces: ${workspacePaths.join(", ")}`)
+console.log(`Workspaces: ${workspacePaths.map(p => p.split("/").pop()).join(", ")}`)
 
 // Initialize database
 await initializeDatabase()
@@ -169,7 +169,6 @@ createCredentialProxy({
 })
   .then((proxy) => {
     setCredentialProxy(proxy)
-    console.log(`Credential proxy ready on port ${proxy.port}`)
   })
   .catch((err) => console.error("Failed to start credential proxy:", err))
 
@@ -260,7 +259,6 @@ const port = parseInt(process.env.PORT || "3002", 10)
 
 // Load workspace plugins before starting the server
 for (const ws of registeredWorkspaces) {
-  console.log(`Loading plugins for workspace ${ws.id} from ${ws.path}`)
   await loadPlugins(ws.path, ws.id).catch((err) => console.warn(`Failed to load plugins for ${ws.id}:`, err.message))
 }
 mountPluginRoutes(app)

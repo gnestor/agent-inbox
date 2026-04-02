@@ -203,7 +203,6 @@ export async function createCredentialProxy(
         }),
       }
 
-      console.log(`Credential proxy listening on 127.0.0.1:${addr.port}`)
       resolve(proxy)
     })
 

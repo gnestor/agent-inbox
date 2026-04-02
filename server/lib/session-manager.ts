@@ -103,7 +103,6 @@ import { fileURLToPath } from "url"
 
 // Resolve inbox package root from this file's location (server/lib/session-manager.ts → ../../)
 const INBOX_PLUGINS_DIR = resolve(fileURLToPath(import.meta.url), "../../../plugins/core")
-console.log(`[session] INBOX_PLUGINS_DIR: ${INBOX_PLUGINS_DIR}, exists: ${fs.existsSync(INBOX_PLUGINS_DIR)}`)
 
 function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] {
   const wsPluginsDir = resolve(wsPath, "plugins")
@@ -122,7 +121,6 @@ function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] 
     }
   }
 
-  console.log(`[session] Loading ${plugins.length} plugins:`, plugins.map(p => p.path.split("/").slice(-2).join("/")))
   return plugins
 }
 
@@ -824,14 +822,12 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
 
   // Mark old stale sessions as errored
   for (const session of old) {
-    console.log(`[server] Marking stale session ${session.id} as errored (last updated ${session.updated_at})`)
     await updateSessionStatus(session.id, "errored", "Session interrupted by server restart")
   }
 
   // Auto-resume recent running sessions concurrently
   const results = await Promise.allSettled(
     toResume.map(async (session) => {
-      console.log(`[server] Auto-resuming session ${session.id}`)
       await resumeSessionQuery(session.id, "The server was restarted. Continue where you left off.")
     }),
   )
@@ -843,12 +839,13 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
     }
   }
 
-  if (toWait.length > 0) {
-    console.log(`[server] ${toWait.length} session(s) awaiting user input — question will re-deliver on SSE connect`)
+  if (toResume.length > 0 || old.length > 0 || toWait.length > 0) {
+    const parts: string[] = []
+    if (toResume.length > 0) parts.push(`${toResume.length} resumed`)
+    if (old.length > 0) parts.push(`${old.length} marked errored`)
+    if (toWait.length > 0) parts.push(`${toWait.length} awaiting input`)
+    console.log(`[server] Session recovery: ${parts.join(", ")}`)
   }
-  console.log(
-    `[server] Session recovery: ${toResume.length} resumed, ${old.length} marked errored`,
-  )
 }
 
 /**
@@ -914,7 +911,6 @@ export async function watchProjectsDir(): Promise<void> {
   // Poll every 5 seconds
   setInterval(poll, 5000)
 
-  console.log(`[watcher] Polling ${watchDir} for new sessions (every 5s)`)
 }
 
 export async function listAgentSessions() {
