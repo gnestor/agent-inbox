@@ -1,4 +1,5 @@
 import { useNavigation } from "@/hooks/use-navigation"
+import { useHydratedPanels } from "@/lib/navigation-store"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PanelSlot } from "@/components/navigation/PanelSlot"
@@ -14,11 +15,10 @@ interface PluginViewProps {
 }
 
 export function PluginView({ tabId: tabIdProp }: PluginViewProps) {
-  const { activeTab, getPanels, getSelectedItemId, getSourceTab } = useNavigation()
+  const { activeTab, getSelectedItemId, getSourceTab } = useNavigation()
   const tabId = tabIdProp ?? activeTab as TabId
-  // For recent:* tabs, resolve pluginId from the source tab (e.g. "plugin:gmail")
   const pluginId = pluginIdFromTab(tabId) ?? pluginIdFromTab(getSourceTab(tabId) ?? "")
-  const panels = getPanels(tabId)
+  const panels = useHydratedPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")
   const selectedId = getSelectedItemId(tabId)

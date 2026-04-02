@@ -252,6 +252,19 @@ export function useTabPanels(tabId?: TabId): PanelState[] {
   })
 }
 
+/**
+ * Returns panels for a tab, gated on hydration.
+ * Before the store is rehydrated from localStorage, only "list" panels are
+ * returned to prevent flashing detail panels that get replaced on hydration.
+ */
+export function useHydratedPanels(tabId?: TabId): PanelState[] {
+  return useNavigationStore((s) => {
+    const id = tabId ?? s.activeTab
+    const panels = s.tabs[id]?.panels ?? []
+    return s._initialized ? panels : panels.filter((p) => p.type === "list")
+  })
+}
+
 /** Returns selectedItemId for a tab. Defaults to activeTab. */
 export function useSelectedItemId(tabId?: TabId): string | undefined {
   return useNavigationStore((s) => {

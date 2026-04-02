@@ -1,16 +1,18 @@
 // src/components/navigation/PanelContent.tsx
-import { lazy, Suspense, useCallback, useMemo } from "react"
+import { lazy, Suspense, useState, useCallback, useMemo } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { X, Pencil } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
+import { PanelHeader } from "@/components/shared/PanelHeader"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
 import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
 import { AskUserForm } from "@/components/session/AskUserForm"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { useNavActions } from "@/lib/navigation-store"
 import { resumeSession, answerSessionQuestion } from "@/api/client"
-import { useQueryClient } from "@tanstack/react-query"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
+import { Skeleton } from "@hammies/frontend/components/ui"
 
 // Lazy-load tab-specific components to avoid circular imports
 const SessionView = lazy(() =>
@@ -46,6 +48,10 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
     return { ...spec, data }
   }, [spec, editingCode])
 
+  // For react artifacts, show panel skeleton until the iframe has rendered.
+  const [artifactReady, setArtifactReady] = useState(spec?.type !== "react")
+  const handleArtifactLoaded = useCallback(() => setArtifactReady(true), [])
+
   const handleEdit = useCallback(() => {
     if (!spec || spec.type !== "react") return
     const code = typeof spec.data === "string" ? spec.data : spec.data?.code || ""
@@ -58,7 +64,16 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   }, [spec, editorKey, sessionId, sequence, pushPanel, panel.id])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {!artifactReady && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-card">
+          <PanelHeader
+            left={<Skeleton className="h-4 w-32 rounded" />}
+            right={<div className="w-8" />}
+          />
+          <PanelSkeleton />
+        </div>
+      )}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="text-sm font-semibold">{spec?.title || spec?.type || "Output"}</span>
         <div className="flex items-center gap-0.5">
@@ -91,6 +106,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
             sequence={sequence}
             fillPanel
             onAction={handleAction}
+            onArtifactLoaded={handleArtifactLoaded}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -177,7 +193,14 @@ export function PanelContent({ panel }: PanelContentProps) {
 
     case "code_editor":
       return (
-        <Suspense fallback={fallback}>
+        <Suspense fallback={
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+              <span className="text-sm font-semibold">Edit Artifact</span>
+            </div>
+            <PanelSkeleton />
+          </div>
+        }>
           <CodeEditorPanel panel={panel} />
         </Suspense>
       )

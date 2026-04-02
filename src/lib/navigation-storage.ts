@@ -5,11 +5,7 @@ import { createDefaultTabState } from "@/types/navigation"
 
 const STORAGE_KEY = "INBOX_NAV_STATE"
 
-
-// --- IndexedDB persistence ---
-
 export async function saveNavigationState(state: NavigationState): Promise<void> {
-  // Strip _initialized flag — it's runtime-only, not persisted
   const { _initialized, ...rest } = state
   await set(STORAGE_KEY, rest)
 }

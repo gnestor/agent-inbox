@@ -2,7 +2,13 @@
 import "@testing-library/jest-dom"
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { OutputRenderer } from "../OutputRenderer"
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+}
 
 vi.mock("@/hooks/use-preferences", () => ({
   usePreference: (_key: string, defaultValue: unknown) => [defaultValue, vi.fn()],
@@ -102,16 +108,21 @@ describe("OutputRenderer", () => {
     expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts")
   })
 
-  it("renders react artifact in sandboxed iframe with CSP", () => {
+  it("renders react artifact in sandboxed iframe with CSP", async () => {
     const { container } = render(
-      <OutputRenderer
-        spec={{ type: "react", data: { code: "function App() { return <div>hi</div> }" } }}
-        sessionId="test-session"
-        sequence={0}
-      />
+      <Wrapper>
+        <OutputRenderer
+          spec={{ type: "react", data: { code: "function App() { return <div>hi</div> }" } }}
+          sessionId="test-session"
+          sequence={0}
+        />
+      </Wrapper>
     )
+    // Transform is async (React Query) — wait for iframe to appear
+    await vi.waitFor(() => {
+      expect(container.querySelector("iframe")).toBeInTheDocument()
+    })
     const iframe = container.querySelector("iframe")
-    expect(iframe).toBeInTheDocument()
     // allow-same-origin needed for ES module imports; CSP blocks network access
     expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts")
     expect(iframe?.getAttribute("sandbox")).toContain("allow-same-origin")

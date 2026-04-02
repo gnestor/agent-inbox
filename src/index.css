@@ -32,3 +32,7 @@ body {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(0 0 0 / 0.05);
 }
+
+.hljs {
+  background: var(--card);
+}

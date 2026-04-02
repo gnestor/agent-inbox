@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { usePreference } from "@/hooks/use-preferences"
 import { transformArtifactCode } from "@/lib/artifact-transform"
 import { buildArtifactHtml } from "@/lib/build-artifact-html"
@@ -43,44 +44,29 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   const prefKey = `artifact:${sessionId}:${sequence}`
   const [savedState, setSavedState] = usePreference<Record<string, unknown>>(prefKey, {})
 
-  // Transform JSX in parent context — no Babel needed in iframe.
-  // Keep last valid result so syntax errors during editing don't crash the app.
-  // Babel is loaded lazily (async) on first artifact render.
+  // Transform JSX → React.createElement via React Query.
+  // Babel is loaded lazily on first artifact render; results are cached by code string.
   const lastValidRef = useRef<{ code: string; exportedName: string | null } | null>(null)
-  const [transformResult, setTransformResult] = useState<{
-    code: string; exportedName: string | null; error: string | null
-  }>({ code: "", exportedName: null, error: null })
+  const { data: transformResult, isLoading: transformLoading, error: transformQueryError } = useQuery({
+    queryKey: ["artifact-transform", code],
+    queryFn: () => transformArtifactCode(code),
+    staleTime: Infinity,
+    gcTime: 10 * 60 * 1000,
+    retry: false,
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const result = await transformArtifactCode(code)
-        if (!cancelled) {
-          lastValidRef.current = result
-          setTransformResult({ ...result, error: null })
-        }
-      } catch (e) {
-        if (!cancelled) {
-          const prev = lastValidRef.current
-          setTransformResult({
-            code: prev?.code ?? "",
-            exportedName: prev?.exportedName ?? null,
-            error: e instanceof Error ? e.message : String(e),
-          })
-        }
-      }
-    })()
-    return () => { cancelled = true }
-  }, [code])
-
-  const { code: transformedCode, exportedName, error: transformError } = transformResult
+  // Track last valid result so syntax errors during editing show the previous good version
+  if (transformResult) lastValidRef.current = transformResult
+  const transformedCode = transformResult?.code ?? lastValidRef.current?.code ?? ""
+  const exportedName = transformResult?.exportedName ?? lastValidRef.current?.exportedName ?? null
+  const transformError = transformQueryError instanceof Error ? transformQueryError.message : transformQueryError ? String(transformQueryError) : null
 
   const srcDoc = useMemo(() => {
+    // Don't build HTML until the transform has produced code
+    if (transformLoading && !transformedCode) return ""
     const cacheKey = `${sessionId}:${sequence}:${transformedCode}`
     const cached = srcDocCache.get(cacheKey)
     if (cached && !transformError) return cached
-    // Evict previous entries for this artifact (different code)
     const prefix = `${sessionId}:${sequence}:`
     for (const key of srcDocCache.keys()) {
       if (key.startsWith(prefix)) srcDocCache.delete(key)
@@ -88,7 +74,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     const html = buildArtifactHtml(transformedCode, title, exportedName, transformError)
     if (!transformError) srcDocCache.set(cacheKey, html)
     return html
-  }, [transformedCode, title, exportedName, sessionId, sequence, transformError])
+  }, [transformedCode, title, exportedName, sessionId, sequence, transformError, transformLoading])
 
   const handleLoad = useCallback(() => {
     const iframe = iframeRef.current
@@ -155,19 +141,23 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
 
   return (
     <div className="relative w-full h-full">
-      {/* Iframe always renders at a real size so the browser loads content.
-          Before height is reported, it's behind the skeleton via opacity. */}
-      <iframe
-        ref={iframeRef}
-        srcDoc={srcDoc}
-        sandbox="allow-scripts allow-same-origin allow-popups"
-        className={className ?? `w-full border-0 rounded-md ${showIframe ? "" : "opacity-0 absolute inset-0"}`}
-        style={!className ? { height: iframeHeight } : undefined}
-        title={title || "React Artifact"}
-        onLoad={handleLoad}
-      />
-      {!showIframe && !transformError && !runtimeError && (
-        <Skeleton className="w-full h-[200px] rounded-md" />
+      {/* Don't render iframe until Babel has transformed the code and produced srcDoc */}
+      {!transformLoading && srcDoc && (
+        <iframe
+          ref={iframeRef}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts allow-same-origin allow-popups"
+          className={className ?? `w-full border-0 rounded-md ${showIframe ? "" : "opacity-0 absolute inset-0"}`}
+          style={!className ? { height: iframeHeight } : undefined}
+          title={title || "React Artifact"}
+          onLoad={handleLoad}
+        />
+      )}
+      {(!showIframe || transformLoading) && !transformError && !runtimeError && (
+        <Skeleton
+          className={className ? "w-full h-full rounded-md" : "w-full rounded-md"}
+          style={className ? undefined : { height: iframeHeight }}
+        />
       )}
       {(transformError || runtimeError) && (
         <div className="min-h-[150px] bg-destructive p-4 rounded-md overflow-auto absolute inset-0">

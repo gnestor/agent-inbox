@@ -1,4 +1,5 @@
 import { useNavigation } from "@/hooks/use-navigation"
+import { useHydratedPanels } from "@/lib/navigation-store"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PanelSlot } from "@/components/navigation/PanelSlot"
@@ -8,8 +9,8 @@ import { SessionView } from "./SessionView"
 import type { TabId } from "@/types/navigation"
 
 export function SessionTab({ tabId = "sessions" as TabId }: { tabId?: TabId }) {
-  const { getPanels, getSelectedItemId } = useNavigation()
-  const panels = getPanels(tabId)
+  const { getSelectedItemId } = useNavigation()
+  const panels = useHydratedPanels(tabId)
   const listPanel = panels.find((p) => p.type === "list")
   const detailPanels = panels.filter((p) => p.type !== "list")
   const selectedId = getSelectedItemId(tabId)
