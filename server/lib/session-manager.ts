@@ -8,6 +8,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { RENDER_OUTPUT_NAMES } from "../../src/types/session-message.js"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
@@ -531,7 +532,7 @@ export async function startSession(
       cwd: wsPath,
       systemPrompt: buildSystemPrompt(sourceContext),
       settingSources: ["project"],
-      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -542,6 +543,7 @@ export async function startSession(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
+      betas: ["context-1m-2025-08-07"]
     },
   })
   let sequence = 0
@@ -660,7 +662,7 @@ export async function resumeSessionQuery(
       cwd: wsPath,
       systemPrompt: buildSystemPrompt(resumeSourceContext),
       settingSources: ["project"],
-      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -671,6 +673,7 @@ export async function resumeSessionQuery(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
+      betas: ["context-1m-2025-08-07"]
     },
   })
 
@@ -1237,11 +1240,6 @@ export async function listProjectOptions(): Promise<string[]> {
 }
 
 export async function getAgentSessionTranscript(sessionId: string, cwd?: string) {
-  const { readFileSync } = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
-
-  // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
   const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
@@ -1324,7 +1322,7 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
       if (!Array.isArray(content)) continue
       const renderBlock = content.find((b: any) =>
         b?.type === "tool_use" &&
-        (b.name === "render_output" || b.name === "mcp__render_output__render_output"),
+        RENDER_OUTPUT_NAMES.has(b.name),
       )
       if (!renderBlock) continue
       const title = renderBlock.input?.title ?? ""
@@ -1367,7 +1365,7 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
   if (!Array.isArray(content)) return false
   for (const block of content) {
     if (block.type !== "tool_use") continue
-    if (block.name !== "render_output" && block.name !== "mcp__render_output__render_output") continue
+    if (!RENDER_OUTPUT_NAMES.has(block.name)) continue
     if (typeof block.input?.data === "string") {
       block.input.data = code
     } else if (block.input?.data && typeof block.input.data === "object") {

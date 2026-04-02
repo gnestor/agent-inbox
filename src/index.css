@@ -21,11 +21,9 @@
 .dark .bg-primary, .dark .bg-primary\! {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(1 0 0 / 0.05);
-  /* background-color: oklch(from var(--primary) l c h / 0.7) !important; */
 }
 
 .bg-primary, .bg-primary\! {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(0 0 0 / 0.05);
-  /* background-color: oklch(from var(--primary) l c h / 0.7) !important; */
 }

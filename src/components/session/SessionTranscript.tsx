@@ -5,7 +5,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { SessionMessage, InboxContextData, InboxResultData, AskUserQuestion } from "@/types"
 import type { SessionMessagePayload, ContentBlock as ContentBlockType, TextBlock, ToolUseBlock, UserMessage, AssistantMessage } from "@/types/session-message"
-import { isSubagentMessage, getAgentLabel } from "@/types/session-message"
+import { isSubagentMessage, getAgentLabel, RENDER_OUTPUT_NAMES } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -101,7 +101,7 @@ export function SessionTranscript({
       for (const b of blocks) {
         if (
           b.type === "tool_use"
-          && (b.name === "render_output" || b.name === "mcp__render_output__render_output")
+          && RENDER_OUTPUT_NAMES.has(b.name)
           && (b as any).input?.type === "react"
         ) {
           count++
@@ -657,7 +657,7 @@ function ContentBlockView({
 
   if (block.type === "tool_use") {
     // render_output tool — renders structured output in an accordion
-    if ((block.name === "render_output" || block.name === "mcp__render_output__render_output") && block.input && sessionId) {
+    if ((RENDER_OUTPUT_NAMES.has(block.name)) && block.input && sessionId) {
       if (!visibility.artifacts) return null
       const outputSpec = block.input as OutputSpec
       return (
@@ -809,11 +809,10 @@ function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: strin
   const resultText = toolUseId ? toolResultMap?.get(toolUseId) : undefined
   // Tools with a description have a natural 3-level structure: description (label) → input → output.
   // Tools without one (Glob, Grep, Skill, etc.) show the result directly since the label already shows the input.
-  const hasDescription = name === "Bash" || name === "Agent"
+  const hasDescription = TOOLS_WITH_DESCRIPTION.has(name)
 
   return (
     <div className="border-l-2 border-border pl-3 py-1 min-w-0">
-      {/* <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{name}</div> */}
       {hasDescription && command && (
         <div className="overflow-x-auto">
           <pre className="text-[11px] text-muted-foreground font-mono whitespace-pre">{command}</pre>
@@ -847,6 +846,8 @@ function ToolCallDetail({ name, input, toolUseId, toolResultMap }: { name: strin
 const TOOL_DISPLAY_NAME: Record<string, string> = {
   ToolSearch: "Search tools",
 }
+
+const TOOLS_WITH_DESCRIPTION = new Set(["Bash", "Agent"])
 
 const TOOL_PRIMARY_FIELD: Record<string, string> = {
   Read: "file_path", Write: "file_path", Edit: "file_path",
@@ -916,7 +917,7 @@ function shouldRenderContentBlock(
   }
 
   if (block.type === "tool_use") {
-    if (block.name === "render_output" || block.name === "mcp__render_output__render_output") {
+    if (RENDER_OUTPUT_NAMES.has(block.name)) {
       return visibility.artifacts && !!block.input && hasSessionId
     }
     if (block.name === "AskUserQuestion") return true

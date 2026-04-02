@@ -150,6 +150,9 @@ export function getMessageType(raw: unknown): string {
   return (obj.type as string) || (obj.role as string) || "unknown"
 }
 
+/** Tool names for render_output (MCP and direct). */
+export const RENDER_OUTPUT_NAMES = new Set(["render_output", "mcp__render_output__render_output"])
+
 /** Check if a message is from/to a subagent (not the human user). */
 export function isSubagentMessage(message: { type: string; message: unknown }): boolean {
   const raw = message.message as Record<string, unknown>
