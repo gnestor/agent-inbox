@@ -4,6 +4,12 @@
  * should behave within the app's session experience.
  */
 export const SESSION_INSTRUCTIONS = `
+## Authentication
+
+All API credentials are managed by the credential proxy — you do not need API keys,
+tokens, or .env files. Make requests to external services normally using your skill
+scripts and the proxy will inject the correct credentials automatically.
+
 ## Session Behavior
 
 When a session includes source context (email thread, Notion task, Gorgias ticket, etc.):

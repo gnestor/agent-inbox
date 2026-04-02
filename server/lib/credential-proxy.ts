@@ -21,6 +21,11 @@ export const INTERCEPTED_HOSTS = [
   "googleapis.com",                 // *.googleapis.com via endsWith check
   "api.air.inc",
   "quickbooks.api.intuit.com",
+  "sandbox-quickbooks.api.intuit.com",
+  "a.klaviyo.com",
+  "graph.facebook.com",
+  "gorgias.com",                    // *.gorgias.com via endsWith check
+  "api.pinterest.com",
 ]
 
 export function shouldIntercept(host: string): boolean {
@@ -31,26 +36,91 @@ export function shouldIntercept(host: string): boolean {
 
 /**
  * Map intercepted host to the integration name used in the vault.
+ * Order matters: specific subdomains must be checked before catch-all patterns.
  */
 export function hostToIntegration(host: string): string {
   if (host === "api.notion.com") return "notion"
   if (host === "api.github.com") return "github"
   if (host.includes("slack.com")) return "slack"
   if (host.includes("shopify.com")) return "shopify"
+  if (host === "generativelanguage.googleapis.com") return "gemini"
   if (host.includes("googleapis.com")) return "google"
   if (host === "api.air.inc") return "air"
-  if (host === "quickbooks.api.intuit.com") return "quickbooks"
+  if (host.includes("quickbooks.api.intuit.com")) return "quickbooks"
+  if (host === "a.klaviyo.com") return "klaviyo"
+  if (host === "graph.facebook.com") return "meta"
+  if (host.includes("gorgias.com")) return "gorgias"
+  if (host === "api.pinterest.com") return "pinterest"
   return host
+}
+
+// ---------------------------------------------------------------------------
+// Per-integration auth injection strategy
+// ---------------------------------------------------------------------------
+
+export type AuthMethod =
+  | { type: "bearer" }
+  | { type: "header"; name: string }
+  | { type: "basic"; extraKey: string }
+  | { type: "query"; param: string }
+
+/**
+ * How each integration's credential should be injected into outgoing requests.
+ * - bearer:  Authorization: Bearer {token}
+ * - header:  {name}: {token}  (custom header)
+ * - basic:   Authorization: Basic base64({extras[extraKey]}:{token})
+ * - query:   append/replace ?{param}={token} on the request URL
+ */
+export const INTEGRATION_AUTH: Record<string, AuthMethod> = {
+  notion:     { type: "bearer" },
+  github:     { type: "bearer" },
+  slack:      { type: "bearer" },
+  google:     { type: "bearer" },
+  air:        { type: "bearer" },
+  quickbooks: { type: "bearer" },
+  pinterest:  { type: "bearer" },
+  shopify:    { type: "header", name: "X-Shopify-Access-Token" },
+  klaviyo:    { type: "header", name: "Klaviyo-API-Key" },
+  gorgias:    { type: "basic", extraKey: "email" },
+  meta:       { type: "query", param: "access_token" },
+  instagram:  { type: "query", param: "access_token" },
+  gemini:     { type: "query", param: "key" },
+}
+
+export interface ResolvedCredential {
+  token: string
+  /** Additional context needed for auth injection (e.g., email for Basic auth). */
+  extras?: Record<string, string>
 }
 
 export interface CredentialProxyOptions {
   /**
    * Given a session token (extracted from the Proxy-Authorization header, which
    * HTTP clients set automatically from the userinfo in the proxy URL) and an
-   * integration name, resolve the Bearer/API token from the vault. Return null
-   * if not found.
+   * integration name, resolve the credential from the vault. Return null if not
+   * found.
    */
-  resolveToken: (sessionToken: string, integration: string) => Promise<string | null>
+  resolveCredential: (sessionToken: string, integration: string) => Promise<ResolvedCredential | null>
+}
+
+/**
+ * Format a credential into the appropriate HTTP header line for an integration.
+ */
+function formatAuthHeader(method: AuthMethod, cred: ResolvedCredential): string {
+  switch (method.type) {
+    case "bearer":
+      return `Authorization: Bearer ${cred.token}`
+    case "header":
+      return `${method.name}: ${cred.token}`
+    case "basic": {
+      const user = cred.extras?.[method.extraKey] ?? ""
+      const encoded = Buffer.from(`${user}:${cred.token}`).toString("base64")
+      return `Authorization: Basic ${encoded}`
+    }
+    case "query":
+      // Query params are injected into the URL, not as a header
+      return ""
+  }
 }
 
 export interface CredentialProxy {
@@ -122,28 +192,44 @@ export async function createCredentialProxy(
           const lines = headerSection.split("\r\n")
           const requestLine = lines[0]
 
-          // Resolve token from vault
-          let authHeader: string | null = null
-          if (sessionToken) {
-            const token = await options.resolveToken(sessionToken, integration)
-            if (token) {
-              authHeader = `Bearer ${token}`
+          // Resolve credential from vault
+          const cred = sessionToken
+            ? await options.resolveCredential(sessionToken, integration)
+            : null
+
+          const authMethod = INTEGRATION_AUTH[integration]
+          let finalRequestLine = requestLine
+
+          // For query-param auth, inject/replace the param in the URL
+          if (cred && authMethod?.type === "query") {
+            const match = requestLine.match(/^(\S+)\s+(\S+)\s+(\S+)$/)
+            if (match) {
+              const [, method, rawUrl, httpVersion] = match
+              const url = new URL(rawUrl, `https://${host}`)
+              url.searchParams.set(authMethod.param, cred.token)
+              finalRequestLine = `${method} ${url.pathname}${url.search} ${httpVersion}`
             }
           }
 
-          // Rebuild headers, injecting/replacing Authorization
-          const newHeaders: string[] = [requestLine]
-          let hasAuth = false
+          // Rebuild headers with credential injection
+          const newHeaders: string[] = [finalRequestLine]
+          const authHeaderName = authMethod?.type === "header" ? authMethod.name.toLowerCase() : "authorization"
+          let injected = false
+
           for (let i = 1; i < lines.length; i++) {
-            if (lines[i].toLowerCase().startsWith("authorization:") && authHeader) {
-              newHeaders.push(`Authorization: ${authHeader}`)
-              hasAuth = true
+            const lowerLine = lines[i].toLowerCase()
+            if (cred && lowerLine.startsWith(`${authHeaderName}:`)) {
+              // Replace existing header with the real credential
+              newHeaders.push(formatAuthHeader(authMethod!, cred))
+              injected = true
             } else {
               newHeaders.push(lines[i])
             }
           }
-          if (!hasAuth && authHeader) {
-            newHeaders.push(`Authorization: ${authHeader}`)
+
+          // Add header if it wasn't already present (bearer/header/basic only)
+          if (cred && !injected && authMethod?.type !== "query") {
+            newHeaders.push(formatAuthHeader(authMethod!, cred))
           }
 
           // Connect to the real server

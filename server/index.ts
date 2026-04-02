@@ -19,13 +19,14 @@ import { backfillRoutes } from "./routes/backfill.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
-import { loadCredentials, setDefaultWorkspaceId } from "./lib/credentials.js"
+import { loadCredentials, setDefaultWorkspaceId, getCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir } from "./lib/session-manager.js"
 import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scanner.js"
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
-import { createCredentialProxy } from "./lib/credential-proxy.js"
-import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials } from "./lib/vault.js"
+import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
+import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials, type StoredCredential } from "./lib/vault.js"
+import { getIntegration } from "./lib/integrations.js"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
@@ -105,8 +106,66 @@ if (registeredWorkspaces.length > 0) {
   setDefaultWorkspaceId(registeredWorkspaces[0].id)
 }
 
-// Auto-refresh an OAuth access token using the stored refresh token.
-// Currently only QBO needs this — access tokens expire after 1 hour.
+/**
+ * Generic OAuth access token refresh using IntegrationConfig metadata.
+ * Reads tokenUrl, tokenAuthMethod, clientIdEnv, clientSecretEnv from the
+ * integration registry so each provider doesn't need a bespoke block.
+ */
+async function refreshOAuthAccessToken(
+  userEmail: string,
+  integration: string,
+  refreshToken: string,
+  existing: StoredCredential,
+): Promise<string> {
+  const config = getIntegration(integration)
+  if (!config?.tokenUrl || !config.clientIdEnv || !config.clientSecretEnv) return existing.token
+
+  const clientId = process.env[config.clientIdEnv]
+  const clientSecret = process.env[config.clientSecretEnv]
+  if (!clientId || !clientSecret) return existing.token
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Accept": "application/json",
+  }
+  const body: Record<string, string> = {
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  }
+
+  if (config.tokenAuthMethod === "basic") {
+    headers["Authorization"] = "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+  } else {
+    body.client_id = clientId
+    body.client_secret = clientSecret
+  }
+
+  try {
+    const res = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers,
+      body: new URLSearchParams(body),
+    })
+    const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
+    if (!res.ok) {
+      console.error(`${config.name} token refresh failed:`, data)
+      return existing.token
+    }
+    const expiresAt = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
+    await storeUserCredential(userEmail, integration, {
+      token: data.access_token!,
+      refreshToken: data.refresh_token ?? refreshToken,
+      scopes: existing.scopes,
+      expiresAt,
+    })
+    console.log(`${config.name} access token refreshed, expires: ${expiresAt}`)
+    return data.access_token!
+  } catch (err) {
+    console.error(`${config.name} token refresh error:`, err)
+    return existing.token
+  }
+}
+
 async function maybeRefreshToken(
   userEmail: string,
   integration: string,
@@ -117,54 +176,25 @@ async function maybeRefreshToken(
   const isExpired = cred.expiresAt && new Date(cred.expiresAt) <= new Date(Date.now() + 60_000)
   if (!isExpired || !cred.refreshToken) return cred.token
 
-  if (integration === "quickbooks") {
-    try {
-      const res = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
-        method: "POST",
-        headers: {
-          "Authorization": "Basic " + Buffer.from(
-            `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`
-          ).toString("base64"),
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json",
-        },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: cred.refreshToken,
-        }),
-      })
-      const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string }
-      if (!res.ok) {
-        console.error("QBO token refresh failed:", data.error_description)
-        return cred.token // Return stale token; QBO will 401 and user must reconnect
-      }
-      const expiresAt = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
-      await storeUserCredential(userEmail, integration, {
-        token: data.access_token!,
-        refreshToken: data.refresh_token ?? cred.refreshToken,
-        scopes: cred.scopes,
-        expiresAt,
-      })
-      console.log("QBO access token refreshed, expires:", expiresAt)
-      return data.access_token!
-    } catch (err) {
-      console.error("QBO token refresh error:", err)
-      return cred.token
-    }
-  }
-
-  return cred.token
+  return refreshOAuthAccessToken(userEmail, integration, cred.refreshToken, cred)
 }
 
-// Start credential proxy (non-blocking)
 createCredentialProxy({
-  resolveToken: async (sessionToken, integration) => {
+  resolveCredential: async (sessionToken, integration): Promise<ResolvedCredential | null> => {
     const session = await getSession(sessionToken)
     if (!session) return null
-    // For integrations with expiring access tokens, auto-refresh if needed
+
     const refreshed = await maybeRefreshToken(session.user.email, integration)
-    if (refreshed !== null) return refreshed
-    return resolveCredential(session.user.email, workspacePaths[0], integration)
+    const token = refreshed ?? await resolveCredential(session.user.email, workspacePaths[0], integration)
+    if (!token) return null
+
+    // Gorgias Basic auth needs the email alongside the API token
+    if (integration === "gorgias") {
+      const email = getCredentials().GORGIAS_EMAIL
+      if (email) return { token, extras: { email } }
+    }
+
+    return { token }
   },
 })
   .then((proxy) => {

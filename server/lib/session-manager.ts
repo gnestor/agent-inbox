@@ -71,13 +71,30 @@ function makeCanUseTool(getSessionId: () => string | null) {
 function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<string, string> {
   const env: Record<string, string> = {}
 
-  // Base env: inherit process env minus sensitive keys
+  // Base env: inherit process env minus sensitive keys.
+  // When the credential proxy is active it injects these into outgoing requests;
+  // when it is not, the fallback getAgentEnv() re-adds them from the workspace .env.
   const excluded = new Set([
-    "ANTHROPIC_API_KEY", "CLAUDECODE",
-    // Exclude raw API tokens — the proxy injects these
-    "NOTION_API_TOKEN", "GOOGLE_REFRESH_TOKEN", "GOOGLE_CLIENT_SECRET",
-    "SLACK_BOT_TOKEN", "SHOPIFY_ACCESS_TOKEN", "GITHUB_TOKEN",
-    "VAULT_SECRET",
+    // Server / harness secrets
+    "ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_OAUTH_TOKEN", "VAULT_SECRET",
+    // OAuth credentials
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN",
+    "PINTEREST_ACCESS_TOKEN", "PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET", "PINTEREST_REFRESH_TOKEN",
+    "QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REFRESH_TOKEN",
+    // API keys / tokens for HTTP services (proxy injects these)
+    "AIR_API_KEY",
+    "FACEBOOK_ACCESS_TOKEN",
+    "GEMINI_API_KEY",
+    "GITHUB_API_TOKEN", "GITHUB_TOKEN",
+    "GORGIAS_API_TOKEN",
+    "INSTAGRAM_ACCESS_TOKEN",
+    "KLAVIYO_PRIVATE_KEY",
+    "META_ACCESS_TOKEN",
+    "NOTION_API_TOKEN",
+    "SHOPIFY_API_TOKEN", "SHOPIFY_ACCESS_TOKEN",
+    "SLACK_BOT_TOKEN", "SLACK_API_TOKEN",
+    // Unused but potentially present
+    "HAPPY_RETURNS_API_KEY", "SHIPPO_API_TOKEN", "OBSERVABLE_API_TOKEN",
   ])
   for (const [k, v] of Object.entries(process.env)) {
     if (!excluded.has(k) && v !== undefined) {
@@ -422,11 +439,17 @@ export async function addSseClient(sessionId: string, send: (data: string) => vo
     console.log(`[sse:${sessionId}] client connected (${sseClients.get(sessionId)!.size} total)`)
   }
 
-  // Re-deliver the last AskUserQuestion when the session is awaiting input.
-  // The original broadcast may have fired before any browser was connected
-  // (e.g. agent resumed on startup and hit AskUserQuestion before the user opened the page).
+  // Send current session status on connect so the client doesn't rely on
+  // stale React Query cache. Covers cases where the session completed or
+  // errored before the SSE connection was established.
   const session = await getSessionRecord(sessionId)
-  if (session?.status === "awaiting_user_input") {
+  if (session?.status === "complete") {
+    send(JSON.stringify({ type: "session_complete", status: "complete" }))
+  } else if (session?.status === "errored") {
+    send(JSON.stringify({ type: "session_error", status: "errored" }))
+  } else if (session?.status === "awaiting_user_input") {
+    // Re-deliver the last AskUserQuestion — the original broadcast may have
+    // fired before any browser was connected.
     const questions = await getLastAskUserQuestions(sessionId)
     if (questions) {
       send(JSON.stringify({ type: "ask_user_question", questions }))

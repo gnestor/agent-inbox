@@ -12,11 +12,15 @@ describe("credential-proxy", () => {
     expect(INTERCEPTED_HOSTS).toContain("api.notion.com")
     expect(INTERCEPTED_HOSTS).toContain("api.github.com")
     expect(INTERCEPTED_HOSTS).toContain("slack.com")
+    expect(INTERCEPTED_HOSTS).toContain("a.klaviyo.com")
+    expect(INTERCEPTED_HOSTS).toContain("graph.facebook.com")
+    expect(INTERCEPTED_HOSTS).toContain("gorgias.com")
+    expect(INTERCEPTED_HOSTS).toContain("api.pinterest.com")
   })
 
   it("creates a proxy and returns port + CA cert path", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async (_sessionToken, _host) => null,
+      resolveCredential: async (_sessionToken, _host) => null,
     })
     expect(proxy.port).toBeGreaterThan(0)
     expect(proxy.caCertPath).toContain("ca.pem")
@@ -25,7 +29,7 @@ describe("credential-proxy", () => {
 
   it("getProxyEnv returns the expected env vars", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async () => null,
+      resolveCredential: async () => null,
     })
     const env = proxy.getProxyEnv("test-session-token")
     expect(env.HTTPS_PROXY).toBe(`http://test-session-token@127.0.0.1:${proxy.port}`)
