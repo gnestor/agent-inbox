@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
+import { get, set, del } from "idb-keyval"
 import { useLocation } from "react-router-dom"
-import { useLocalDraft } from "./use-local-draft"
 import { useNavActions } from "@/lib/navigation-store"
 import type { OutputSpec } from "@/components/session/OutputRenderer"
 import type { SessionPhase } from "@/hooks/use-session-controller"
@@ -28,10 +28,20 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   }
 
   // --- Draft input ---
-
-  const resumeKey = `inbox:resume:${sessionId}`
-  const [prompt, setPrompt] = useLocalDraft(resumeKey)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Use a ref to avoid re-rendering the heavy SessionTranscript on every keystroke.
+  // The RichTextEditor manages its own internal state via TipTap.
+  // Persist to IndexedDB without triggering re-renders.
+  const draftKey = `draft:resume:${sessionId}`
+  const promptRef = useRef("")
+  const [initialDraft, setInitialDraft] = useState("")
+  useEffect(() => {
+    get<string>(draftKey).then((val) => {
+      if (val) {
+        promptRef.current = val
+        setInitialDraft(val)
+      }
+    }).catch(() => {})
+  }, [draftKey])
 
   // --- Open panel (useCallback: passed to SessionTranscript which is not trivially re-rendered) ---
 
@@ -78,17 +88,19 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   const isStreaming = phase.status === "streaming" || phase.status === "sending"
   const isSending = phase.status === "sending"
 
-  function handleSend() {
-    if (!prompt.trim() || isSending) return
-    resumeSession(prompt)
-  }
+  const handlePromptChange = useCallback((md: string) => {
+    promptRef.current = md
+    if (md.trim()) set(draftKey, md).catch(() => {})
+    else del(draftKey).catch(() => {})
+  }, [draftKey])
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  const handleSend = useCallback(() => {
+    const text = promptRef.current.trim()
+    if (!text || isSending) return
+    resumeSession(text)
+    promptRef.current = ""
+    del(draftKey).catch(() => {})
+  }, [isSending, resumeSession, draftKey])
 
   return {
     // Title editing
@@ -101,13 +113,12 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     setEditTitle,
 
     // Input
-    prompt,
-    setPrompt,
-    textareaRef,
+    promptRef,
+    initialDraft,
+    handlePromptChange,
     isStreaming,
     isSending,
     handleSend,
-    handleKeyDown,
 
     // Navigation
     handleBack,

@@ -33,6 +33,13 @@ body {
   --secondary: oklch(0 0 0 / 0.05);
 }
 
+.session-input {
+  --editor-min-height: 0px;
+  --editor-padding: 0.375rem 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
 .hljs {
   background: var(--card);
 }

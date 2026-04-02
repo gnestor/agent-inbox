@@ -4,8 +4,8 @@
 
 .ProseMirror {
   outline: none;
-  min-height: 200px;
-  padding: 0.75rem;
+  min-height: var(--editor-min-height, 200px);
+  padding: var(--editor-padding, 0.75rem);
   caret-color: var(--foreground);
 }
 

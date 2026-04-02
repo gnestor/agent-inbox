@@ -320,7 +320,7 @@ function DesktopTab({ id, children }: TabProps) {
   return (
     <div
       ref={scrollRef}
-      className="flex flex-row h-full gap-4 shrink-0 overflow-x-auto py-4 pr-4 pl-[var(--sidebar-width)]"
+      className="flex flex-row h-full gap-4 shrink-0 overflow-x-auto overflow-y-hidden py-4 pr-4 pl-[var(--sidebar-width)]"
     >
       {renderedChildren}
     </div>

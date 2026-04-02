@@ -121,14 +121,19 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Reposition on resize (subscribe once, read safeIdx from ref)
+  // Reposition on resize — only when the SlotStack's own height changes
+  // (e.g. window resize), NOT when children's internal layout shifts.
+  const lastHeightRef = useRef(0)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    lastHeightRef.current = el.clientHeight
     const ro = new ResizeObserver(() => {
-      if (el.clientHeight > 0 && !isUserScrolling.current) {
+      const h = el.clientHeight
+      if (h > 0 && Math.abs(h - lastHeightRef.current) > 1 && !isUserScrolling.current) {
+        lastHeightRef.current = h
         el.style.scrollSnapType = "none"
-        el.scrollTop = safeIdxRef.current * el.clientHeight
+        el.scrollTop = safeIdxRef.current * h
         requestAnimationFrame(() => { el.style.scrollSnapType = "y mandatory" })
       }
     })
@@ -203,7 +208,7 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
       {keys.map((key) => (
         <div
           key={key}
-          className="h-full shrink-0"
+          className="h-full shrink-0 overflow-hidden"
           style={{ scrollSnapAlign: "start" }}
         >
           {renderItem(key)}

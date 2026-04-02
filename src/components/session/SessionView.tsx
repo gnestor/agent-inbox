@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react"
 import {
   Button,
-  Textarea,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -23,6 +22,7 @@ import { useSessionController } from "@/hooks/use-session-controller"
 import { useSessionView } from "@/hooks/use-session-view"
 import { usePreference } from "@/hooks/use-preferences"
 import { getInitials } from "@/lib/formatters"
+
 
 interface SessionViewProps {
   sessionId: string
@@ -49,7 +49,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     sessionId,
     visibility,
     isActive: true,
-    onResume: () => sessionView.setPrompt(""),
+    onResume: () => { sessionView.promptRef.current = "" },
     onArchive: () => sessionView.handleBack(),
   })
 
@@ -63,6 +63,13 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     mutations: controller.mutations,
     resumeSession: controller.resumeSession,
   })
+
+  // Remount textarea after sending to clear it (ref-based draft, no re-render)
+  const [editorKey, setEditorKey] = useState(0)
+  const wrappedHandleSend = useCallback(() => {
+    sessionView.handleSend()
+    setEditorKey((k) => k + 1)
+  }, [sessionView.handleSend])
 
   // Skeleton overlay on first load
   const dataReady = controller.session?.id === sessionId
@@ -175,7 +182,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       )}
       {header}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <SessionTranscript
           key={sessionId}
           messages={controller.messages}
@@ -198,24 +205,29 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
         </SessionTranscript>
       </div>
 
-      <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2 items-end">
-          <Textarea
-            ref={sessionView.textareaRef}
-            value={sessionView.prompt}
-            onChange={(e) => sessionView.setPrompt(e.target.value)}
-            onKeyDown={sessionView.handleKeyDown}
+          <textarea
+            key={editorKey}
+            defaultValue={sessionView.initialDraft}
+            onChange={(e) => sessionView.handlePromptChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                wrappedHandleSend()
+              }
+            }}
             placeholder={sessionView.isStreaming ? "Interrupt with a message..." : "Write a prompt..."}
             disabled={sessionView.isSending}
-            className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
-            rows={1}
+            rows={2}
+            className="flex-1 min-w-0 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground [field-sizing:content] max-h-[40vh] overflow-y-auto"
           />
-          {sessionView.isStreaming && !sessionView.prompt.trim() ? (
+          {sessionView.isStreaming ? (
             <Button onClick={() => controller.mutations.abort.mutate()} disabled={controller.mutations.abort.isPending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
               <Square className="h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={sessionView.handleSend} disabled={!sessionView.prompt.trim() || sessionView.isSending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
+            <Button onClick={wrappedHandleSend} disabled={sessionView.isSending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
               {sessionView.isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           )}
