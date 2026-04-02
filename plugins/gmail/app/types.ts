@@ -12,6 +12,7 @@ export interface GmailMessage {
   snippet: string
   from: string
   to: string
+  cc?: string
   subject: string
   date: string
   body: string

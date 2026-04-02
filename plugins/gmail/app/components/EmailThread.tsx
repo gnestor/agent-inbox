@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { useLocation } from "react-router-dom"
@@ -172,7 +172,12 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 
   const sentMessages = thread.messages.filter((m) => !m.labelIds.includes("DRAFT"))
   const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
-  const replyTo = lastMessage.from
+  const replyRecipients = useMemo(() => {
+    const all = new Set<string>()
+    if (lastMessage.from) all.add(lastMessage.from.trim())
+    if (lastMessage.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
+    return [...all].map(formatEmailAddress).join(", ")
+  }, [lastMessage])
 
   return (
     <div className="flex flex-col h-full">
@@ -218,7 +223,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
               <AccordionContent className="pb-0">
                 <div className="px-4 py-3 pb-4 space-y-4">
                   <div className="text-xs text-muted-foreground truncate">
-                    To: {formatEmailAddress(replyTo)}
+                    To: {replyRecipients}
                   </div>
                   <RichTextEditor
                     key={threadId}

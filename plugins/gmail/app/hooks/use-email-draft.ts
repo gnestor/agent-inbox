@@ -24,11 +24,27 @@ export function useEmailDraft(threadId: string, thread: GmailThread | undefined)
 
   // Shared reply metadata — derived, not stored
   function getReplyMeta() {
-    const last = thread?.messages[thread.messages.length - 1]
+    const sentMessages = thread?.messages.filter((m) => !m.labelIds.includes("DRAFT"))
+    const last = sentMessages?.[sentMessages.length - 1]
     if (!last || !thread) throw new Error("No thread loaded")
-    const to = last.from
-    const subject = thread.subject.startsWith("Re: ") ? thread.subject : `Re: ${thread.subject}`
-    return { to, subject, inReplyTo: last.id }
+
+    // Reply-all: collect all recipients, deduplicate, exclude self.
+    // Gmail threads the reply automatically when threadId + In-Reply-To are set.
+    const userEmail = last.to?.split(",").find((e) => e.includes("@"))?.trim() || ""
+    const allRecipients = new Set<string>()
+    // Include original sender
+    if (last.from) allRecipients.add(last.from.trim())
+    // Include all To recipients
+    if (last.to) last.to.split(",").forEach((e) => allRecipients.add(e.trim()))
+    if (last.cc) last.cc.split(",").forEach((e) => allRecipients.add(e.trim()))
+    // Remove self
+    allRecipients.forEach((e) => {
+      if (e.toLowerCase().includes(userEmail.toLowerCase()) && userEmail) allRecipients.delete(e)
+    })
+    const to = [...allRecipients].join(", ")
+
+    // Don't prepend "Re:" — Gmail handles this automatically for threaded replies
+    return { to, subject: thread.subject, inReplyTo: last.id }
   }
 
   const sendMutation = useMutation({
