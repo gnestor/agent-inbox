@@ -136,23 +136,23 @@ describe("useNavigation", () => {
     expect(panels[1]).toEqual({ id: "new_session", type: "new_session", props: {} })
   })
 
-  it("openNewSession preserves selectedItemId when item is selected", () => {
+  it("openNewSession clears selectedItemId when item is selected", () => {
     const { result } = renderHook(() => useNavigation(), { wrapper })
     act(() => result.current.selectItem("item-1"))
     expect(result.current.getSelectedItemId()).toBe("item-1")
     act(() => result.current.openNewSession())
-    expect(result.current.getSelectedItemId()).toBe("item-1")
+    expect(result.current.getSelectedItemId()).toBeUndefined()
   })
 
-  it("openNewSession keeps detail panel and appends new_session when item is selected", () => {
+  it("openNewSession closes detail panels and shows list + new_session", () => {
     const { result } = renderHook(() => useNavigation(), { wrapper })
     act(() => result.current.selectItem("item-1"))
     expect(result.current.getPanels()).toHaveLength(2)
     act(() => result.current.openNewSession())
     const panels = result.current.getPanels()
-    expect(panels).toHaveLength(3)
-    expect(panels[1].type).toBe("detail")
-    expect(panels[2].type).toBe("new_session")
+    expect(panels).toHaveLength(2)
+    expect(panels[0].type).toBe("list")
+    expect(panels[1].type).toBe("new_session")
   })
 
   it("openNewSession replaces panels with new_session when no item is selected", () => {
