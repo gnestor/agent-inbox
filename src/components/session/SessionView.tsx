@@ -214,6 +214,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
         onSend={controller.resumeSession}
         onAbort={handleAbort}
         isAbortPending={controller.mutations.abort.isPending}
+        attachments={sessionView.attachments}
       />
     </div>
   )
