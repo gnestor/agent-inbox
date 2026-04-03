@@ -1,9 +1,12 @@
 import { useState, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { useNavActions } from "@/lib/navigation-store"
+import { useFileAttachments } from "./use-file-attachments"
+import { uploadSessionFile } from "@/api/client"
 import type { OutputSpec } from "@/components/session/OutputRenderer"
 import type { SessionPhase } from "@/hooks/use-session-controller"
 import type { Session } from "@/types"
+import type { PendingFile, UploadedFile } from "./use-file-attachments"
 
 interface UseSessionViewOptions {
   sessionId: string
@@ -70,6 +73,10 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   const isStreaming = phase.status === "streaming" || phase.status === "sending"
   const isSending = phase.status === "sending"
 
+  // --- File attachments ---
+
+  const attachments = useFileAttachments()
+
   return {
     // Title editing
     isEditing,
@@ -84,9 +91,45 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     isStreaming,
     isSending,
 
+    // File attachments
+    attachments,
+
     // Navigation
     handleBack,
     handleOpenPanel,
     isFromSidebar,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: upload pending files and return upload results
+// ---------------------------------------------------------------------------
+
+export async function uploadPendingFiles(
+  sessionId: string,
+  files: PendingFile[],
+): Promise<UploadedFile[]> {
+  const settled = await Promise.allSettled(
+    files.map(async (pending) => {
+      const uploaded = await uploadSessionFile(sessionId, pending.file)
+      return {
+        id: pending.id,
+        name: uploaded.name,
+        path: uploaded.path,
+        size: uploaded.size,
+        mimeType: uploaded.mimeType,
+      } satisfies UploadedFile
+    }),
+  )
+
+  const results: UploadedFile[] = []
+  for (let i = 0; i < settled.length; i++) {
+    const result = settled[i]
+    if (result.status === "fulfilled") {
+      results.push(result.value)
+    } else {
+      console.error(`Failed to upload ${files[i].name}:`, result.reason)
+    }
+  }
+  return results
 }
