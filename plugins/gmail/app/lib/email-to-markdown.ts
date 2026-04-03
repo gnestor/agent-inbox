@@ -47,6 +47,14 @@ export function htmlToMarkdown(html: string): string {
 
   let md = td.turndown(html)
 
+  // Strip leftover cid: references that leaked through links wrapping stripped images:
+  // linked cid images: [cid:logo.png@01D](https://...) or [![](cid:...)](url)
+  // empty links from stripped cid images: [](https://...)
+  // bare cid text: cid:image001.png@01DCB162
+  md = md.replace(/!?\[cid:[^\]]*\]\([^)]*\)/g, "")
+  md = md.replace(/(?<!!)\[]\([^)]*\)/g, "")
+  md = md.replace(/\bcid:\S+/g, "")
+
   md = md.replace(/^[ \t]*&nbsp;[ \t]*$/gm, "")
   md = md.replace(/\n{3,}/g, "\n\n")
 

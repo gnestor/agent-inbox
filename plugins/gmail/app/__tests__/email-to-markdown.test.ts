@@ -59,9 +59,24 @@ describe("htmlToMarkdown", () => {
   })
 
   it("strips cid: images (not yet proxied)", () => {
-    // cid: images that weren't replaced should be stripped
     const result = htmlToMarkdown('<img src="cid:image001@example.com">')
     expect(result).not.toContain("cid:")
+  })
+
+  it("strips cid images wrapped in links", () => {
+    const result = htmlToMarkdown('<a href="https://example.com"><img src="cid:logo.png@01D"></a>')
+    expect(result).not.toContain("cid:")
+    expect(result).toBe("")
+  })
+
+  it("strips bare cid: text references", () => {
+    const result = htmlToMarkdown("<p>cid:betterpackaging_horizontal_pos_rgb.png</p>")
+    expect(result).not.toContain("cid:")
+  })
+
+  it("preserves valid images with empty alt text", () => {
+    const result = htmlToMarkdown('<img src="/api/gmail/messages/123/attachments/att1" alt="">')
+    expect(result).toContain("![](/api/gmail/messages/123/attachments/att1)")
   })
 
   it("converts br to line break", () => {
