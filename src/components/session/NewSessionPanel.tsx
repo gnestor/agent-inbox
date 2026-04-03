@@ -9,14 +9,14 @@ import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavActions } from "@/lib/navigation-store"
-import { createSession, getPluginItem } from "@/api/client"
+import { createSession, getPluginItem, resumeSession as resumeSessionApi } from "@/api/client"
 import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
 import { useFileAttachments } from "@/hooks/use-file-attachments"
 import { uploadPendingFiles } from "@/hooks/use-session-view"
-import { FileAttachmentBar, AttachButton, DragOverlay } from "./FileAttachmentBar"
+import { FileAttachmentBar, AttachButton, DragOverlay, HiddenFileInput } from "./FileAttachmentBar"
 import { SessionView } from "./SessionView"
 import { NEW_SESSION_PANEL } from "@/types/navigation"
 import type { PluginItem } from "@/types/plugin"
@@ -148,9 +148,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         const uploaded = await uploadPendingFiles(sessionId, attachments.files)
         if (uploaded.length > 0) {
           const refs = uploaded.map((f) => `[Attached: ${f.name} at ${f.path}]`).join("\n")
-          // Resume session with file references so the agent knows about them
-          const { resumeSession } = await import("@/api/client")
-          await resumeSession(sessionId, `Files attached:\n${refs}`)
+          await resumeSessionApi(sessionId, `Files attached:\n${refs}`)
         }
         attachments.clearAll()
       }
@@ -239,16 +237,12 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
           </div>
         )}
 
-        {/* Attachment bar */}
         {(attachments.hasFiles || attachments.error) && (
           <FileAttachmentBar
             files={attachments.files}
             error={attachments.error}
             onRemove={attachments.removeFile}
             onClearError={attachments.clearError}
-
-            fileInputRef={attachments.fileInputRef}
-            onFileInputChange={attachments.handleFileInputChange}
           />
         )}
 
@@ -309,16 +303,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         )}
       </div>
 
-      {/* Hidden file input */}
-      {!attachments.hasFiles && !attachments.error && (
-        <input
-          ref={attachments.fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={attachments.handleFileInputChange}
-        />
-      )}
+      <HiddenFileInput fileInputRef={attachments.fileInputRef} onFileInputChange={attachments.handleFileInputChange} />
 
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
