@@ -55,12 +55,20 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     mutationFn: (prompt: string) => resumeSession(sessionId, prompt),
     onMutate: () => {
       setSessionStatus(qc, sessionId, "running")
+      setSessionListStatus(qc, sessionId, "running")
     },
     onSuccess: () => {
       onResume?.()
       qc.invalidateQueries({ queryKey: ["sessions"] })
     },
-    onError: (err: any) => console.error("Failed to resume session:", err),
+    onError: (err: any) => {
+      console.error("Failed to resume session:", err)
+      setSessionStatus(qc, sessionId, "complete")
+      setSessionListStatus(qc, sessionId, "complete")
+      toast.error(`Failed to resume session: ${(err as Error).message}`)
+    },
+    // No onSettled refetch — SSE owns the message cache during streaming.
+    // A REST refetch here races with JSONL writes and clobbers SSE-pushed messages.
   })
 
   const abort = useMutation({
@@ -70,7 +78,8 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+      // No detail refetch — SSE session_complete/session_error handles status.
+      // Refetching here races with final JSONL writes.
     },
     onError: (err: any) => console.error("Failed to abort session:", err),
   })

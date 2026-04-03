@@ -293,7 +293,10 @@ sessionRoutes.post("/:id/resume", async (c) => {
 
   const userSessionToken = getCookie(c, SESSION_COOKIE)
   const user = c.get("user") as UserProfile | undefined
-  await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken, user)
+  const result = await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken, user)
+  if (!result.started) {
+    return c.json({ error: "Session is already running" }, 409)
+  }
   return c.json({ ok: true })
 })
 

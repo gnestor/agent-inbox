@@ -116,8 +116,8 @@ export function SidebarRecentSessions() {
             const color = getIndicatorColor(session)
             // Prefer summary (set from linkedItemTitle or auto-named).
             // Fall back to fetched title for sessions created before this was consolidated.
-            const linkedTitle = session.linkedSourceId ? titleLookup.get(session.linkedSourceId) : undefined
-            const title = getSessionTitle(session) || linkedTitle || session.id
+            const linkedTitle = session.linkedItemTitle || (session.linkedSourceId ? titleLookup.get(session.linkedSourceId) : undefined)
+            const title = linkedTitle || getSessionTitle(session) || session.id
             const isActive = isRecentRoute && session.id === activeSessionId
 
             const sourceTab: TabId = session.linkedSourceType

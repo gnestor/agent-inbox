@@ -88,9 +88,11 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   const isStreaming = phase.status === "streaming" || phase.status === "sending"
   const isSending = phase.status === "sending"
 
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const handlePromptChange = useCallback((md: string) => {
     promptRef.current = md
-    if (md.trim()) set(draftKey, md).catch(() => {})
+    clearTimeout(draftTimerRef.current)
+    if (md.trim()) draftTimerRef.current = setTimeout(() => set(draftKey, md).catch(() => {}), 400)
     else del(draftKey).catch(() => {})
   }, [draftKey])
 

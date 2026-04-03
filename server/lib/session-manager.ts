@@ -648,6 +648,7 @@ export async function startSession(
     },
   })
   let sequence = 0
+  let gotResult = false
 
   // Process messages in background
   ;(async () => {
@@ -676,6 +677,7 @@ export async function startSession(
 
         // Check for result message (session complete)
         if ("result" in (message as any)) {
+          gotResult = true
           if (sessionId) {
             await updateSessionStatus(sessionId, "complete")
             broadcastToSession(sessionId, {
@@ -694,11 +696,14 @@ export async function startSession(
     } catch (err: any) {
       console.error("Session error:", err)
       if (sessionId) {
-        await updateSessionStatus(sessionId, "errored", err.message)
-        broadcastToSession(sessionId, {
-          type: "session_error",
-          error: err.message,
-        })
+        // Don't override "complete" if we already received a result
+        if (!gotResult) {
+          await updateSessionStatus(sessionId, "errored", err.message)
+          broadcastToSession(sessionId, {
+            type: "session_error",
+            error: err.message,
+          })
+        }
         runningQueries.delete(sessionId)
       }
     }
@@ -723,10 +728,10 @@ export async function resumeSessionQuery(
   prompt: string,
   userSessionToken?: string,
   userProfile?: { name: string; email: string; picture?: string },
-): Promise<void> {
+): Promise<{ started: boolean }> {
   // Guard against double-resume (e.g. server recovery + frontend orphan detection racing).
   // Claim the slot before the dynamic import to close the TOCTOU window.
-  if (runningQueries.has(sessionId)) return
+  if (runningQueries.has(sessionId)) return { started: false }
   const abortController = new AbortController()
   runningQueries.set(sessionId, abortController)
 
@@ -780,6 +785,7 @@ export async function resumeSessionQuery(
     },
   })
 
+  let gotResult = false
   ;(async () => {
     try {
       for await (const message of q) {
@@ -788,6 +794,7 @@ export async function resumeSessionQuery(
         sequence++
 
         if ("result" in (message as any)) {
+          gotResult = true
           await updateSessionStatus(sessionId, "complete")
           broadcastToSession(sessionId, {
             type: "session_complete",
@@ -802,14 +809,18 @@ export async function resumeSessionQuery(
       runningQueries.delete(sessionId)
     } catch (err: any) {
       console.error(`Session resume error [${sessionId}]:`, err.message || err)
-      await updateSessionStatus(sessionId, "errored", err.message)
-      broadcastToSession(sessionId, {
-        type: "session_error",
-        error: err.message,
-      })
+      if (!gotResult) {
+        await updateSessionStatus(sessionId, "errored", err.message)
+        broadcastToSession(sessionId, {
+          type: "session_error",
+          error: err.message,
+        })
+      }
       runningQueries.delete(sessionId)
     }
   })()
+
+  return { started: true }
 }
 
 export async function attachSourceToSession(
