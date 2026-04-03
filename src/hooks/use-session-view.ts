@@ -2,11 +2,8 @@ import { useState, useRef, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { useLocalDraft } from "./use-local-draft"
 import { useNavActions } from "@/lib/navigation-store"
-import { usePreference } from "./use-preferences"
-import { DEFAULT_TRANSCRIPT_VISIBILITY } from "@/components/session/SessionTranscript"
-import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
 import type { OutputSpec } from "@/components/session/OutputRenderer"
-import type { SessionPhase } from "./use-session-phase"
+import type { SessionPhase } from "@/hooks/use-session-controller"
 import type { Session } from "@/types"
 
 interface UseSessionViewOptions {
@@ -76,17 +73,6 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     }
   }
 
-  // --- Transcript visibility ---
-
-  const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
-    "sessions.transcript.visibility",
-    DEFAULT_TRANSCRIPT_VISIBILITY,
-  )
-
-  function toggleVisibility(key: keyof TranscriptVisibility) {
-    setVisibility({ ...visibility, [key]: !visibility[key] })
-  }
-
   // --- Input state ---
 
   const isStreaming = phase.status === "streaming"
@@ -113,10 +99,6 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     handleFinishEdit,
     handleEditKeyDown,
     setEditTitle,
-
-    // Visibility
-    visibility,
-    toggleVisibility,
 
     // Input
     prompt,

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 // ── extractXmlTag ────────────────────────────────────────────────────────────
 
-import { extractXmlTag } from "../SessionTranscript.js"
+import { extractXmlTag } from "@/lib/session-pipeline"
 
 describe("extractXmlTag", () => {
   it("extracts content from a simple tag", () => {

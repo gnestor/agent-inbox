@@ -718,6 +718,7 @@ export async function resumeSessionQuery(
       }
 
       await updateSessionStatus(sessionId, "complete")
+      broadcastToSession(sessionId, { type: "session_complete", status: "complete" })
       autoNameSession(sessionId).catch(() => {})
       runningQueries.delete(sessionId)
     } catch (err: any) {

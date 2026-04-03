@@ -70,17 +70,21 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
   const [eventCount, setEventCount] = useState(0)
   const eventSourceRef = useRef<EventSource | null>(null)
   const seenSequences = useRef(new Set<number>())
+  // Track whether session_complete/error fired for the current run.
+  // Prevents late messages from regressing state after completion.
+  const runTerminated = useRef(false)
 
   useEffect(() => {
     seenSequences.current.clear()
+    runTerminated.current = false
     dispatch({ type: "RESET" })
     setPresenceUsers([])
     setEventCount(0)
 
     if (!sessionId || !enabled) return
 
-    // Seed seenSequences with messages already in the cache (from REST)
-    // to prevent SSE from re-pushing them as duplicates
+    // Seed seenSequences from REST cache to avoid re-processing messages
+    // the server replays on SSE connect
     const cached = queryClient.getQueryData<SessionQueryData>(["session", sessionId])
     if (cached?.messages) {
       for (const m of cached.messages) {
@@ -98,6 +102,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         setEventCount((c) => c + 1)
 
         if (data.type === "session_complete") {
+          runTerminated.current = true
           dispatch({ type: "COMPLETE" })
           // Update session status in React Query cache
           queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
@@ -108,6 +113,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
           return
         }
         if (data.type === "session_error") {
+          runTerminated.current = true
           dispatch({ type: "ERROR" })
           queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
             if (!old || old.session.status === "errored") return old
@@ -130,7 +136,9 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
           if (seenSequences.current.has(data.sequence)) return
           seenSequences.current.add(data.sequence)
 
-          dispatch({ type: "STREAMING" })
+          if (!runTerminated.current) {
+            dispatch({ type: "STREAMING" })
+          }
 
           const msg: SessionMessage = {
             id: data.sequence,
@@ -144,13 +152,12 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
           queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
             if (!old) return old
             const messages = old.messages ?? []
-            // Skip if already in cache (defensive — seenSequences should prevent this)
             if (messages.some((m) => m.sequence === data.sequence)) return old
-            // Strip optimistic messages (negative sequences) when real messages arrive
-            const cleaned = messages.some((m) => m.sequence < 0)
-              ? messages.filter((m) => m.sequence >= 0)
-              : messages
-            return { ...old, messages: [...cleaned, msg] }
+            let base = messages
+            if (msg.type === "user" && messages.some((m) => m.sequence < 0 && m.type === "user")) {
+              base = messages.filter((m) => !(m.sequence < 0 && m.type === "user"))
+            }
+            return { ...old, messages: [...base, msg] }
           })
         }
       } catch {
@@ -180,6 +187,11 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
   }, [])
 
   const clearPendingQuestion = useCallback(() => dispatch({ type: "CLEAR_QUESTION" }), [])
+  const resetForResume = useCallback(() => {
+    runTerminated.current = false
+    // Clear terminal sessionStatus from previous run so phase = "streaming" immediately
+    dispatch({ type: "STREAMING" })
+  }, [])
 
   return {
     connected: state.connected,
@@ -189,5 +201,6 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
     eventCount,
     disconnect,
     clearPendingQuestion,
+    resetForResume,
   }
 }

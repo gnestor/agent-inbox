@@ -13,6 +13,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionTranscript } from "../SessionTranscript"
+import { processTranscript, filterVisible } from "@/lib/session-pipeline"
+import { DEFAULT_TRANSCRIPT_VISIBILITY } from "../SessionTranscript"
 import type { SessionMessage } from "@/types"
 
 vi.mock("@/hooks/use-preferences", () => ({
@@ -41,18 +43,18 @@ function makeMessages(count: number): SessionMessage[] {
   } satisfies SessionMessage))
 }
 
-// Mocks getBoundingClientRect for all elements to return a small height (40px).
-// This simulates the real-browser condition where items measure BELOW estimateSize (44px),
-// which causes TanStack Virtual to shrink the total scroll height, pull more items into
-// the virtual window, attach more measureElement refs, dispatch more state updates, and
-// eventually hit React 19's 50-nested-update limit ("Maximum update depth exceeded").
-const MOCK_ITEM_HEIGHT = 40 // intentionally below estimateSize: 44
+function processMessages(raw: SessionMessage[]) {
+  const { lookups, classified } = processTranscript(raw)
+  const messages = filterVisible(classified, DEFAULT_TRANSCRIPT_VISIBILITY)
+  return { lookups, messages }
+}
+
+const MOCK_ITEM_HEIGHT = 40
 
 describe("SessionTranscript virtualizer — cascade prevention", () => {
   let getBCRSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    // jsdom doesn't provide ResizeObserver — stub it
     if (!globalThis.ResizeObserver) {
       globalThis.ResizeObserver = class {
         observe() {}
@@ -66,12 +68,7 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
       .mockReturnValue({
         height: MOCK_ITEM_HEIGHT,
         width: 400,
-        top: 0,
-        left: 0,
-        bottom: MOCK_ITEM_HEIGHT,
-        right: 400,
-        x: 0,
-        y: 0,
+        top: 0, left: 0, bottom: MOCK_ITEM_HEIGHT, right: 400, x: 0, y: 0,
         toJSON: () => ({}),
       } as DOMRectReadOnly)
   })
@@ -82,22 +79,26 @@ describe("SessionTranscript virtualizer — cascade prevention", () => {
 
   it("does not log Maximum update depth exceeded with 100 messages", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const { lookups, messages } = processMessages(makeMessages(100))
 
-    render(withQueryClient(<SessionTranscript messages={makeMessages(100)} />))
+    render(withQueryClient(
+      <SessionTranscript messages={messages} lookups={lookups} userProfiles={new Map()} visibility={DEFAULT_TRANSCRIPT_VISIBILITY} />
+    ))
 
     const cascadeErrors = errorSpy.mock.calls.filter((call) =>
-      call.some(
-        (arg) =>
-          typeof arg === "string" && arg.includes("Maximum update depth exceeded"),
-      ),
+      call.some((arg) => typeof arg === "string" && arg.includes("Maximum update depth exceeded")),
     )
     expect(cascadeErrors).toHaveLength(0)
     errorSpy.mockRestore()
   })
 
   it("renders without throwing when items measure below estimateSize", () => {
+    const { lookups, messages } = processMessages(makeMessages(60))
+
     expect(() =>
-      render(withQueryClient(<SessionTranscript messages={makeMessages(60)} />)),
+      render(withQueryClient(
+        <SessionTranscript messages={messages} lookups={lookups} userProfiles={new Map()} visibility={DEFAULT_TRANSCRIPT_VISIBILITY} />
+      )),
     ).not.toThrow()
   })
 })
