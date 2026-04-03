@@ -14,6 +14,9 @@ import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { usePreference } from "@/hooks/use-preferences"
+import { useFileAttachments } from "@/hooks/use-file-attachments"
+import { uploadPendingFiles } from "@/hooks/use-session-view"
+import { FileAttachmentBar, AttachButton, DragOverlay } from "./FileAttachmentBar"
 import { SessionView } from "./SessionView"
 import { NEW_SESSION_PANEL } from "@/types/navigation"
 import type { PluginItem } from "@/types/plugin"
@@ -111,6 +114,9 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
   const [prompt, setPrompt] = useLocalDraft(draftKey)
   const hasSavedDraft = useRef(!!prompt)
 
+  // File attachments
+  const attachments = useFileAttachments()
+
   // Fetch linked data — reuses cache if already loaded
   const { data: item } = useSourceItem(sourceType, sourceId)
 
@@ -127,14 +133,30 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
   const itemTitle = getItemTitle(item as Record<string, unknown>) || undefined
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      createSession({
+    mutationFn: async () => {
+      // Create session first, then upload files and append references
+      const { sessionId } = await createSession({
         prompt,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
         linkedSourceContent: sourceContent,
         linkedItemTitle: itemTitle,
-      }),
+      })
+
+      // Upload files after session creation (need sessionId)
+      if (attachments.hasFiles) {
+        const uploaded = await uploadPendingFiles(sessionId, attachments.files)
+        if (uploaded.length > 0) {
+          const refs = uploaded.map((f) => `[Attached: ${f.name} at ${f.path}]`).join("\n")
+          // Resume session with file references so the agent knows about them
+          const { resumeSession } = await import("@/api/client")
+          await resumeSession(sessionId, `Files attached:\n${refs}`)
+        }
+        attachments.clearAll()
+      }
+
+      return { sessionId }
+    },
     onSuccess: ({ sessionId }) => {
       setPrompt("")
       qc.invalidateQueries({ queryKey: ["sessions"] })
@@ -163,7 +185,9 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
   const sending = createMutation.isPending
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative" {...attachments.dragHandlers}>
+      <DragOverlay visible={attachments.isDragOver} />
+
       <PanelHeader
         left={
           <>
@@ -185,7 +209,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
       />
 
       {/* Body */}
-      <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 overflow-y-auto" onPaste={attachments.handlePaste}>
         {/* Saved templates */}
         {templates.length > 0 && (
           <div className="space-y-1">
@@ -213,6 +237,19 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
               ))}
             </div>
           </div>
+        )}
+
+        {/* Attachment bar */}
+        {(attachments.hasFiles || attachments.error) && (
+          <FileAttachmentBar
+            files={attachments.files}
+            error={attachments.error}
+            onRemove={attachments.removeFile}
+            onClearError={attachments.clearError}
+
+            fileInputRef={attachments.fileInputRef}
+            onFileInputChange={attachments.handleFileInputChange}
+          />
         )}
 
         {/* Prompt editor */}
@@ -258,16 +295,30 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
             </Button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowSaveInput(true)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors self-start"
-          >
-            <BookmarkPlus className="h-3.5 w-3.5" />
-            Save as template
-          </button>
+          <div className="flex items-center gap-3">
+            <AttachButton onClick={attachments.openFilePicker} />
+            <button
+              type="button"
+              onClick={() => setShowSaveInput(true)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <BookmarkPlus className="h-3.5 w-3.5" />
+              Save as template
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Hidden file input */}
+      {!attachments.hasFiles && !attachments.error && (
+        <input
+          ref={attachments.fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={attachments.handleFileInputChange}
+        />
+      )}
 
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
