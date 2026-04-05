@@ -6,7 +6,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { getCookie } from "hono/cookie"
 import { config } from "dotenv"
-import { resolve, dirname } from "path"
+import { resolve, dirname, basename } from "path"
 import { fileURLToPath } from "url"
 import { homedir } from "os"
 import { existsSync } from "fs"
@@ -80,7 +80,7 @@ function getWorkspacePaths(): string[] {
 }
 
 const workspacePaths = getWorkspacePaths()
-console.log(`Workspaces: ${workspacePaths.map(p => p.split("/").pop()).join(", ")}`)
+console.log(`Workspaces: ${workspacePaths.map(basename).join(", ")}`)
 
 // Initialize database
 await initializeDatabase()

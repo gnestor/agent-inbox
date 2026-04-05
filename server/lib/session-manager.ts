@@ -3,6 +3,7 @@ import * as fs from "fs"
 import { homedir } from "os"
 
 const INITIAL_SUMMARY_LENGTH = 80
+const AGENT_SDK_BETAS = ["context-1m-2025-08-07"]
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
@@ -566,7 +567,7 @@ export async function startSession(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
-      betas: ["context-1m-2025-08-07"]
+      betas: AGENT_SDK_BETAS
     },
   })
   let sequence = 0
@@ -696,7 +697,7 @@ export async function resumeSessionQuery(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
-      betas: ["context-1m-2025-08-07"]
+      betas: AGENT_SDK_BETAS
     },
   })
 
@@ -1341,24 +1342,17 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     const seenOutputTitles = new Set<string>()
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i] as any
-      const content = msg.message?.message?.content ?? msg.message?.content
+      const content: any[] | undefined =
+        msg.message?.message?.content ?? msg.message?.content
       if (!Array.isArray(content)) continue
-      const renderBlock = content.find((b: any) =>
-        b?.type === "tool_use" &&
-        RENDER_OUTPUT_NAMES.has(b.name),
+      const blockIdx = content.findIndex((b: any) =>
+        b?.type === "tool_use" && RENDER_OUTPUT_NAMES.has(b.name),
       )
-      if (!renderBlock) continue
-      const title = renderBlock.input?.title ?? ""
+      if (blockIdx === -1) continue
+      const title = content[blockIdx].input?.title ?? ""
       if (seenOutputTitles.has(title)) {
-        // Remove this earlier duplicate's render_output block
-        const filtered = content.filter((b: any) => b !== renderBlock)
-        if (filtered.length === 0) {
-          messages.splice(i, 1)
-        } else if (msg.message?.message?.content) {
-          msg.message.message.content = filtered
-        } else if (msg.message?.content) {
-          msg.message.content = filtered
-        }
+        content.splice(blockIdx, 1)
+        if (content.length === 0) messages.splice(i, 1)
       } else {
         seenOutputTitles.add(title)
       }

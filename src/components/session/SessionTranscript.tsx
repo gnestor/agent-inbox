@@ -730,8 +730,7 @@ function groupContentBlocks(blocks: ContentBlockType[]): Array<ContentBlockType 
   for (const block of blocks) {
     if (
       block.type === "tool_use" &&
-      block.name !== "render_output" &&
-      block.name !== "mcp__render_output__render_output" &&
+      !RENDER_OUTPUT_NAMES.has(block.name) &&
       block.name !== "AskUserQuestion" &&
       block.name !== "ToolSearch"
     ) {
