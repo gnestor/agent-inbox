@@ -1,12 +1,19 @@
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { getCookie } from "hono/cookie"
 import { execute, query, withTransaction } from "../db/pool.js"
 import { getSession } from "../lib/auth.js"
 import { SESSION_COOKIE } from "./auth.js"
+import { SetPreferenceBody } from "../lib/schemas.js"
+import type { ZodError } from "zod/v4"
+
+/** Extract first user-facing message from a Zod validation error */
+function zodErrorMessage(err: ZodError): string {
+  return err.issues[0]?.message ?? "Invalid request body"
+}
 
 export const preferencesRoutes = new Hono()
 
-async function getUserEmail(c: any): Promise<string | null> {
+async function getUserEmail(c: Context): Promise<string | null> {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return null
   const session = await getSession(token)
@@ -39,8 +46,13 @@ preferencesRoutes.put("/", async (c) => {
   const email = await getUserEmail(c)
   if (!email) return c.json({ error: "Unauthorized" }, 401)
 
-  const { key, value } = await c.req.json()
-  if (!key) return c.json({ error: "Missing key" }, 400)
+  let body: SetPreferenceBody
+  try {
+    body = SetPreferenceBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
+  }
+  const { key, value } = body
 
   await execute(
     `INSERT INTO user_preferences (user_email, key, value, updated_at) VALUES ($1, $2, $3, $4)

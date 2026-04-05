@@ -18,9 +18,9 @@ export function buildTitlePrompt(
         const content = typeof obj.content === "string"
           ? obj.content
           : Array.isArray(obj.content)
-            ? obj.content
-                .filter((b: any) => b.type === "text")
-                .map((b: any) => b.text)
+            ? (obj.content as Array<{ type: string; text?: string }>)
+                .filter((b) => b.type === "text")
+                .map((b) => b.text ?? "")
                 .join(" ")
             : ""
         if (!content.trim()) return null // Skip messages with no text content (e.g. tool-only turns)

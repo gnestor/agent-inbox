@@ -5,6 +5,7 @@ export interface SlashCommandItem {
   title: string
   description: string
   icon: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Editor and Range types are not exported as standalone types from @tiptap/core
   command: (props: { editor: any; range: any }) => void
 }
 

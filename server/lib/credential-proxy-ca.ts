@@ -33,6 +33,7 @@ export async function generateCA(): Promise<CertKeyPair> {
         critical: true,
       },
     ],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selfsigned types don't include the extensions/cA options that the runtime API supports
   } as any)
 
   cachedCA = { cert: pems.cert, key: pems.private }
@@ -62,6 +63,7 @@ export async function generateCertForHost(
     ],
     // Sign with our CA
     ca: { key: ca.key, cert: ca.cert },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selfsigned types don't include the ca signing option that the runtime API supports
   } as any)
 
   const pair = { cert: pems.cert, key: pems.private }

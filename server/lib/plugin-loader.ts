@@ -57,7 +57,7 @@ export async function loadBuiltinPlugins(
           const plugins = toPluginArray(mod.default)
           for (const plugin of plugins) {
             if (!isValidPlugin(plugin)) {
-              log.warn("Skipping invalid builtin plugin", { dir: entry.name, file: filename, id: (plugin as any)?.id ?? "?" })
+              log.warn("Skipping invalid builtin plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
               continue
             }
             registerPlugin(plugin)
@@ -104,7 +104,7 @@ export async function loadPlugins(
           const plugins = toPluginArray(mod.default)
           for (const plugin of plugins) {
             if (!isValidPlugin(plugin)) {
-              log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as any)?.id ?? "?" })
+              log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
               continue
             }
             if (!builtinIds.has(plugin.id)) {
@@ -137,7 +137,7 @@ export async function loadPlugins(
         const plugins = toPluginArray(mod.default)
         for (const plugin of plugins) {
           if (!isValidPlugin(plugin)) {
-            log.warn("Skipping invalid legacy plugin", { file, id: (plugin as any)?.id ?? "?" })
+            log.warn("Skipping invalid legacy plugin", { file, id: (plugin as Record<string, unknown>)?.id ?? "?" })
             continue
           }
           if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {

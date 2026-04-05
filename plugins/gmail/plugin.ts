@@ -127,12 +127,12 @@ export const gmailPlugin: Plugin = {
     const query = parts.join(" ")
 
     const result = await gmail.searchThreads(accessToken, query, 20, cursor || undefined)
-    return { items: result.threads.map(addDerivedFields) as any[], nextCursor: result.nextPageToken ?? undefined }
+    return { items: result.threads.map(addDerivedFields) as unknown as import("../../src/types/plugin.js").PluginItem[], nextCursor: result.nextPageToken ?? undefined }
   },
 
   async getItem(threadId, ctx) {
     const accessToken = await requireToken(ctx)
-    return await gmail.getThread(accessToken, threadId) as any
+    return await gmail.getThread(accessToken, threadId)
   },
 
   async mutate(id, action, payload, ctx) {
@@ -162,12 +162,12 @@ export const gmailPlugin: Plugin = {
         break
       }
       case "send": {
-        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
+        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as ComposeParams
         await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
         break
       }
       case "save-draft": {
-        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as any
+        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as ComposeParams
         await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
         break
       }
@@ -181,9 +181,9 @@ export const gmailPlugin: Plugin = {
       const accessToken = await requireToken(ctx)
       const result = await gmail.getLabels(accessToken)
       return result.labels
-        .filter((l: any) => l.type === "user")
-        .sort((a: any, b: any) => a.name.localeCompare(b.name))
-        .map((l: any) => l.name)
+        .filter((l) => l.type === "user")
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((l) => l.name)
     },
   },
 

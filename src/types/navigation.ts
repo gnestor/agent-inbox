@@ -17,7 +17,7 @@ export type PanelState =
   | { id: string; type: "new_session"; props: { sourceType?: string; sourceId?: string; sourceContent?: string } }
   | { id: string; type: "output"; props: { sessionId: string; sequence: number; outputType: string; spec: import("@/components/session/OutputRenderer").OutputSpec } }
   | { id: string; type: "code_editor"; props: { sessionId: string; sequence: number; initialCode: string; artifactPanelId: string } }
-  | { id: string; type: "ask_user"; props: { sessionId: string; sequence: number; questions: any[]; resultText: string } }
+  | { id: string; type: "ask_user"; props: { sessionId: string; sequence: number; questions: import("@/types").AskUserQuestion[]; resultText: string } }
   | { id: string; type: "compose"; props: { threadId: string; draftBody?: string } }
   | { id: string; type: "settings"; props: Record<string, never> }
 

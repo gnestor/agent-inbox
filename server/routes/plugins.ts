@@ -225,7 +225,7 @@ const mountedPluginIds = new Set<string>()
  * Each plugin's routes() is mounted under /api/:pluginId/
  * Safe to call multiple times — already-mounted plugins are skipped.
  */
-export function mountPluginRoutes(app: Hono<any>): void {
+export function mountPluginRoutes(app: Hono<AppBindings>): void {
   for (const plugin of getPlugins()) {
     if (!plugin.routes) continue
     if (mountedPluginIds.has(plugin.id)) continue

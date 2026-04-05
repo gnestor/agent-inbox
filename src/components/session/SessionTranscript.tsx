@@ -42,12 +42,12 @@ function unwrapTag(children: ReactNode, tag: string): ReactNode {
   )
 }
 
-const markdownComponents = {
-  h1: ({ children, node: _n, ...props }: any) => <h1 {...props}>{unwrapTag(children, "strong")}</h1>,
-  h2: ({ children, node: _n, ...props }: any) => <h2 {...props}>{unwrapTag(children, "strong")}</h2>,
-  h3: ({ children, node: _n, ...props }: any) => <h3 {...props}>{unwrapTag(children, "strong")}</h3>,
-  h4: ({ children, node: _n, ...props }: any) => <h4 {...props}>{unwrapTag(children, "strong")}</h4>,
-  li: ({ children, node: _n, ordered: _o, ...props }: any) => (
+const markdownComponents: import("react-markdown").Components = {
+  h1: ({ children, node: _n, ...props }) => <h1 {...props}>{unwrapTag(children, "strong")}</h1>,
+  h2: ({ children, node: _n, ...props }) => <h2 {...props}>{unwrapTag(children, "strong")}</h2>,
+  h3: ({ children, node: _n, ...props }) => <h3 {...props}>{unwrapTag(children, "strong")}</h3>,
+  h4: ({ children, node: _n, ...props }) => <h4 {...props}>{unwrapTag(children, "strong")}</h4>,
+  li: ({ children, node: _n, ...props }) => (
     <li {...props}>{unwrapTag(children, "p")}</li>
   ),
 }
@@ -115,7 +115,7 @@ export function SessionTranscript({
       const blocks = getContentBlocks(cm.source.message as AssistantMessage)
       for (const b of blocks) {
         if (b.type !== "tool_use") continue
-        if (RENDER_OUTPUT_NAMES.has(b.name) && (b as any).input?.type === "react") {
+        if (RENDER_OUTPUT_NAMES.has(b.name) && (b as ToolUseBlock).input?.type === "react") {
           count++
         }
         if (PRESENT_FILES_NAMES.has(b.name) && Array.isArray((b as any).input?.filepaths)) {
@@ -421,14 +421,15 @@ function AskUserQuestionEntry({ questions, resultText, sessionId, sequence, onAn
   )
 }
 
-export function AskUserOptions({ questions, selectedLabels }: { questions: any[]; selectedLabels: string[] }) {
+/** Shared read-only option rendering for AskUserQuestion — used in expanded panels. */
+export function AskUserOptions({ questions, selectedLabels }: { questions: AskUserQuestion[]; selectedLabels: string[] }) {
   return (
     <>
-      {questions.map((q: any) => (
+      {questions.map((q) => (
         <div key={q.question} className="space-y-1.5">
           <p className="text-sm font-medium">{q.question}</p>
           <div className="space-y-1">
-            {q.options?.map((opt: any) => {
+            {q.options?.map((opt) => {
               const isSelected = selectedLabels.includes(opt.label)
               return (
                 <div key={opt.label} className={cn("rounded-md border px-3 py-2 text-sm", isSelected ? "border-primary bg-primary/5" : "border-border bg-card opacity-50")}>

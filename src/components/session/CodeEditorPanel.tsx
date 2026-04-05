@@ -75,8 +75,9 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
       const panels = getPanels()
       const artifactPanel = panels.find((p) => p.id === artifactPanelId)
       if (artifactPanel && artifactPanel.type === "output") {
-        const spec = { ...artifactPanel.props.spec } as any
-        spec.data = typeof spec.data === "string" ? code : { ...spec.data, code }
+        const spec = { ...artifactPanel.props.spec }
+        const specData = spec.data as string | { code: string; [key: string]: unknown }
+        spec.data = typeof specData === "string" ? code : { ...specData, code }
         replacePanel(artifactPanelId, {
           ...artifactPanel,
           props: { ...artifactPanel.props, spec },

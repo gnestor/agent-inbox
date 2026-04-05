@@ -45,12 +45,15 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
               : SLASH_COMMANDS
           },
           render: () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap ReactRenderer generic requires component ref type; SlashCommandMenu ref is not exported as a standalone type
             let component: ReactRenderer<any>
             return {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
               onStart: (props: any) => {
                 component = new ReactRenderer(SlashCommandMenu, {
                   props: {
                     ...props,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command callback passes opaque item data
                     command: (item: any) => {
                       props.command(item)
                     },
@@ -60,21 +63,25 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
                 })
                 document.body.appendChild(component.element)
               },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
               onUpdate: (props: any) => {
                 component.updateProps({
                   ...props,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command callback passes opaque item data
                   command: (item: any) => {
                     props.command(item)
                   },
                   clientRect: props.clientRect,
                 })
               },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
               onKeyDown: (props: any) => {
                 if (props.event.key === "Escape") {
                   component.destroy()
                   component.element.remove()
                   return true
                 }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ReactRenderer.ref type doesn't include onKeyDown from useImperativeHandle
                 return (component.ref as any)?.onKeyDown(props.event) ?? false
               },
               onExit: () => {
@@ -83,6 +90,7 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
               },
             }
           },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command handler receives untyped editor/range/props
           command: ({ editor, range, props }: { editor: any; range: any; props: any }) => {
             props.command({ editor, range })
           },
@@ -168,13 +176,15 @@ export function RichTextEditor({
     onCreate: ({ editor }) => {
       // If initial content was HTML, sync the parent with the markdown version
       if (typeof initialContent !== "string") {
-        const md = (editor.storage as any).markdown.getMarkdown() as string
+        const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
+(editor.storage as Record<string, any>).markdown.getMarkdown() as string
         lastEmittedRef.current = md
         onChange(md)
       }
     },
     onUpdate: ({ editor }) => {
-      const md = (editor.storage as any).markdown.getMarkdown() as string
+      const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
+(editor.storage as Record<string, any>).markdown.getMarkdown() as string
       lastEmittedRef.current = md
       onChange(md)
     },
@@ -191,7 +201,8 @@ export function RichTextEditor({
       const json = generateJSON(value, extensions)
       editor.commands.setContent(json, { emitUpdate: false })
       // Re-export as markdown so parent state stays in sync
-      const md = (editor.storage as any).markdown.getMarkdown() as string
+      const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
+(editor.storage as Record<string, any>).markdown.getMarkdown() as string
       lastEmittedRef.current = md
       onChange(md)
     } else {

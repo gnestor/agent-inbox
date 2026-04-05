@@ -142,7 +142,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         props: { sessionId },
       })
     },
-    onError: (err: any) => console.error("Failed to start session:", err),
+    onError: (err: unknown) => console.error("Failed to start session:", err),
   })
 
   function handleClose() {

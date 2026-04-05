@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { loadPlugins } from "./plugin-loader.js"
 import { mountPluginRoutes } from "../routes/plugins.js"
 import type { Hono } from "hono"
+import type { AppBindings } from "../lib/workspace-context.js"
 
 const watchers: FSWatcher[] = []
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -14,7 +15,7 @@ const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
  */
 export function watchPlugins(
   workspaces: { id: string; path: string }[],
-  app: Hono<any>,
+  app: Hono<AppBindings>,
 ): void {
   for (const ws of workspaces) {
     const pluginsDir = join(ws.path, "plugins")
@@ -31,13 +32,13 @@ export function watchPlugins(
         console.warn(`[plugin-watcher] Watcher error for ${pluginsDir}:`, err.message)
       })
       watchers.push(watcher)
-    } catch (err: any) {
-      console.warn(`[plugin-watcher] Failed to watch ${pluginsDir}:`, err.message)
+    } catch (err: unknown) {
+      console.warn(`[plugin-watcher] Failed to watch ${pluginsDir}:`, err instanceof Error ? err.message : String(err))
     }
   }
 }
 
-function scheduleReload(ws: { id: string; path: string }, app: Hono<any>) {
+function scheduleReload(ws: { id: string; path: string }, app: Hono<AppBindings>) {
   clearTimeout(debounceTimers.get(ws.id))
   debounceTimers.set(ws.id, setTimeout(async () => {
     console.log(`[plugin-watcher] Reloading plugins for ${ws.id}…`)

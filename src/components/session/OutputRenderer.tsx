@@ -258,17 +258,20 @@ function JsonTree({ value, depth }: { value: unknown; depth: number }) {
  * Normalize chart data — accepts our ChartData format or simple Vega-Lite specs
  * (backward compat with old sessions). Complex Vega-Lite should use type "react".
  */
-function normalizeChartData(raw: any): ChartData | null {
+function normalizeChartData(raw: ChartData): ChartData | null {
   if (!raw) return null
 
   // Already our format
-  if (raw.xKey && raw.yKeys) return raw as ChartData
+  if (raw.xKey && raw.yKeys) return raw
 
   // Simple Vega-Lite spec: extract fields from encoding + inline data
-  const encoding = raw.encoding
-  const values = raw.data?.values
+  // These fields don't exist on ChartData but may be present in legacy sessions
+  const rawRecord = raw as unknown as Record<string, Record<string, Record<string, string>>>
+  const encoding = rawRecord.encoding
+  const values = (rawRecord.data as unknown as { values?: Record<string, unknown>[] })?.values
   if (encoding && Array.isArray(values) && encoding.x?.field && encoding.y?.field) {
-    const markType = typeof raw.mark === "string" ? raw.mark : raw.mark?.type
+    const mark = (rawRecord as unknown as Record<string, unknown>).mark
+    const markType = typeof mark === "string" ? mark : (mark as Record<string, string>)?.type
     return {
       type: markType === "line" ? "line" : markType === "area" ? "area" : markType === "arc" ? "pie" : "bar",
       data: values,
@@ -314,7 +317,7 @@ function ChartOutput({ data }: { data: ChartData }) {
     }
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts element types (Line|Area|Bar) share props but don't share a union type
   const ChartElement: any = type === "line" ? Recharts.Line
     : type === "area" ? Recharts.Area
     : Recharts.Bar
@@ -350,7 +353,7 @@ function ChartOutput({ data }: { data: ChartData }) {
               dataKey={key}
               fill={config[key]!.color}
               stroke={config[key]!.color}
-              radius={type === "bar" ? [4, 4, 0, 0] as any : undefined}
+              radius={type === "bar" ? [4, 4, 0, 0] as [number, number, number, number] : undefined}
               strokeWidth={type !== "bar" ? 2 : undefined}
               fillOpacity={type === "area" ? 0.3 : undefined}
               dot={type === "line" ? false : undefined}

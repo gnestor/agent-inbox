@@ -1194,8 +1194,8 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
           firstPrompt = content.slice(0, 200)
         } else if (Array.isArray(content)) {
           const text = content
-            .filter((b: any) => b.type === "text" && !b.text?.startsWith("<"))
-            .map((b: any) => b.text)
+            .filter((b: Record<string, unknown>) => b.type === "text" && !(b.text as string)?.startsWith("<"))
+            .map((b: Record<string, unknown>) => b.text as string)
             .join(" ")
           if (text) firstPrompt = text.slice(0, 200)
         }
@@ -1540,8 +1540,9 @@ export async function patchArtifactCode(sessionId: string, sequence: number, cod
 }
 
 /** Mutate a render_output tool_use block's code in a parsed message. Returns true if modified. */
-function patchRenderOutputCode(msg: any, code: string): boolean {
-  const content = msg.message?.content || msg.content || []
+function patchRenderOutputCode(msg: Record<string, unknown>, code: string): boolean {
+  const msgInner = msg.message as Record<string, unknown> | undefined
+  const content = msgInner?.content || msg.content || []
   if (!Array.isArray(content)) return false
   for (const block of content) {
     if (block.type !== "tool_use") continue

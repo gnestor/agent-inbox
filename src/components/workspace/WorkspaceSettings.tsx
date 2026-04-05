@@ -49,7 +49,7 @@ export function WorkspaceSettings() {
     mutationFn: (name: string) => renameWorkspace(workspaceId, name),
     onMutate: (name: string) => {
       const previous = queryClient.getQueryData(["workspace-details", workspaceId])
-      queryClient.setQueryData<any>(["workspace-details", workspaceId], (old: any) =>
+      queryClient.setQueryData<{ name: string }>(["workspace-details", workspaceId], (old) =>
         old ? { ...old, name } : old,
       )
       return { previous }

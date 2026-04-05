@@ -1,4 +1,4 @@
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { getCookie } from "hono/cookie"
 import { SESSION_COOKIE } from "./auth.js"
 import { getSession } from "../lib/auth.js"
@@ -13,6 +13,9 @@ import { getWorkspaceName } from "../lib/session-manager.js"
 import { getCredentials } from "../lib/credentials.js"
 import { randomBytes } from "crypto"
 import type { AppBindings } from "../lib/workspace-context.js"
+import { createLogger } from "../lib/logger.js"
+
+const log = createLogger("routes:connections")
 
 export const connectionRoutes = new Hono<AppBindings>()
 
@@ -30,7 +33,7 @@ setInterval(() => {
   }
 }, 60_000)
 
-async function getCurrentUser(c: any): Promise<{ email: string; name: string } | null> {
+async function getCurrentUser(c: Context): Promise<{ email: string; name: string } | null> {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return null
   const session = await getSession(token)
@@ -202,7 +205,7 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
 
   if (!tokenRes.ok) {
     const text = await tokenRes.text()
-    console.error(`OAuth token exchange failed for ${integrationId}:`, text)
+    log.error("OAuth token exchange failed", { integration: integrationId, response: text })
     return c.redirect(`/settings/integrations?error=${encodeURIComponent("Token exchange failed")}`)
   }
 
@@ -215,7 +218,7 @@ connectionRoutes.get("/connect/:integration/callback", async (c) => {
     tokenData.bot?.bot_access_token
 
   if (!accessToken) {
-    console.error("No access_token in response:", tokenData)
+    log.error("No access_token in OAuth response", { integration: integrationId })
     return c.redirect(`/settings/integrations?error=${encodeURIComponent("No access token returned")}`)
   }
 
