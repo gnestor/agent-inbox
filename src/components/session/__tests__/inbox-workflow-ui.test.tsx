@@ -5,6 +5,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
+// Mock @hammies/frontend UI components to avoid dual-React issues with @base-ui/react
+vi.mock("@hammies/frontend/components/ui", () => ({
+  Accordion: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => <div data-slot="accordion" ref={ref} {...props}>{children}</div>,
+  ),
+  AccordionItem: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => <div data-slot="accordion-item" ref={ref} {...props}>{children}</div>,
+  ),
+  AccordionTrigger: React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+    ({ children, ...props }, ref) => <button data-slot="accordion-trigger" ref={ref} {...props}>{children}</button>,
+  ),
+  AccordionContent: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => <div data-slot="accordion-content" ref={ref} {...props}>{children}</div>,
+  ),
+  Button: React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+    ({ children, ...props }, ref) => <button data-slot="button" ref={ref} {...props}>{children}</button>,
+  ),
+  Badge: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => (
+    <span data-slot="badge" {...props}>{children}</span>
+  ),
+}))
+
+vi.mock("@hammies/frontend/lib/utils", () => ({
+  cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
+}))
+
 // ── extractXmlTag ────────────────────────────────────────────────────────────
 
 import { extractXmlTag } from "@/lib/session-pipeline"
