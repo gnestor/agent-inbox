@@ -12,6 +12,20 @@ interface CertKeyPair {
 let cachedCA: CertKeyPair | null = null
 const hostCertCache = new Map<string, CertKeyPair>()
 
+/** Maximum number of host certificates to keep cached. Oldest entries evicted first. */
+const MAX_HOST_CERTS = 100
+
+/** Move a key to the most-recently-used position; evict oldest if over capacity. */
+function touchLru(key: string, value: CertKeyPair): void {
+  hostCertCache.delete(key)
+  hostCertCache.set(key, value)
+  while (hostCertCache.size > MAX_HOST_CERTS) {
+    const oldest = hostCertCache.keys().next().value
+    if (oldest === undefined) break
+    hostCertCache.delete(oldest)
+  }
+}
+
 /**
  * Generate a self-signed CA certificate for the credential proxy.
  * The CA is used to sign per-host certificates so the agent subprocess
@@ -49,7 +63,11 @@ export async function generateCertForHost(
   ca: CertKeyPair
 ): Promise<CertKeyPair> {
   const cached = hostCertCache.get(host)
-  if (cached) return cached
+  if (cached) {
+    // Promote to most-recently-used
+    touchLru(host, cached)
+    return cached
+  }
 
   const attrs = [{ name: "commonName", value: host }]
   const pems = await selfsigned.generate(attrs, {
@@ -67,9 +85,22 @@ export async function generateCertForHost(
   } as any)
 
   const pair = { cert: pems.cert, key: pems.private }
-  hostCertCache.set(host, pair)
+  touchLru(host, pair)
   return pair
 }
+
+/** Current size of the host cert cache — for tests. */
+export function _getHostCertCacheSize(): number {
+  return hostCertCache.size
+}
+
+/** Test-only: inspect cache keys in insertion order (oldest first). */
+export function _getHostCertCacheKeys(): string[] {
+  return Array.from(hostCertCache.keys())
+}
+
+/** Max cache size constant exposed for tests. */
+export const _MAX_HOST_CERTS = MAX_HOST_CERTS
 
 /**
  * Write the CA cert to a temp file and return the path.
