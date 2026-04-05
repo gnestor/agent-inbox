@@ -13,6 +13,9 @@ import { useNavActions } from "@/lib/navigation-store"
 import { resumeSession, answerSessionQuestion } from "@/api/client"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
 import { Skeleton } from "@hammies/frontend/components/ui"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("panel")
 
 // Lazy-load tab-specific components to avoid circular imports
 const SessionView = lazy(() =>
@@ -36,7 +39,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   const editingCode = useEditingCode(editorKey)
 
   const handleAction = useCallback(
-    (intent: string) => { resumeSession(sessionId, intent).catch(console.error) },
+    (intent: string) => { resumeSession(sessionId, intent).catch((err) => log.error("Resume session failed", { sessionId, error: err instanceof Error ? err.message : String(err) })) },
     [sessionId],
   )
 

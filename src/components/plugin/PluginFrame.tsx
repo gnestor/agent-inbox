@@ -3,6 +3,9 @@ import { buildPluginComponentHtml } from "@/lib/build-plugin-component-html"
 import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import { pluginIdFromTab } from "@/types/navigation"
 import type { TabId } from "@/types/navigation"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("plugin-frame")
 
 interface PluginFrameProps {
   /** Plugin ID (e.g. "gmail", "notion-tasks") */
@@ -67,7 +70,7 @@ export function PluginFrame({
           break
         case "pushPanel":
           // Panel push handled by navigation — future enhancement
-          console.warn("PluginFrame: pushPanel not yet implemented", data.panel)
+          log.warn("pushPanel not yet implemented", { panel: data.panel })
           break
         case "height":
           // Auto-resize iframe to content height (capped at viewport height)
@@ -76,7 +79,7 @@ export function PluginFrame({
           }
           break
         case "error":
-          console.error(`PluginFrame [${pluginId}/${componentName}]:`, data.message)
+          log.error("Plugin error", { pluginId, componentName, message: data.message })
           break
         default:
           break

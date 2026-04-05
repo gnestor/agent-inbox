@@ -2,6 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { resumeSession, abortSession, archiveSession, unarchiveSession, updateSession } from "@/api/client"
 import { toast } from "sonner"
 import type { Session, SessionMessage, SessionStatus } from "@/types"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("session-mutations")
 
 interface SessionDetailCache { session: Session; messages: SessionMessage[] }
 interface SessionListCache { sessions: Session[] }
@@ -46,7 +49,7 @@ function optimisticStatusSwitch(qc: QC, sessionId: string, target: SessionStatus
     onError: (err: Error) => {
       setSessionStatus(qc, sessionId, rollback)
       setSessionListStatus(qc, sessionId, rollback)
-      console.error(`Failed to update session status:`, err)
+      log.error("Failed to update session status", { sessionId, target, error: err.message })
     },
   }
 }
@@ -65,7 +68,7 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
       qc.invalidateQueries({ queryKey: ["sessions"] })
     },
     onError: (err: Error) => {
-      console.error("Failed to resume session:", err)
+      log.error("Failed to resume session", { sessionId, error: err.message })
       setSessionStatus(qc, sessionId, "complete")
       setSessionListStatus(qc, sessionId, "complete")
       toast.error(`Failed to resume session: ${err.message}`)
@@ -84,7 +87,7 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
       // No detail refetch — SSE session_complete/session_error handles status.
       // Refetching here races with final JSONL writes.
     },
-    onError: (err: Error) => console.error("Failed to abort session:", err),
+    onError: (err: Error) => log.error("Failed to abort session", { sessionId, error: err.message }),
   })
 
   const archiveOpts = optimisticStatusSwitch(qc, sessionId, "archived", "complete")

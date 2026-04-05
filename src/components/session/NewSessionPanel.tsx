@@ -17,6 +17,9 @@ import { usePreference } from "@/hooks/use-preferences"
 import { SessionView } from "./SessionView"
 import { NEW_SESSION_PANEL } from "@/types/navigation"
 import type { PluginItem } from "@/types/plugin"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("new-session")
 
 
 interface PromptTemplate {
@@ -142,7 +145,7 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
         props: { sessionId },
       })
     },
-    onError: (err: unknown) => console.error("Failed to start session:", err),
+    onError: (err: unknown) => log.error("Failed to start session", { error: err instanceof Error ? err.message : String(err) }),
   })
 
   function handleClose() {

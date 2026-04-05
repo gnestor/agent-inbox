@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react"
 import { Inbox } from "lucide-react"
 import { getAuthClientId, authCallback } from "@/api/client"
 import { useUser } from "@/hooks/use-user"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("auth")
 
 declare global {
   interface Window {
@@ -57,7 +60,7 @@ export function LoginPage() {
             await refresh()
           } catch (err) {
             setError("Sign in failed. Please try again.")
-            console.error("Auth callback failed:", err)
+            log.error("Auth callback failed", { error: err instanceof Error ? err.message : String(err) })
           }
         },
         auto_select: true,
