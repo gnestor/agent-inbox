@@ -267,9 +267,12 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
       console.log(`[session:${sessionId}] ${current?.status ?? "unknown"} → ${status}`)
     }
 
+    // Don't overwrite user-facing summary with error messages — error details are
+    // broadcast via SSE session_error event and shown in the UI error banner.
+    const summaryToStore = status === "errored" ? null : summary
     await execute(
       `UPDATE sessions SET status = $1, summary = COALESCE($2, summary), completed_at = $3, updated_at = $4 WHERE id = $5`,
-      [status, summary || null, now, now, sessionId],
+      [status, summaryToStore, now, now, sessionId],
     )
   } else {
     if (process.env.NODE_ENV !== "production") {
@@ -798,7 +801,7 @@ export async function resumeSessionQuery(
       autoNameSession(sessionId).catch(() => {})
       runningQueries.delete(sessionId)
     } catch (err: any) {
-      console.error("Session resume error:", err)
+      console.error(`Session resume error [${sessionId}]:`, err.message || err)
       await updateSessionStatus(sessionId, "errored", err.message)
       broadcastToSession(sessionId, {
         type: "session_error",

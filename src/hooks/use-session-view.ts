@@ -75,7 +75,7 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
 
   // --- Input state ---
 
-  const isStreaming = phase.status === "streaming"
+  const isStreaming = phase.status === "streaming" || phase.status === "sending"
   const isSending = phase.status === "sending"
 
   function handleSend() {
