@@ -1,6 +1,9 @@
 import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Plugin } from "../../src/types/plugin.js"
+import { createLogger } from "./logger.js"
+
+const log = createLogger("plugins")
 
 type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
 
@@ -54,7 +57,7 @@ export async function loadBuiltinPlugins(
           const plugins = toPluginArray(mod.default)
           for (const plugin of plugins) {
             if (!isValidPlugin(plugin)) {
-              console.warn(`plugin-loader: skipping builtin ${entry.name}/${filename} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+              log.warn("Skipping invalid builtin plugin", { dir: entry.name, file: filename, id: (plugin as any)?.id ?? "?" })
               continue
             }
             registerPlugin(plugin)
@@ -63,7 +66,7 @@ export async function loadBuiltinPlugins(
         } catch (err: unknown) {
           if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
               (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
-          console.error(`plugin-loader: failed to load builtin ${entry.name}/${filename}:`, err)
+          log.error("Failed to load builtin plugin", { dir: entry.name, file: filename, error: err instanceof Error ? err.message : String(err) })
         }
         break
       }
@@ -101,7 +104,7 @@ export async function loadPlugins(
           const plugins = toPluginArray(mod.default)
           for (const plugin of plugins) {
             if (!isValidPlugin(plugin)) {
-              console.warn(`plugin-loader: skipping ${entry.name}/${filename} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+              log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as any)?.id ?? "?" })
               continue
             }
             if (!builtinIds.has(plugin.id)) {
@@ -113,7 +116,7 @@ export async function loadPlugins(
           // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
           if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
               (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
-          console.error(`plugin-loader: failed to load ${entry.name}/${filename}:`, err)
+          log.error("Failed to load plugin", { dir: entry.name, file: filename, error: err instanceof Error ? err.message : String(err) })
         }
         break
       }
@@ -134,7 +137,7 @@ export async function loadPlugins(
         const plugins = toPluginArray(mod.default)
         for (const plugin of plugins) {
           if (!isValidPlugin(plugin)) {
-            console.warn(`plugin-loader: skipping ${file} plugin "${(plugin as any)?.id ?? "?"}" — invalid`)
+            log.warn("Skipping invalid legacy plugin", { file, id: (plugin as any)?.id ?? "?" })
             continue
           }
           if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
@@ -142,7 +145,7 @@ export async function loadPlugins(
           }
         }
       } catch (err: unknown) {
-        console.error(`plugin-loader: failed to load ${file}:`, err)
+        log.error("Failed to load legacy plugin", { file, error: err instanceof Error ? err.message : String(err) })
       }
     }
   } catch (err: unknown) {

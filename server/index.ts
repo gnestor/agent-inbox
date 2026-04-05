@@ -5,6 +5,9 @@ import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { createLogger } from "./lib/logger.js"
+
+const log = createLogger("server")
 import { getCookie } from "hono/cookie"
 import { config } from "dotenv"
 import { resolve, dirname, basename } from "path"
@@ -40,10 +43,7 @@ config({ path: resolve(__dirname, "../.env") })
 
 // Validate VAULT_SECRET
 if (!process.env.VAULT_SECRET || process.env.VAULT_SECRET.length < 64) {
-  console.warn(
-    "WARNING: VAULT_SECRET not set or too short. Credential vault will not work.\n" +
-    "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-  )
+  log.warn("VAULT_SECRET not set or too short — credential vault will not work")
 }
 
 // Parse workspace paths from CLI args or env vars
@@ -83,7 +83,7 @@ function getWorkspacePaths(): string[] {
 }
 
 const workspacePaths = getWorkspacePaths()
-console.log(`Workspaces: ${workspacePaths.map(p => basename(p)).join(", ")}`)
+log.info("Workspaces", { paths: workspacePaths.map(p => basename(p)) })
 
 // Initialize database
 await initializeDatabase()
@@ -206,7 +206,7 @@ createCredentialProxy({
   .then((proxy) => {
     setCredentialProxy(proxy)
   })
-  .catch((err) => console.error("Failed to start credential proxy:", err))
+  .catch((err) => log.error("Failed to start credential proxy", { error: err instanceof Error ? err.message : String(err) }))
 
 // Typed Hono app bindings — Phase 3+ routes use c.get("userEmail") etc.
 type AppBindings = {
@@ -310,7 +310,7 @@ app.get("/api/users", async (c) => {
 
 // Error handler
 app.onError((err, c) => {
-  console.error("Server error:", err)
+  log.error("Server error", { error: err.message })
   return c.json({ error: err.message }, 500)
 })
 
@@ -329,24 +329,24 @@ const port = parseInt(process.env.PORT || "3002", 10)
 
 // Load workspace plugins before starting the server
 for (const ws of registeredWorkspaces) {
-  await loadPlugins(ws.path, ws.id).catch((err) => console.warn(`Failed to load plugins for ${ws.id}:`, err.message))
+  await loadPlugins(ws.path, ws.id).catch((err) => log.warn("Failed to load plugins", { workspaceId: ws.id, error: err.message }))
 }
 mountPluginRoutes(app)
 
 const server = serve({ fetch: app.fetch, port }, () => {
-  console.log(`Server running on http://localhost:${port}`)
+  log.info("Server running", { url: `http://localhost:${port}` })
   injectWebSocket(server)
   watchPlugins(registeredWorkspaces, app)
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions()
     .then(() => watchProjectsDir())
-    .catch((err: unknown) => console.warn("Failed to index sessions:", err))
+    .catch((err: unknown) => log.warn("Failed to index sessions", { error: err instanceof Error ? err.message : String(err) }))
   // Auto-resume sessions that were running when the server last shut down
-  recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
+  recoverStaleSessions().catch((err: unknown) => log.warn("Failed to recover stale sessions", { error: err instanceof Error ? err.message : String(err) }))
   process.env.WORKSPACE_PATH = workspacePaths[0]
   const firstRegistered = registeredWorkspaces[0]
   if (firstRegistered) {
-    loadPanels(firstRegistered.path).catch((err) => console.warn("Failed to load panels:", err.message))
+    loadPanels(firstRegistered.path).catch((err) => log.warn("Failed to load panels", { error: err.message }))
   }
 })
 
