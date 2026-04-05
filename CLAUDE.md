@@ -80,6 +80,20 @@ Run tests: `npm run test:run` (or `npm test` for watch mode).
 - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom` at top)
 - Tests run automatically after each file save via the PostToolUse Claude hook.
 
+### Browser testing
+
+Use `npm run dev` from the inbox package directory to start both servers (Vite client + Hono API). The client runs on port 5175 (or next available) and proxies `/api` to the server on port 3002.
+
+To test with Claude for Chrome MCP tools:
+1. Navigate to the Vite dev URL (check terminal output for the port)
+2. Use `read_console_messages` to check for errors after each interaction
+3. Key flows to verify:
+   - **Session list** → click a session → transcript renders with messages, tool calls, markdown
+   - **New session** → click "+" → compose panel opens → type prompt → "Start Session" → optimistic message appears → streaming indicator → response renders
+   - **Resume session** → type in input → Cmd+Enter → optimistic message → streaming → response
+   - **Visibility toggles** → click "..." menu → toggle Messages/Tool calls/Thinking/Artifacts → transcript updates
+   - **No console errors** throughout all interactions
+
 ## Conventions
 
 - Import UI components from `@hammies/frontend/components/ui`

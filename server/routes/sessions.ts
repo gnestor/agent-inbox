@@ -286,8 +286,7 @@ sessionRoutes.post("/:id/resume", async (c) => {
 
   // Import agent-only session to DB if not already there (prevents FK constraint failure)
   if (!(await sessions.getSessionRecord(sessionId))) {
-    const { getAgentSession } = await import("../lib/session-files.js")
-    const agentSession = getAgentSession(sessionId)
+    const agentSession = await sessions.findAgentSession(sessionId)
     if (!agentSession) return c.json({ error: "Session not found" }, 404)
     await sessions.importAgentSession(sessionId, agentSession)
   }

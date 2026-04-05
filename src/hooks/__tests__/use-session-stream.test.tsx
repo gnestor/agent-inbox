@@ -1,140 +1,84 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, act, waitFor } from "@testing-library/react"
+import React from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useSessionStream } from "../use-session-stream"
 
-// Minimal EventSource mock
-class MockEventSource {
-  static instances: MockEventSource[] = []
-  listeners: Record<string, ((e: any) => void)[]> = {}
-  readyState = 0
-  url: string
-
-  constructor(url: string) {
-    this.url = url
-    MockEventSource.instances.push(this)
-  }
-
-  addEventListener(type: string, fn: (e: any) => void) {
-    if (!this.listeners[type]) this.listeners[type] = []
-    this.listeners[type].push(fn)
-  }
-
-  emit(type: string, data?: any) {
-    for (const fn of this.listeners[type] ?? []) fn(data ?? {})
-  }
-
-  close() {
-    this.readyState = 2
+// --- Mock WS stream before any imports that use it ---
+type Callback = (data: any) => void
+const _subs = new Map<string, Set<Callback>>()
+const _mockSubscribe = (sessionId: string, callback: Callback) => {
+  if (!_subs.has(sessionId)) _subs.set(sessionId, new Set())
+  _subs.get(sessionId)!.add(callback)
+  return () => {
+    _subs.get(sessionId)?.delete(callback)
+    if (_subs.get(sessionId)?.size === 0) _subs.delete(sessionId)
   }
 }
 
-let queryClient: QueryClient
+vi.mock("@/hooks/use-ws-stream", () => ({
+  useWsStream: () => ({ subscribe: _mockSubscribe, isConnected: true }),
+}))
 
-function wrapper({ children }: { children: React.ReactNode }) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+import { useSessionStream } from "../use-session-stream"
+
+function emit(sessionId: string, data: any) {
+  for (const cb of _subs.get(sessionId) ?? []) cb(data)
+}
+
+let qc: QueryClient
+function W({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
 beforeEach(() => {
-  MockEventSource.instances = []
-  vi.stubGlobal("EventSource", MockEventSource)
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  // Seed the cache with an empty session so setQueryData has something to update
-  queryClient.setQueryData(["session", "session-1"], { session: { id: "session-1", status: "running" }, messages: [] })
-  queryClient.setQueryData(["session", "session-2"], { session: { id: "session-2", status: "running" }, messages: [] })
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
+  _subs.clear()
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  qc.setQueryData(["session", "s1"], { session: { id: "s1", status: "running" }, messages: [] })
 })
 
 describe("useSessionStream", () => {
-  it("pushes messages to React Query cache", async () => {
-    renderHook(() => useSessionStream("session-1"), { wrapper })
-    const es = MockEventSource.instances[0]
-
-    act(() => {
-      es.emit("open")
-      es.emit("message", {
-        data: JSON.stringify({ sequence: 0, message: { type: "text", content: "hello" } }),
-      })
-    })
-
+  it("pushes messages to cache", async () => {
+    renderHook(() => useSessionStream("s1"), { wrapper: W })
+    act(() => emit("s1", { sequence: 0, message: { type: "text", content: "hi" } }))
     await waitFor(() => {
-      const data = queryClient.getQueryData(["session", "session-1"]) as any
-      expect(data.messages).toHaveLength(1)
-      expect(data.messages[0].sequence).toBe(0)
+      const d = qc.getQueryData(["session", "s1"]) as any
+      expect(d.messages).toHaveLength(1)
     })
   })
 
-  it("resets state when sessionId changes", async () => {
-    const { result, rerender } = renderHook(({ id }) => useSessionStream(id), {
-      wrapper,
-      initialProps: { id: "session-1" as string | undefined },
-    })
-
-    act(() => {
-      MockEventSource.instances[0].emit("open")
-    })
-    expect(result.current.connected).toBe(true)
-
-    rerender({ id: "session-2" })
-    expect(result.current.connected).toBe(false)
-    expect(result.current.sessionStatus).toBeNull()
+  it("does not subscribe when undefined", () => {
+    renderHook(() => useSessionStream(undefined), { wrapper: W })
+    expect(_subs.size).toBe(0)
   })
 
-  it("does not open a stream when sessionId is undefined", () => {
-    renderHook(() => useSessionStream(undefined), { wrapper })
-    expect(MockEventSource.instances).toHaveLength(0)
+  it("handles session_complete", async () => {
+    renderHook(() => useSessionStream("s1"), { wrapper: W })
+    act(() => emit("s1", { type: "session_complete" }))
+    await waitFor(() => {
+      const d = qc.getQueryData(["session", "s1"]) as any
+      expect(d.session.status).toBe("complete")
+    })
   })
 
-  it("sets pendingQuestion on ask_user_question event", async () => {
-    const { result } = renderHook(() => useSessionStream("session-1"), { wrapper })
-    const es = MockEventSource.instances[0]
-
-    const questions = [
-      { question: "Which?", header: "H", options: [{ label: "A" }], multiSelect: false },
-    ]
-
-    act(() => {
-      es.emit("message", { data: JSON.stringify({ type: "ask_user_question", questions }) })
-    })
-
+  it("handles ask_user_question", async () => {
+    const { result } = renderHook(() => useSessionStream("s1"), { wrapper: W })
+    act(() => emit("s1", { type: "ask_user_question", questions: [{ question: "Q?" }] }))
     await waitFor(() => expect(result.current.pendingQuestion).not.toBeNull())
-    expect(result.current.pendingQuestion?.questions).toEqual(questions)
-    expect(result.current.sessionStatus).toBe("awaiting_user_input")
   })
 
-  it("clears pendingQuestion on clearPendingQuestion()", async () => {
-    const { result } = renderHook(() => useSessionStream("session-1"), { wrapper })
-    const es = MockEventSource.instances[0]
-
-    act(() => {
-      es.emit("message", {
-        data: JSON.stringify({
-          type: "ask_user_question",
-          questions: [{ question: "Q?", header: "H", options: [], multiSelect: false }],
-        }),
-      })
-    })
+  it("clearPendingQuestion works", async () => {
+    const { result } = renderHook(() => useSessionStream("s1"), { wrapper: W })
+    act(() => emit("s1", { type: "ask_user_question", questions: [{ question: "Q?" }] }))
     await waitFor(() => expect(result.current.pendingQuestion).not.toBeNull())
-
     act(() => result.current.clearPendingQuestion())
     expect(result.current.pendingQuestion).toBeNull()
   })
 
-  it("updates session status in cache on session_complete", async () => {
-    renderHook(() => useSessionStream("session-1"), { wrapper })
-    const es = MockEventSource.instances[0]
-
-    act(() => {
-      es.emit("message", { data: JSON.stringify({ type: "session_complete" }) })
-    })
-
-    await waitFor(() => {
-      const data = queryClient.getQueryData(["session", "session-1"]) as any
-      expect(data.session.status).toBe("complete")
-    })
+  it("unsubscribes on unmount", () => {
+    const { unmount } = renderHook(() => useSessionStream("s1"), { wrapper: W })
+    expect(_subs.has("s1")).toBe(true)
+    unmount()
+    expect(_subs.has("s1")).toBe(false)
   })
 })

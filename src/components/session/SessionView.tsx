@@ -15,12 +15,13 @@ import {
 } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2, X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
-import { SessionTranscript, WorkingIndicator } from "./SessionTranscript"
+import { SessionTranscript, WorkingIndicator, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
+import type { TranscriptVisibility } from "./SessionTranscript"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { useNavigation } from "@/hooks/use-navigation"
-import { useSessionPhase } from "@/hooks/use-session-phase"
+import { useSessionController } from "@/hooks/use-session-controller"
 import { useSessionView } from "@/hooks/use-session-view"
+import { usePreference } from "@/hooks/use-preferences"
 import { getInitials } from "@/lib/formatters"
 
 interface SessionViewProps {
@@ -29,37 +30,42 @@ interface SessionViewProps {
   title?: string
 }
 
-// Module-level: shared across all SessionView instances so a session viewed
-// from one route (sessions/, recent/, plugin detail) skips the skeleton on another.
 const readySessions = new Set<string>()
 
 export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   const { user } = useUser()
-  const { getPanels } = useNavigation()
-  // Only connect SSE when this panel is in the active tab (visible)
-  const isActiveSession = getPanels().some((p) => p.id === panelId)
 
-  const { phase, session, messages, presenceUsers, eventCount, isLive, mutations, resumeSession, answerQuestion } =
-    useSessionPhase({
-      sessionId,
-      isActive: isActiveSession,
-      onResume: () => setPrompt(""),
-      onArchive: () => handleBack(),
-    })
+  // Visibility is independent — read it first so the controller can filter by it
+  const [visibility, setVisibility] = usePreference<TranscriptVisibility>(
+    "sessions.transcript.visibility",
+    DEFAULT_TRANSCRIPT_VISIBILITY,
+  )
+  function toggleVisibility(key: keyof TranscriptVisibility) {
+    setVisibility({ ...visibility, [key]: !visibility[key] })
+  }
 
-  const {
-    isEditing, editTitle, displayTitle,
-    handleStartEdit, handleFinishEdit, handleEditKeyDown, setEditTitle,
-    visibility, toggleVisibility,
-    prompt, setPrompt, textareaRef,
-    isStreaming, isSending,
-    handleSend, handleKeyDown,
-    handleBack, handleOpenPanel, isFromSidebar,
-  } = useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession })
+  // Controller: data, streaming, actions
+  const controller = useSessionController({
+    sessionId,
+    visibility,
+    isActive: true,
+    onResume: () => sessionView.setPrompt(""),
+    onArchive: () => sessionView.handleBack(),
+  })
 
-  // Show skeleton overlay on first load only. Once a session has been viewed,
-  // returning to it renders instantly from cache.
-  const dataReady = session?.id === sessionId
+  // UI state: title editing, input draft, navigation
+  const sessionView = useSessionView({
+    sessionId,
+    panelId,
+    title,
+    session: controller.session,
+    phase: controller.phase,
+    mutations: controller.mutations,
+    resumeSession: controller.resumeSession,
+  })
+
+  // Skeleton overlay on first load
+  const dataReady = controller.session?.id === sessionId
   const [readySessionId, setReadySessionId] = useState<string | null>(null)
   const handleArtifactsReady = useCallback(() => {
     readySessions.add(sessionId)
@@ -75,41 +81,37 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       setReadySessionId(sessionId)
     }, 3000)
     return () => clearTimeout(timer)
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId])
   const isReady = dataReady && readySessionId === sessionId
 
   const header = (
     <PanelHeader
       left={
         <>
-          {isFromSidebar ? (
-            <SidebarButton />
-          ) : (
-            <BackButton onClick={handleBack} />
-          )}
-          {isEditing ? (
+          {sessionView.isFromSidebar ? <SidebarButton /> : <BackButton onClick={sessionView.handleBack} />}
+          {sessionView.isEditing ? (
             <input
               autoFocus
               onFocus={(e) => e.target.select()}
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              onBlur={handleFinishEdit}
-              onKeyDown={handleEditKeyDown}
+              value={sessionView.editTitle}
+              onChange={(e) => sessionView.setEditTitle(e.target.value)}
+              onBlur={sessionView.handleFinishEdit}
+              onKeyDown={sessionView.handleEditKeyDown}
               className="font-semibold text-sm bg-transparent border-b border-foreground/30 outline-none truncate min-w-0 flex-1"
               maxLength={200}
             />
           ) : (
             <h2
               className="font-semibold text-sm truncate min-w-0 cursor-pointer hover:text-foreground/70"
-              onClick={handleStartEdit}
+              onClick={sessionView.handleStartEdit}
               title="Click to rename"
             >
-              {displayTitle}
+              {sessionView.displayTitle}
             </h2>
           )}
-          {presenceUsers.length > 1 && (
+          {controller.presenceUsers.length > 1 && (
             <div className="flex -space-x-1.5 shrink-0">
-              {presenceUsers.map((u) => (
+              {controller.presenceUsers.map((u) => (
                 <Avatar key={u.email} size="sm" className="border-2 border-background">
                   {u.picture && <AvatarImage src={u.picture} alt={u.name} />}
                   <AvatarFallback className="text-[10px]">{getInitials(u.name)}</AvatarFallback>
@@ -121,74 +123,31 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       }
       right={
         <div className="flex items-center gap-1">
-          {session?.status === "archived" ? (
-            <button
-              type="button"
-              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-              onClick={() => mutations.unarchive.mutate()}
-              disabled={mutations.unarchive.isPending}
-              title="Restore session"
-            >
+          {controller.session?.status === "archived" ? (
+            <button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground" onClick={() => controller.mutations.unarchive.mutate()} disabled={controller.mutations.unarchive.isPending} title="Restore session">
               <ArchiveRestore className="h-4 w-4" />
             </button>
           ) : (
-            <button
-              type="button"
-              className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-              onClick={() => mutations.archive.mutate()}
-              disabled={mutations.archive.isPending}
-              title="Archive session"
-            >
+            <button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground" onClick={() => controller.mutations.archive.mutate()} disabled={controller.mutations.archive.isPending} title="Archive session">
               <Archive className="h-4 w-4" />
             </button>
           )}
           <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-                />
-              }
-            >
+            <DropdownMenuTrigger render={<button type="button" className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground" />}>
               <Ellipsis className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Transcript</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={visibility.messages}
-                  onCheckedChange={() => toggleVisibility("messages")}
-                >
-                  Messages
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={visibility.toolCalls}
-                  onCheckedChange={() => toggleVisibility("toolCalls")}
-                >
-                  Tool calls
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={visibility.thinking}
-                  onCheckedChange={() => toggleVisibility("thinking")}
-                >
-                  Thinking
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={visibility.artifacts}
-                  onCheckedChange={() => toggleVisibility("artifacts")}
-                >
-                  Artifacts
-                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibility.messages} onCheckedChange={() => toggleVisibility("messages")}>Messages</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibility.toolCalls} onCheckedChange={() => toggleVisibility("toolCalls")}>Tool calls</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibility.thinking} onCheckedChange={() => toggleVisibility("thinking")}>Thinking</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibility.artifacts} onCheckedChange={() => toggleVisibility("artifacts")}>Artifacts</DropdownMenuCheckboxItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          {!isFromSidebar && (
-            <button
-              type="button"
-              className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
-              onClick={handleBack}
-            >
+          {!sessionView.isFromSidebar && (
+            <button type="button" className="hidden md:flex shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground" onClick={sessionView.handleBack}>
               <X className="h-4 w-4" />
             </button>
           )}
@@ -197,11 +156,11 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     />
   )
 
-  if (phase.status === "error") {
+  if (controller.phase.status === "error") {
     return (
       <div className="flex flex-col h-full">
         {header}
-        <div className="p-6 text-destructive">Error loading session: {phase.message}</div>
+        <div className="p-6 text-destructive">Error loading session: {controller.phase.message}</div>
       </div>
     )
   }
@@ -210,14 +169,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     <div className="flex flex-col h-full relative">
       {!isReady && (
         <div className="absolute inset-0 z-10 flex flex-col bg-card">
-          <PanelHeader
-            left={
-              <>
-                {isFromSidebar ? <SidebarButton /> : <BackButton onClick={handleBack} />}
-                <Skeleton className="h-4 w-48 rounded" />
-              </>
-            }
-          />
+          <PanelHeader left={<>{sessionView.isFromSidebar ? <SidebarButton /> : <BackButton onClick={sessionView.handleBack} />}<Skeleton className="h-4 w-48 rounded" /></>} />
           <PanelSkeleton />
         </div>
       )}
@@ -226,61 +178,49 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       <div className="flex-1 overflow-hidden">
         <SessionTranscript
           key={sessionId}
-          messages={messages}
-          status={phase.status}
-          isLive={isLive}
+          messages={controller.messages}
+          lookups={controller.lookups}
+          userProfiles={controller.userProfiles}
           visibility={visibility}
           sessionId={sessionId}
           currentUserEmail={user?.email}
-          onOpenPanel={handleOpenPanel}
-          onAction={(intent) => resumeSession(intent)}
-          onAnswer={answerQuestion}
+          onOpenPanel={sessionView.handleOpenPanel}
+          onAction={controller.resumeSession}
+          onAnswer={controller.answerQuestion}
           onArtifactsReady={handleArtifactsReady}
         >
-          {isStreaming && <WorkingIndicator eventCount={eventCount} />}
+          {sessionView.isStreaming && <WorkingIndicator eventCount={controller.eventCount} />}
+          {controller.phase.status === "errored" && (
+            <div className="mx-4 mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              The agent process exited unexpectedly. You can send another message to retry.
+            </div>
+          )}
         </SessionTranscript>
       </div>
 
-      {/* Chat input */}
       <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2 items-end">
-            <Textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isStreaming ? "Interrupt with a message..." : "Write a prompt..."}
-              disabled={isSending}
-              className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
-              rows={1}
-            />
-            {isStreaming && !prompt.trim() ? (
-              <Button
-                onClick={() => mutations.abort.mutate()}
-                disabled={mutations.abort.isPending}
-                variant="ghost"
-                size="icon-lg"
-                className="text-[var(--ground)]"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleSend}
-                disabled={!prompt.trim() || isSending}
-                variant="ghost"
-                size="icon-lg"
-                className="text-[var(--ground)]"
-              >
-                {isSending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            )}
-          </div>
+          <Textarea
+            ref={sessionView.textareaRef}
+            value={sessionView.prompt}
+            onChange={(e) => sessionView.setPrompt(e.target.value)}
+            onKeyDown={sessionView.handleKeyDown}
+            placeholder={sessionView.isStreaming ? "Interrupt with a message..." : "Write a prompt..."}
+            disabled={sessionView.isSending}
+            className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
+            rows={1}
+          />
+          {sessionView.isStreaming && !sessionView.prompt.trim() ? (
+            <Button onClick={() => controller.mutations.abort.mutate()} disabled={controller.mutations.abort.isPending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
+              <Square className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={sessionView.handleSend} disabled={!sessionView.prompt.trim() || sessionView.isSending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
+              {sessionView.isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
+      </div>
     </div>
   )
 }

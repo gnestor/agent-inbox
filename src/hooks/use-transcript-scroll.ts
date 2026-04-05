@@ -1,12 +1,9 @@
-import { useRef, useEffect, useMemo } from "react"
-import type { SessionMessage } from "@/types"
-import type { TranscriptVisibility } from "@/components/session/SessionTranscript"
+import { useRef, useEffect } from "react"
 
 interface UseTranscriptScrollOptions {
-  messages: SessionMessage[]
-  visibility: TranscriptVisibility
+  /** Number of visible messages (used to detect when messages arrive) */
+  messageCount: number
   sessionId?: string
-  shouldRenderMessage: (message: SessionMessage, visibility: TranscriptVisibility) => boolean
 }
 
 /**
@@ -18,19 +15,12 @@ interface UseTranscriptScrollOptions {
  * performance. This gives native-feeling scroll with zero layout jumps.
  */
 export function useTranscriptScroll({
-  messages,
-  visibility,
+  messageCount,
   sessionId,
-  shouldRenderMessage,
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const hasScrolledToBottom = useRef(false)
-
-  const visibleMessages = useMemo(
-    () => messages.filter((message) => shouldRenderMessage(message, visibility)),
-    [messages, visibility, shouldRenderMessage],
-  )
 
   // Reset when session changes
   useEffect(() => {
@@ -41,16 +31,15 @@ export function useTranscriptScroll({
   // Scroll to bottom once messages are available
   useEffect(() => {
     if (hasScrolledToBottom.current) return
-    if (visibleMessages.length === 0) return
+    if (messageCount === 0) return
     const el = scrollRef.current
     if (!el) return
 
     hasScrolledToBottom.current = true
-    // Use rAF to ensure layout has completed
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
     })
-  }, [visibleMessages.length])
+  }, [messageCount])
 
   // Auto-scroll when content grows (new messages, artifacts loading, etc.)
   useEffect(() => {
@@ -83,7 +72,6 @@ export function useTranscriptScroll({
 
   return {
     scrollRef,
-    visibleMessages,
     handleScroll,
   }
 }

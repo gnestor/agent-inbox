@@ -44,7 +44,7 @@ function ListItemInner({
   return (
     <button
       className={cn(
-        "w-full h-full text-left px-4 py-3 border-b overflow-hidden",
+        "w-full h-[100px] text-left px-4 py-3 border-b overflow-hidden",
         isSelected ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
       )}
       onClick={onClick}
