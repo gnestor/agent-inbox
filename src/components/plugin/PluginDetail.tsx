@@ -18,6 +18,7 @@ import { getItemTitle } from "@/lib/plugin-utils"
 import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
 import { PluginFrame } from "@/components/plugin/PluginFrame"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import { usePluginMutations } from "@/hooks/use-plugin-mutations"
 import type { PluginManifest } from "@/api/client"
@@ -418,12 +419,14 @@ export function PluginDetail({
             </>
           }
         />
-        <PluginFrame
-          pluginId={pluginId}
-          componentName={plugin.components.detail}
-          componentProps={{ item }}
-          className="w-full flex-1 border-0"
-        />
+        <ErrorBoundary label={`Plugin: ${pluginId}`} resetKeys={[itemId]}>
+          <PluginFrame
+            pluginId={pluginId}
+            componentName={plugin.components.detail}
+            componentProps={{ item }}
+            className="w-full flex-1 border-0"
+          />
+        </ErrorBoundary>
       </div>
     )
   }

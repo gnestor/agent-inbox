@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback, lazy, Suspense } from "react"
+import { useMemo, useEffect, useCallback, lazy, Suspense, type ReactNode } from "react"
 import { Toaster } from "sonner"
 import { SidebarInset, SidebarProvider } from "@hammies/frontend/components/ui"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -15,6 +15,7 @@ import { SessionTab } from "@/components/session/SessionTab"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 
 const IntegrationsPage = lazy(() =>
   import("@/components/settings/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })),
@@ -29,12 +30,23 @@ const STATIC_SLOTS = [
 
 const SETTINGS_TABS = new Set(["settings", "workspace-settings"])
 
+/** Wrap a tab's content in an error boundary keyed to the tab ID. */
+function TabBoundary({ tabId, label, children }: { tabId: string; label: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary resetKeys={[tabId]} label={label}>
+      {children}
+    </ErrorBoundary>
+  )
+}
+
 function renderTab(tabId: string) {
   if (tabId === "settings") {
     return (
       <Tab id="settings">
         <Panel id="settings" variant="settings">
-          <Suspense><IntegrationsPage /></Suspense>
+          <TabBoundary tabId={tabId} label="Settings">
+            <Suspense><IntegrationsPage /></Suspense>
+          </TabBoundary>
         </Panel>
       </Tab>
     )
@@ -43,15 +55,33 @@ function renderTab(tabId: string) {
     return (
       <Tab id="workspace-settings">
         <Panel id="workspace-settings" variant="settings">
-          <Suspense><WorkspaceSettings /></Suspense>
+          <TabBoundary tabId={tabId} label="Workspace Settings">
+            <Suspense><WorkspaceSettings /></Suspense>
+          </TabBoundary>
         </Panel>
       </Tab>
     )
   }
-  if (tabId === "sessions") return <SessionTab />
-  if (tabId.startsWith("recent:")) return <RecentTabSlot tabId={tabId as TabId} />
+  if (tabId === "sessions") {
+    return (
+      <TabBoundary tabId={tabId} label="Sessions">
+        <SessionTab />
+      </TabBoundary>
+    )
+  }
+  if (tabId.startsWith("recent:")) {
+    return (
+      <TabBoundary tabId={tabId} label="Recent Session">
+        <RecentTabSlot tabId={tabId as TabId} />
+      </TabBoundary>
+    )
+  }
   if (tabId.startsWith("plugin:")) {
-    return <PluginView tabId={tabId as TabId} />
+    return (
+      <TabBoundary tabId={tabId} label={tabId.replace("plugin:", "")}>
+        <PluginView tabId={tabId as TabId} />
+      </TabBoundary>
+    )
   }
   return null
 }
@@ -159,9 +189,11 @@ export function App() {
   const userContext = useUserProvider()
 
   return (
-    <UserContext.Provider value={userContext}>
-      <AppContent />
-      <Toaster theme="dark" position="bottom-right" richColors />
-    </UserContext.Provider>
+    <ErrorBoundary label="App">
+      <UserContext.Provider value={userContext}>
+        <AppContent />
+        <Toaster theme="dark" position="bottom-right" richColors />
+      </UserContext.Provider>
+    </ErrorBoundary>
   )
 }
