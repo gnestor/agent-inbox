@@ -411,7 +411,7 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
         else if (html.includes('</html>')) setHtmlSrcDoc(html.replace('</html>', HEIGHT_SCRIPT + '</html>'))
         else setHtmlSrcDoc(html + HEIGHT_SCRIPT)
       })
-      .catch(() => {})
+      .catch((err) => console.warn("[output] Failed to fetch HTML file:", err))
   }, [downloadUrl, isHtml])
 
   const { ref: htmlRef, height: htmlHeight } = useIframeAutoHeight()

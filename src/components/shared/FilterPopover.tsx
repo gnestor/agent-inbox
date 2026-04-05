@@ -67,7 +67,7 @@ function FilterField({
 
   useEffect(() => {
     if (!fetcher || staticOptions.length > 0) return
-    fetcher().then((opts) => setAsyncOptions(opts.map((o) => ({ value: o, label: o })))).catch(() => {})
+    fetcher().then((opts) => setAsyncOptions(opts.map((o) => ({ value: o, label: o })))).catch((err) => console.warn("[filter] Failed to fetch filter options:", err))
   }, [fetcher]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = staticOptions.length > 0 ? staticOptions : asyncOptions ?? []

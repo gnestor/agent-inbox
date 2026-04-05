@@ -1,7 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { resumeSession, abortSession, archiveSession, unarchiveSession, updateSession } from "@/api/client"
 import { toast } from "sonner"
-import type { SessionStatus } from "@/types"
+import type { Session, SessionMessage, SessionStatus } from "@/types"
+
+interface SessionDetailCache { session: Session; messages: SessionMessage[] }
+interface SessionListCache { sessions: Session[] }
 
 interface UseSessionMutationsOptions {
   sessionId: string
@@ -12,16 +15,16 @@ interface UseSessionMutationsOptions {
 type QC = ReturnType<typeof useQueryClient>
 
 function setSessionStatus(qc: QC, sessionId: string, status: SessionStatus) {
-  qc.setQueryData<any>(["session", sessionId], (old: any) => {
+  qc.setQueryData<SessionDetailCache | undefined>(["session", sessionId], (old: SessionDetailCache | undefined) => {
     if (!old) return old
     return { ...old, session: { ...old.session, status } }
   })
 }
 
 function setSessionListStatus(qc: QC, sessionId: string, status: SessionStatus) {
-  qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
-    if (!Array.isArray(old)) return old
-    return old.map((s) => (s.id === sessionId ? { ...s, status } : s))
+  qc.setQueriesData<SessionListCache>({ queryKey: ["sessions"] }, (old) => {
+    if (!old?.sessions) return old
+    return { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, status } : s)) }
   })
 }
 
@@ -40,7 +43,7 @@ function optimisticStatusSwitch(qc: QC, sessionId: string, target: SessionStatus
       qc.invalidateQueries({ queryKey: ["sessions"] })
       qc.invalidateQueries({ queryKey: ["session", sessionId] })
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       setSessionStatus(qc, sessionId, rollback)
       setSessionListStatus(qc, sessionId, rollback)
       console.error(`Failed to update session status:`, err)
@@ -61,11 +64,11 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
       onResume?.()
       qc.invalidateQueries({ queryKey: ["sessions"] })
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       console.error("Failed to resume session:", err)
       setSessionStatus(qc, sessionId, "complete")
       setSessionListStatus(qc, sessionId, "complete")
-      toast.error(`Failed to resume session: ${(err as Error).message}`)
+      toast.error(`Failed to resume session: ${err.message}`)
     },
     // No onSettled refetch — SSE owns the message cache during streaming.
     // A REST refetch here races with JSONL writes and clobbers SSE-pushed messages.
@@ -81,7 +84,7 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
       // No detail refetch — SSE session_complete/session_error handles status.
       // Refetching here races with final JSONL writes.
     },
-    onError: (err: any) => console.error("Failed to abort session:", err),
+    onError: (err: Error) => console.error("Failed to abort session:", err),
   })
 
   const archiveOpts = optimisticStatusSwitch(qc, sessionId, "archived", "complete")
@@ -107,15 +110,15 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
         qc.cancelQueries({ queryKey: ["sessions"] }),
         qc.cancelQueries({ queryKey: ["session", sessionId] }),
       ])
-      const previousDetail = qc.getQueryData<any>(["session", sessionId])
-      const previousList = qc.getQueriesData<any[]>({ queryKey: ["sessions"] })
-      qc.setQueryData<any>(["session", sessionId], (old: any) => {
+      const previousDetail = qc.getQueryData<SessionDetailCache>(["session", sessionId])
+      const previousList = qc.getQueriesData<SessionListCache>({ queryKey: ["sessions"] })
+      qc.setQueryData<SessionDetailCache | undefined>(["session", sessionId], (old: SessionDetailCache | undefined) => {
         if (!old) return old
         return { ...old, session: { ...old.session, summary: newTitle } }
       })
-      qc.setQueriesData<any[]>({ queryKey: ["sessions"] }, (old) => {
-        if (!Array.isArray(old)) return old
-        return old.map((s) => (s.id === sessionId ? { ...s, summary: newTitle } : s))
+      qc.setQueriesData<SessionListCache>({ queryKey: ["sessions"] }, (old) => {
+        if (!old?.sessions) return old
+        return { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, summary: newTitle } : s)) }
       })
       return { previousDetail, previousList }
     },

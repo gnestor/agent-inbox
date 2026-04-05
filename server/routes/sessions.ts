@@ -195,7 +195,7 @@ sessionRoutes.get("/:id", async (c) => {
     let status = session.status
     if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id)) {
       status = "complete"
-      sessions.updateSessionStatus(session.id, "complete").catch(() => {})
+      sessions.updateSessionStatus(session.id, "complete").catch((err) => console.warn("[sessions] Failed to update stale session status:", err))
     }
 
     return c.json({

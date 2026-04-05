@@ -17,15 +17,15 @@ export function useLocalDraft(key: string): [string, (value: string) => void] {
     keyRef.current = key
     get<string>(PREFIX + key).then((val) => {
       if (keyRef.current === key) setDraftState(val ?? "")
-    }).catch(() => {})
+    }).catch((err) => console.warn("[draft] Failed to load draft:", err))
   }, [key])
 
   // Persist to IndexedDB on change
   const setDraft = useCallback((value: string) => {
     setDraftState(value)
     const k = PREFIX + keyRef.current
-    if (value.trim()) set(k, value).catch(() => {})
-    else del(k).catch(() => {})
+    if (value.trim()) set(k, value).catch((err) => console.warn("[draft] Failed to save draft:", err))
+    else del(k).catch((err) => console.warn("[draft] Failed to delete draft:", err))
   }, [])
 
   return [draft, setDraft]

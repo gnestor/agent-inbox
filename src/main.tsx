@@ -26,7 +26,7 @@ function isTransientQuery(status: string, queryKey: readonly unknown[], data: un
 const persister = createAsyncStoragePersister({
   storage: {
     getItem: async (key: string) => {
-      try { return await get(key) } catch { await del(key).catch(() => {}); return null }
+      try { return await get(key) } catch { await del(key).catch((err) => console.warn("[cache] Failed to clear corrupted cache entry:", err)); return null }
     },
     setItem: set,
     removeItem: del,
