@@ -39,13 +39,16 @@ function App() { return <div className={cn("a", "b")}>Hello</div> }`
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
   })
 
-  it("strips unknown package imports", async () => {
+  it("strips unknown package imports but preserves allowed ones", async () => {
     const source = `import axios from 'axios'
 import { something } from 'lodash'
+import { LineChart } from 'recharts'
 function App() { return <div>Hello</div> }`
     const result = await transformArtifactCode(source)
     expect(result.code).not.toContain("axios")
-    expect(result.code).not.toContain("lodash")
+    // lodash and recharts are allowed imports (in the import map)
+    expect(result.code).toContain("lodash")
+    expect(result.code).toContain("recharts")
   })
 
   it("auto-injects React import when hooks are used without import", async () => {

@@ -9,6 +9,7 @@ import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { buildArtifactMcpServer } from "./artifact-tools.js"
 import { RENDER_OUTPUT_NAMES } from "../../src/types/session-message.js"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
@@ -643,6 +644,7 @@ export async function startSession(
       plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
+        artifact: buildArtifactMcpServer(),
       },
       betas: AGENT_SDK_BETAS
     },
@@ -780,6 +782,7 @@ export async function resumeSessionQuery(
       plugins: getAgentPluginPaths(wsPath),
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
+        artifact: buildArtifactMcpServer(),
       },
       betas: AGENT_SDK_BETAS
     },

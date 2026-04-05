@@ -48,7 +48,11 @@ export function buildArtifactHtml(
     "react-dom": "${origin}/@hammies/react-dom.mjs",
     "react-dom/client": "${origin}/@hammies/react-dom.mjs",
     "@hammies/frontend/components/ui": "${origin}/@hammies/artifact.mjs",
-    "@hammies/frontend/lib/utils": "${origin}/@hammies/artifact.mjs"
+    "@hammies/frontend/lib/utils": "${origin}/@hammies/artifact.mjs",
+    "recharts": "https://esm.sh/recharts@2.15.3?external=react,react-dom&bundle-deps",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react",
+    "d3": "https://esm.sh/d3@7?bundle-deps",
+    "lodash": "https://esm.sh/lodash-es@4"
   }
 }
 </script>
