@@ -6,6 +6,17 @@ import { resolve, normalize, basename, sep } from "path"
 import { SESSION_COOKIE } from "./auth.js"
 import * as sessions from "../lib/session-manager.js"
 import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/session-files.js"
+import type { AppBindings } from "../lib/workspace-context.js"
+import {
+  CreateSessionBody,
+  ResumeSessionBody,
+  UpdateSessionBody,
+  AnswerSessionBody,
+  AttachToSessionBody,
+  PatchArtifactBody,
+  SessionRow,
+} from "../lib/schemas.js"
+import type { ZodError } from "zod/v4"
 
 type UserProfile = { name: string; email: string; picture?: string }
 
@@ -20,7 +31,7 @@ function withInitialUserPrompt(
   prompt: string,
   createdAt: string,
 ) {
-  if (transcript.length > 0 && transcript[0].type === "user") return transcript
+  if (transcript.length > 0 && transcript[0]!.type === "user") return transcript
   return [
     {
       id: 0,
@@ -34,32 +45,39 @@ function withInitialUserPrompt(
   ]
 }
 
-export const sessionRoutes = new Hono()
+/** Extract first user-facing message from a Zod validation error */
+function zodErrorMessage(err: ZodError): string {
+  return err.issues[0]?.message ?? "Invalid request body"
+}
+
+export const sessionRoutes = new Hono<AppBindings>()
 
 sessionRoutes.post("/", async (c) => {
-  const { prompt, linkedSourceType, linkedSourceId, linkedSourceContent, linkedItemTitle } = await c.req.json()
-
-  if (!prompt) {
-    return c.json({ error: "prompt is required" }, 400)
+  let body: CreateSessionBody
+  try {
+    body = CreateSessionBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
 
   const userSessionToken = getCookie(c, SESSION_COOKIE)
 
   try {
     const workspace = c.get("workspace")
-    const sessionId = await sessions.startSession(prompt, {
-      linkedSourceType,
-      linkedSourceId,
-      linkedSourceContent,
-      linkedItemTitle,
+    const sessionId = await sessions.startSession(body.prompt, {
+      linkedSourceType: body.linkedSourceType,
+      linkedSourceId: body.linkedSourceId,
+      linkedSourceContent: body.linkedSourceContent,
+      linkedItemTitle: body.linkedItemTitle,
       triggerSource: "manual",
       userSessionToken,
       workspacePath: workspace?.path,
     })
     return c.json({ sessionId })
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to start session"
     console.error("Failed to start session:", err)
-    return c.json({ error: err.message || "Failed to start session" }, 500)
+    return c.json({ error: message }, 500)
   }
 })
 
@@ -81,11 +99,12 @@ sessionRoutes.get("/", async (c) => {
   })
 
   // Enrich with DB metadata (status overrides, summaries, linked items)
-  const dbRecords = new Map<string, Record<string, unknown>>()
+  const dbRecords = new Map<string, SessionRow>()
   if (agentSessions.length > 0) {
     const allDbSessions = await sessions.listSessionRecords({ q: q || undefined })
     for (const s of allDbSessions) {
-      dbRecords.set(s.id as string, s)
+      const parsed = SessionRow.safeParse(s)
+      if (parsed.success) dbRecords.set(parsed.data.id, parsed.data)
     }
   }
 
@@ -95,17 +114,17 @@ sessionRoutes.get("/", async (c) => {
     if (db) {
       return {
         id: s.sessionId,
-        status: db.status as string,
-        prompt: (db.prompt as string) || s.firstPrompt || "",
-        summary: (db.summary as string) || s.summary || s.firstPrompt || null,
-        startedAt: (db.started_at as string) || new Date(s.lastModified).toISOString(),
-        updatedAt: (db.updated_at as string) || new Date(s.lastModified).toISOString(),
-        completedAt: (db.completed_at as string) || null,
-        linkedSourceType: (db.linked_source_type as string) || null,
-        linkedSourceId: (db.linked_source_id as string) || null,
-        triggerSource: (db.trigger_source as string) || "manual",
+        status: db.status,
+        prompt: db.prompt || s.firstPrompt || "",
+        summary: db.summary || s.summary || s.firstPrompt || null,
+        startedAt: db.started_at || new Date(s.lastModified).toISOString(),
+        updatedAt: db.updated_at || new Date(s.lastModified).toISOString(),
+        completedAt: db.completed_at || null,
+        linkedSourceType: db.linked_source_type || null,
+        linkedSourceId: db.linked_source_id || null,
+        triggerSource: db.trigger_source || "manual",
         project: s.project,
-        linkedItemTitle: (db.linked_item_title as string) || null,
+        linkedItemTitle: db.linked_item_title || null,
       }
     }
     return {
@@ -173,10 +192,10 @@ sessionRoutes.get("/:id", async (c) => {
 
     // If DB says "running" but no active process and JSONL has ended,
     // correct the status to "complete" (stale from server restart)
-    let status = session.status as string
-    if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id as string)) {
+    let status = session.status
+    if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id)) {
       status = "complete"
-      sessions.updateSessionStatus(session.id as string, "complete").catch(() => {})
+      sessions.updateSessionStatus(session.id, "complete").catch(() => {})
     }
 
     return c.json({
@@ -192,7 +211,7 @@ sessionRoutes.get("/:id", async (c) => {
         linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(c.get("workspace")?.path || sessions.getWorkspacePath()),
-        hasActiveProcess: sessions.isSessionRunning(session.id as string),
+        hasActiveProcess: sessions.isSessionRunning(session.id),
       },
       messages,
     })
@@ -229,11 +248,13 @@ sessionRoutes.get("/:id", async (c) => {
 
 sessionRoutes.patch("/:id", async (c) => {
   const sessionId = c.req.param("id")
-  const { summary } = await c.req.json()
-
-  if (typeof summary !== "string") {
-    return c.json({ error: "summary must be a string" }, 400)
+  let body: UpdateSessionBody
+  try {
+    body = UpdateSessionBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
+  const { summary } = body
 
   let session = await sessions.getSessionRecord(sessionId)
   if (!session) {
@@ -251,24 +272,25 @@ sessionRoutes.patch("/:id", async (c) => {
 
 sessionRoutes.post("/:id/answer", async (c) => {
   const sessionId = c.req.param("id")
-  const { answers } = await c.req.json()
-
-  if (!answers || typeof answers !== "object") {
-    return c.json({ error: "answers object is required" }, 400)
+  let body: AnswerSessionBody
+  try {
+    body = AnswerSessionBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
 
-  const ok = sessions.provideAskUserAnswer(sessionId, answers as Record<string, string>)
+  const ok = sessions.provideAskUserAnswer(sessionId, body.answers)
   if (!ok) {
     // No pending resolver — the server likely restarted while awaiting input.
     // Fall back to resuming the session with the user's answers as the prompt.
-    const formatted = Object.entries(answers as Record<string, string>)
+    const formatted = Object.entries(body.answers)
       .map(([q, a]) => `${q}: ${a}`)
       .join("\n")
     const userSessionToken = getCookie(c, SESSION_COOKIE)
-    const user = c.get("user") as UserProfile | undefined
+    const user = c.get("user")
     try {
       await sessions.resumeSessionQuery(sessionId, formatted, userSessionToken, user)
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to resume session after answer fallback:", err)
       return c.json({ error: "Failed to resume session" }, 500)
     }
@@ -278,11 +300,13 @@ sessionRoutes.post("/:id/answer", async (c) => {
 
 sessionRoutes.post("/:id/resume", async (c) => {
   const sessionId = c.req.param("id")
-  const { prompt } = await c.req.json()
-
-  if (!prompt) {
-    return c.json({ error: "prompt is required" }, 400)
+  let body: ResumeSessionBody
+  try {
+    body = ResumeSessionBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
+  const { prompt } = body
 
   // Import agent-only session to DB if not already there (prevents FK constraint failure)
   if (!(await sessions.getSessionRecord(sessionId))) {
@@ -302,11 +326,13 @@ sessionRoutes.post("/:id/resume", async (c) => {
 
 sessionRoutes.post("/:id/attach", async (c) => {
   const sessionId = c.req.param("id")
-  const { type, id, title, content } = await c.req.json()
-
-  if (!type || !id || !content) {
-    return c.json({ error: "type, id, and content are required" }, 400)
+  let body: AttachToSessionBody
+  try {
+    body = AttachToSessionBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
+  const { type, id, title, content } = body
 
   let session = await sessions.getSessionRecord(sessionId)
   if (!session) {
@@ -330,7 +356,7 @@ sessionRoutes.post("/:id/attach", async (c) => {
 
 sessionRoutes.get("/:id/stream", async (c) => {
   const sessionId = c.req.param("id")
-  const user = c.get("user") as UserProfile | undefined
+  const user = c.get("user")
 
   return streamSSE(c, async (stream) => {
     const send = (data: string) => {
@@ -392,10 +418,13 @@ sessionRoutes.post("/:id/unarchive", async (c) => {
 
 sessionRoutes.patch("/:id/artifact", async (c) => {
   const sessionId = c.req.param("id")
-  const { sequence, code } = await c.req.json()
-  if (typeof sequence !== "number" || typeof code !== "string") {
-    return c.json({ error: "sequence (number) and code (string) are required" }, 400)
+  let body: PatchArtifactBody
+  try {
+    body = PatchArtifactBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
+  const { sequence, code } = body
   const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
   if (!ok) {
     console.warn(`[artifact patch] Failed for session=${sessionId} sequence=${sequence}`)
@@ -458,7 +487,7 @@ sessionRoutes.get("/:id/files/:filename", async (c) => {
   c.header("Content-Type", mimeType)
   const isInline = INLINE_MIME_PREFIXES.some((t) => mimeType.startsWith(t))
   c.header("Content-Disposition", isInline ? `inline; filename="${serveName}"` : `attachment; filename="${serveName}"`)
-  return c.body(data)
+  return c.body(new Uint8Array(data))
 })
 
 function guessMimeType(filename: string): string {

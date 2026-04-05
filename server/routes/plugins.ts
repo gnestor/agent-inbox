@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { build } from "esbuild"
 import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
 import { buildPluginContext, getWorkspaceId } from "../lib/plugin-context.js"
+import type { AppBindings } from "../lib/workspace-context.js"
 
 // ---------------------------------------------------------------------------
 // Auto-generated routes for all plugins, mounted at /api/:pluginId/*
@@ -15,7 +16,7 @@ const BUILTIN_PLUGINS_ROOT = resolve(fileURLToPath(import.meta.url), "../../../p
 const componentCache = new Map<string, { js: string; mtime: number }>()
 const COMPONENT_CACHE_MAX = 50
 
-export const pluginRoutes = new Hono()
+export const pluginRoutes = new Hono<AppBindings>()
 
 /** GET /api/plugins — list all loaded plugin manifests (excludes skills-only plugins) */
 pluginRoutes.get("/plugins", (c) => {
@@ -94,7 +95,11 @@ pluginRoutes.get("/:pluginId/components/:name", async (c) => {
     write: false,
   })
 
-  const js = result.outputFiles[0].text
+  const outputFile = result.outputFiles[0]
+  if (!outputFile) {
+    throw new HTTPException(500, { message: `esbuild produced no output for "${name}"` })
+  }
+  const js = outputFile.text
   if (componentCache.size >= COMPONENT_CACHE_MAX) {
     const first = componentCache.keys().next().value
     if (first) componentCache.delete(first)
@@ -167,8 +172,18 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
 
   if (!plugin.mutate) throw new HTTPException(404, { message: `Plugin "${pluginId}" does not support mutations` })
 
-  const { action, payload } = await c.req.json()
-  if (!action) throw new HTTPException(400, { message: "action is required" })
+  let body: { action: string; payload?: unknown }
+  try {
+    const raw = await c.req.json()
+    if (!raw?.action || typeof raw.action !== "string") {
+      throw new HTTPException(400, { message: "action is required" })
+    }
+    body = raw as { action: string; payload?: unknown }
+  } catch (err) {
+    if (err instanceof HTTPException) throw err
+    throw new HTTPException(400, { message: "Invalid request body" })
+  }
+  const { action, payload } = body
 
   const ctx = await buildPluginContext(c)
 

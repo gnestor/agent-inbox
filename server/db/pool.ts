@@ -26,7 +26,7 @@ export function getPool(): pg.Pool {
   return pool
 }
 
-export async function query<T extends pg.QueryResultRow = any>(
+export async function query<T extends pg.QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T[]> {
@@ -34,7 +34,7 @@ export async function query<T extends pg.QueryResultRow = any>(
   return result.rows
 }
 
-export async function queryOne<T extends pg.QueryResultRow = any>(
+export async function queryOne<T extends pg.QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T | undefined> {

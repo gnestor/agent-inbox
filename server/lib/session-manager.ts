@@ -5,6 +5,21 @@ import { homedir } from "os"
 const INITIAL_SUMMARY_LENGTH = 80
 const AGENT_SDK_BETAS = ["context-1m-2025-08-07"]
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
+
+/** Shape of a row in the `sessions` table. */
+export interface SessionDbRow {
+  id: string
+  status: string
+  prompt: string
+  summary: string | null
+  started_at: string
+  updated_at: string
+  completed_at: string | null
+  linked_source_type: string | null
+  linked_source_id: string | null
+  trigger_source: string
+  linked_item_title: string | null
+}
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
@@ -230,7 +245,7 @@ export async function getLastAskUserQuestions(sessionId: string): Promise<unknow
     const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
     // Scan assistant messages from the end
     for (let i = transcript.length - 1; i >= 0; i--) {
-      const msg = transcript[i]
+      const msg = transcript[i]!
       if (msg.type !== "assistant") continue
       const content = (msg.message as any)?.message?.content ?? (msg.message as any)?.content
       if (!Array.isArray(content)) continue
@@ -347,7 +362,7 @@ export async function updateSessionSummary(sessionId: string, summary: string) {
 }
 
 export async function getSessionRecord(sessionId: string) {
-  return await queryOne<Record<string, unknown>>(
+  return await queryOne<SessionDbRow>(
     "SELECT * FROM sessions WHERE id = $1",
     [sessionId],
   )
@@ -377,9 +392,9 @@ async function getSessionMessageCount(sessionId: string): Promise<number> {
 export async function getLinkedSession(
   linkedSourceType?: string,
   linkedSourceId?: string,
-): Promise<Record<string, unknown> | undefined> {
+): Promise<SessionDbRow | undefined> {
   if (!linkedSourceType || !linkedSourceId) return undefined
-  return await queryOne<Record<string, unknown>>(
+  return await queryOne<SessionDbRow>(
     "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
     [linkedSourceType, linkedSourceId],
   )
@@ -425,7 +440,7 @@ export async function listSessionRecords(filters?: {
   }
   sql += " ORDER BY s.updated_at DESC"
 
-  return await query<Record<string, unknown>>(sql, params)
+  return await query<SessionDbRow>(sql, params)
 }
 
 // In-memory presence map: sessionId → Map<email, user>
@@ -573,7 +588,7 @@ async function autoNameSession(sessionId: string) {
     if (!session) return
 
     // Skip if user has manually renamed the session
-    const initialSummary = (session.prompt as string).slice(0, INITIAL_SUMMARY_LENGTH)
+    const initialSummary = session.prompt.slice(0, INITIAL_SUMMARY_LENGTH)
     if (session.summary !== initialSummary) return
 
     const agentSession = await findAgentSession(sessionId)
@@ -750,8 +765,8 @@ export async function resumeSessionQuery(
 
   const sessionRecord = await getSessionRecord(sessionId)
   const resumeSourceContext = buildSourceContext(
-    sessionRecord?.linked_source_type as string | undefined,
-    sessionRecord?.linked_source_id as string | undefined,
+    sessionRecord?.linked_source_type ?? undefined,
+    sessionRecord?.linked_source_id ?? undefined,
   )
 
   let sequence = await getSessionMessageCount(sessionId)
@@ -960,8 +975,8 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
     }),
   )
   for (let i = 0; i < results.length; i++) {
-    if (results[i].status === "rejected") {
-      const session = toResume[i]
+    if (results[i]!.status === "rejected") {
+      const session = toResume[i]!
       console.error(`[server] Failed to recover session ${session.id}:`, (results[i] as PromiseRejectedResult).reason)
       await updateSessionStatus(session.id, "errored", "Server restart recovery failed")
     }
@@ -1164,7 +1179,7 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
 
   // Tail lines: find summary (result message is typically near the end)
   for (let i = tailLines.length - 1; i >= 0; i--) {
-    const line = tailLines[i]
+    const line = tailLines[i]!
     if (!line.trim()) continue
     try {
       const msg = JSON.parse(line)
@@ -1395,7 +1410,7 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     let pendingThinking: Array<Record<string, unknown>> = []
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const msg = JSON.parse(lines[lineIdx])
+      const msg = JSON.parse(lines[lineIdx]!)
 
       // Detect plan file updates (Write/Edit to ~/.claude/plans/) and inject
       // a synthetic plan message so the frontend can render the plan content.
@@ -1521,7 +1536,7 @@ async function patchArtifactInJsonl(sessionId: string, sequence: number, code: s
 
     // Try by line index first (matches getAgentSessionTranscript)
     if (sequence >= 0 && sequence < lines.length) {
-      const msg = JSON.parse(lines[sequence])
+      const msg = JSON.parse(lines[sequence]!)
       if (msg.type === "assistant" && patchRenderOutputCode(msg, code)) {
         lines[sequence] = JSON.stringify(msg)
         fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
@@ -1532,7 +1547,7 @@ async function patchArtifactInJsonl(sessionId: string, sequence: number, code: s
     // Fallback: scan all assistant messages for a render_output to patch.
     // Handles SSE-cached sessions where sequence doesn't match line index.
     for (let i = lines.length - 1; i >= 0; i--) {
-      const msg = JSON.parse(lines[i])
+      const msg = JSON.parse(lines[i]!)
       if (msg.type !== "assistant") continue
       const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
       if (!stop) continue

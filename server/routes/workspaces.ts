@@ -84,7 +84,7 @@ workspaceRoutes.post("/:id/members", async (c) => {
   const { email, role } = await c.req.json<{ email: string; role?: "admin" | "member" }>()
   if (!email) return c.json({ error: "Email required" }, 400)
 
-  const user = await queryOne("SELECT email FROM users WHERE email = $1", [email])
+  const user = await queryOne<{ email: string }>("SELECT email FROM users WHERE email = $1", [email])
   if (!user) return c.json({ error: "User not found" }, 404)
 
   await addWorkspaceMember(id, email, role || "member")
