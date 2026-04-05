@@ -7,6 +7,8 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { createLogger, runWithRequestContext } from "./lib/logger.js"
 import { randomUUID } from "crypto"
+import { csrfProtection } from "./lib/csrf.js"
+import { runHealthChecks, isHealthy } from "./lib/health.js"
 
 const log = createLogger("server")
 import { getCookie } from "hono/cookie"
@@ -220,10 +222,20 @@ type AppBindings = {
   }
 }
 
+// Allowed origins for CORS and CSRF checks
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS?.split(",") ?? ["http://localhost:5175"])
+  .map((s) => s.trim())
+  .filter(Boolean)
+
 // Create app
 const app = new Hono<AppBindings>()
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app })
-app.use("*", cors())
+app.use("*", cors({
+  origin: (origin) => (origin && ALLOWED_ORIGINS.includes(origin) ? origin : null),
+  credentials: true,
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+  allowHeaders: ["Content-Type", "X-Request-Id"],
+}))
 app.use("*", logger())
 
 // Request correlation — every log call inside a handler gets requestId auto-injected
@@ -234,10 +246,24 @@ app.use("*", async (c, next) => {
   await runWithRequestContext({ requestId, ...(userEmail ? { userEmail } : {}) }, () => next())
 })
 
+// CSRF origin validation — scoped to /api/* state-changing requests
+// Exempts webhooks (third-party POSTs) and the OAuth callback (redirect from provider)
+app.use("/api/*", csrfProtection({
+  allowedOrigins: ALLOWED_ORIGINS,
+  exemptPaths: ["/api/webhooks", "/api/connections/connect"],
+}))
+
 // Auth routes (unprotected)
 app.route("/api/auth", authRoutes)
 
-app.get("/api/health", (c) => c.json({ status: "ok", workspaces: workspacePaths }))
+app.get("/api/health", async (c) => {
+  const checks = await runHealthChecks(workspacePaths)
+  const ok = isHealthy(checks)
+  return c.json(
+    { status: ok ? "ok" : "degraded", timestamp: new Date().toISOString(), ...checks },
+    ok ? 200 : 503,
+  )
+})
 
 // Auth middleware — protect all other /api routes and set user context
 app.use("/api/*", async (c, next) => {
