@@ -4,7 +4,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { AskUserQuestion, InboxContextData, InboxResultData } from "@/types"
 import type { ContentBlock as ContentBlockType, ToolUseBlock, AssistantMessage } from "@/types/session-message"
-import { RENDER_OUTPUT_NAMES } from "@/types/session-message"
+import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES, PRESENT_FILES_NAMES } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -64,6 +64,7 @@ const LookupsContext = createContext<MessageLookups>({
   toolResults: new Map(),
   resolvedToolUseIDs: new Set(),
   authorEmails: [],
+  fileMap: new Map(),
 })
 function useLookups() { return useContext(LookupsContext) }
 
@@ -113,12 +114,15 @@ export function SessionTranscript({
       if (cm.displayType !== "assistant_blocks") continue
       const blocks = getContentBlocks(cm.source.message as AssistantMessage)
       for (const b of blocks) {
-        if (
-          b.type === "tool_use"
-          && RENDER_OUTPUT_NAMES.has(b.name)
-          && (b as any).input?.type === "react"
-        ) {
+        if (b.type !== "tool_use") continue
+        if (RENDER_OUTPUT_NAMES.has(b.name) && (b as any).input?.type === "react") {
           count++
+        }
+        if (PRESENT_FILES_NAMES.has(b.name) && Array.isArray((b as any).input?.filepaths)) {
+          for (const fp of (b as any).input.filepaths as string[]) {
+            const ext = fp.split(".").pop()?.toLowerCase()
+            if (ext === "jsx" || ext === "tsx") count++
+          }
         }
       }
     }
@@ -533,6 +537,33 @@ function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel =
       if (!visibility.artifacts) return null
       return <OutputAccordion spec={block.input as OutputSpec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
     }
+    // present_files — render artifacts from create_file content
+    if (PRESENT_FILES_NAMES.has(block.name) && block.input?.filepaths && sessionId) {
+      if (!visibility.artifacts) return null
+      const filepaths = block.input.filepaths as string[]
+      return (
+        <>
+          {filepaths.map((fp, idx) => {
+            const content = lookups.fileMap.get(fp)
+            if (!content) return null
+            const spec = fileToOutputSpec(fp, content)
+            return (
+              <OutputAccordion
+                key={`${fp}-${idx}`}
+                spec={spec}
+                sessionId={sessionId}
+                sequence={sequence}
+                onOpenPanel={onOpenPanel}
+                onAction={onAction}
+                onArtifactLoaded={onArtifactLoaded}
+              />
+            )
+          })}
+        </>
+      )
+    }
+    // create_file — hidden from transcript (content consumed by present_files)
+    if (CREATE_FILE_NAMES.has(block.name)) return null
     if (block.name === "AskUserQuestion" && block.input?.questions) {
       const resultText = lookups.toolResults.get(block.id) ?? ""
       return <AskUserQuestionEntry questions={block.input.questions as AskUserQuestion[]} resultText={resultText} sessionId={sessionId} sequence={sequence} onAnswer={!resultText ? onAnswer : undefined} />
@@ -624,6 +655,27 @@ function ToolCallDetail({ name, input, toolUseId }: { name: string; input: Recor
 // ---------------------------------------------------------------------------
 // WorkingIndicator (exported for SessionView)
 // ---------------------------------------------------------------------------
+
+/** Convert a file path + content into an OutputSpec based on extension. */
+function fileToOutputSpec(path: string, content: string): OutputSpec {
+  const ext = path.split(".").pop()?.toLowerCase() ?? ""
+  const name = path.split("/").pop() ?? path
+  switch (ext) {
+    case "jsx": case "tsx":
+      return { type: "react", data: { code: content, title: name }, title: name }
+    case "html": case "htm":
+      return { type: "html", data: content, title: name }
+    case "md": case "markdown":
+      return { type: "markdown", data: content, title: name }
+    case "svg":
+      return { type: "html", data: content, title: name }
+    case "json":
+      try { return { type: "json", data: JSON.parse(content), title: name } }
+      catch { return { type: "markdown", data: "```json\n" + content + "\n```", title: name } }
+    default:
+      return { type: "markdown", data: "```\n" + content + "\n```", title: name }
+  }
+}
 
 export function WorkingIndicator({ eventCount }: { eventCount: number }) {
   const TICK_MS = 450

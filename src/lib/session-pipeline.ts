@@ -10,7 +10,7 @@ import type {
   UserMessage,
   AssistantMessage,
 } from "@/types/session-message"
-import { isSubagentMessage, getAgentLabel, RENDER_OUTPUT_NAMES } from "@/types/session-message"
+import { isSubagentMessage, getAgentLabel, RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES, PRESENT_FILES_NAMES } from "@/types/session-message"
 
 // Defined here (not in SessionTranscript) to avoid circular imports
 export interface TranscriptVisibility {
@@ -39,6 +39,8 @@ export interface MessageLookups {
   resolvedToolUseIDs: Set<string>
   /** Unique author emails found in user messages (sorted, for profile fetching) */
   authorEmails: string[]
+  /** file path → file_text from create_file tool_use blocks (latest version wins) */
+  fileMap: Map<string, string>
 }
 
 export interface IdeRef {
@@ -200,6 +202,8 @@ export function groupContentBlocks(blocks: ContentBlock[]): Array<ContentBlock |
     if (
       block.type === "tool_use" &&
       !RENDER_OUTPUT_NAMES.has(block.name) &&
+      !PRESENT_FILES_NAMES.has(block.name) &&
+      !CREATE_FILE_NAMES.has(block.name) &&
       block.name !== "AskUserQuestion" &&
       block.name !== "ToolSearch"
     ) {
@@ -242,6 +246,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
   const toolResults = new Map<string, string>()
   const resolvedToolUseIDs = new Set<string>()
   const emailSet = new Set<string>()
+  const fileMap = new Map<string, string>()
 
   for (const m of messages) {
     // Collect author emails
@@ -257,19 +262,28 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
     for (const content of contentSources) {
       if (!Array.isArray(content)) continue
       for (const block of content) {
-        if (
-          block &&
-          typeof block === "object" &&
-          block.type === "tool_result" &&
-          typeof block.tool_use_id === "string"
-        ) {
-          resolvedToolUseIDs.add(block.tool_use_id)
-          const text = typeof block.content === "string"
-            ? block.content
-            : Array.isArray(block.content)
-              ? block.content.map((c: any) => c.text || c.tool_name || "").join("\n")
-              : ""
-          if (text) toolResults.set(block.tool_use_id, text)
+        if (block && typeof block === "object") {
+          if (
+            block.type === "tool_result" &&
+            typeof block.tool_use_id === "string"
+          ) {
+            resolvedToolUseIDs.add(block.tool_use_id)
+            const text = typeof block.content === "string"
+              ? block.content
+              : Array.isArray(block.content)
+                ? block.content.map((c: any) => c.text || c.tool_name || "").join("\n")
+                : ""
+            if (text) toolResults.set(block.tool_use_id, text)
+          }
+          // Collect create_file content for present_files rendering
+          if (
+            block.type === "tool_use" &&
+            CREATE_FILE_NAMES.has(block.name as string) &&
+            typeof (block as any).input?.path === "string" &&
+            typeof (block as any).input?.file_text === "string"
+          ) {
+            fileMap.set((block as any).input.path, (block as any).input.file_text)
+          }
         }
       }
     }
@@ -279,6 +293,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
     toolResults,
     resolvedToolUseIDs,
     authorEmails: [...emailSet].sort(),
+    fileMap,
   }
 }
 
@@ -377,6 +392,8 @@ function shouldRenderContentBlock(
   if (block.type === "text") return visibility.messages && !!block.text
   if (block.type === "tool_use") {
     if (RENDER_OUTPUT_NAMES.has(block.name)) return visibility.artifacts && !!block.input && hasSessionId
+    if (PRESENT_FILES_NAMES.has(block.name)) return visibility.artifacts && !!block.input && hasSessionId
+    if (CREATE_FILE_NAMES.has(block.name)) return false // Hidden — content consumed by present_files
     if (block.name === "AskUserQuestion") return true
     return visibility.toolCalls
   }

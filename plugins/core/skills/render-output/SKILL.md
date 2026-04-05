@@ -1,27 +1,63 @@
 ---
 name: render-output
-description: "Guidelines for the render_output MCP tool — choosing output types, designing React artifacts, and using shadcn/ui components. Activate when: the agent needs to render visual output, create a dashboard, build an interactive form, display a chart or table, or when render_output quality needs improvement."
+description: "Guidelines for rendering visual output in the inbox UI. Covers create_file + present_files (preferred for React artifacts), render_output (for tables/charts/markdown), and available libraries. Activate when the agent needs to render visual output, create interactive UIs, display charts, or build dashboards."
 ---
 
-# Render Output
+# Rendering Output
 
-The `render_output` MCP tool renders structured outputs inline in the session transcript. Outputs appear at 600×600px and expand to a full panel (600px × viewport height).
+Two ways to render rich content in the session transcript. Outputs appear at 600×600px and expand to a full panel.
 
-## Choosing the Right Type
+## 1. create_file + present_files (preferred for React)
+
+Write a file, then present it. The file extension determines how it renders.
+
+```
+1. create_file(description, path, file_text)
+2. present_files(filepaths)
+```
+
+**Renderable extensions:**
+- `.jsx` → React component (interactive UIs, dashboards, forms)
+- `.html` → HTML page (single file, JS/CSS inline)
+- `.md` → Markdown with syntax highlighting
+- `.svg` → SVG image
+
+**Path convention:** `/mnt/user-data/outputs/<name>.<ext>`
+
+**Updating:** Call `create_file` again with the same path, then `present_files` again. Only the latest version renders.
+
+## 2. render_output (for structured data)
+
+Single tool call with `type` and `data`. Best for non-interactive output:
 
 | Type | When to use | Example |
 |------|-------------|---------|
-| **text** (no tool) | Simple answers, confirmations, short explanations | "Done — email draft saved to Notion" |
-| **markdown** | Long-form content with headings, code blocks, structured prose | Reports, documentation, multi-section summaries |
-| **table** | Tabular data with multiple fields per row | Email lists, task comparisons, query results |
-| **chart** | Numeric data that benefits from visualization | Trends over time, distributions, metric comparisons |
-| **json** | Structured data for inspection | API responses, config dumps, raw data |
-| **react** | Interactive UIs — click, filter, sort, submit | Dashboards, approval workflows, forms, data explorers |
-| **file** | Generated files that should display inline | AI-generated images, exported reports, PDFs |
+| **text** (no tool) | Simple answers, confirmations | "Done — email draft saved" |
+| **table** | Tabular data with rows/columns | Email lists, query results |
+| **chart** | Numeric data visualization | Trends, distributions |
+| **markdown** | Formatted text | Reports, summaries |
+| **json** | Data inspection | API responses, configs |
+| **react** | Interactive UI (same as .jsx) | Dashboards, forms |
 
-**Key principle:** Use `render_output` when the user would benefit from _seeing_ or _interacting with_ the response. Don't force everything into artifacts — short answers stay as plain text.
+## When to Use Artifacts vs Text
 
-**Generated files:** Always render files immediately with `type: "file"` and the absolute path. Never just report the save path — show the result.
+**Use artifacts when** the user benefits from *seeing* or *interacting with* the response:
+- Interactive forms, dashboards, data explorers
+- Charts and data visualizations
+- Tables with 5+ rows
+- Code longer than 20 lines
+- Multi-section layouts
+
+**Stay inline (plain text) when:**
+- Simple answers, confirmations
+- Lists under 10 items
+- Short code snippets (<20 lines)
+- Single-paragraph responses
+- Casual tone from user
+
+**When in doubt, respond inline.** Artifacts add latency.
+
+**Generated files:** Always render files immediately. Never just report a save path — show the result.
 
 ## React Artifacts
 
@@ -31,19 +67,28 @@ The `render_output` MCP tool renders structured outputs inline in the session tr
 - **shadcn/ui** — `import { Button, Badge, ... } from "@hammies/frontend/components/ui"`
 - **React hooks** — `import { useState, useEffect, ... } from "react"`
 - **Utilities** — `import { cn } from "@hammies/frontend/lib/utils"`
+- **Charts** — `import { LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer } from "recharts"`
+- **Icons** — `import { Search, Mail, Check, X, ... } from "lucide-react"`
+- **Data viz** — `import * as d3 from "d3"`
+- **Utilities** — `import _ from "lodash"`
 
-**IMPORTANT:** Always use ES module `import` syntax. NEVER use `window["@hammies/..."]` or `require()` — the artifact runs in an ES module context with import maps.
+**IMPORTANT:** Always use ES module `import` syntax. NEVER use `require()` or `window["..."]`.
 
 ### Globals (do not import)
 
-- **`sendAction(intent, data?)`** — Sends a message to the agent on the user's behalf, requesting it to take action. Include relevant component state in `data` so the agent has context. Use only when the agent needs to process the action (submit form, approve/reject, update record). **Do NOT use for navigation.**
-- **`saveState(state)`** — Persist UI state across page reloads. Restored automatically on remount.
+- **`sendAction(intent, data?)`** — Sends a message to the agent. Include relevant component state in `data` so the agent has context. Use only when the agent needs to process the action (submit form, approve/reject, update record).
+  - Agent receives: `<artifact_action intent="approve">{ "itemId": 123 }</artifact_action>`
+- **`saveState(state)`** — Persist UI state across page reloads. Restored automatically on remount via `window.__onStateRestored`.
 
-**Links vs sendAction:** **Links are preferred.** Use `<a href="..." target="_blank">` for any URL the user should open directly (e.g. "Open in Shopify", "View in Gmail", "Open draft"). Use `sendAction` only when a link isn't enough — when the agent must do something in response to the click (e.g. "Approve & Send", "Submit changes", "Save draft").
+**Links vs sendAction:** Use `<a href="..." target="_blank">` for URLs the user should open directly. Use `sendAction` only when the agent must respond to the click.
+
+### Restrictions
+
+- **No localStorage or sessionStorage** — use React state instead
+- **No fetch() to external APIs** — use `sendAction` to request the agent do it
+- **No document.cookie**
 
 ### Design Rules
-
-Follow these to match the app's visual style:
 
 **Root element:** No `bg-background`, `bg-card`, `text-foreground`, or `p-*`. The app provides background, text color, and padding. Start with bare layout: `<div className="flex flex-col gap-4">`.
 
@@ -65,7 +110,14 @@ Follow these to match the app's visual style:
 
 **Borders:** `border border-border rounded-lg` (containers), `border-b` (list separators), `rounded-md` (buttons/inputs)
 
-**Layout:** `flex flex-col` (stacks), `flex items-center justify-between` (rows), `flex-1 min-w-0` (shrinkable items), `shrink-0` (icons/buttons). **Tabs must stack vertically** (TabsList above TabsContent) — never put them side-by-side in a flex-row.
+**Layout:** `flex flex-col` (stacks), `flex items-center justify-between` (rows), `flex-1 min-w-0` (shrinkable items), `shrink-0` (icons/buttons). **Tabs must stack vertically** (TabsList above TabsContent) — never side-by-side.
+
+### Error Handling
+
+Always handle loading and error states:
+- Use `Skeleton` for loading placeholders
+- Use `Alert` with `variant="destructive"` for errors
+- Show data progressively rather than blocking the entire UI
 
 ### Available Components
 
@@ -75,51 +127,34 @@ Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, B
 
 ### Component Patterns
 
-See `references/component-patterns.md` for complete examples of each component and common compositions.
+See `references/component-patterns.md` for complete examples.
+See `references/app-components.md` for real-world examples from the Inbox app.
 
-See `references/app-components.md` for examples based on real components in the Inbox app (data tables, rich text editors, property editors, list views).
-
-## Other Output Types
-
-### Table
+## Table (render_output)
 ```json
 {
   "type": "table",
   "data": {
     "columns": ["Name", "Status", "Updated"],
-    "rows": [["Widget A", "Active", "2024-03-15"], ["Widget B", "Draft", "2024-03-10"]]
+    "rows": [["Widget A", "Active", "2024-03-15"]]
   }
 }
 ```
 
 Auto-pagination at 20+ rows, auto-search at 5+ rows. Columns are sortable.
 
-### Chart
+## Chart (render_output)
 ```json
 {
   "type": "chart",
   "data": {
     "type": "bar",
-    "data": [{"month": "Jan", "revenue": 1200}, {"month": "Feb", "revenue": 1800}],
+    "data": [{"month": "Jan", "revenue": 1200}],
     "xKey": "month",
     "yKeys": ["revenue"],
-    "labels": {"revenue": "Monthly Revenue"},
     "colors": {"revenue": "var(--chart-1)"}
   }
 }
 ```
 
-Chart types: `bar`, `line`, `area`, `pie`. Uses chart-1 through chart-5 color tokens.
-
-### Markdown
-Supports GitHub-flavored Markdown with syntax-highlighted code blocks.
-
-### File
-```json
-{
-  "type": "file",
-  "data": { "name": "report.pdf", "path": "/absolute/path/to/report.pdf", "mimeType": "application/pdf" }
-}
-```
-
-Images and videos render inline. Other files show a download link.
+Chart types: `bar`, `line`, `area`, `pie`. For complex charts, use a `.jsx` artifact with recharts.

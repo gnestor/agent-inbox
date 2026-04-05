@@ -153,6 +153,10 @@ export function getMessageType(raw: unknown): string {
 /** Tool names for render_output (MCP and direct). */
 export const RENDER_OUTPUT_NAMES = new Set(["render_output", "mcp__render_output__render_output"])
 
+/** Tool names for create_file / present_files artifact tools */
+export const CREATE_FILE_NAMES = new Set(["create_file", "mcp__artifact__create_file"])
+export const PRESENT_FILES_NAMES = new Set(["present_files", "mcp__artifact__present_files"])
+
 /** Check if a message is from/to a subagent (not the human user). */
 export function isSubagentMessage(message: { type: string; message: unknown }): boolean {
   const raw = message.message as Record<string, unknown>

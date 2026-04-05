@@ -29,7 +29,11 @@ export interface TransformResult {
 }
 
 /** Packages whose imports are preserved (resolved by iframe import map) */
-const ALLOWED_IMPORTS = ["react", "react-dom", "react/", "react-dom/", "@hammies/frontend"]
+const ALLOWED_IMPORTS = [
+  "react", "react-dom", "react/", "react-dom/",
+  "@hammies/frontend",
+  "recharts", "lucide-react", "d3", "lodash",
+]
 
 function isAllowedImport(line: string): boolean {
   return ALLOWED_IMPORTS.some((pkg) => new RegExp(`from\\s+['"]${pkg.replace("/", "\\/")}`, "").test(line))
