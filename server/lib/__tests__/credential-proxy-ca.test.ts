@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
   generateCA,
   generateCertForHost,
   _resetCaches,
   _getHostCertCacheSize,
   _getHostCertCacheKeys,
+  _MAX_HOST_CERTS,
 } from "../credential-proxy-ca.js"
 
 describe("credential-proxy-ca", () => {
@@ -72,5 +73,56 @@ describe("credential-proxy-ca", () => {
       "host-c.example.com",
       "host-a.example.com",
     ])
+  })
+
+  it("evicts oldest entries when cache exceeds MAX_HOST_CERTS", async () => {
+    // Use a real CA for signing but mock selfsigned.generate to be fast
+    // after the CA is generated
+    const realSelfsigned = await import("selfsigned")
+    const realGenerate = realSelfsigned.default.generate.bind(realSelfsigned.default)
+
+    let callCount = 0
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const spy = vi.spyOn(realSelfsigned.default, "generate").mockImplementation(
+      (async (attrs: any, opts: any) => {
+        callCount++
+        // Let the first call (CA generation) go through for real,
+        // then use fast stubs for host certs
+        if (callCount === 1) {
+          return realGenerate(attrs, opts)
+        }
+        return {
+          cert: `CERT-${attrs?.[0]?.value}`,
+          private: `KEY-${attrs?.[0]?.value}`,
+        }
+      }) as any,
+    )
+
+    try {
+      ca = await generateCA()
+
+      const totalHosts = _MAX_HOST_CERTS + 5 // 105
+      for (let i = 0; i < totalHosts; i++) {
+        await generateCertForHost(`host-${i}.example.com`, ca)
+        // Cache size should never exceed MAX_HOST_CERTS
+        expect(_getHostCertCacheSize()).toBeLessThanOrEqual(_MAX_HOST_CERTS)
+      }
+
+      // Final cache size should be exactly MAX_HOST_CERTS
+      expect(_getHostCertCacheSize()).toBe(_MAX_HOST_CERTS)
+
+      // The first 5 hosts should have been evicted
+      const keys = _getHostCertCacheKeys()
+      for (let i = 0; i < 5; i++) {
+        expect(keys).not.toContain(`host-${i}.example.com`)
+      }
+
+      // The last MAX_HOST_CERTS hosts should still be present
+      for (let i = 5; i < totalHosts; i++) {
+        expect(keys).toContain(`host-${i}.example.com`)
+      }
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
