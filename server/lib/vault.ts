@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto"
 import { execute, query, queryOne } from "../db/pool.js"
+import { createLogger } from "./logger.js"
+
+const log = createLogger("vault")
 
 const ALGORITHM = "aes-256-gcm"
 const IV_LENGTH = 16
@@ -185,11 +188,11 @@ export async function seedWorkspaceCredentials(
     if (!integration || !value || existing.has(integration)) continue
 
     await storeWorkspaceCredential(workspaceName, integration, value)
-    console.log(`Seeded ${envKey} → workspace_credentials[${workspaceName}, ${integration}]`)
+    log.info("Seeded workspace credential from env", { envKey, workspace: workspaceName, integration })
     count++
   }
 
   if (count > 0) {
-    console.log(`Seeded ${count} workspace credential${count === 1 ? "" : "s"} from .env`)
+    log.info("Seeded workspace credentials from .env", { count, workspace: workspaceName })
   }
 }

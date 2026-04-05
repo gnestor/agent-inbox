@@ -14,6 +14,18 @@ import {
 } from "../lib/workspace-scanner.js"
 import { requireAdmin } from "../lib/workspace-context.js"
 import type { AppBindings } from "../lib/workspace-context.js"
+import {
+  AddWorkspaceMemberBody,
+  RenameWorkspaceBody,
+  SetActiveWorkspaceBody,
+  UpdateMemberRoleBody,
+} from "../lib/schemas.js"
+import type { ZodError } from "zod/v4"
+
+/** Extract first user-facing message from a Zod validation error */
+function zodErrorMessage(err: ZodError): string {
+  return err.issues[0]?.message ?? "Invalid request body"
+}
 
 export const WORKSPACE_COOKIE = "inbox_workspace"
 
@@ -29,7 +41,13 @@ workspaceRoutes.get("/", async (c) => {
 
 /** Set active workspace (sets cookie). */
 workspaceRoutes.put("/active", async (c) => {
-  const { workspaceId } = await c.req.json<{ workspaceId: string }>()
+  let body: SetActiveWorkspaceBody
+  try {
+    body = SetActiveWorkspaceBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
+  }
+  const { workspaceId } = body
   const ws = await getWorkspaceById(workspaceId)
   if (!ws) return c.json({ error: "Workspace not found" }, 404)
 
@@ -57,9 +75,13 @@ workspaceRoutes.get("/:id", async (c) => {
 workspaceRoutes.put("/:id", async (c) => {
   requireAdmin(c)
   const id = c.req.param("id")
-  const { name } = await c.req.json<{ name: string }>()
-  if (!name?.trim()) return c.json({ error: "Name is required" }, 400)
-  const updated = await updateWorkspaceName(id, name.trim())
+  let body: RenameWorkspaceBody
+  try {
+    body = RenameWorkspaceBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
+  }
+  const updated = await updateWorkspaceName(id, body.name.trim())
   if (!updated) return c.json({ error: "Workspace not found" }, 404)
   return c.json({ ok: true })
 })
@@ -81,8 +103,13 @@ workspaceRoutes.post("/:id/members", async (c) => {
   const ws = await getWorkspaceById(id)
   if (!ws) return c.json({ error: "Workspace not found" }, 404)
 
-  const { email, role } = await c.req.json<{ email: string; role?: "admin" | "member" }>()
-  if (!email) return c.json({ error: "Email required" }, 400)
+  let body: AddWorkspaceMemberBody
+  try {
+    body = AddWorkspaceMemberBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
+  }
+  const { email, role } = body
 
   const user = await queryOne<{ email: string }>("SELECT email FROM users WHERE email = $1", [email])
   if (!user) return c.json({ error: "User not found" }, 404)
@@ -111,11 +138,13 @@ workspaceRoutes.patch("/:id/members/:email", async (c) => {
   requireAdmin(c)
   const id = c.req.param("id")
   const email = c.req.param("email")
-  const { role } = await c.req.json<{ role: "admin" | "member" }>()
-
-  if (role !== "admin" && role !== "member") {
-    return c.json({ error: "Invalid role" }, 400)
+  let body: UpdateMemberRoleBody
+  try {
+    body = UpdateMemberRoleBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
+  const { role } = body
 
   if (role === "member" && await isLastAdmin(id, email)) {
     return c.json({ error: "Cannot demote the last admin" }, 400)

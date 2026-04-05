@@ -3,6 +3,13 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie"
 import { getClientId, verifyIdToken, getSession, deleteSession } from "../lib/auth.js"
 import { getUserWorkspaces, resolveActiveWorkspace } from "../lib/workspace-scanner.js"
 import { WORKSPACE_COOKIE } from "./workspaces.js"
+import { AuthCallbackBody } from "../lib/schemas.js"
+import type { ZodError } from "zod/v4"
+
+/** Extract first user-facing message from a Zod validation error */
+function zodErrorMessage(err: ZodError): string {
+  return err.issues[0]?.message ?? "Invalid request body"
+}
 
 export const SESSION_COOKIE = "inbox_session"
 
@@ -13,8 +20,13 @@ authRoutes.get("/client-id", (c) => {
 })
 
 authRoutes.post("/callback", async (c) => {
-  const { credential } = await c.req.json()
-  if (!credential) return c.json({ error: "Missing credential" }, 400)
+  let body: AuthCallbackBody
+  try {
+    body = AuthCallbackBody.parse(await c.req.json())
+  } catch (err) {
+    return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
+  }
+  const { credential } = body
 
   const { sessionToken, user } = await verifyIdToken(credential)
   setCookie(c, SESSION_COOKIE, sessionToken, {

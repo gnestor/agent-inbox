@@ -1,6 +1,9 @@
 import { basename } from "path"
 import { execFileSync } from "child_process"
 import { query, queryOne, execute } from "../db/pool.js"
+import { createLogger } from "./logger.js"
+
+const log = createLogger("workspace")
 
 export interface WorkspaceRow {
   id: string
@@ -59,7 +62,7 @@ export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[
   }
 
   claimedUsers.clear() // new workspaces may need claiming
-  console.log(`[workspace] Registered ${paths.length} workspace(s)`)
+  log.info("Registered workspaces", { count: paths.length })
   return await query<WorkspaceRow>("SELECT * FROM workspaces")
 }
 
@@ -160,7 +163,7 @@ export async function ensureWorkspaceAccess(workspaceId: string, email: string):
 
   if (parseInt(countRow?.count || "0", 10) === 0) {
     await addWorkspaceMember(workspaceId, email, "admin")
-    console.log(`[workspace] Auto-assigned ${email} as admin of ${workspaceId} (first user)`)
+    log.info("Auto-assigned admin role", { email, workspaceId })
     return "admin"
   }
 

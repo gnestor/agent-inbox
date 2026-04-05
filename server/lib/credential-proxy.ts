@@ -4,6 +4,9 @@ import { Socket } from "node:net"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { generateCA, generateCertForHost, writeCACertFile } from "./credential-proxy-ca.js"
+import { createLogger } from "./logger.js"
+
+const log = createLogger("credential-proxy")
 
 const PRELOAD_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "agent-proxy-preload.mjs")
 

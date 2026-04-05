@@ -87,6 +87,11 @@ export const SetActiveWorkspaceBody = z.object({
 })
 export type SetActiveWorkspaceBody = z.infer<typeof SetActiveWorkspaceBody>
 
+export const UpdateMemberRoleBody = z.object({
+  role: z.enum(["admin", "member"]),
+})
+export type UpdateMemberRoleBody = z.infer<typeof UpdateMemberRoleBody>
+
 // ---------------------------------------------------------------------------
 // Database row schemas
 // ---------------------------------------------------------------------------

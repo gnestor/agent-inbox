@@ -17,6 +17,9 @@ import {
   SessionRow,
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
+import { createLogger } from "../lib/logger.js"
+
+const log = createLogger("routes:sessions")
 
 type UserProfile = { name: string; email: string; picture?: string }
 
@@ -76,7 +79,7 @@ sessionRoutes.post("/", async (c) => {
     return c.json({ sessionId })
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to start session"
-    console.error("Failed to start session:", err)
+    log.error("Failed to start session", { error: String(err) })
     return c.json({ error: message }, 500)
   }
 })
@@ -94,7 +97,7 @@ sessionRoutes.get("/", async (c) => {
     ? sessions.searchAgentSessions(q, wsPath)
     : sessions.listAllAgentSessions(wsPath)
   ).catch((err: unknown) => {
-    console.error("listAllAgentSessions failed:", err)
+    log.error("listAllAgentSessions failed", { error: String(err) })
     return [] as Awaited<ReturnType<typeof sessions.listAllAgentSessions>>
   })
 
@@ -195,7 +198,7 @@ sessionRoutes.get("/:id", async (c) => {
     let status = session.status
     if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id)) {
       status = "complete"
-      sessions.updateSessionStatus(session.id, "complete").catch((err) => console.warn("[sessions] Failed to update stale session status:", err))
+      sessions.updateSessionStatus(session.id, "complete").catch((err) => log.warn("Failed to update stale session status", { sessionId: session.id, error: String(err) }))
     }
 
     return c.json({
@@ -291,7 +294,7 @@ sessionRoutes.post("/:id/answer", async (c) => {
     try {
       await sessions.resumeSessionQuery(sessionId, formatted, userSessionToken, user)
     } catch (err) {
-      console.error("Failed to resume session after answer fallback:", err)
+      log.error("Failed to resume session after answer fallback", { sessionId, error: String(err) })
       return c.json({ error: "Failed to resume session" }, 500)
     }
   }
@@ -427,7 +430,7 @@ sessionRoutes.patch("/:id/artifact", async (c) => {
   const { sequence, code } = body
   const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
   if (!ok) {
-    console.warn(`[artifact patch] Failed for session=${sessionId} sequence=${sequence}`)
+    log.warn("Artifact patch failed", { sessionId, sequence })
     return c.json({ error: "Artifact not found at the given sequence" }, 404)
   }
   return c.json({ ok: true })
