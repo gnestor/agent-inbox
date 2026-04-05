@@ -34,7 +34,7 @@ vi.mock("../../db/pool.js", () => ({
 
     if (sql.includes("INSERT INTO sessions") && sql.includes("ON CONFLICT DO NOTHING")) {
       // importAgentSession
-      const [id, prompt, summary, started_at, updated_at, completed_at] = params as string[]
+      const [id, prompt, summary, started_at, updated_at, completed_at] = params as [string, string, string, string, string, string]
       if (!store.has(id)) {
         store.set(id, {
           id,
@@ -52,7 +52,7 @@ vi.mock("../../db/pool.js", () => ({
 
     if (/UPDATE\s+sessions\s+SET\s+summary/i.test(sql)) {
       // updateSessionSummary: UPDATE sessions SET summary = $1, updated_at = $2 WHERE id = $3
-      const [summary, updated_at, id] = params as string[]
+      const [summary, updated_at, id] = params as [string, string, string]
       if (store.has(id)) {
         store.set(id, { ...store.get(id)!, summary, updated_at })
       }
@@ -376,7 +376,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
 
     const matches = deduped.filter((s) => s.id === SESSION_ID)
     expect(matches).toHaveLength(1)
-    expect(matches[0].summary).toBe("Renamed summary")
+    expect(matches[0]!.summary).toBe("Renamed summary")
   })
 
   it("JSONL-only session (not in DB) still appears in merged list", async () => {
@@ -410,7 +410,7 @@ describe("dedup: imported session should not appear twice in merged list", () =>
       }))
 
     expect(agentMapped).toHaveLength(1)
-    expect(agentMapped[0].id).toBe(SESSION_ID)
+    expect(agentMapped[0]!.id).toBe(SESSION_ID)
   })
 
   it("full rename flow: import then update summary, getSessionRecord returns new summary", async () => {

@@ -310,7 +310,7 @@ function ChartOutput({ data }: { data: ChartData }) {
   yKeys.forEach((key, i) => {
     config[key] = {
       label: labels?.[key] ?? key,
-      color: colors?.[key] ?? CHART_COLORS[i % CHART_COLORS.length],
+      color: colors?.[key] ?? CHART_COLORS[i % CHART_COLORS.length]!,
     }
   })
 
@@ -323,7 +323,7 @@ function ChartOutput({ data }: { data: ChartData }) {
     // Pie chart needs special handling — data is the slice values
     const pieData = chartData.map((d) => ({
       name: String(d[xKey] ?? ""),
-      value: Number(d[yKeys[0]] ?? 0),
+      value: Number(d[yKeys[0]!] ?? 0),
       fill: colors?.[String(d[xKey])] ?? CHART_COLORS[chartData.indexOf(d) % CHART_COLORS.length],
     }))
 
@@ -348,8 +348,8 @@ function ChartOutput({ data }: { data: ChartData }) {
             <ChartElement
               key={key}
               dataKey={key}
-              fill={config[key].color}
-              stroke={config[key].color}
+              fill={config[key]!.color}
+              stroke={config[key]!.color}
               radius={type === "bar" ? [4, 4, 0, 0] as any : undefined}
               strokeWidth={type !== "bar" ? 2 : undefined}
               fillOpacity={type === "area" ? 0.3 : undefined}

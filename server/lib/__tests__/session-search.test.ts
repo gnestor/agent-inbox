@@ -86,7 +86,7 @@ describe("searchAgentSessions", () => {
     const results = await searchAgentSessions("Hammies End to End Supply Chain 2024")
 
     expect(results).toHaveLength(1)
-    expect(results[0].sessionId).toBe(sessionId)
+    expect(results[0]!.sessionId).toBe(sessionId)
   })
 
   it("does not return sessions that don't contain the search term", async () => {

@@ -23,7 +23,7 @@ export function SessionTab({ tabId = "sessions" as TabId }: { tabId?: TabId }) {
         </Panel>
       )}
       {detailPanels.length > 0 && (
-        <PanelSlot key="detail-group" panelId={selectedId ?? detailPanels[0].id} group>
+        <PanelSlot key="detail-group" panelId={selectedId ?? detailPanels[0]!.id} group>
           {detailPanels.map((panel) => (
             <Panel key={panel.id} id={panel.id} variant={panel.type}>
               {panel.type === "session" ? (

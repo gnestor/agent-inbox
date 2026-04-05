@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
-const mockQueryOne = vi.fn(async () => undefined)
-const mockExecute = vi.fn(async () => ({ rowCount: 0 }))
-const mockQuery = vi.fn(async () => [])
+const mockQueryOne = vi.fn<(...args: any[]) => Promise<any>>(async () => undefined)
+const mockExecute = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ rowCount: 0 }))
+const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
   query: (...args: any[]) => mockQuery(...args),
@@ -66,7 +66,7 @@ describe("attachSourceToSession", () => {
 
   function findUpdateCall() {
     return mockExecute.mock.calls.find(
-      ([sql]: [string]) => typeof sql === "string" && sql.includes("linked_source_id"),
+      (args) => typeof args[0] === "string" && args[0].includes("linked_source_id"),
     )
   }
 

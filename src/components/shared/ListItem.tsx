@@ -23,9 +23,9 @@ function badgesEqual(a?: ListItemBadge[], b?: ListItemBadge[]): boolean {
   if (!a || !b || a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     if (
-      a[i].label !== b[i].label ||
-      a[i].variant !== b[i].variant ||
-      a[i].className !== b[i].className
+      a[i]!.label !== b[i]!.label ||
+      a[i]!.variant !== b[i]!.variant ||
+      a[i]!.className !== b[i]!.className
     )
       return false
   }

@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 let capturedSql = ""
-const mockQuery = vi.fn(async () => [])
+const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
   query: (...args: any[]) => {
@@ -53,6 +53,6 @@ describe("listSessionRecords", () => {
     mockQuery.mockResolvedValue([row])
     const { listSessionRecords } = await import("../session-manager.js")
     const results = await listSessionRecords()
-    expect(results[0]).toMatchObject({ linked_item_title: "Re: Invoice Q1" })
+    expect(results[0]!).toMatchObject({ linked_item_title: "Re: Invoice Q1" })
   })
 })

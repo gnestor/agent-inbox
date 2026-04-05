@@ -35,7 +35,7 @@ describe("useEmails", () => {
     expect(result.current.loading).toBe(true)
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0].id).toBe("m1")
+    expect(result.current.messages[0]!.id).toBe("m1")
     expect(result.current.error).toBeNull()
   })
 
@@ -88,7 +88,7 @@ describe("useEmails", () => {
 
     act(() => { result.current.loadMore() })
     await waitFor(() => expect(result.current.messages).toHaveLength(2))
-    expect(result.current.messages[1].id).toBe("m2")
+    expect(result.current.messages[1]!.id).toBe("m2")
     expect(result.current.hasMore).toBe(false)
   })
 

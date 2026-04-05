@@ -100,7 +100,7 @@ describe("credentials", () => {
       expect(token).toBe("fresh-token")
 
       // Verify it called Google OAuth
-      const [url, opts] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0]!
       expect(url).toBe("https://oauth2.googleapis.com/token")
       expect(opts.method).toBe("POST")
       expect(opts.body.toString()).toContain("grant_type=refresh_token")

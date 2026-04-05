@@ -61,7 +61,7 @@ describe("plugin-loader", () => {
 
   afterEach(() => {
     // Reset registry between tests
-    loadPlugins.__resetForTest?.()
+    ;(loadPlugins as unknown as { __resetForTest?: () => void }).__resetForTest?.()
   })
 
   // ── loadPlugins ───────────────────────────────────────────────────────────

@@ -33,7 +33,7 @@ describe("title-generator", () => {
 
     it("truncates to 60 chars", () => {
       const long = "A".repeat(80)
-      expect(parseTitleResponse(long).length).toBeLessThanOrEqual(60)
+      expect(parseTitleResponse(long)!.length).toBeLessThanOrEqual(60)
     })
 
     it("returns null for empty response", () => {

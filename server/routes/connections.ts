@@ -12,8 +12,9 @@ import {
 import { getWorkspaceName } from "../lib/session-manager.js"
 import { getCredentials } from "../lib/credentials.js"
 import { randomBytes } from "crypto"
+import type { AppBindings } from "../lib/workspace-context.js"
 
-export const connectionRoutes = new Hono()
+export const connectionRoutes = new Hono<AppBindings>()
 
 // In-memory OAuth state store (short-lived, keyed by random state param)
 const oauthStates = new Map<

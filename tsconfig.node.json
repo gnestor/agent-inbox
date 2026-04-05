@@ -6,13 +6,15 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@plugins/*": ["./plugins/*"]
     }
   },
-  "include": ["server", "plugins"]
+  "include": ["server", "plugins", "src/types"]
 }

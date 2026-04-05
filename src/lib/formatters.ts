@@ -10,7 +10,7 @@ export function getItemTitle(item: Record<string, unknown> | undefined): string 
 
 export function formatEmailAddress(address: string): string {
   const match = address.match(/^(.+?)\s*<.+>$/)
-  return match ? match[1].replace(/"/g, "") : address
+  return match?.[1] ? match[1].replace(/"/g, "") : address
 }
 
 export function sessionStatusLabel(status: string): string {

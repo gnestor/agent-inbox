@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mock DB and credentials (required by session-manager module)
-const mockExecute = vi.fn(async () => ({ rowCount: 0 }))
-const mockQueryOne = vi.fn(async () => undefined)
-const mockQuery = vi.fn(async () => [])
+const mockExecute = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ rowCount: 0 }))
+const mockQueryOne = vi.fn<(...args: any[]) => Promise<any>>(async () => undefined)
+const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
   query: (...args: any[]) => mockQuery(...args),
@@ -35,7 +35,7 @@ describe("session presence tracking", () => {
     addPresenceUser("sess-1", { email: "alice@test.com", name: "Alice", picture: "https://example.com/alice.jpg" })
     const users = getPresenceUsers("sess-1")
     expect(users).toHaveLength(1)
-    expect(users[0]).toMatchObject({ email: "alice@test.com", name: "Alice" })
+    expect(users[0]!).toMatchObject({ email: "alice@test.com", name: "Alice" })
   })
 
   it("addPresenceUser broadcasts presence event to SSE clients", async () => {
@@ -44,10 +44,10 @@ describe("session presence tracking", () => {
     addSseClient("sess-2", (data) => received.push(data))
     addPresenceUser("sess-2", { email: "alice@test.com", name: "Alice" })
     expect(received).toHaveLength(1)
-    const event = JSON.parse(received[0])
+    const event = JSON.parse(received[0]!)
     expect(event.type).toBe("presence")
     expect(event.users).toHaveLength(1)
-    expect(event.users[0].email).toBe("alice@test.com")
+    expect(event.users[0]!.email).toBe("alice@test.com")
   })
 
   it("removePresenceUser removes user from presence map and broadcasts", async () => {
@@ -59,9 +59,9 @@ describe("session presence tracking", () => {
     removePresenceUser("sess-3", "alice@test.com")
     const users = getPresenceUsers("sess-3")
     expect(users).toHaveLength(1)
-    expect(users[0].email).toBe("bob@test.com")
+    expect(users[0]!.email).toBe("bob@test.com")
     expect(received).toHaveLength(3)
-    const lastEvent = JSON.parse(received[2])
+    const lastEvent = JSON.parse(received[2]!)
     expect(lastEvent.type).toBe("presence")
     expect(lastEvent.users).toHaveLength(1)
   })

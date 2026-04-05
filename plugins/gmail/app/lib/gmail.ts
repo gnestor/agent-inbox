@@ -396,7 +396,7 @@ function markdownToHtml(md: string): string {
     // Headings
     const headingMatch = block.match(/^(#{1,6}) (.+)/)
     if (headingMatch) {
-      const level = headingMatch[1].length
+      const level = headingMatch[1]!.length
       return `<h${level}>${headingMatch[2]}</h${level}>`
     }
     // Lists

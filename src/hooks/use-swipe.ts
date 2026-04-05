@@ -20,14 +20,18 @@ export function useSwipe(onSwipe: (direction: SwipeDirection) => void, enabled =
     let startTime = 0
 
     const onTouchStart = (e: TouchEvent) => {
-      startX = e.touches[0].clientX
-      startY = e.touches[0].clientY
+      const touch = e.touches[0]
+      if (!touch) return
+      startX = touch.clientX
+      startY = touch.clientY
       startTime = Date.now()
     }
 
     const onTouchEnd = (e: TouchEvent) => {
-      const dx = e.changedTouches[0].clientX - startX
-      const dy = e.changedTouches[0].clientY - startY
+      const touch = e.changedTouches[0]
+      if (!touch) return
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
       const absDx = Math.abs(dx)
       const absDy = Math.abs(dy)
       const elapsed = Date.now() - startTime

@@ -69,7 +69,7 @@ if (debugThreadId) {
 describeGmail("live Gmail sanitization", () => {
   it("19beace60dce19c1: GoHighLevel reply-timestamp-box stripped", async () => {
     const thread = await fetchThread("19beace60dce19c1")
-    const last = thread.messages[thread.messages.length - 1]
+    const last = thread.messages[thread.messages.length - 1]!
 
     expect(last.bodyIsHtml).toBe(true)
     expect(last.body).toContain("Just wanted to check in one more time")
@@ -80,7 +80,7 @@ describeGmail("live Gmail sanitization", () => {
 
   it("1975c3797eaec1c5: inspect message bodyIsHtml flags", async () => {
     const thread = await fetchThread("1975c3797eaec1c5")
-    const secondToLast = thread.messages[thread.messages.length - 2]
+    const secondToLast = thread.messages[thread.messages.length - 2]!
 
     console.log(`\nThread: ${thread.subject} (${thread.messageCount} messages)`)
     for (const msg of thread.messages) {
@@ -90,13 +90,12 @@ describeGmail("live Gmail sanitization", () => {
     }
 
     // The second-to-last message should be sanitized (no quoted content leaking through)
-    expect(secondToLast).toBeDefined()
     expectNoQuotedContent(secondToLast)
   }, 15_000)
 
   it("19491ac0c7f23645: Shortwave signature stripped", async () => {
     const thread = await fetchThread("19491ac0c7f23645")
-    const last = thread.messages[thread.messages.length - 1]
+    const last = thread.messages[thread.messages.length - 1]!
 
     expect(last.body).not.toMatch(/class="[^"]*shortwave-signature/)
     expect(last.body.length).toBeLessThan(last.rawBody.length * 0.6)

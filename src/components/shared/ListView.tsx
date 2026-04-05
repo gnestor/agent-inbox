@@ -184,7 +184,7 @@ function ListViewBody({
   useEffect(() => {
     if (!hasMore || loading || !sentinelRef.current) return
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) loadMoreRef.current?.() },
+      ([entry]) => { if (entry?.isIntersecting) loadMoreRef.current?.() },
       { root: scrollRef.current, rootMargin: "200px" },
     )
     observer.observe(sentinelRef.current)

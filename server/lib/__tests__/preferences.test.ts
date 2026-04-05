@@ -65,7 +65,7 @@ const { preferencesRoutes } = await import("../../routes/preferences.js")
 const TEST_TOKEN = "test-token"
 
 function setupUser(email: string | null) {
-  vi.mocked(getSession).mockReturnValue(
+  vi.mocked(getSession).mockResolvedValue(
     email ? { user: { name: "Test", email, picture: undefined } } : undefined,
   )
 }

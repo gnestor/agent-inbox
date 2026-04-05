@@ -220,7 +220,7 @@ export async function resolveActiveWorkspace(
   // 2. Fall back to user's first workspace
   const userWs = await getUserWorkspaces(email)
   if (userWs.length > 0) {
-    const ws = userWs[0]
+    const ws = userWs[0]!
     return { ...ws, role: ws.role as "admin" | "member" }
   }
 

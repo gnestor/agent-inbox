@@ -1,4 +1,4 @@
-// @ts-expect-error — selfsigned has no type declarations
+// @ts-ignore — selfsigned types may not match runtime API
 import selfsigned from "selfsigned"
 import { writeFileSync, mkdtempSync } from "node:fs"
 import { join } from "node:path"
@@ -33,7 +33,7 @@ export async function generateCA(): Promise<CertKeyPair> {
         critical: true,
       },
     ],
-  })
+  } as any)
 
   cachedCA = { cert: pems.cert, key: pems.private }
   return cachedCA
@@ -62,7 +62,7 @@ export async function generateCertForHost(
     ],
     // Sign with our CA
     ca: { key: ca.key, cert: ca.cert },
-  })
+  } as any)
 
   const pair = { cert: pems.cert, key: pems.private }
   hostCertCache.set(host, pair)

@@ -19,7 +19,7 @@ export function sanitizePlainText(text: string): string {
   const result: string[] = []
 
   for (let i = 0; i < lines.length; i++) {
-    const t = lines[i].trim()
+    const t = lines[i]!.trim()
 
     // Stop at ">"-prefixed quoted lines
     if (t.startsWith(">")) break
@@ -59,7 +59,7 @@ export function sanitizePlainText(text: string): string {
     // Skip standalone known app name footers
     if (APP_SIGNATURE_RE.test(t)) continue
 
-    result.push(lines[i])
+    result.push(lines[i]!)
   }
 
   return result
@@ -110,7 +110,7 @@ const HTML_TEXT_QUOTE_PATTERNS: RegExp[] = [
 function findBlockStart(html: string, pos: number): number {
   const blockTagRe = /<(?:div|p|table|tr|td|blockquote|article|section|hr)[^>]*>/gi
   const matches = [...html.slice(0, pos).matchAll(blockTagRe)]
-  return matches.length > 0 ? matches[matches.length - 1].index! : pos
+  return matches.length > 0 ? matches[matches.length - 1]!.index! : pos
 }
 
 export interface SanitizeOptions {

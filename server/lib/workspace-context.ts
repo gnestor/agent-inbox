@@ -19,8 +19,8 @@ export type AppBindings = {
 }
 
 /** Throw 403 if the current user is not an admin of the active workspace. */
-export function requireAdmin(c: Context): void {
-  const ws = c.get("workspace") as WorkspaceContext | undefined
+export function requireAdmin(c: Context<AppBindings>): void {
+  const ws = c.get("workspace")
   if (!ws || ws.role !== "admin") {
     throw new HTTPException(403, { message: "Admin access required" })
   }

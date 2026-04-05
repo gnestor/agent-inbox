@@ -12,11 +12,12 @@
  * - Transforms JSX → React.createElement via @babel/standalone
  */
 // Lazy-load @babel/standalone (~37MB) — only needed when viewing React artifacts
-let _babelTransform: ((code: string, opts: any) => { code: string | null }) | null = null
-async function ensureBabel() {
+type BabelTransform = (code: string, opts: Record<string, unknown>) => { code: string | null }
+let _babelTransform: BabelTransform | null = null
+async function ensureBabel(): Promise<BabelTransform> {
   if (!_babelTransform) {
     const babel = await import("@babel/standalone")
-    _babelTransform = babel.transform
+    _babelTransform = babel.transform as BabelTransform
   }
   return _babelTransform
 }
@@ -60,7 +61,7 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
 
     // Detect export default — keep it in the code, record the name for mounting
     if (/^export\s+default\s+function\s+(\w+)/.test(trimmed)) {
-      exportedName = trimmed.match(/^export\s+default\s+function\s+(\w+)/)![1]
+      exportedName = trimmed.match(/^export\s+default\s+function\s+(\w+)/)?.[1] ?? null
     } else if (/^export\s+default\s+\w+\s*;?\s*$/.test(trimmed)) {
       exportedName = trimmed.replace(/^export\s+default\s+/, "").replace(/;\s*$/, "").trim()
     }

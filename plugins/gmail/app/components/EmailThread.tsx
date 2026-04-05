@@ -174,8 +174,8 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
   const replyRecipients = useMemo(() => {
     const all = new Set<string>()
-    if (lastMessage.from) all.add(lastMessage.from.trim())
-    if (lastMessage.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
+    if (lastMessage?.from) all.add(lastMessage.from.trim())
+    if (lastMessage?.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
     return [...all].map(formatEmailAddress).join(", ")
   }, [lastMessage])
 

@@ -164,7 +164,7 @@ describe("OAuth callback token exchange", () => {
 
     // Verify fetch was called with Basic auth and form-encoded body
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    const [url, opts] = mockFetch.mock.calls[0]
+    const [url, opts] = mockFetch.mock.calls[0]!
     expect(url).toContain("api.pinterest.com")
     expect(opts.headers["Authorization"]).toMatch(/^Basic /)
     expect(opts.headers["Content-Type"]).toBe("application/x-www-form-urlencoded")
@@ -207,7 +207,7 @@ describe("OAuth callback token exchange", () => {
     expect(res.status).toBe(302)
     expect(res.headers.get("Location")).toContain("connected=google")
 
-    const [, opts] = mockFetch.mock.calls[0]
+    const [, opts] = mockFetch.mock.calls[0] ?? []
     expect(opts.headers["Content-Type"]).toBe("application/x-www-form-urlencoded")
     expect(opts.headers["Authorization"]).toBeUndefined()
     const params = new URLSearchParams(opts.body)

@@ -172,7 +172,7 @@ function MobileTab({ id, children }: TabProps) {
         if (Math.abs(dy) > threshold) {
           const nextIdx =
             dy < 0 ? Math.min(currentIdx + 1, tabs.length - 1) : Math.max(currentIdx - 1, 0)
-          if (nextIdx !== currentIdx) switchTab(tabs[nextIdx])
+          if (nextIdx !== currentIdx) switchTab(tabs[nextIdx]!)
           document.removeEventListener("pointermove", onMove)
           document.removeEventListener("pointerup", onUp)
         }

@@ -56,14 +56,16 @@ function getWorkspacePaths(): string[] {
 
   // CLI: --workspaces path1,path2
   const wsIndex = args.indexOf("--workspaces")
-  if (wsIndex !== -1 && args[wsIndex + 1]) {
-    return args[wsIndex + 1].split(",").map(resolvePath)
+  const wsArg = wsIndex !== -1 ? args[wsIndex + 1] : undefined
+  if (wsArg) {
+    return wsArg.split(",").map(resolvePath)
   }
 
   // CLI: --workspace path (legacy single)
   const legacyIndex = args.indexOf("--workspace")
-  if (legacyIndex !== -1 && args[legacyIndex + 1]) {
-    return [resolvePath(args[legacyIndex + 1])]
+  const legacyArg = legacyIndex !== -1 ? args[legacyIndex + 1] : undefined
+  if (legacyArg) {
+    return [resolvePath(legacyArg)]
   }
 
   // Env: WORKSPACES=path1,path2
@@ -90,7 +92,7 @@ await initializeDatabase()
 const registeredWorkspaces = await registerWorkspaces(workspacePaths)
 
 // Legacy compat — set default workspace path for callers not yet migrated
-setWorkspacePath(workspacePaths[0])
+setWorkspacePath(workspacePaths[0]!)
 // Register all workspace paths for reverse-lookup during session resume
 for (const p of workspacePaths) registerWorkspacePath(p)
 
@@ -105,8 +107,9 @@ for (const ws of registeredWorkspaces) {
 }
 
 // Set the first workspace as default for backward compat
-if (registeredWorkspaces.length > 0) {
-  setDefaultWorkspaceId(registeredWorkspaces[0].id)
+const firstWorkspace = registeredWorkspaces[0]
+if (firstWorkspace) {
+  setDefaultWorkspaceId(firstWorkspace.id)
 }
 
 /**
@@ -188,7 +191,7 @@ createCredentialProxy({
     if (!session) return null
 
     const refreshed = await maybeRefreshToken(session.user.email, integration)
-    const token = refreshed ?? await resolveCredential(session.user.email, workspacePaths[0], integration)
+    const token = refreshed ?? await resolveCredential(session.user.email, workspacePaths[0]!, integration)
     if (!token) return null
 
     // Gorgias Basic auth needs the email alongside the API token
@@ -301,7 +304,7 @@ app.get("/api/users", async (c) => {
   const list = emails.split(",").map((e) => e.trim()).filter(Boolean)
   if (list.length === 0) return c.json({ users: [] })
   const placeholders = list.map((_, i) => `$${i + 1}`).join(",")
-  const rows = await query(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`, list)
+  const rows = await query<{ email: string; name: string; picture: string | null }>(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`, list)
   return c.json({ users: rows })
 })
 
@@ -341,8 +344,9 @@ const server = serve({ fetch: app.fetch, port }, () => {
   // Auto-resume sessions that were running when the server last shut down
   recoverStaleSessions().catch((err: unknown) => console.warn("Failed to recover stale sessions:", err))
   process.env.WORKSPACE_PATH = workspacePaths[0]
-  if (registeredWorkspaces.length > 0) {
-    loadPanels(registeredWorkspaces[0].path).catch((err) => console.warn("Failed to load panels:", err.message))
+  const firstRegistered = registeredWorkspaces[0]
+  if (firstRegistered) {
+    loadPanels(firstRegistered.path).catch((err) => console.warn("Failed to load panels:", err.message))
   }
 })
 

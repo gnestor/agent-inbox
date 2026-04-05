@@ -140,8 +140,9 @@ export async function createCredentialProxy(
 
   // Handle HTTP CONNECT method (HTTPS proxy tunnel)
   server.on("connect", async (req: IncomingMessage, clientSocket: Socket, head: Buffer) => {
-    const [host, portStr] = (req.url || "").split(":")
-    const port = parseInt(portStr || "443", 10)
+    const parts = (req.url || "").split(":")
+    const host = parts[0] ?? ""
+    const port = parseInt(parts[1] ?? "443", 10)
 
     if (!shouldIntercept(host)) {
       // Transparent tunnel — connect directly to the remote server
@@ -190,7 +191,7 @@ export async function createCredentialProxy(
           const headerSection = rawData.slice(0, headerEnd)
           const body = rawData.slice(headerEnd + 4)
           const lines = headerSection.split("\r\n")
-          const requestLine = lines[0]
+          const requestLine = lines[0] ?? ""
 
           // Resolve credential from vault
           const cred = sessionToken
@@ -217,13 +218,13 @@ export async function createCredentialProxy(
           let injected = false
 
           for (let i = 1; i < lines.length; i++) {
-            const lowerLine = lines[i].toLowerCase()
+            const lowerLine = lines[i]!.toLowerCase()
             if (cred && lowerLine.startsWith(`${authHeaderName}:`)) {
               // Replace existing header with the real credential
               newHeaders.push(formatAuthHeader(authMethod!, cred))
               injected = true
             } else {
-              newHeaders.push(lines[i])
+              newHeaders.push(lines[i]!)
             }
           }
 

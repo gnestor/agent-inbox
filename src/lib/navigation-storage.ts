@@ -41,7 +41,7 @@ function validateState(state: NavigationState): NavigationState {
     }
     // Ensure at least a list panel for plugin and session tabs
     if (tabId.startsWith("plugin:") || tabId === "sessions") {
-      if (cleaned.panels.length === 0 || cleaned.panels[0].type !== "list") {
+      if (cleaned.panels.length === 0 || cleaned.panels[0]?.type !== "list") {
         cleaned.panels = [{ id: "list", type: "list", props: {} }, ...cleaned.panels]
       }
     }

@@ -593,10 +593,10 @@ function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel =
 }
 
 function ToolCallGroup({ blocks }: { blocks: ToolUseBlock[] }) {
-  const summary = blocks.length === 1 ? toolUseSummary(blocks[0].name, blocks[0].input) : ""
+  const summary = blocks.length === 1 ? toolUseSummary(blocks[0]!.name, blocks[0]!.input) : ""
   const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
   const label = blocks.length === 1
-    ? (summary ? `${displayName(blocks[0].name)} ${summary}` : displayName(blocks[0].name))
+    ? (summary ? `${displayName(blocks[0]!.name)} ${summary}` : displayName(blocks[0]!.name))
     : blocks.map((b) => displayName(b.name)).join(", ")
   return (
     <TranscriptAccordionEntry label={label} color="text-muted-foreground" bold={false}>
@@ -677,6 +677,9 @@ function fileToOutputSpec(path: string, content: string): OutputSpec {
   }
 }
 
+/** Bouncing dots indicator — isolated to avoid re-rendering the transcript on every SSE event.
+ *  Dots bounce in a continuous loop while active. On each new event, the currently-bouncing
+ *  dot flashes foreground color for one tick, then returns to muted. */
 export function WorkingIndicator({ eventCount }: { eventCount: number }) {
   const TICK_MS = 450
   const [tick, setTick] = useState(0)

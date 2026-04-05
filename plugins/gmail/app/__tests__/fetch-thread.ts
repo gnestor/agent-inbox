@@ -29,7 +29,7 @@ let initialized = false
 
 function ensureCredentials() {
   if (!initialized) {
-    loadCredentials(process.env.HOME + "/Github/hammies/hammies-agent")
+    loadCredentials(process.env.HOME + "/Github/hammies/hammies-agent", "hammies-agent")
     initialized = true
   }
 }

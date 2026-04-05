@@ -106,7 +106,7 @@ describe("session transcript and artifact patching", () => {
     const lines = content.trim().split("\n")
 
     // Verify the line at sequence 7 has the render_output
-    const msg = JSON.parse(lines[seq])
+    const msg = JSON.parse(lines[seq]!)
     expect(msg.type).toBe("assistant")
     const blocks = msg.message?.content ?? []
     const toolBlock = blocks.find((b: any) => b.name?.includes("render_output"))

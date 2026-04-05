@@ -115,8 +115,9 @@ export const useNavigationStore = create<NavigationStore>()((set) => ({
     }
 
     const saved = tab.savedPanels?.[itemId] ?? []
+    const listPanel = tab.panels[0] ?? { id: "list", type: "list" as const, props: {} }
     tab.panels = [
-      tab.panels[0],
+      listPanel,
       { id: `detail:${itemId}`, type: "detail", props: { itemId } },
       ...saved,
     ]

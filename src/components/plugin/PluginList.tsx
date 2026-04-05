@@ -121,7 +121,7 @@ function PluginListInner({
       if (item.startsWith("__group__:")) {
         groups.push({ value: item.slice("__group__:".length), items: [] })
       } else if (groups.length > 0) {
-        groups[groups.length - 1].items.push({ value: item, label: item })
+        groups[groups.length - 1]!.items.push({ value: item, label: item })
       } else {
         ungrouped.push({ value: item, label: item })
       }

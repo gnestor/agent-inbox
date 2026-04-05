@@ -124,7 +124,7 @@ describe("vault", () => {
     it("throws on tampered ciphertext", () => {
       const encrypted = encrypt("secret")
       const parts = encrypted.split(":")
-      parts[2] = parts[2].slice(0, -2) + "ff"
+      parts[2] = parts[2]!.slice(0, -2) + "ff"
       expect(() => decrypt(parts.join(":"))).toThrow()
     })
   })

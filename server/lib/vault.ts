@@ -30,7 +30,10 @@ export function encrypt(plaintext: string): string {
 
 export function decrypt(vaultString: string): string {
   const key = getVaultKey()
-  const [ivHex, authTagHex, ciphertext] = vaultString.split(":")
+  const parts = vaultString.split(":")
+  const ivHex = parts[0] ?? ""
+  const authTagHex = parts[1] ?? ""
+  const ciphertext = parts[2] ?? ""
   const iv = Buffer.from(ivHex, "hex")
   const authTag = Buffer.from(authTagHex, "hex")
   const decipher = createDecipheriv(ALGORITHM, key, iv)

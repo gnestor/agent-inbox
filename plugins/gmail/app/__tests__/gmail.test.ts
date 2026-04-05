@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import type { GmailApiMessage, GmailApiPart } from "../lib/gmail-api-types.js"
 
 vi.mock("../lib/email-sanitizer.js", () => ({
   sanitizeHtmlEmail: (html: string) => html,
@@ -76,7 +77,7 @@ describe("getHeader", () => {
   })
 
   it("returns empty string when payload is missing", () => {
-    expect(getHeader({}, "From")).toBe("")
+    expect(getHeader({} as GmailApiMessage, "From")).toBe("")
   })
 })
 
@@ -167,7 +168,7 @@ describe("getEmailBody", () => {
   })
 
   it("returns empty for missing payload", () => {
-    const result = getEmailBody({})
+    const result = getEmailBody({} as GmailApiMessage)
     expect(result.body).toBe("")
     expect(result.bodyIsHtml).toBe(false)
   })
@@ -175,27 +176,27 @@ describe("getEmailBody", () => {
 
 describe("fetchBatched", () => {
   it("processes items in batches", async () => {
-    const fn = vi.fn(async (n: number) => n * 2)
-    const result = await fetchBatched([1, 2, 3, 4, 5], fn, 2)
+    const fn = vi.fn(async (s: string) => Number(s) * 2)
+    const result = await fetchBatched(["1", "2", "3", "4", "5"], fn, 2)
     expect(result).toEqual([2, 4, 6, 8, 10])
     // First batch: items 0-1, second: 2-3, third: 4
     expect(fn).toHaveBeenCalledTimes(5)
   })
 
   it("handles empty array", async () => {
-    const fn = vi.fn(async (n: number) => n)
+    const fn = vi.fn(async (s: string) => s)
     const result = await fetchBatched([], fn)
     expect(result).toEqual([])
     expect(fn).not.toHaveBeenCalled()
   })
 
   it("uses default batch size of 5", async () => {
-    const calls: number[][] = []
-    const fn = vi.fn(async (n: number) => {
-      calls.push([n])
-      return n
+    const calls: string[][] = []
+    const fn = vi.fn(async (s: string) => {
+      calls.push([s])
+      return s
     })
-    await fetchBatched([1, 2, 3, 4, 5, 6], fn)
+    await fetchBatched(["1", "2", "3", "4", "5", "6"], fn)
     // 6 items with batch size 5 → 2 batches
     expect(fn).toHaveBeenCalledTimes(6)
   })
@@ -222,7 +223,7 @@ describe("Gmail API functions", () => {
 
       await searchThreads("test-token", "label:important", 10, "page2")
 
-      const [url] = mockFetch.mock.calls[0]
+      const [url] = mockFetch.mock.calls[0]!
       expect(url).toContain("q=label%3Aimportant")
       expect(url).toContain("maxResults=10")
       expect(url).toContain("pageToken=page2")
@@ -260,7 +261,7 @@ describe("Gmail API functions", () => {
 
       await sendMessage("test-token", "bob@test.com", "Hi", "Body text")
 
-      const [url, opts] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0] ?? []
       expect(url).toContain("/messages/send")
       expect(opts.method).toBe("POST")
 
@@ -278,7 +279,7 @@ describe("Gmail API functions", () => {
 
       await sendMessage("test-token", "bob@test.com", "Re: Hi", "Reply", "t1", "<orig@id>")
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      const body = JSON.parse(mockFetch.mock.calls[0]![1].body)
       expect(body.threadId).toBe("t1")
       const decoded = Buffer.from(body.raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
       expect(decoded).toContain("In-Reply-To: <orig@id>")
@@ -292,7 +293,7 @@ describe("Gmail API functions", () => {
 
       await modifyLabels("test-token", "msg1", ["STARRED"], ["UNREAD"])
 
-      const [url, opts] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0] ?? []
       expect(url).toContain("/messages/msg1/modify")
       const body = JSON.parse(opts.body)
       expect(body.addLabelIds).toEqual(["STARRED"])
@@ -306,7 +307,7 @@ describe("Gmail API functions", () => {
 
       await trashThread("test-token", "t1")
 
-      const [url, opts] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0] ?? []
       expect(url).toContain("/threads/t1/trash")
       expect(opts.method).toBe("POST")
     })
@@ -377,9 +378,9 @@ describe("Gmail API functions", () => {
         ],
       }
 
-      const result = getAttachments(payload)
+      const result = getAttachments(payload as GmailApiPart)
       expect(result).toHaveLength(1)
-      expect(result[0]).toEqual({
+      expect(result[0]!).toEqual({
         attachmentId: "att-pdf",
         filename: "report.pdf",
         mimeType: "application/pdf",
@@ -392,7 +393,7 @@ describe("Gmail API functions", () => {
         mimeType: "text/plain",
         body: { data: "abc" },
       }
-      expect(getAttachments(payload)).toEqual([])
+      expect(getAttachments(payload as GmailApiPart)).toEqual([])
     })
 
     it("includes non-image attachments with Content-ID", () => {
@@ -407,9 +408,9 @@ describe("Gmail API functions", () => {
         ],
       }
 
-      const result = getAttachments(payload)
+      const result = getAttachments(payload as GmailApiPart)
       expect(result).toHaveLength(1)
-      expect(result[0].filename).toBe("data.csv")
+      expect(result[0]!.filename).toBe("data.csv")
     })
 
     it("walks nested multipart structures", () => {
@@ -430,9 +431,9 @@ describe("Gmail API functions", () => {
         ],
       }
 
-      const result = getAttachments(payload)
+      const result = getAttachments(payload as GmailApiPart)
       expect(result).toHaveLength(1)
-      expect(result[0].filename).toBe("doc.docx")
+      expect(result[0]!.filename).toBe("doc.docx")
     })
   })
 
