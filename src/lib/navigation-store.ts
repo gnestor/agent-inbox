@@ -191,13 +191,16 @@ export const useNavigationStore = create<NavigationStore>()((set) => ({
     const tab = { ...getOrCreateTab(s.tabs, s.activeTab) }
     if (tab.panels.some((p) => p.id === "new_session")) return s
     const newSessionPanel = makeNewSessionPanel(source)
-    if (tab.selectedItemId) {
-      const detailPanels = tab.panels.filter((p) => p.type === "list" || p.type === "detail")
-      tab.panels = [...detailPanels, newSessionPanel]
+    if (source) {
+      // From a detail view: keep list + detail, append new session
+      const kept = tab.panels.filter((p) => p.type === "list" || p.type === "detail")
+      tab.panels = [...kept, newSessionPanel]
     } else {
+      // From the "+" button: close detail panels, show list + new session
       tab.selectedItemId = undefined
-      tab.panels = [tab.panels[0], newSessionPanel]
+      tab.panels = [tab.panels[0] ?? { id: "list", type: "list", props: {} }, newSessionPanel]
     }
+    tab.panelTransition = "none"
     return { tabs: { ...s.tabs, [s.activeTab]: tab } }
   }),
 

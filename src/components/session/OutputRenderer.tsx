@@ -96,6 +96,10 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
     case "react": {
       // Model may send data as a string (just code) or { code, title }
       const reactData = typeof spec.data === "string" ? { code: spec.data } : spec.data
+      // Fallback: if the agent passed data without a code field, render as JSON
+      if (!reactData.code) {
+        return <JsonOutput data={spec.data} />
+      }
       return (
         <ArtifactFrame
           code={reactData.code}

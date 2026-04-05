@@ -9,6 +9,31 @@ import { getSessionFilesDir, saveSessionFile, getSessionFilePath } from "../lib/
 
 type UserProfile = { name: string; email: string; picture?: string }
 
+/**
+ * The Agent SDK JSONL doesn't include the initial user prompt (it's passed
+ * as an argument, not emitted in the message stream). Prepend a synthetic
+ * user message so REST responses match what SSE broadcasts at seq 0.
+ */
+function withInitialUserPrompt(
+  transcript: Array<Record<string, unknown>>,
+  sessionId: string,
+  prompt: string,
+  createdAt: string,
+) {
+  if (transcript.length > 0 && transcript[0].type === "user") return transcript
+  return [
+    {
+      id: 0,
+      sessionId,
+      sequence: 0,
+      type: "user",
+      message: { type: "user", role: "user", content: prompt },
+      createdAt,
+    },
+    ...transcript,
+  ]
+}
+
 export const sessionRoutes = new Hono()
 
 sessionRoutes.post("/", async (c) => {
@@ -140,9 +165,11 @@ sessionRoutes.get("/:id", async (c) => {
     // JSONL is the source of truth for session transcript.
     // SSE pushes new messages to the client's React Query cache in real-time.
     const agentSession = await sessions.findAgentSession(sessionId)
-    const messages = agentSession
+    const transcript = agentSession
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
       : []
+
+    const messages = withInitialUserPrompt(transcript, sessionId, session.prompt as string, session.started_at as string)
 
     // If DB says "running" but no active process and JSONL has ended,
     // correct the status to "complete" (stale from server restart)
@@ -179,13 +206,15 @@ sessionRoutes.get("/:id", async (c) => {
   }
 
   // Read the transcript from the Agent SDK session (pass cwd so we find the right project)
-  const transcript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+  const sdkTranscript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+  const prompt = agentSession.firstPrompt || ""
+  const transcript = withInitialUserPrompt(sdkTranscript, sessionId, prompt, new Date(agentSession.lastModified).toISOString())
 
   return c.json({
     session: {
       id: agentSession.sessionId,
       status: "complete",
-      prompt: agentSession.firstPrompt || "",
+      prompt,
       summary: agentSession.summary || agentSession.firstPrompt || null,
       startedAt: new Date(agentSession.lastModified).toISOString(),
       updatedAt: new Date(agentSession.lastModified).toISOString(),

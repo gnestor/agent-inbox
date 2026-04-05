@@ -1,8 +1,8 @@
 import { useMemo } from "react"
+import TurndownService from "turndown"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
-import TurndownService from "turndown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
@@ -58,6 +58,8 @@ function formatSlackText(text: string): string {
 }
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
+// Strip style/script tags so CSS doesn't render as visible text
+turndown.remove(["style", "script", "head"])
 const REMARK_PLUGINS = [remarkGfm]
 
 const EMOJI_MAP: Record<string, string> = {

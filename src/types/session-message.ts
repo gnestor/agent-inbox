@@ -150,10 +150,22 @@ export function getMessageType(raw: unknown): string {
   return (obj.type as string) || (obj.role as string) || "unknown"
 }
 
-/** Check if a message is from a subagent (sidechain conversation, not the human user). */
+/** Tool names for render_output (MCP and direct). */
+export const RENDER_OUTPUT_NAMES = new Set(["render_output", "mcp__render_output__render_output"])
+
+/** Check if a message is from/to a subagent (not the human user). */
 export function isSubagentMessage(message: { type: string; message: unknown }): boolean {
   const raw = message.message as Record<string, unknown>
-  return !!(raw.isSidechain || raw.parentUuid || (raw.agentId && message.type === "user"))
+  // isSidechain: true = subagent conversation
+  // parentUuid: set = message in a parent-child chain (agent → subagent)
+  // sourceToolUseID: set = message injected by a tool (skill, agent)
+  // agentId on user messages = prompt sent TO a subagent
+  return !!(
+    raw.isSidechain === true ||
+    raw.parentUuid ||
+    raw.sourceToolUseID ||
+    (raw.agentId && message.type === "user")
+  )
 }
 
 /** Extract a display label for the agent that produced a message. */

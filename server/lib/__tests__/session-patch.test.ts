@@ -231,10 +231,11 @@ describe("PATCH /sessions/:id", () => {
 
     const data = await getRes.json()
     expect(data.session.summary).toBe("Renamed JSONL session")
-    // Messages come directly from JSONL (no synthetic prompt injection)
-    expect(data.messages).toHaveLength(2)
-    expect(data.messages[0].type).toBe("human")
-    expect(data.messages[1].type).toBe("assistant")
+    // First message is prepended user prompt, then JSONL messages
+    expect(data.messages).toHaveLength(3)
+    expect(data.messages[0].type).toBe("user")
+    expect(data.messages[1].type).toBe("human")
+    expect(data.messages[2].type).toBe("assistant")
   })
 
   it("truncates summary to 200 chars", async () => {

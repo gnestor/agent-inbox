@@ -3,11 +3,13 @@ import * as fs from "fs"
 import { homedir } from "os"
 
 const INITIAL_SUMMARY_LENGTH = 80
+const AGENT_SDK_BETAS = ["context-1m-2025-08-07"]
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
+import { RENDER_OUTPUT_NAMES } from "../../src/types/session-message.js"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
@@ -70,13 +72,30 @@ function makeCanUseTool(getSessionId: () => string | null) {
 function buildAgentEnv(workspaceId?: string, userSessionToken?: string): Record<string, string> {
   const env: Record<string, string> = {}
 
-  // Base env: inherit process env minus sensitive keys
+  // Base env: inherit process env minus sensitive keys.
+  // When the credential proxy is active it injects these into outgoing requests;
+  // when it is not, the fallback getAgentEnv() re-adds them from the workspace .env.
   const excluded = new Set([
-    "ANTHROPIC_API_KEY", "CLAUDECODE",
-    // Exclude raw API tokens — the proxy injects these
-    "NOTION_API_TOKEN", "GOOGLE_REFRESH_TOKEN", "GOOGLE_CLIENT_SECRET",
-    "SLACK_BOT_TOKEN", "SHOPIFY_ACCESS_TOKEN", "GITHUB_TOKEN",
-    "VAULT_SECRET",
+    // Server / harness secrets
+    "ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_OAUTH_TOKEN", "VAULT_SECRET",
+    // OAuth credentials
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN",
+    "PINTEREST_ACCESS_TOKEN", "PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET", "PINTEREST_REFRESH_TOKEN",
+    "QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REFRESH_TOKEN",
+    // API keys / tokens for HTTP services (proxy injects these)
+    "AIR_API_KEY",
+    "FACEBOOK_ACCESS_TOKEN",
+    "GEMINI_API_KEY",
+    "GITHUB_API_TOKEN", "GITHUB_TOKEN",
+    "GORGIAS_API_TOKEN",
+    "INSTAGRAM_ACCESS_TOKEN",
+    "KLAVIYO_PRIVATE_KEY",
+    "META_ACCESS_TOKEN",
+    "NOTION_API_TOKEN",
+    "SHOPIFY_API_TOKEN", "SHOPIFY_ACCESS_TOKEN",
+    "SLACK_BOT_TOKEN", "SLACK_API_TOKEN",
+    // Unused but potentially present
+    "HAPPY_RETURNS_API_KEY", "SHIPPO_API_TOKEN", "OBSERVABLE_API_TOKEN",
   ])
   for (const [k, v] of Object.entries(process.env)) {
     if (!excluded.has(k) && v !== undefined) {
@@ -103,7 +122,6 @@ import { fileURLToPath } from "url"
 
 // Resolve inbox package root from this file's location (server/lib/session-manager.ts → ../../)
 const INBOX_PLUGINS_DIR = resolve(fileURLToPath(import.meta.url), "../../../plugins/core")
-console.log(`[session] INBOX_PLUGINS_DIR: ${INBOX_PLUGINS_DIR}, exists: ${fs.existsSync(INBOX_PLUGINS_DIR)}`)
 
 function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] {
   const wsPluginsDir = resolve(wsPath, "plugins")
@@ -122,7 +140,6 @@ function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] 
     }
   }
 
-  console.log(`[session] Loading ${plugins.length} plugins:`, plugins.map(p => p.path.split("/").slice(-2).join("/")))
   return plugins
 }
 
@@ -423,11 +440,17 @@ export async function addSseClient(sessionId: string, send: (data: string) => vo
     console.log(`[sse:${sessionId}] client connected (${sseClients.get(sessionId)!.size} total)`)
   }
 
-  // Re-deliver the last AskUserQuestion when the session is awaiting input.
-  // The original broadcast may have fired before any browser was connected
-  // (e.g. agent resumed on startup and hit AskUserQuestion before the user opened the page).
+  // Send current session status on connect so the client doesn't rely on
+  // stale React Query cache. Covers cases where the session completed or
+  // errored before the SSE connection was established.
   const session = await getSessionRecord(sessionId)
-  if (session?.status === "awaiting_user_input") {
+  if (session?.status === "complete") {
+    send(JSON.stringify({ type: "session_complete", status: "complete" }))
+  } else if (session?.status === "errored") {
+    send(JSON.stringify({ type: "session_error", status: "errored" }))
+  } else if (session?.status === "awaiting_user_input") {
+    // Re-deliver the last AskUserQuestion — the original broadcast may have
+    // fired before any browser was connected.
     const questions = await getLastAskUserQuestions(sessionId)
     if (questions) {
       send(JSON.stringify({ type: "ask_user_question", questions }))
@@ -533,7 +556,7 @@ export async function startSession(
       cwd: wsPath,
       systemPrompt: buildSystemPrompt(sourceContext),
       settingSources: ["project"],
-      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -544,6 +567,7 @@ export async function startSession(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
+      betas: AGENT_SDK_BETAS
     },
   })
   let sequence = 0
@@ -662,7 +686,7 @@ export async function resumeSessionQuery(
       cwd: wsPath,
       systemPrompt: buildSystemPrompt(resumeSourceContext),
       settingSources: ["project"],
-      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
+      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -673,6 +697,7 @@ export async function resumeSessionQuery(
       mcpServers: {
         render_output: buildRenderOutputMcpServer(),
       },
+      betas: AGENT_SDK_BETAS
     },
   })
 
@@ -824,14 +849,12 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
 
   // Mark old stale sessions as errored
   for (const session of old) {
-    console.log(`[server] Marking stale session ${session.id} as errored (last updated ${session.updated_at})`)
     await updateSessionStatus(session.id, "errored", "Session interrupted by server restart")
   }
 
   // Auto-resume recent running sessions concurrently
   const results = await Promise.allSettled(
     toResume.map(async (session) => {
-      console.log(`[server] Auto-resuming session ${session.id}`)
       await resumeSessionQuery(session.id, "The server was restarted. Continue where you left off.")
     }),
   )
@@ -843,12 +866,13 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
     }
   }
 
-  if (toWait.length > 0) {
-    console.log(`[server] ${toWait.length} session(s) awaiting user input — question will re-deliver on SSE connect`)
+  if (toResume.length > 0 || old.length > 0 || toWait.length > 0) {
+    const parts: string[] = []
+    if (toResume.length > 0) parts.push(`${toResume.length} resumed`)
+    if (old.length > 0) parts.push(`${old.length} marked errored`)
+    if (toWait.length > 0) parts.push(`${toWait.length} awaiting input`)
+    console.log(`[server] Session recovery: ${parts.join(", ")}`)
   }
-  console.log(
-    `[server] Session recovery: ${toResume.length} resumed, ${old.length} marked errored`,
-  )
 }
 
 /**
@@ -914,7 +938,6 @@ export async function watchProjectsDir(): Promise<void> {
   // Poll every 5 seconds
   setInterval(poll, 5000)
 
-  console.log(`[watcher] Polling ${watchDir} for new sessions (every 5s)`)
 }
 
 export async function listAgentSessions() {
@@ -1241,11 +1264,6 @@ export async function listProjectOptions(): Promise<string[]> {
 }
 
 export async function getAgentSessionTranscript(sessionId: string, cwd?: string) {
-  const { readFileSync } = await import("fs")
-  const { join } = await import("path")
-  const { homedir } = await import("os")
-
-  // Session JSONL files are in ~/.claude/projects/{encoded-workspace-path}/
   const sessionFile = sessionJsonlPath(sessionId, cwd)
 
   try {
@@ -1253,6 +1271,9 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     const lines = content.trim().split("\n")
     const displayTypes = new Set(["user", "assistant", "system"])
     const messages: Array<Record<string, unknown>> = []
+    // Collect thinking blocks from partial assistant messages so they can be
+    // merged into the next complete assistant message.
+    let pendingThinking: Array<Record<string, unknown>> = []
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       const msg = JSON.parse(lines[lineIdx])
@@ -1282,11 +1303,26 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
       }
 
       if (displayTypes.has(msg.type)) {
-        // Skip partial assistant messages (streaming updates without stop_reason).
-        // The complete version follows with stop_reason set.
         if (msg.type === "assistant") {
           const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
-          if (!stop) continue
+          if (!stop) {
+            // Partial message — collect thinking blocks for the next complete message
+            const content = msg.message?.content
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                if (block?.type === "thinking" && block.thinking) {
+                  pendingThinking.push(block)
+                }
+              }
+            }
+            continue
+          }
+
+          // Complete message — prepend any collected thinking blocks
+          if (pendingThinking.length > 0 && Array.isArray(msg.message?.content)) {
+            msg.message.content = [...pendingThinking, ...msg.message.content]
+            pendingThinking = []
+          }
         }
 
         messages.push({
@@ -1297,6 +1333,28 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
           message: msg,
           createdAt: msg.timestamp || new Date().toISOString(),
         })
+      }
+    }
+
+    // Deduplicate render_output blocks: when the agent retries with the same
+    // title, keep only the last attempt. Walk backwards to find which titles
+    // have already been seen, then strip earlier duplicates.
+    const seenOutputTitles = new Set<string>()
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i] as any
+      const content: any[] | undefined =
+        msg.message?.message?.content ?? msg.message?.content
+      if (!Array.isArray(content)) continue
+      const blockIdx = content.findIndex((b: any) =>
+        b?.type === "tool_use" && RENDER_OUTPUT_NAMES.has(b.name),
+      )
+      if (blockIdx === -1) continue
+      const title = content[blockIdx].input?.title ?? ""
+      if (seenOutputTitles.has(title)) {
+        content.splice(blockIdx, 1)
+        if (content.length === 0) messages.splice(i, 1)
+      } else {
+        seenOutputTitles.add(title)
       }
     }
 
@@ -1324,7 +1382,7 @@ function patchRenderOutputCode(msg: any, code: string): boolean {
   if (!Array.isArray(content)) return false
   for (const block of content) {
     if (block.type !== "tool_use") continue
-    if (block.name !== "render_output" && block.name !== "mcp__render_output__render_output") continue
+    if (!RENDER_OUTPUT_NAMES.has(block.name)) continue
     if (typeof block.input?.data === "string") {
       block.input.data = code
     } else if (block.input?.data && typeof block.input.data === "object") {

@@ -8,12 +8,27 @@
   scrollbar-width: thin;
 }
 
+/* PWA standalone: push content below the status bar */
+body {
+  padding-top: env(safe-area-inset-top);
+}
+
 :root {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(1 0 0 / 0.05);
 }
 
 :root:not(.dark) {
+  --primary: oklch(0.54 0.27 259.29 / 0.7);
+  --secondary: oklch(0 0 0 / 0.05);
+}
+
+.dark .bg-primary, .dark .bg-primary\! {
+  --primary: oklch(0.54 0.27 259.29 / 0.7);
+  --secondary: oklch(1 0 0 / 0.05);
+}
+
+.bg-primary, .bg-primary\! {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(0 0 0 / 0.05);
 }

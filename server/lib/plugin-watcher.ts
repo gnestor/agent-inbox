@@ -31,7 +31,6 @@ export function watchPlugins(
         console.warn(`[plugin-watcher] Watcher error for ${pluginsDir}:`, err.message)
       })
       watchers.push(watcher)
-      console.log(`[plugin-watcher] Watching ${pluginsDir}`)
     } catch (err: any) {
       console.warn(`[plugin-watcher] Failed to watch ${pluginsDir}:`, err.message)
     }

@@ -7,6 +7,7 @@ import {
   shouldIntercept,
   hostToIntegration,
   INTERCEPTED_HOSTS,
+  INTEGRATION_AUTH,
   type CredentialProxy,
 } from "../credential-proxy.js"
 
@@ -18,6 +19,9 @@ describe("shouldIntercept", () => {
     expect(shouldIntercept("api.slack.com")).toBe(true)
     expect(shouldIntercept("hooks.slack.com")).toBe(true)
     expect(shouldIntercept("api.air.inc")).toBe(true)
+    expect(shouldIntercept("a.klaviyo.com")).toBe(true)
+    expect(shouldIntercept("graph.facebook.com")).toBe(true)
+    expect(shouldIntercept("api.pinterest.com")).toBe(true)
   })
 
   it("returns true for subdomain matches (endsWith)", () => {
@@ -26,6 +30,8 @@ describe("shouldIntercept", () => {
     expect(shouldIntercept("sheets.googleapis.com")).toBe(true)
     expect(shouldIntercept("www.googleapis.com")).toBe(true)
     expect(shouldIntercept("oauth2.googleapis.com")).toBe(true)
+    expect(shouldIntercept("mystore.gorgias.com")).toBe(true)
+    expect(shouldIntercept("sandbox-quickbooks.api.intuit.com")).toBe(true)
   })
 
   it("returns false for non-intercepted hosts", () => {
@@ -50,6 +56,16 @@ describe("hostToIntegration", () => {
     expect(hostToIntegration("sheets.googleapis.com")).toBe("google")
     expect(hostToIntegration("www.googleapis.com")).toBe("google")
     expect(hostToIntegration("api.air.inc")).toBe("air")
+    expect(hostToIntegration("a.klaviyo.com")).toBe("klaviyo")
+    expect(hostToIntegration("graph.facebook.com")).toBe("meta")
+    expect(hostToIntegration("mystore.gorgias.com")).toBe("gorgias")
+    expect(hostToIntegration("api.pinterest.com")).toBe("pinterest")
+    expect(hostToIntegration("quickbooks.api.intuit.com")).toBe("quickbooks")
+    expect(hostToIntegration("sandbox-quickbooks.api.intuit.com")).toBe("quickbooks")
+  })
+
+  it("maps generativelanguage.googleapis.com to gemini, not google", () => {
+    expect(hostToIntegration("generativelanguage.googleapis.com")).toBe("gemini")
   })
 
   it("returns the host itself for unknown hosts", () => {
@@ -67,6 +83,36 @@ describe("INTERCEPTED_HOSTS", () => {
     expect(INTERCEPTED_HOSTS).toContain("shopify.com")
     expect(INTERCEPTED_HOSTS).toContain("googleapis.com")
     expect(INTERCEPTED_HOSTS).toContain("api.air.inc")
+    expect(INTERCEPTED_HOSTS).toContain("a.klaviyo.com")
+    expect(INTERCEPTED_HOSTS).toContain("graph.facebook.com")
+    expect(INTERCEPTED_HOSTS).toContain("gorgias.com")
+    expect(INTERCEPTED_HOSTS).toContain("api.pinterest.com")
+  })
+})
+
+describe("INTEGRATION_AUTH", () => {
+  it("defines auth methods for all integrations in hostToIntegration", () => {
+    const knownIntegrations = [
+      "notion", "github", "slack", "shopify", "google", "gemini",
+      "air", "quickbooks", "klaviyo", "meta", "gorgias", "pinterest",
+    ]
+    for (const name of knownIntegrations) {
+      expect(INTEGRATION_AUTH[name]).toBeDefined()
+    }
+  })
+
+  it("uses custom headers for shopify and klaviyo", () => {
+    expect(INTEGRATION_AUTH.shopify).toEqual({ type: "header", name: "X-Shopify-Access-Token" })
+    expect(INTEGRATION_AUTH.klaviyo).toEqual({ type: "header", name: "Klaviyo-API-Key" })
+  })
+
+  it("uses query param for meta and gemini", () => {
+    expect(INTEGRATION_AUTH.meta).toEqual({ type: "query", param: "access_token" })
+    expect(INTEGRATION_AUTH.gemini).toEqual({ type: "query", param: "key" })
+  })
+
+  it("uses basic auth for gorgias", () => {
+    expect(INTEGRATION_AUTH.gorgias).toEqual({ type: "basic", extraKey: "email" })
   })
 })
 
@@ -75,7 +121,7 @@ describe("createCredentialProxy", () => {
 
   it("starts and returns a valid port", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async () => null,
+      resolveCredential: async () => null,
     })
     expect(proxy.port).toBeGreaterThan(0)
     expect(proxy.port).toBeLessThan(65536)
@@ -84,7 +130,7 @@ describe("createCredentialProxy", () => {
 
   it("returns a CA cert path ending in ca.pem", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async () => null,
+      resolveCredential: async () => null,
     })
     expect(proxy.caCertPath).toMatch(/ca\.pem$/)
     await proxy.close()
@@ -92,7 +138,7 @@ describe("createCredentialProxy", () => {
 
   it("getProxyEnv embeds session token in HTTPS_PROXY URL userinfo", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async () => null,
+      resolveCredential: async () => null,
     })
     const env = proxy.getProxyEnv("my-session-token-abc")
 
@@ -104,7 +150,7 @@ describe("createCredentialProxy", () => {
 
   it("getProxyEnv does not leak raw API tokens", async () => {
     proxy = await createCredentialProxy({
-      resolveToken: async () => null,
+      resolveCredential: async () => null,
     })
     const env = proxy.getProxyEnv("tok") as Record<string, string>
 
@@ -121,20 +167,20 @@ describe("createCredentialProxy", () => {
     await proxy.close()
   })
 
-  it("resolveToken callback receives session token and integration name", async () => {
-    const resolveToken = vi.fn().mockResolvedValue(null)
-    proxy = await createCredentialProxy({ resolveToken })
+  it("resolveCredential callback receives session token and integration name", async () => {
+    const resolveCredential = vi.fn().mockResolvedValue(null)
+    proxy = await createCredentialProxy({ resolveCredential })
 
     // We can't easily do a real CONNECT in a unit test, but we can verify
-    // the proxy starts and is addressable. The resolveToken mock would be
+    // the proxy starts and is addressable. The resolveCredential mock would be
     // called during an actual HTTPS request through the proxy.
     expect(proxy.port).toBeGreaterThan(0)
     await proxy.close()
   })
 
   it("each call creates a proxy on a different random port", async () => {
-    const proxy1 = await createCredentialProxy({ resolveToken: async () => null })
-    const proxy2 = await createCredentialProxy({ resolveToken: async () => null })
+    const proxy1 = await createCredentialProxy({ resolveCredential: async () => null })
+    const proxy2 = await createCredentialProxy({ resolveCredential: async () => null })
 
     expect(proxy1.port).not.toBe(proxy2.port)
 

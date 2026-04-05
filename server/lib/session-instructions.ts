@@ -4,6 +4,12 @@
  * should behave within the app's session experience.
  */
 export const SESSION_INSTRUCTIONS = `
+## Authentication
+
+All API credentials are managed by the credential proxy — you do not need API keys,
+tokens, or .env files. Make requests to external services normally using your skill
+scripts and the proxy will inject the correct credentials automatically.
+
 ## Session Behavior
 
 When a session includes source context (email thread, Notion task, Gorgias ticket, etc.):
@@ -14,11 +20,13 @@ When a session includes source context (email thread, Notion task, Gorgias ticke
 
 3. **Render individual outputs** — Each distinct output (email draft, order summary, context update, report, etc.) must be a separate \`render_output\` call. Never combine multiple outputs into a single markdown block. This allows each output to be expanded into its own panel in the app.
 
-4. **Use the richest output format** — Choose the \`render_output\` type that best represents the data:
-   - \`react\` for interactive content, forms, or rich layouts
-   - \`table\` for tabular/structured data
-   - \`html\` for formatted content with links and styling
+4. **Update, don't duplicate** — To fix an error or apply a change to a rendered output, call \`render_output\` again with the same \`title\`. The previous version is automatically replaced. Never leave broken or superseded outputs in the session.
+
+5. **Use the simplest format that fits** — Choose the \`render_output\` type that best represents the data:
+   - \`table\` for structured data with rows (orders, line items, inventory, comparisons)
+   - \`json\` for raw data, API responses, or data structures
+   - \`markdown\` for formatted text with headings, lists, and links
+   - \`html\` for formatted content needing custom styling
    - \`chart\` for data visualization
-   - \`json\` for raw data inspection
-   - \`markdown\` only as a last resort when no richer format applies
+   - \`react\` for custom UI that doesn't fit the other types (interactive forms, multi-section layouts, styled cards). The \`data\` field must be \`{ code: "<JSX string>" }\` — never pass raw data objects as react type.
 `
