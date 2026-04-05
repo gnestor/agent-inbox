@@ -1,6 +1,9 @@
 import { resolve, join } from "path"
 import * as fs from "fs"
 import { homedir } from "os"
+import { createLogger } from "./logger.js"
+
+const log = createLogger("session")
 
 const INITIAL_SUMMARY_LENGTH = 80
 const AGENT_SDK_BETAS = ["context-1m-2025-08-07"]
@@ -72,7 +75,7 @@ function makeCanUseTool(getSessionId: () => string | null) {
       const sessionId = getSessionId()
       if (sessionId) {
         if (process.env.NODE_ENV !== "production") {
-          console.log(`[session:${sessionId}] ask_user:`, input.questions)
+          log.debug("ask_user", { sessionId, questions: input.questions })
         }
         await updateSessionStatus(sessionId, "awaiting_user_input")
         broadcastToSession(sessionId, { type: "ask_user_question", questions: input.questions })
@@ -82,7 +85,7 @@ function makeCanUseTool(getSessionId: () => string | null) {
         })
 
         if (process.env.NODE_ENV !== "production") {
-          console.log(`[session:${sessionId}] user_answered:`, Object.keys(answers))
+          log.debug("user_answered", { sessionId, keys: Object.keys(answers) })
         }
         await updateSessionStatus(sessionId, "running")
         return { behavior: "allow", updatedInput: { ...input, answers } }
@@ -188,7 +191,8 @@ export function setWorkspacePath(path: string) {
   defaultWorkspacePath = resolve(path)
   import("./workspace-scanner.js").then(({ deriveWorkspaceName }) => {
     defaultWorkspaceName = deriveWorkspaceName(path)
-  }).catch(() => {
+  }).catch((err) => {
+    console.debug("[session] Failed to derive workspace name, using fallback:", err)
     defaultWorkspaceName = path.split("/").pop() || path
   })
 }
@@ -236,6 +240,24 @@ export async function createSessionRecord(
   )
 }
 
+/** Extract content array from a nested or flat message shape. */
+function extractMessageContent(msg: Record<string, unknown>): unknown[] | null {
+  const m = msg.message as Record<string, unknown> | undefined
+  const nested = m?.message as Record<string, unknown> | undefined
+  const content = nested?.content ?? m?.content ?? msg.content
+  return Array.isArray(content) ? content : null
+}
+
+/** Type guard for SDK init messages. */
+function isInitMessage(msg: unknown): msg is { type: "system"; subtype: "init"; session_id: string } {
+  return typeof msg === "object" && msg !== null && (msg as Record<string, unknown>).type === "system" && (msg as Record<string, unknown>).subtype === "init"
+}
+
+/** Type guard for SDK result messages. */
+function isResultMessage(msg: unknown): msg is Record<string, unknown> & { result: string } {
+  return typeof msg === "object" && msg !== null && "result" in msg
+}
+
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
  *  Reads the JSONL file backward (last 20 lines) for efficiency. */
 export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
@@ -247,11 +269,13 @@ export async function getLastAskUserQuestions(sessionId: string): Promise<unknow
     for (let i = transcript.length - 1; i >= 0; i--) {
       const msg = transcript[i]!
       if (msg.type !== "assistant") continue
-      const content = (msg.message as any)?.message?.content ?? (msg.message as any)?.content
+      const content = extractMessageContent(msg as Record<string, unknown>)
       if (!Array.isArray(content)) continue
-      for (const block of content) {
-        if (block.type === "tool_use" && block.name === "AskUserQuestion" && block.input?.questions) {
-          return block.input.questions
+      for (const rawBlock of content) {
+        const block = rawBlock as Record<string, unknown>
+        const input = block.input as Record<string, unknown> | undefined
+        if (block.type === "tool_use" && block.name === "AskUserQuestion" && input?.questions) {
+          return input.questions as unknown[]
         }
       }
     }
@@ -272,39 +296,41 @@ async function touchSession(sessionId: string) {
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {
+  // Valid status transitions: only update if current status allows this transition
+  const VALID_FROM: Record<string, string[]> = {
+    running: ["complete", "errored", "awaiting_user_input", "archived"],
+    awaiting_user_input: ["running", "complete", "errored"],
+    complete: ["running", "archived"],
+    errored: ["running", "archived"],
+    archived: [],
+  }
+
   const now = new Date().toISOString()
+  const validSources = Object.entries(VALID_FROM)
+    .filter(([, targets]) => targets.includes(status))
+    .map(([from]) => from)
 
-  if (status === "complete" || status === "errored") {
-    // Don't overwrite archived status with terminal stream states (race condition guard)
-    const current = await queryOne<{ status: string }>(
-      "SELECT status FROM sessions WHERE id = $1",
-      [sessionId],
-    )
-    if (current?.status === "archived") {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[session:${sessionId}] status change blocked: archived → ${status}`)
-      }
-      return
-    }
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[session:${sessionId}] ${current?.status ?? "unknown"} → ${status}`)
-    }
+  if (validSources.length === 0) {
+    log.warn("No valid source states for target status", { sessionId, status })
+    return
+  }
 
-    // Don't overwrite user-facing summary with error messages — error details are
-    // broadcast via SSE session_error event and shown in the UI error banner.
-    const summaryToStore = status === "errored" ? null : summary
-    await execute(
-      `UPDATE sessions SET status = $1, summary = COALESCE($2, summary), completed_at = $3, updated_at = $4 WHERE id = $5`,
-      [status, summaryToStore, now, now, sessionId],
-    )
-  } else {
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[session:${sessionId}] → ${status}`)
-    }
-    await execute(
-      `UPDATE sessions SET status = $1, summary = COALESCE($2, summary), updated_at = $3 WHERE id = $4`,
-      [status, summary || null, now, sessionId],
-    )
+  // Don't overwrite user-facing summary with error messages — error details are
+  // broadcast via SSE session_error event and shown in the UI error banner.
+  const summaryToStore = status === "errored" ? null : summary
+
+  // Atomic CAS: only update if current status is a valid source for this transition
+  const { rowCount } = await execute(
+    `UPDATE sessions SET status = $1, summary = COALESCE($2, summary),
+     completed_at = CASE WHEN $1 IN ('complete','errored') THEN $3 ELSE completed_at END,
+     updated_at = $3
+     WHERE id = $4 AND status = ANY($5::text[])`,
+    [status, summaryToStore, now, sessionId, validSources],
+  )
+
+  if (rowCount === 0 && process.env.NODE_ENV !== "production") {
+    const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
+    log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
   }
 }
 
@@ -472,7 +498,7 @@ export async function addSseClient(sessionId: string, send: (data: string) => vo
   }
   sseClients.get(sessionId)!.add(send)
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[sse:${sessionId}] client connected (${sseClients.get(sessionId)!.size} total)`)
+    log.debug("SSE client connected", { sessionId, total: sseClients.get(sessionId)!.size })
   }
 
   // Send current session status on connect so the client doesn't rely on
@@ -497,7 +523,7 @@ export function removeSseClient(sessionId: string, send: (data: string) => void)
   sseClients.get(sessionId)?.delete(send)
   const remaining = sseClients.get(sessionId)?.size ?? 0
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[sse:${sessionId}] client disconnected (${remaining} remaining)`)
+    log.debug("SSE client disconnected", { sessionId, remaining })
   }
   if (remaining === 0) {
     sseClients.delete(sessionId)
@@ -603,7 +629,7 @@ async function autoNameSession(sessionId: string) {
       await updateSessionSummary(sessionId, title)
     }
   } catch (err) {
-    console.error("Auto-naming failed for session", sessionId, err)
+    log.error("Auto-naming failed", { sessionId, error: err instanceof Error ? err.message : String(err) })
   }
 }
 
@@ -647,8 +673,8 @@ export async function startSession(
   const sourceContext = buildSourceContext(
     options?.linkedSourceType, options?.linkedSourceId, options?.linkedSourceContent,
   )
-  if (sourceContext) console.log(`[session] Source context: ${sourceContext.slice(0, 100)}...`)
-  else console.log(`[session] No source context (type=${options?.linkedSourceType}, id=${options?.linkedSourceId})`)
+  if (sourceContext) log.info("Source context", { preview: sourceContext.slice(0, 100) })
+  else log.info("No source context", { type: options?.linkedSourceType, id: options?.linkedSourceId })
 
   const q = agentQuery({
     prompt,
@@ -679,8 +705,8 @@ export async function startSession(
     try {
       for await (const message of q) {
         // Capture session ID from init message
-        if ((message as any).type === "system" && (message as any).subtype === "init") {
-          sessionId = (message as any).session_id
+        if (isInitMessage(message)) {
+          sessionId = message.session_id
 
           await createSessionRecord(sessionId!, prompt, options)
           runningQueries.set(sessionId!, abortController)
@@ -700,7 +726,7 @@ export async function startSession(
         }
 
         // Check for result message (session complete)
-        if ("result" in (message as any)) {
+        if (isResultMessage(message)) {
           gotResult = true
           if (sessionId) {
             await updateSessionStatus(sessionId, "complete")
@@ -714,18 +740,19 @@ export async function startSession(
 
       if (sessionId) {
         await updateSessionStatus(sessionId, "complete")
-        autoNameSession(sessionId).catch(() => {})
+        autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
         runningQueries.delete(sessionId)
       }
-    } catch (err: any) {
-      console.error("Session error:", err)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.error("Session error", { sessionId, error: message })
       if (sessionId) {
         // Don't override "complete" if we already received a result
         if (!gotResult) {
-          await updateSessionStatus(sessionId, "errored", err.message)
+          await updateSessionStatus(sessionId, "errored", message)
           broadcastToSession(sessionId, {
             type: "session_error",
-            error: err.message,
+            error: message,
           })
         }
         runningQueries.delete(sessionId)
@@ -818,7 +845,7 @@ export async function resumeSessionQuery(
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 
-        if ("result" in (message as any)) {
+        if (isResultMessage(message)) {
           gotResult = true
           await updateSessionStatus(sessionId, "complete")
           broadcastToSession(sessionId, {
@@ -830,15 +857,16 @@ export async function resumeSessionQuery(
 
       await updateSessionStatus(sessionId, "complete")
       broadcastToSession(sessionId, { type: "session_complete", status: "complete" })
-      autoNameSession(sessionId).catch(() => {})
+      autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
       runningQueries.delete(sessionId)
-    } catch (err: any) {
-      console.error(`Session resume error [${sessionId}]:`, err.message || err)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.error("Session resume error", { sessionId, error: message })
       if (!gotResult) {
-        await updateSessionStatus(sessionId, "errored", err.message)
+        await updateSessionStatus(sessionId, "errored", message)
         broadcastToSession(sessionId, {
           type: "session_error",
-          error: err.message,
+          error: message,
         })
       }
       runningQueries.delete(sessionId)
@@ -870,7 +898,7 @@ export async function attachSourceToSession(
     const sessionFile = sessionJsonlPath(sessionId, agentSession?.cwd)
     await fs.promises.appendFile(sessionFile, JSON.stringify(contextMessage) + "\n")
   } catch (err) {
-    console.warn(`[attachSource] Failed to append to JSONL for ${sessionId}:`, (err as Error).message)
+    log.warn("Failed to append to JSONL", { sessionId, error: (err as Error).message })
   }
 
   broadcastToSession(sessionId, { sequence: nextSequence, message: contextMessage })
@@ -934,10 +962,10 @@ export async function indexAllAgentSessions() {
       }
     })
     if (inserted > 0 || updated > 0) {
-      console.log(`[server] Indexed ${inserted} new, updated ${updated} existing agent sessions`)
+      log.info("Indexed agent sessions", { inserted, updated })
     }
   } catch (err) {
-    console.error("[server] Failed to index agent sessions:", err)
+    log.error("Failed to index agent sessions", { error: err instanceof Error ? err.message : String(err) })
   }
 }
 
@@ -977,7 +1005,8 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
   for (let i = 0; i < results.length; i++) {
     if (results[i]!.status === "rejected") {
       const session = toResume[i]!
-      console.error(`[server] Failed to recover session ${session.id}:`, (results[i] as PromiseRejectedResult).reason)
+      const reason = (results[i] as PromiseRejectedResult).reason
+      log.error("Failed to recover session", { sessionId: session.id, error: reason instanceof Error ? reason.message : String(reason) })
       await updateSessionStatus(session.id, "errored", "Server restart recovery failed")
     }
   }
@@ -1026,7 +1055,7 @@ export async function watchProjectsDir(): Promise<void> {
         await indexNewSessions(changed, fs)
       }
     } catch (err) {
-      console.warn("[watcher] Poll error:", err)
+      log.warn("Poll error", { error: err instanceof Error ? err.message : String(err) })
     }
   }
 

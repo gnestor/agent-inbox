@@ -45,15 +45,23 @@ vi.mock("../../db/pool.js", () => ({
       return { rowCount: 1 }
     }
     if (sql.includes("UPDATE sessions SET status")) {
-      // updateSessionStatus
-      const id = params![params!.length - 1] as string
+      // updateSessionStatus — simulate atomic CAS behavior
       const status = params![0] as string
+      const id = sql.includes("AND status = ANY") ? params![3] as string : params![params!.length - 1] as string
       const session = sessionsStore.get(id)
-      if (session) {
-        session.status = status
-        if (params![1]) session.summary = params![1]
-        session.updated_at = new Date().toISOString()
+      if (!session) return { rowCount: 0 }
+
+      // If the query has a CAS guard (AND status = ANY($5::text[])), check it
+      if (sql.includes("AND status = ANY") && params![4]) {
+        const validFrom = params![4] as string[]
+        if (!validFrom.includes(session.status)) {
+          return { rowCount: 0 } // CAS failed — current status not in valid set
+        }
       }
+
+      session.status = status
+      if (params![1]) session.summary = params![1]
+      session.updated_at = new Date().toISOString()
       return { rowCount: 1 }
     }
     if (sql.includes("UPDATE sessions SET summary")) {
@@ -190,13 +198,14 @@ describe("updateSessionStatus race condition guard", () => {
     expect(row!.status).toBe("complete")
   })
 
-  it("allows setting other statuses when current status is 'archived'", async () => {
+  it("blocks setting 'running' when current status is 'archived'", async () => {
     insertSession("sess-archived3", "archived")
 
     await updateSessionStatus("sess-archived3", "running")
 
     const row = await getSessionRecord("sess-archived3")
-    expect(row!.status).toBe("running")
+    // Archived is terminal — CAS rejects the transition
+    expect(row!.status).toBe("archived")
   })
 })
 

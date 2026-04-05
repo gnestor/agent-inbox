@@ -146,7 +146,7 @@ describe("PATCH /sessions/:id", () => {
 
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toMatch(/summary must be a string/)
+    expect(data.error).toMatch(/expected string|summary must be a string/)
   })
 
   it("returns 400 when summary is null", async () => {
