@@ -21,6 +21,15 @@ export function setCredentialProxy(proxy: CredentialProxy) {
 // Store active SSE clients per session
 const sseClients = new Map<string, Set<(data: string) => void>>()
 
+// Store multiplexed WebSocket clients (one WS per browser tab, watches many sessions)
+interface WsClient {
+  id: string
+  send: (data: unknown) => void
+  sessions: Set<string>
+  user?: { email: string; name: string; picture?: string }
+}
+const wsClients = new Map<string, WsClient>()
+
 // Store abort controllers for running sessions
 const runningQueries = new Map<string, AbortController>()
 
@@ -470,15 +479,80 @@ export function removeSseClient(sessionId: string, send: (data: string) => void)
 }
 
 export function broadcastToSession(sessionId: string, data: unknown) {
+  // Per-session SSE clients (legacy — kept for backward compat)
   const clients = sseClients.get(sessionId)
-  if (!clients) return
-  // if (process.env.NODE_ENV !== "production") {
-  //   const d = data as Record<string, unknown>
-  //   console.log(`[sse:${sessionId}] → ${d.type ?? `seq:${d.sequence}`} (${clients.size} client${clients.size === 1 ? "" : "s"})`)
-  // }
-  const json = JSON.stringify(data)
-  for (const send of clients) {
-    send(json)
+  if (clients) {
+    const json = JSON.stringify(data)
+    for (const send of clients) send(json)
+  }
+
+  // Multiplexed WS clients
+  for (const client of wsClients.values()) {
+    if (client.sessions.has(sessionId)) {
+      client.send({ type: "session_event", sessionId, data })
+    }
+  }
+}
+
+// --- Multiplexed WebSocket client management ---
+
+export function addWsClient(id: string, send: (data: unknown) => void, user?: { email: string; name: string; picture?: string }) {
+  wsClients.set(id, { id, send, sessions: new Set(), user })
+}
+
+export function removeWsClient(id: string) {
+  const client = wsClients.get(id)
+  if (!client) return
+  // Clean up presence for all watched sessions
+  if (client.user) {
+    for (const sessionId of client.sessions) {
+      removePresenceUser(sessionId, client.user.email)
+    }
+  }
+  wsClients.delete(id)
+}
+
+export async function wsSubscribe(clientId: string, sessionIds: string[]) {
+  const client = wsClients.get(clientId)
+  if (!client) return
+
+  await Promise.all(sessionIds.map(async (sessionId) => {
+    client.sessions.add(sessionId)
+
+    // Add presence
+    if (client.user) {
+      addPresenceUser(sessionId, client.user)
+    }
+
+    // Replay initial state
+    const session = await getSessionRecord(sessionId)
+    if (session?.status === "complete") {
+      client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
+    } else if (session?.status === "errored") {
+      client.send({ type: "session_event", sessionId, data: { type: "session_error", status: "errored" } })
+    } else if (session?.status === "awaiting_user_input") {
+      const questions = await getLastAskUserQuestions(sessionId)
+      if (questions) {
+        client.send({ type: "session_event", sessionId, data: { type: "ask_user_question", questions } })
+      }
+    }
+
+    // Send presence
+    const users = getPresenceUsers(sessionId)
+    if (users.length > 0) {
+      client.send({ type: "session_event", sessionId, data: { type: "presence", users } })
+    }
+  }))
+}
+
+export function wsUnsubscribe(clientId: string, sessionIds: string[]) {
+  const client = wsClients.get(clientId)
+  if (!client) return
+  for (const sessionId of sessionIds) {
+    client.sessions.delete(sessionId)
+    if (client.user) {
+      removePresenceUser(sessionId, client.user.email)
+    }
   }
 }
 
@@ -677,7 +751,9 @@ export async function resumeSessionQuery(
   broadcastToSession(sessionId, { sequence, message: userMessage })
   sequence++
 
-  const wsPath = defaultWorkspacePath
+  // Find the workspace path where this session's JSONL lives.
+  // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
+  const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
 
   const q = agentQuery({
     prompt,
@@ -1230,6 +1306,24 @@ export async function listAllAgentSessions(wsPath?: string) {
 export function projectLabel(cwd: string): string {
   // ~/Github/hammies/hammies-agent -> hammies-agent
   return cwd.split("/").pop() || cwd
+}
+
+// Registered workspace paths for reverse-lookup from project label
+const registeredPaths: string[] = []
+export function registerWorkspacePath(path: string) { registeredPaths.push(resolve(path)) }
+
+/** Find the workspace cwd for a session by checking which project directory contains its JSONL. */
+function findSessionWorkspace(sessionId: string): string | null {
+  const projectsDir = join(homedir(), ".claude", "projects")
+  for (const p of registeredPaths) {
+    const encodedDir = p.replace(/\//g, "-")
+    const jsonlPath = join(projectsDir, encodedDir, `${sessionId}.jsonl`)
+    if (fs.existsSync(jsonlPath)) return p
+    // Also check subdirectories (subagent sessions)
+    const subDir = join(projectsDir, encodedDir, sessionId)
+    if (fs.existsSync(subDir)) return p
+  }
+  return null
 }
 
 export async function listProjectOptions(): Promise<string[]> {

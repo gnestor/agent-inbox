@@ -1,5 +1,6 @@
 import { query } from "./db/pool.js"
 import { serve } from "@hono/node-server"
+import { createNodeWebSocket } from "@hono/node-ws"
 import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -20,7 +21,7 @@ import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
 import { loadCredentials, setDefaultWorkspaceId, getCredentials } from "./lib/credentials.js"
-import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir } from "./lib/session-manager.js"
+import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir, addWsClient, removeWsClient, wsSubscribe, wsUnsubscribe, registerWorkspacePath } from "./lib/session-manager.js"
 import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scanner.js"
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
@@ -90,6 +91,8 @@ const registeredWorkspaces = await registerWorkspaces(workspacePaths)
 
 // Legacy compat — set default workspace path for callers not yet migrated
 setWorkspacePath(workspacePaths[0])
+// Register all workspace paths for reverse-lookup during session resume
+for (const p of workspacePaths) registerWorkspacePath(p)
 
 // Load credentials and seed vault for each workspace
 import { getWorkspaceName } from "./lib/session-manager.js"
@@ -215,6 +218,7 @@ type AppBindings = {
 
 // Create app
 const app = new Hono<AppBindings>()
+const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app })
 app.use("*", cors())
 app.use("*", logger())
 
@@ -245,6 +249,39 @@ app.use("/api/*", async (c, next) => {
 
 // Load built-in plugins from plugins/ directory
 await loadBuiltinPlugins(resolve(__dirname, "../plugins"))
+
+// Multiplexed WebSocket — single connection for all session events
+app.get("/api/ws", upgradeWebSocket((c) => {
+  const user = c.get("user") as { name: string; email: string; picture?: string } | undefined
+  const clientId = crypto.randomUUID()
+  let wsSend: ((data: unknown) => void) | null = null
+
+  return {
+    onOpen(_evt, ws) {
+      wsSend = (data: unknown) => {
+        try { ws.send(JSON.stringify(data)) } catch { /* client gone */ }
+      }
+      addWsClient(clientId, wsSend, user)
+      wsSend({ type: "connected", clientId })
+    },
+    onMessage(evt) {
+      try {
+        const raw = typeof evt.data === "string" ? evt.data : evt.data.toString()
+        const msg = JSON.parse(raw)
+        if (msg.type === "subscribe" && Array.isArray(msg.sessionIds)) {
+          wsSubscribe(clientId, msg.sessionIds)
+        } else if (msg.type === "unsubscribe" && Array.isArray(msg.sessionIds)) {
+          wsUnsubscribe(clientId, msg.sessionIds)
+        } else if (msg.type === "ping") {
+          wsSend?.({ type: "pong" })
+        }
+      } catch { /* ignore parse errors */ }
+    },
+    onClose() {
+      removeWsClient(clientId)
+    },
+  }
+}))
 
 // Protected routes (static routes first, plugin catch-all last)
 app.route("/api/workspaces", workspaceRoutes)
@@ -295,6 +332,7 @@ mountPluginRoutes(app)
 
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`Server running on http://localhost:${port}`)
+  injectWebSocket(server)
   watchPlugins(registeredWorkspaces, app)
   // Index all agent SDK sessions into DB (non-blocking)
   indexAllAgentSessions()

@@ -21,6 +21,7 @@ export type SessionPhase =
   | { status: "awaiting_input"; question: PendingQuestion }
   | { status: "sending" }
   | { status: "idle" }
+  | { status: "errored" }
   | { status: "archived" }
 
 // ---------------------------------------------------------------------------
@@ -86,29 +87,23 @@ export function useSessionController({
   const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
   const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning))
 
-  // Invalidate sessions list when stream detects a status change
-  const prevStreamStatus = useRef(stream.sessionStatus)
+  // Invalidate sessions list when session status changes (complete/errored/awaiting_input)
   useEffect(() => {
-    if (stream.sessionStatus && stream.sessionStatus !== prevStreamStatus.current) {
-      qc.invalidateQueries({ queryKey: ["sessions"] })
-    }
-    prevStreamStatus.current = stream.sessionStatus
+    if (stream.sessionStatus) qc.invalidateQueries({ queryKey: ["sessions"] })
   }, [stream.sessionStatus, qc])
 
   // --- Phase derivation ---
-  // Use queryStatus as the source of truth for lifecycle transitions (resume sets
-  // it to "running", session_complete sets it to "complete"). stream.sessionStatus
-  // is only used to detect completion/error when SSE reports it before the query
-  // cache updates.
-  const effectiveStatus = queryStatus === "archived" ? "archived" : (stream.sessionStatus ?? queryStatus)
+  // queryStatus is the source of truth: resumeSession sets it to "running"
+  // optimistically, WS session_complete/session_error update it on terminal events.
   const phase: SessionPhase =
     isPending ? { status: "loading" } :
     queryError ? { status: "error", message: queryError.message } :
     mutations.resume.isPending ? { status: "sending" } :
     stream.pendingQuestion ? { status: "awaiting_input", question: stream.pendingQuestion } :
-    effectiveStatus === "running" && stream.connected ? { status: "streaming" } :
-    effectiveStatus === "running" && !stream.connected ? { status: "loading" } :
-    effectiveStatus === "archived" ? { status: "archived" } :
+    queryStatus === "running" && stream.connected ? { status: "streaming" } :
+    queryStatus === "running" && !stream.connected ? { status: "loading" } :
+    queryStatus === "errored" ? { status: "errored" } :
+    queryStatus === "archived" ? { status: "archived" } :
     { status: "idle" }
 
   // --- Message normalization (REST messages may need patching) ---
@@ -167,12 +162,9 @@ export function useSessionController({
   }, [profileData])
 
   // --- Actions (stable callbacks) ---
-  const resetForResume = stream.resetForResume
   const resumeSession = useCallback((prompt: string) => {
-    // Allow STREAMING dispatches for the new run
-    resetForResume()
-    // Set status to "running" AND add optimistic message in the same cache update
-    // so queryStatus is "running" before any SSE messages arrive.
+    // Optimistically set status to "running" and add user message in one update,
+    // so phase derivation sees "running" before any WS messages arrive.
     qc.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
       if (!old) return old
       const msgs = old.messages ?? []
@@ -192,7 +184,7 @@ export function useSessionController({
       }
     })
     mutations.resume.mutate(prompt)
-  }, [sessionId, qc, mutations.resume, resetForResume])
+  }, [sessionId, qc, mutations.resume])
 
   const clearPendingQuestion = stream.clearPendingQuestion
   const answerQuestion = useCallback(async (answers: Record<string, string>) => {

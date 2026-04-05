@@ -64,6 +64,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3002",
         changeOrigin: true,
+        ws: true,
         configure: (proxy) => {
           proxy.on("error", (err, _req, res) => {
             if ("code" in err && (err as NodeJS.ErrnoException).code === "ECONNREFUSED") {

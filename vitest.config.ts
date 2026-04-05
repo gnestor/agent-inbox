@@ -12,7 +12,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/*-live.test.ts", "tests/e2e/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/*-live.test.ts", "tests/e2e/**", "**/.claude/**"],
     environmentOptions: {
       jsdom: {
         url: "http://localhost/",
