@@ -469,27 +469,98 @@ export async function listSessionRecords(filters?: {
   return await query<SessionDbRow>(sql, params)
 }
 
-// In-memory presence map: sessionId → Map<email, user>
-const sessionPresence = new Map<string, Map<string, { name: string; email: string; picture?: string }>>()
+// In-memory presence map: sessionId → Map<email, { user, lastSeen }>
+// lastSeen is used as a heartbeat so we can reap zombie entries from SSE clients
+// that disconnected without running their cleanup (tab closed, network drop, etc.)
+type PresenceUser = { name: string; email: string; picture?: string }
+type PresenceEntry = { user: PresenceUser; lastSeen: number }
+const sessionPresence = new Map<string, Map<string, PresenceEntry>>()
 
-export function addPresenceUser(sessionId: string, user: { name: string; email: string; picture?: string }) {
+// Per-session debounce timers for presence broadcasts.
+// Rapid add/remove cycles from the same client (e.g. reconnect flaps) would otherwise
+// produce a broadcast storm; we coalesce into a single broadcast per session.
+const presenceBroadcastTimers = new Map<string, NodeJS.Timeout>()
+const PRESENCE_BROADCAST_DEBOUNCE_MS = 200
+
+// A presence entry is considered stale if we haven't heard from it in PRESENCE_STALE_MS.
+// The reaper runs every PRESENCE_REAP_INTERVAL_MS and also on every read.
+const PRESENCE_STALE_MS = 60_000
+const PRESENCE_REAP_INTERVAL_MS = 30_000
+
+function schedulePresenceBroadcast(sessionId: string) {
+  const existing = presenceBroadcastTimers.get(sessionId)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    presenceBroadcastTimers.delete(sessionId)
+    broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+  }, PRESENCE_BROADCAST_DEBOUNCE_MS)
+  // Don't let this timer keep the process alive.
+  if (typeof timer.unref === "function") timer.unref()
+  presenceBroadcastTimers.set(sessionId, timer)
+}
+
+export function addPresenceUser(sessionId: string, user: PresenceUser) {
   let users = sessionPresence.get(sessionId)
   if (!users) { users = new Map(); sessionPresence.set(sessionId, users) }
-  users.set(user.email, user)
-  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+  // Heartbeat: re-adding an existing user just bumps lastSeen.
+  users.set(user.email, { user, lastSeen: Date.now() })
+  schedulePresenceBroadcast(sessionId)
 }
 
 export function removePresenceUser(sessionId: string, email: string) {
   const users = sessionPresence.get(sessionId)
   if (!users) return
-  users.delete(email)
+  if (!users.delete(email)) return
   if (users.size === 0) sessionPresence.delete(sessionId)
-  broadcastToSession(sessionId, { type: "presence", users: getPresenceUsers(sessionId) })
+  schedulePresenceBroadcast(sessionId)
 }
 
-export function getPresenceUsers(sessionId: string) {
-  return Array.from(sessionPresence.get(sessionId)?.values() ?? [])
+export function getPresenceUsers(sessionId: string): PresenceUser[] {
+  // Opportunistically reap stale entries for this session on read, so callers
+  // never observe zombies even if the interval reaper hasn't fired yet.
+  reapStalePresence(sessionId)
+  return Array.from(sessionPresence.get(sessionId)?.values() ?? []).map((e) => e.user)
 }
+
+/**
+ * Remove presence entries whose lastSeen is older than PRESENCE_STALE_MS.
+ * Pass a sessionId to reap a single session; omit to reap all sessions.
+ * Exported for testing and for the periodic reaper.
+ */
+export function reapStalePresence(sessionId?: string, now: number = Date.now()): number {
+  let reaped = 0
+  const visit = (sid: string, users: Map<string, PresenceEntry>) => {
+    let changed = false
+    for (const [email, entry] of users) {
+      if (now - entry.lastSeen > PRESENCE_STALE_MS) {
+        users.delete(email)
+        changed = true
+        reaped++
+      }
+    }
+    if (users.size === 0) sessionPresence.delete(sid)
+    if (changed) schedulePresenceBroadcast(sid)
+  }
+  if (sessionId !== undefined) {
+    const users = sessionPresence.get(sessionId)
+    if (users) visit(sessionId, users)
+  } else {
+    for (const [sid, users] of sessionPresence) visit(sid, users)
+  }
+  return reaped
+}
+
+// Periodic background reaper for zombie entries across all sessions.
+// Guarded so tests (which import the module repeatedly) don't stack timers.
+let presenceReaperInterval: NodeJS.Timeout | null = null
+function startPresenceReaper() {
+  if (presenceReaperInterval) return
+  presenceReaperInterval = setInterval(() => {
+    try { reapStalePresence() } catch { /* ignore */ }
+  }, PRESENCE_REAP_INTERVAL_MS)
+  if (typeof presenceReaperInterval.unref === "function") presenceReaperInterval.unref()
+}
+startPresenceReaper()
 
 // SSE client management
 export async function addSseClient(sessionId: string, send: (data: string) => void) {

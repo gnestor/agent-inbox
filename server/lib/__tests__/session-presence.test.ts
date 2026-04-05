@@ -38,11 +38,13 @@ describe("session presence tracking", () => {
     expect(users[0]!).toMatchObject({ email: "alice@test.com", name: "Alice" })
   })
 
-  it("addPresenceUser broadcasts presence event to SSE clients", async () => {
+  it("addPresenceUser broadcasts presence event to SSE clients (debounced)", async () => {
     const { addSseClient, addPresenceUser } = await import("../session-manager.js")
     const received: string[] = []
     addSseClient("sess-2", (data) => received.push(data))
     addPresenceUser("sess-2", { email: "alice@test.com", name: "Alice" })
+    // Debounced: wait for the broadcast timer to fire.
+    await new Promise((r) => setTimeout(r, 250))
     expect(received).toHaveLength(1)
     const event = JSON.parse(received[0]!)
     expect(event.type).toBe("presence")
@@ -57,11 +59,13 @@ describe("session presence tracking", () => {
     addPresenceUser("sess-3", { email: "alice@test.com", name: "Alice" })
     addPresenceUser("sess-3", { email: "bob@test.com", name: "Bob" })
     removePresenceUser("sess-3", "alice@test.com")
+    // Debounced: the three rapid calls coalesce into a single broadcast.
+    await new Promise((r) => setTimeout(r, 250))
     const users = getPresenceUsers("sess-3")
     expect(users).toHaveLength(1)
     expect(users[0]!.email).toBe("bob@test.com")
-    expect(received).toHaveLength(3)
-    const lastEvent = JSON.parse(received[2]!)
+    expect(received).toHaveLength(1)
+    const lastEvent = JSON.parse(received[0]!)
     expect(lastEvent.type).toBe("presence")
     expect(lastEvent.users).toHaveLength(1)
   })
