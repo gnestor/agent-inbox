@@ -5,7 +5,8 @@ import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
-import { createLogger } from "./lib/logger.js"
+import { createLogger, runWithRequestContext } from "./lib/logger.js"
+import { randomUUID } from "crypto"
 
 const log = createLogger("server")
 import { getCookie } from "hono/cookie"
@@ -225,6 +226,14 @@ const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app })
 app.use("*", cors())
 app.use("*", logger())
 
+// Request correlation — every log call inside a handler gets requestId auto-injected
+app.use("*", async (c, next) => {
+  const requestId = c.req.header("x-request-id") || randomUUID()
+  c.header("x-request-id", requestId)
+  const userEmail = c.get("userEmail") as string | undefined
+  await runWithRequestContext({ requestId, ...(userEmail ? { userEmail } : {}) }, () => next())
+})
+
 // Auth routes (unprotected)
 app.route("/api/auth", authRoutes)
 
@@ -247,7 +256,12 @@ app.use("/api/*", async (c, next) => {
     c.set("workspace", { id: ws.id, name: ws.name, path: ws.path, role: ws.role })
   }
 
-  await next()
+  // Augment request context with userEmail now that auth is resolved
+  const reqId = c.res.headers.get("x-request-id") || randomUUID()
+  await runWithRequestContext(
+    { requestId: reqId, userEmail: session.user.email },
+    () => next(),
+  )
 })
 
 // Load built-in plugins from plugins/ directory
