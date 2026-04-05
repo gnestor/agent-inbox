@@ -18,6 +18,7 @@ import {
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
 import { createLogger } from "../lib/logger.js"
+import { rateLimit, getClientIp } from "../lib/rate-limit.js"
 
 const log = createLogger("routes:sessions")
 
@@ -55,7 +56,15 @@ function zodErrorMessage(err: ZodError): string {
 
 export const sessionRoutes = new Hono<AppBindings>()
 
-sessionRoutes.post("/", async (c) => {
+sessionRoutes.post("/", rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  label: "session-create",
+  keyFn: (c) => {
+    const email = c.get("userEmail") as string | undefined
+    return email ?? getClientIp(c)
+  },
+}), async (c) => {
   let body: CreateSessionBody
   try {
     body = CreateSessionBody.parse(await c.req.json())

@@ -13,6 +13,7 @@ import { getWorkspaceName } from "../lib/session-manager.js"
 import { getCredentials } from "../lib/credentials.js"
 import { randomBytes } from "crypto"
 import type { AppBindings } from "../lib/workspace-context.js"
+import { rateLimit, getClientIp } from "../lib/rate-limit.js"
 import { createLogger } from "../lib/logger.js"
 
 const log = createLogger("routes:connections")
@@ -76,7 +77,15 @@ connectionRoutes.get("/", async (c) => {
  * GET /connections/connect/:integration — start OAuth flow
  * Redirects the user to the OAuth provider's authorization URL.
  */
-connectionRoutes.get("/connect/:integration", async (c) => {
+connectionRoutes.get("/connect/:integration", rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  label: "oauth-connect",
+  keyFn: (c) => {
+    const email = c.get("userEmail") as string | undefined
+    return email ?? getClientIp(c)
+  },
+}), async (c) => {
   const user = await getCurrentUser(c)
   if (!user) return c.json({ error: "Unauthorized" }, 401)
 
@@ -137,7 +146,11 @@ connectionRoutes.get("/connect/:integration", async (c) => {
  * GET /connections/connect/:integration/callback — OAuth callback
  * Exchanges the authorization code for tokens and stores them.
  */
-connectionRoutes.get("/connect/:integration/callback", async (c) => {
+connectionRoutes.get("/connect/:integration/callback", rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  label: "oauth-callback",
+}), async (c) => {
   const integrationId = c.req.param("integration")
   const code = c.req.query("code")
   const state = c.req.query("state")

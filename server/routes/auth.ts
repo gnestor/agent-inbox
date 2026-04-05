@@ -5,6 +5,7 @@ import { getUserWorkspaces, resolveActiveWorkspace } from "../lib/workspace-scan
 import { WORKSPACE_COOKIE } from "./workspaces.js"
 import { AuthCallbackBody } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
+import { rateLimit } from "../lib/rate-limit.js"
 
 /** Extract first user-facing message from a Zod validation error */
 function zodErrorMessage(err: ZodError): string {
@@ -19,7 +20,7 @@ authRoutes.get("/client-id", (c) => {
   return c.json({ clientId: getClientId() })
 })
 
-authRoutes.post("/callback", async (c) => {
+authRoutes.post("/callback", rateLimit({ windowMs: 60_000, max: 10, label: "auth-callback" }), async (c) => {
   let body: AuthCallbackBody
   try {
     body = AuthCallbackBody.parse(await c.req.json())
