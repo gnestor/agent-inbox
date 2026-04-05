@@ -33,6 +33,7 @@ authRoutes.post("/callback", rateLimit({ windowMs: 60_000, max: 10, label: "auth
   setCookie(c, SESSION_COOKIE, sessionToken, {
     path: "/",
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "Lax",
     maxAge: 60 * 60 * 24 * 7,
   })

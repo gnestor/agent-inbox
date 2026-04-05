@@ -468,14 +468,24 @@ sessionRoutes.get("/:id/files/:filename", async (c) => {
   const filename = decodeURIComponent(c.req.param("filename"))
   const absolutePath = c.req.query("path")
 
+  // Reject filename containing path separators or traversal patterns
+  if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+    return c.json({ error: "Invalid filename" }, 400)
+  }
+
   let resolvedPath: string | null = null
 
   if (absolutePath) {
     const wsPath = c.get("workspace")?.path || sessions.getWorkspacePath() || process.cwd()
     const wsNorm = normalize(wsPath)
     const normalized = normalize(resolve(absolutePath))
+    // Strict prefix check: resolved path must be inside workspace directory
     if (!normalized.startsWith(wsNorm + sep) && normalized !== wsNorm) {
       return c.json({ error: "Path outside workspace" }, 403)
+    }
+    // Additional check: reject if absolutePath itself contains traversal after normalization
+    if (absolutePath.includes("..")) {
+      return c.json({ error: "Path traversal not allowed" }, 403)
     }
     resolvedPath = normalized
   } else {
