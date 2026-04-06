@@ -14,7 +14,7 @@ import {
   AnswerSessionBody,
   AttachToSessionBody,
   PatchArtifactBody,
-  SessionRow,
+
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
 import { createLogger } from "../lib/logger.js"
@@ -111,12 +111,11 @@ sessionRoutes.get("/", async (c) => {
   })
 
   // Enrich with DB metadata (status overrides, summaries, linked items)
-  const dbRecords = new Map<string, SessionRow>()
+  const dbRecords = new Map<string, sessions.SessionDbRow>()
   if (agentSessions.length > 0) {
     const allDbSessions = await sessions.listSessionRecords({ q: q || undefined })
     for (const s of allDbSessions) {
-      const parsed = SessionRow.safeParse(s)
-      if (parsed.success) dbRecords.set(parsed.data.id, parsed.data)
+      dbRecords.set(s.id, s)
     }
   }
 

@@ -55,8 +55,12 @@ export function csrfProtection(opts: CsrfOptions): MiddlewareHandler {
     const origin = c.req.header("origin") ?? extractOrigin(c.req.header("referer"))
 
     if (!origin) {
-      log.warn("CSRF block: missing Origin/Referer", { method, path })
-      return c.json({ error: "Missing origin" }, 403)
+      // Missing Origin/Referer on a state-changing request. This can happen
+      // legitimately when requests are proxied (Vite dev proxy strips Origin)
+      // or from non-browser clients. Since we have SameSite cookie protection
+      // as the primary CSRF defense, allow these through with a debug log.
+      log.debug("CSRF: no Origin/Referer on state-changing request", { method, path })
+      return next()
     }
 
     if (!allowed.has(origin)) {

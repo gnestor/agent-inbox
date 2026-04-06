@@ -47,11 +47,11 @@ describe("csrfProtection", () => {
     expect(body.error).toBe("Forbidden origin")
   })
 
-  it("blocks POST without Origin or Referer (403)", async () => {
+  it("allows POST without Origin or Referer (proxied/same-origin)", async () => {
+    // Missing Origin is normal for proxied same-origin requests.
+    // SameSite cookie is the primary CSRF defense in this case.
     const res = await app.request("http://localhost/x", { method: "POST" })
-    expect(res.status).toBe(403)
-    const body = await res.json() as { error: string }
-    expect(body.error).toBe("Missing origin")
+    expect(res.status).toBe(200)
   })
 
   it("falls back to Referer when Origin missing", async () => {
