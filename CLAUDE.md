@@ -74,11 +74,27 @@ After implementing any feature, fix, or refactor, complete this sequence in orde
 
 ## Testing
 
-Run tests: `npm run test:run` (or `npm test` for watch mode).
+### Unit tests (vitest)
+
+Run: `npm run test:run` (or `npm test` for watch mode).
 
 - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node environment)
 - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom` at top)
 - Tests run automatically after each file save via the PostToolUse Claude hook.
+
+### E2E tests (Playwright)
+
+Three tiers, each with different infrastructure requirements:
+
+| Command | Project | Needs | Use from |
+|---------|---------|-------|----------|
+| `npm run test:e2e` | `mocked` | Vite client | Main package dir |
+| `npm run test:e2e:api` | `api` | Hono server + DB | Worktrees OK |
+| `npm run test:e2e:all` | All | Vite + Hono + DB | Main package dir |
+
+- **`mocked`** — Browser tests with `page.route()` API mocking. Fast, deterministic. Needs the Vite client running (so monorepo symlinks must resolve).
+- **`api`** — Server-only integration tests using Playwright's `request` fixture. Hit the real Hono server + DB. No browser or Vite needed — **safe to run from worktrees**.
+- **`api` + `mocked`** combined via `test:e2e:all` for full coverage.
 
 ### Browser testing
 
@@ -93,6 +109,32 @@ To test with Claude for Chrome MCP tools:
    - **Resume session** → type in input → Cmd+Enter → optimistic message → streaming → response
    - **Visibility toggles** → click "..." menu → toggle Messages/Tool calls/Thinking/Artifacts → transcript updates
    - **No console errors** throughout all interactions
+
+## Worktree Development
+
+Git worktrees get their own working tree but share the `.git` directory. Monorepo symlinks and env files need manual setup:
+
+```bash
+# After creating a worktree, from inside it:
+# 1. Symlink .env (worktree doesn't have one)
+ln -sf "$(git rev-parse --show-toplevel)/packages/inbox/.env" .env
+
+# 2. Install deps (creates correct symlinks for workspace packages)
+npm install
+
+# 3. Fix @hammies/frontend if the symlink is broken
+ln -sf "$(git rev-parse --show-toplevel)/packages/frontend" node_modules/@hammies/frontend
+```
+
+**What works from worktrees:**
+- Unit tests (`npm run test:run`) — Node.js, no Vite
+- API E2E tests (`npm run test:e2e:api`) — Hono server, no browser
+- Server development (`npm run dev:server`)
+
+**What does NOT work from worktrees:**
+- Vite dev client (`npm run dev:client`) — `@hammies/frontend` symlink may break, dual-React
+- Browser E2E tests (`npm run test:e2e`) — needs Vite client
+- Run these from the main `packages/inbox/` directory instead.
 
 ## Conventions
 

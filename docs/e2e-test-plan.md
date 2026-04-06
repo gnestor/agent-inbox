@@ -126,18 +126,30 @@ jobs:
 
 ## Scripts
 
-Add to `package.json`:
 ```json
 {
-  "test:e2e": "npx playwright test --project=unit",
-  "test:e2e:integration": "npx playwright test --project=integration",
-  "test:e2e:all": "npx playwright test"
+  "test:e2e": "playwright test --project=mocked",
+  "test:e2e:api": "playwright test --project=api",
+  "test:e2e:all": "playwright test"
 }
 ```
 
-## Migration Path
+- `test:e2e` — Browser mocked tests (needs Vite client, run from main package dir)
+- `test:e2e:api` — API-only integration tests (needs Hono server + DB, **safe from worktrees**)
+- `test:e2e:all` — Everything
 
-1. **Phase 1** (now): Document this plan. Current mocked tests remain as-is.
-2. **Phase 2**: Add `webServer` config + seed script + one integration test (health-check).
-3. **Phase 3**: Add session-crud and workspace integration tests.
-4. **Phase 4**: Add CI pipeline with PostgreSQL service container.
+## Worktree Compatibility
+
+**API tests (`test:e2e:api`) work from worktrees** because they only need the Hono server on :3002. No Vite, no browser rendering, no `@hammies/frontend` resolution.
+
+**Browser tests (`test:e2e`) do NOT work from worktrees** because:
+- `@hammies/frontend` symlink breaks at worktree depth (`file:../frontend` resolves wrong)
+- Vite bundles duplicate React copies (worktree `node_modules/react` vs frontend's React)
+- Run these from `packages/inbox/` or CI instead.
+
+## Status
+
+- ✅ Phase 1: Infrastructure (`.env.test`, fixtures, seed, Playwright config)
+- ✅ Phase 2: API integration tests (health, session-crud, api-validation, workspace)
+- ⬜ Phase 3: CI pipeline with PostgreSQL service container
+- ⬜ Phase 4: Browser full-stack tests (needs Vite + server running together)

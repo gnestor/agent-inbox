@@ -23,13 +23,14 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    // Auth setup — shared by both suites
+    // Auth setup — shared by all suites
     {
       name: "setup",
       testMatch: /auth\.setup\.ts/,
     },
 
-    // Fast mocked tests (existing specs — use page.route() API mocking)
+    // Browser tests with page.route() API mocking — needs Vite client.
+    // Run from main package dir only (not worktrees).
     {
       name: "mocked",
       testMatch: /.*\.spec\.ts/,
@@ -41,9 +42,10 @@ export default defineConfig({
       dependencies: ["setup"],
     },
 
-    // Real-server integration tests (hit actual Hono server on :3002)
+    // API-only integration tests — hits real Hono server + DB.
+    // No browser or Vite needed. Safe to run from worktrees.
     {
-      name: "integration",
+      name: "api",
       testDir: "./tests/e2e/integration",
       use: {
         ...devices["Desktop Chrome"],
@@ -58,9 +60,9 @@ export default defineConfig({
     },
   ],
 
-  // Auto-start the API server for integration tests (server-only, no Vite client).
-  // Integration tests use API requests, not browser-rendered pages, so the Hono
-  // server on port 3002 is sufficient. The mocked project doesn't need any server.
+  // Auto-start the Hono API server for the "api" project.
+  // The "mocked" project doesn't use this (it intercepts all API calls via page.route).
+  // If a server is already running on :3002, it will be reused (reuseExistingServer).
   webServer: {
     command: `WORKSPACE=${testWorkspace} npx tsx server/index.ts`,
     port: 3002,

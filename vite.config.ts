@@ -41,6 +41,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       "@plugins": path.resolve(__dirname, "./plugins"),
     },
+    // Ensure a single copy of React when @hammies/frontend resolves from a
+    // different node_modules tree (e.g. worktrees, symlinked packages).
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
   build: {
     rollupOptions: {
