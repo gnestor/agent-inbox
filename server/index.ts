@@ -81,7 +81,7 @@ function getWorkspacePaths(): string[] {
 }
 
 const workspacePaths = getWorkspacePaths()
-console.log(`Workspaces: ${workspacePaths.map(basename).join(", ")}`)
+console.log(`Workspaces: ${workspacePaths.map(p => basename(p)).join(", ")}`)
 
 // Initialize database
 await initializeDatabase()

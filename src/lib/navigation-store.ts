@@ -8,6 +8,10 @@ import { useShallow } from "zustand/shallow"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel } from "@/types/navigation"
 
+// Stable empty arrays/objects for selector fallbacks — prevents new-reference infinite loops
+const EMPTY_PANELS: PanelState[] = []
+const EMPTY_FILTERS: Record<string, string> = {}
+
 // --- Store shape ---
 
 export interface NavigationStore extends NavigationState {
@@ -248,7 +252,7 @@ export function useActiveTab(): TabId {
 export function useTabPanels(tabId?: TabId): PanelState[] {
   return useNavigationStore((s) => {
     const id = tabId ?? s.activeTab
-    return s.tabs[id]?.panels ?? []
+    return s.tabs[id]?.panels ?? EMPTY_PANELS
   })
 }
 
@@ -258,11 +262,11 @@ export function useTabPanels(tabId?: TabId): PanelState[] {
  * returned to prevent flashing detail panels that get replaced on hydration.
  */
 export function useHydratedPanels(tabId?: TabId): PanelState[] {
-  return useNavigationStore((s) => {
+  return useNavigationStore(useShallow((s) => {
     const id = tabId ?? s.activeTab
-    const panels = s.tabs[id]?.panels ?? []
+    const panels = s.tabs[id]?.panels ?? EMPTY_PANELS
     return s._initialized ? panels : panels.filter((p) => p.type === "list")
-  })
+  }))
 }
 
 /** Returns selectedItemId for a tab. Defaults to activeTab. */
@@ -293,7 +297,7 @@ export function usePanelTransition(tabId?: TabId): "item" | "none" {
 export function useActiveFilters(tabId?: TabId): Record<string, string> {
   return useNavigationStore(useShallow((s) => {
     const id = tabId ?? s.activeTab
-    return s.tabs[id]?.activeFilters ?? {}
+    return s.tabs[id]?.activeFilters ?? EMPTY_FILTERS
   }))
 }
 
