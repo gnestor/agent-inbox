@@ -10,11 +10,6 @@ const navActionsMock = {
 }
 
 let currentLocation = { pathname: "/recent/s1" }
-let draftState = ""
-const setDraftMock = vi.fn((v: string) => { draftState = v })
-
-const preferencesStore: Record<string, unknown> = {}
-const setPreferenceMock = vi.fn((_key: string, _val: unknown) => {})
 
 vi.mock("react-router-dom", () => ({
   useLocation: () => currentLocation,
@@ -24,23 +19,16 @@ vi.mock("@/lib/navigation-store", () => ({
   useNavActions: () => navActionsMock,
 }))
 
-vi.mock("../use-local-draft", () => ({
-  useLocalDraft: (_key: string) => [draftState, setDraftMock] as const,
-}))
-
-vi.mock("../use-preferences", () => ({
-  usePreference: <T,>(key: string, defaultValue: T) => {
-    const value = (key in preferencesStore ? preferencesStore[key] : defaultValue) as T
-    const setter = (v: T) => {
-      preferencesStore[key] = v
-      setPreferenceMock(key, v)
-    }
-    return [value, setter] as const
-  },
+// Mock idb-keyval so IndexedDB is not needed in tests
+const idbStore: Record<string, unknown> = {}
+vi.mock("idb-keyval", () => ({
+  get: vi.fn((key: string) => Promise.resolve(idbStore[key])),
+  set: vi.fn((key: string, val: unknown) => { idbStore[key] = val; return Promise.resolve() }),
+  del: vi.fn((key: string) => { delete idbStore[key]; return Promise.resolve() }),
 }))
 
 import { useSessionView } from "../use-session-view"
-import type { SessionPhase } from "../use-session-phase"
+import type { SessionPhase } from "../use-session-controller"
 
 function makeMutations() {
   return {
@@ -67,8 +55,8 @@ describe("useSessionView", () => {
     navActionsMock.removePanel = vi.fn()
     navActionsMock.pushPanel = vi.fn()
     currentLocation = { pathname: "/recent/s1" }
-    draftState = ""
-    for (const key of Object.keys(preferencesStore)) delete preferencesStore[key]
+    // Clear idb store
+    for (const key of Object.keys(idbStore)) delete idbStore[key]
   })
 
   it("initial state has no editing active and exposes displayTitle", () => {
@@ -209,28 +197,24 @@ describe("useSessionView", () => {
     expect(result.current.isEditing).toBe(false)
   })
 
-  it("handleSend calls resumeSession with the draft and does not send when empty", () => {
+  it("handleSend calls resumeSession with the prompt ref value and does not send when empty", () => {
     const resumeSession = vi.fn()
-    draftState = "   "
-    const { result, rerender } = renderHook(
-      (o: any) => useSessionView(o),
-      { initialProps: makeOptions({ resumeSession }) },
+    const { result } = renderHook(() =>
+      useSessionView(makeOptions({ resumeSession })),
     )
 
-    // Empty draft → no-op
+    // Empty promptRef → no-op
     act(() => result.current.handleSend())
     expect(resumeSession).not.toHaveBeenCalled()
 
-    // Non-empty draft → calls resumeSession
-    draftState = "hello agent"
-    rerender(makeOptions({ resumeSession }))
+    // Set promptRef via handlePromptChange, then send
+    act(() => result.current.handlePromptChange("hello agent"))
     act(() => result.current.handleSend())
     expect(resumeSession).toHaveBeenCalledWith("hello agent")
   })
 
   it("handleSend is a no-op while sending", () => {
     const resumeSession = vi.fn()
-    draftState = "hi"
     const { result } = renderHook(() =>
       useSessionView(makeOptions({
         resumeSession,
@@ -238,32 +222,22 @@ describe("useSessionView", () => {
       })),
     )
 
+    // Set a non-empty prompt
+    act(() => result.current.handlePromptChange("hi"))
+
     expect(result.current.isSending).toBe(true)
     act(() => result.current.handleSend())
     expect(resumeSession).not.toHaveBeenCalled()
   })
 
-  it("handleKeyDown: Enter (without shift) sends, Shift+Enter does not", () => {
+  it("handlePromptChange updates the prompt ref", () => {
     const resumeSession = vi.fn()
-    draftState = "hi"
     const { result } = renderHook(() => useSessionView(makeOptions({ resumeSession })))
 
-    const enterEvent = { key: "Enter", shiftKey: false, preventDefault: vi.fn() } as any
-    act(() => result.current.handleKeyDown(enterEvent))
-    expect(enterEvent.preventDefault).toHaveBeenCalled()
-    expect(resumeSession).toHaveBeenCalledWith("hi")
-
-    resumeSession.mockClear()
-    const shiftEvent = { key: "Enter", shiftKey: true, preventDefault: vi.fn() } as any
-    act(() => result.current.handleKeyDown(shiftEvent))
-    expect(shiftEvent.preventDefault).not.toHaveBeenCalled()
-    expect(resumeSession).not.toHaveBeenCalled()
-  })
-
-  it("setPrompt writes to the local draft store", () => {
-    const { result } = renderHook(() => useSessionView(makeOptions()))
-    act(() => result.current.setPrompt("typed text"))
-    expect(setDraftMock).toHaveBeenCalledWith("typed text")
+    act(() => result.current.handlePromptChange("typed text"))
+    // Verify by sending — it should use the value we set
+    act(() => result.current.handleSend())
+    expect(resumeSession).toHaveBeenCalledWith("typed text")
   })
 
   it("handleOpenPanel pushes an output panel", () => {
@@ -294,16 +268,5 @@ describe("useSessionView", () => {
     )
     expect(result.current.isStreaming).toBe(true)
     expect(result.current.isSending).toBe(false)
-  })
-
-  it("toggleVisibility flips a visibility key via preferences", () => {
-    const { result } = renderHook(() => useSessionView(makeOptions()))
-    const initial = result.current.visibility.messages
-
-    act(() => result.current.toggleVisibility("messages"))
-    expect(setPreferenceMock).toHaveBeenCalled()
-    const lastCall = setPreferenceMock.mock.calls.at(-1)!
-    expect(lastCall[0]).toBe("sessions.transcript.visibility")
-    expect((lastCall[1] as any).messages).toBe(!initial)
   })
 })

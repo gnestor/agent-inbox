@@ -208,7 +208,7 @@ export async function createCredentialProxy(
           if (cred && authMethod?.type === "query") {
             const match = requestLine.match(/^(\S+)\s+(\S+)\s+(\S+)$/)
             if (match) {
-              const [, method, rawUrl, httpVersion] = match
+              const [, method, rawUrl, httpVersion] = match as [string, string, string, string]
               const url = new URL(rawUrl, `https://${host}`)
               url.searchParams.set(authMethod.param, cred.token)
               finalRequestLine = `${method} ${url.pathname}${url.search} ${httpVersion}`

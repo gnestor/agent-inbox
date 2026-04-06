@@ -36,8 +36,24 @@ vi.mock("../use-session-mutations", () => ({
     return mutationsMockState
   }),
 }))
+vi.mock("@/lib/session-pipeline", () => ({
+  processTranscript: vi.fn((msgs: any[]) => ({
+    classified: msgs,
+    lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [] },
+  })),
+  filterVisible: vi.fn((msgs: any[]) => msgs),
+}))
+vi.mock("@/types/session-message", () => ({
+  normalizeMessagePayload: vi.fn((m: any) => m),
+}))
 
-import { useSessionPhase } from "../use-session-phase"
+import { useSessionController as useSessionPhase } from "../use-session-controller"
+
+const DEFAULT_VISIBILITY = { messages: true, toolCalls: true, thinking: true, artifacts: true }
+
+function makeOpts(overrides: Record<string, any> = {}) {
+  return { sessionId: "s1", visibility: DEFAULT_VISIBILITY, ...overrides }
+}
 
 function makeWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -84,7 +100,7 @@ describe("useSessionPhase", () => {
     vi.mocked(client.getSession).mockImplementation(() => new Promise(() => {}))
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -95,7 +111,7 @@ describe("useSessionPhase", () => {
     vi.mocked(client.getSession).mockRejectedValueOnce(new Error("Boom"))
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -113,7 +129,7 @@ describe("useSessionPhase", () => {
     resetStream({ connected: true, sessionStatus: "running" })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -128,7 +144,7 @@ describe("useSessionPhase", () => {
     resetStream({ connected: false, sessionStatus: "running" })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -146,7 +162,7 @@ describe("useSessionPhase", () => {
     resetStream({ connected: true, sessionStatus: "awaiting_user_input", pendingQuestion: question })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -164,7 +180,7 @@ describe("useSessionPhase", () => {
     resetStream({ connected: false, sessionStatus: null })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -179,7 +195,7 @@ describe("useSessionPhase", () => {
     resetStream({ connected: true, sessionStatus: null })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -194,7 +210,7 @@ describe("useSessionPhase", () => {
     mutationsMockState.resume = { isPending: true, mutate: vi.fn() }
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -210,7 +226,7 @@ describe("useSessionPhase", () => {
     const onArchive = vi.fn()
 
     renderHook(
-      () => useSessionPhase({ sessionId: "s1", onResume, onArchive }),
+      () => useSessionPhase(makeOpts({ onResume, onArchive })),
       { wrapper },
     )
 
@@ -224,7 +240,7 @@ describe("useSessionPhase", () => {
     })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 
@@ -257,7 +273,7 @@ describe("useSessionPhase", () => {
     })
 
     const { result } = renderHook(
-      () => useSessionPhase({ sessionId: "s1" }),
+      () => useSessionPhase(makeOpts()),
       { wrapper },
     )
 

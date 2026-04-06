@@ -6,7 +6,7 @@ import { createLogger } from "./logger.js"
 const log = createLogger("session")
 
 const INITIAL_SUMMARY_LENGTH = 80
-const AGENT_SDK_BETAS = ["context-1m-2025-08-07"]
+const AGENT_SDK_BETAS: ["context-1m-2025-08-07"] = ["context-1m-2025-08-07"]
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
 
 /** Shape of a row in the `sessions` table. */

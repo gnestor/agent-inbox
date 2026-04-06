@@ -109,7 +109,7 @@ export const TOOL_PRIMARY_FIELD: Record<string, string> = {
 
 export function extractXmlTag(text: string, tag: string): string | null {
   const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`))
-  return match ? match[1].trim() : null
+  return match ? match[1]!.trim() : null
 }
 
 /** Get content blocks from a message, checking both direct and nested paths. */
@@ -159,7 +159,7 @@ export function extractSkillBlock(msg: UserMessage | AssistantMessage): { name: 
   if (!skillBlock || skillBlock.type !== "text") return null
   const text = skillBlock.text
   const dirMatch = text.match(/Base directory for this skill: .+\/(.+)/)
-  const name = dirMatch ? dirMatch[1] : "Skill"
+  const name = dirMatch ? dirMatch[1]! : "Skill"
   const content = text.replace(/^Base directory for this skill:[^\n]*\n?/, "").trim()
   return { name, content }
 }
@@ -173,20 +173,20 @@ export function parseIdeContext(msg: UserMessage | AssistantMessage): IdeRef[] {
     const text = block.text
     const fileMatch = text.match(/<ide_opened_file>The user opened the file (.+?) in the IDE/)
     if (fileMatch) {
-      const path = fileMatch[1]
-      refs.push({ type: "file", path, filename: path.split("/").pop() || path })
+      const path = fileMatch[1]!
+      refs.push({ type: "file", path, filename: path.split("/").pop() ?? path })
       continue
     }
     const selMatch = text.match(
       /<ide_selection>The user selected the lines (\d+) to (\d+) from (.+?):/,
     )
     if (selMatch) {
-      const path = selMatch[3]
+      const path = selMatch[3]!
       refs.push({
         type: "selection",
         path,
-        filename: path.split("/").pop() || path,
-        selectionLines: `${selMatch[1]}-${selMatch[2]}`,
+        filename: path.split("/").pop() ?? path,
+        selectionLines: `${selMatch[1]!}-${selMatch[2]!}`,
       })
     }
   }
@@ -339,7 +339,7 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
         ...userBase,
         displayType: "user_artifact_action",
         text,
-        artifactAction: { intent: actionMatch[1], data: actionMatch[2]?.trim() },
+        artifactAction: { intent: actionMatch[1]!, data: actionMatch[2]?.trim() ?? "" },
       }
     }
 

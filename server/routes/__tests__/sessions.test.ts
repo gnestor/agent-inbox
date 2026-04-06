@@ -469,7 +469,7 @@ describe("session routes", () => {
   describe("POST /sessions/:id/resume", () => {
     it("resumes an existing DB session", async () => {
       mockGetSessionRecord.mockResolvedValue({ id: "s1", status: "complete" })
-      mockResumeSessionQuery.mockResolvedValue(undefined)
+      mockResumeSessionQuery.mockResolvedValue({ started: true })
 
       const res = await postJson(app, "/sessions/s1/resume", { prompt: "Continue" })
       expect(res.status).toBe(200)
@@ -492,7 +492,7 @@ describe("session routes", () => {
         lastModified: Date.now(),
       })
       mockImportAgentSession.mockResolvedValue(undefined)
-      mockResumeSessionQuery.mockResolvedValue(undefined)
+      mockResumeSessionQuery.mockResolvedValue({ started: true })
 
       const res = await postJson(app, "/sessions/agent-s1/resume", { prompt: "Go on" })
       expect(res.status).toBe(200)
