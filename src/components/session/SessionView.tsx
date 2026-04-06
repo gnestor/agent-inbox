@@ -30,7 +30,17 @@ interface SessionViewProps {
   title?: string
 }
 
+// Bounded cache: track which sessions have finished loading artifacts.
+// Cap at 100 to prevent unbounded growth over long SPA sessions.
+const MAX_READY_CACHE = 100
 const readySessions = new Set<string>()
+function markReady(id: string) {
+  if (readySessions.size >= MAX_READY_CACHE) {
+    const first = readySessions.values().next().value
+    if (first) readySessions.delete(first)
+  }
+  readySessions.add(id)
+}
 
 export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   const { user } = useUser()
@@ -68,7 +78,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
   const dataReady = controller.session?.id === sessionId
   const [readySessionId, setReadySessionId] = useState<string | null>(null)
   const handleArtifactsReady = useCallback(() => {
-    readySessions.add(sessionId)
+    markReady(sessionId)
     setReadySessionId(sessionId)
   }, [sessionId])
   useEffect(() => {
@@ -77,7 +87,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
       return
     }
     const timer = setTimeout(() => {
-      readySessions.add(sessionId)
+      markReady(sessionId)
       setReadySessionId(sessionId)
     }, 3000)
     return () => clearTimeout(timer)

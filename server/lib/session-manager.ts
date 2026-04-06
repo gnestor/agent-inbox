@@ -244,9 +244,16 @@ export async function getLastAskUserQuestions(sessionId: string): Promise<unknow
   return null
 }
 
+// Debounce touchSession: at most one DB write per 5 seconds per session
+const lastTouchTime = new Map<string, number>()
+const TOUCH_DEBOUNCE_MS = 5_000
+
 async function touchSession(sessionId: string) {
-  const now = new Date().toISOString()
-  await execute(`UPDATE sessions SET updated_at = $1 WHERE id = $2`, [now, sessionId])
+  const now = Date.now()
+  const last = lastTouchTime.get(sessionId) ?? 0
+  if (now - last < TOUCH_DEBOUNCE_MS) return
+  lastTouchTime.set(sessionId, now)
+  await execute(`UPDATE sessions SET updated_at = $1 WHERE id = $2`, [new Date(now).toISOString(), sessionId])
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {

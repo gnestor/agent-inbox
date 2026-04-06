@@ -75,6 +75,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
         queryClient.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
           if (!old) return old
           const messages = old.messages ?? []
+          // Guard against REST-fetch race: seenSequences is WS-scoped, cache may have it from REST
           if (messages.some((m) => m.sequence === data.sequence)) return old
           // Replace optimistic user message with server-assigned one
           const base = msg.type === "user" && messages.some((m) => m.sequence < 0 && m.type === "user")

@@ -249,11 +249,9 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
   const fileMap = new Map<string, string>()
 
   for (const m of messages) {
-    // Collect author emails
     const email = (m.message as any).authorEmail
     if (email) emailSet.add(email)
 
-    // Collect tool results
     const raw = m.message as unknown as Record<string, unknown>
     const contentSources = [
       raw.content,
