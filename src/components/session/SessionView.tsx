@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect } from "react"
 import {
-  Button,
-  Textarea,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -13,8 +11,9 @@ import {
   AvatarFallback,
   Skeleton,
 } from "@hammies/frontend/components/ui"
-import { Send, Square, Loader2, X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
+import { X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
+import { SessionInput } from "./SessionInput"
 import { SessionTranscript, WorkingIndicator, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
 import type { TranscriptVisibility } from "./SessionTranscript"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
@@ -59,7 +58,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     sessionId,
     visibility,
     isActive: true,
-    onResume: () => sessionView.setPrompt(""),
     onArchive: () => sessionView.handleBack(),
   })
 
@@ -71,8 +69,9 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
     session: controller.session,
     phase: controller.phase,
     mutations: controller.mutations,
-    resumeSession: controller.resumeSession,
   })
+
+  const handleAbort = useCallback(() => controller.mutations.abort.mutate(), [controller.mutations.abort])
 
   // Skeleton overlay on first load
   const dataReady = controller.session?.id === sessionId
@@ -208,29 +207,14 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
         </SessionTranscript>
       </div>
 
-      <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="flex gap-2 items-end">
-          <Textarea
-            ref={sessionView.textareaRef}
-            value={sessionView.prompt}
-            onChange={(e) => sessionView.setPrompt(e.target.value)}
-            onKeyDown={sessionView.handleKeyDown}
-            placeholder={sessionView.isStreaming ? "Interrupt with a message..." : "Write a prompt..."}
-            disabled={sessionView.isSending}
-            className="min-h-10 max-h-[120px] resize-none overflow-x-hidden [field-sizing:content]"
-            rows={1}
-          />
-          {sessionView.isStreaming && !sessionView.prompt.trim() ? (
-            <Button onClick={() => controller.mutations.abort.mutate()} disabled={controller.mutations.abort.isPending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
-              <Square className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button onClick={sessionView.handleSend} disabled={!sessionView.prompt.trim() || sessionView.isSending} variant="ghost" size="icon-lg" className="text-[var(--ground)]">
-              {sessionView.isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          )}
-        </div>
-      </div>
+      <SessionInput
+        sessionId={sessionId}
+        isStreaming={sessionView.isStreaming}
+        isSending={sessionView.isSending}
+        onSend={controller.resumeSession}
+        onAbort={handleAbort}
+        isAbortPending={controller.mutations.abort.isPending}
+      />
     </div>
   )
 }

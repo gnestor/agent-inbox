@@ -1231,12 +1231,13 @@ function readHeadTailLines(
     let headBytes = Math.min(CHUNK * 4, size)
     const MAX_HEAD = Math.min(512 * 1024, size)
     let headLines: string[] = []
+    let allHeadLines: string[] = []
     while (true) {
       const buf = Buffer.allocUnsafe(headBytes)
       const bytesRead = fs.readSync(fd, buf, 0, headBytes, 0)
-      const lines = buf.toString("utf-8", 0, bytesRead).split("\n")
-      headLines = lines.slice(0, headCount)
-      if (lines.length > headCount || headBytes >= MAX_HEAD) break
+      allHeadLines = buf.toString("utf-8", 0, bytesRead).split("\n")
+      headLines = allHeadLines.slice(0, headCount)
+      if (allHeadLines.length > headCount || headBytes >= MAX_HEAD) break
       headBytes = Math.min(headBytes * 2, MAX_HEAD)
     }
 
@@ -1248,7 +1249,8 @@ function readHeadTailLines(
       const allTail = tailBuf.toString("utf-8", 0, tailBytesRead).split("\n")
       tailLines.push(...allTail.slice(-tailCount))
     } else {
-      tailLines.push(...headLines.slice(-tailCount))
+      // Small file — all lines were already read in the head pass
+      tailLines.push(...allHeadLines.slice(-tailCount))
     }
 
     return { headLines, tailLines }

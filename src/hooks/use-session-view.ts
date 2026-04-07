@@ -1,6 +1,5 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { useLocation } from "react-router-dom"
-import { useLocalDraft } from "./use-local-draft"
 import { useNavActions } from "@/lib/navigation-store"
 import type { OutputSpec } from "@/components/session/OutputRenderer"
 import type { SessionPhase } from "@/hooks/use-session-controller"
@@ -15,10 +14,9 @@ interface UseSessionViewOptions {
   mutations: {
     rename: { mutate: (title: string) => void }
   }
-  resumeSession: (prompt: string) => void
 }
 
-export function useSessionView({ sessionId, panelId, title, session, phase, mutations, resumeSession }: UseSessionViewOptions) {
+export function useSessionView({ sessionId, panelId, title, session, phase, mutations }: UseSessionViewOptions) {
   const location = useLocation()
   const { removePanel, pushPanel } = useNavActions()
   const isFromSidebar = location.pathname.startsWith("/recent/")
@@ -26,12 +24,6 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   function handleBack() {
     removePanel(panelId)
   }
-
-  // --- Draft input ---
-
-  const resumeKey = `inbox:resume:${sessionId}`
-  const [prompt, setPrompt] = useLocalDraft(resumeKey)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // --- Open panel (useCallback: passed to SessionTranscript which is not trivially re-rendered) ---
 
@@ -73,22 +65,10 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     }
   }
 
-  // --- Input state ---
+  // --- Derived phase state ---
 
   const isStreaming = phase.status === "streaming" || phase.status === "sending"
   const isSending = phase.status === "sending"
-
-  function handleSend() {
-    if (!prompt.trim() || isSending) return
-    resumeSession(prompt)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
 
   return {
     // Title editing
@@ -100,14 +80,9 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     handleEditKeyDown,
     setEditTitle,
 
-    // Input
-    prompt,
-    setPrompt,
-    textareaRef,
+    // Phase
     isStreaming,
     isSending,
-    handleSend,
-    handleKeyDown,
 
     // Navigation
     handleBack,

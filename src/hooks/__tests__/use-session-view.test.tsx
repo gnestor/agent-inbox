@@ -19,14 +19,6 @@ vi.mock("@/lib/navigation-store", () => ({
   useNavActions: () => navActionsMock,
 }))
 
-// Mock idb-keyval so IndexedDB is not needed in tests
-const idbStore: Record<string, unknown> = {}
-vi.mock("idb-keyval", () => ({
-  get: vi.fn((key: string) => Promise.resolve(idbStore[key])),
-  set: vi.fn((key: string, val: unknown) => { idbStore[key] = val; return Promise.resolve() }),
-  del: vi.fn((key: string) => { delete idbStore[key]; return Promise.resolve() }),
-}))
-
 import { useSessionView } from "../use-session-view"
 import type { SessionPhase } from "../use-session-controller"
 
@@ -44,7 +36,6 @@ function makeOptions(overrides: Partial<Parameters<typeof useSessionView>[0]> = 
     session: { id: "s1", status: "complete", summary: "My Session" } as any,
     phase: { status: "idle" } as SessionPhase,
     mutations: makeMutations(),
-    resumeSession: vi.fn(),
     ...overrides,
   }
 }
@@ -55,8 +46,6 @@ describe("useSessionView", () => {
     navActionsMock.removePanel = vi.fn()
     navActionsMock.pushPanel = vi.fn()
     currentLocation = { pathname: "/recent/s1" }
-    // Clear idb store
-    for (const key of Object.keys(idbStore)) delete idbStore[key]
   })
 
   it("initial state has no editing active and exposes displayTitle", () => {
@@ -195,49 +184,6 @@ describe("useSessionView", () => {
     const escEvent = { key: "Escape", preventDefault: vi.fn() } as any
     act(() => result.current.handleEditKeyDown(escEvent))
     expect(result.current.isEditing).toBe(false)
-  })
-
-  it("handleSend calls resumeSession with prompt and does not send when empty", () => {
-    const resumeSession = vi.fn()
-    const { result } = renderHook(() =>
-      useSessionView(makeOptions({ resumeSession })),
-    )
-
-    // Empty prompt → no-op
-    act(() => result.current.handleSend())
-    expect(resumeSession).not.toHaveBeenCalled()
-
-    // Set prompt via setPrompt, then send
-    act(() => result.current.setPrompt("hello agent"))
-    act(() => result.current.handleSend())
-    expect(resumeSession).toHaveBeenCalledWith("hello agent")
-  })
-
-  it("handleSend is a no-op while sending", () => {
-    const resumeSession = vi.fn()
-    const { result } = renderHook(() =>
-      useSessionView(makeOptions({
-        resumeSession,
-        phase: { status: "sending" } as SessionPhase,
-      })),
-    )
-
-    // Set a non-empty prompt
-    act(() => result.current.setPrompt("hi"))
-
-    expect(result.current.isSending).toBe(true)
-    act(() => result.current.handleSend())
-    expect(resumeSession).not.toHaveBeenCalled()
-  })
-
-  it("setPrompt updates the prompt value", () => {
-    const resumeSession = vi.fn()
-    const { result } = renderHook(() => useSessionView(makeOptions({ resumeSession })))
-
-    act(() => result.current.setPrompt("typed text"))
-    // Verify by sending — it should use the value we set
-    act(() => result.current.handleSend())
-    expect(resumeSession).toHaveBeenCalledWith("typed text")
   })
 
   it("handleOpenPanel pushes an output panel", () => {
