@@ -59,6 +59,12 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
       continue
     }
 
+    // Strip destructuring from undefined globals (e.g. `const { Card, ... } = Components`)
+    // These names will be provided by auto-import instead.
+    if (/^(?:const|let|var)\s+\{[^}]+\}\s*=\s*\w+\s*;?\s*$/.test(trimmed)) {
+      continue
+    }
+
     // Detect export default — keep it in the code, record the name for mounting
     if (/^export\s+default\s+function\s+(\w+)/.test(trimmed)) {
       exportedName = trimmed.match(/^export\s+default\s+function\s+(\w+)/)?.[1] ?? null
@@ -125,9 +131,13 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
       return ""
     },
   )
-  // Find components used in code but not yet imported
+  // Find components used in code but not yet imported (skip locally declared ones)
+  const localDecls = new Set<string>()
+  // Direct declarations: function Foo, const Foo, class Foo
+  for (const m of code.matchAll(/(?:function|class)\s+(\w+)/g)) localDecls.add(m[1]!)
+  for (const m of code.matchAll(/(?:const|let|var)\s+(\w+)\s*=/g)) localDecls.add(m[1]!)
   const usedComponents = ARTIFACT_COMPONENTS.filter((name) =>
-    !alreadyImportedComponents.has(name) && new RegExp(`\\b${name}\\b`).test(code)
+    !alreadyImportedComponents.has(name) && !localDecls.has(name) && new RegExp(`\\b${name}\\b`).test(code)
   )
   for (const c of usedComponents) alreadyImportedComponents.add(c)
   if (alreadyImportedComponents.size > 0) {
@@ -141,6 +151,23 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
 
   // Fix common LLM mistake: regex with literal newline (/\n/g split across lines)
   code = code.replace(/\/\n\/([gimsuy]*)/g, "/\\n/$1")
+
+  // Auto-wrap bare top-level `return` in a default-exported App component.
+  // Agents sometimes emit data + JSX without wrapping in a function.
+  if (!exportedName && /^return\s*[\s(]/m.test(code)) {
+    // Split imports from body — imports must stay at top level
+    const importLines: string[] = []
+    const bodyLines: string[] = []
+    for (const line of code.split("\n")) {
+      if (/^import\s/.test(line.trimStart())) {
+        importLines.push(line)
+      } else {
+        bodyLines.push(line)
+      }
+    }
+    code = importLines.join("\n") + "\n\nexport default function App() {\n" + bodyLines.join("\n") + "\n}\n"
+    exportedName = "App"
+  }
 
   // Transform JSX → React.createElement (sourceType: "module" to support import/export)
   const transform = await ensureBabel()

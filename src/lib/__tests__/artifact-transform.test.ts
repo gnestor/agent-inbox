@@ -223,6 +223,51 @@ export default function App() { return <div><Button>Go</Button><Input /><Badge>x
     expect(result.code).toContain("createElement")
   })
 
+  it("does not auto-import components that are locally declared", async () => {
+    const source = `function Card({ children }) { return <div className="card">{children}</div> }
+function App() { return <Card><Button>Go</Button></Card> }
+export default App`
+    const result = await transformArtifactCode(source)
+    // Button should be auto-imported, but Card should NOT (it's locally defined)
+    expect(result.code).toContain("Button")
+    expect(result.code).toContain("from '@hammies/frontend/components/ui'")
+    // The import should not include Card
+    const importMatch = result.code.match(/import \{([^}]*)\} from '@hammies\/frontend\/components\/ui'/)
+    expect(importMatch).toBeTruthy()
+    expect(importMatch![1]).not.toContain("Card")
+  })
+
+  it("strips destructuring from undefined globals and auto-imports instead", async () => {
+    const source = `const { Card, CardHeader, CardTitle, CardContent, Badge, Table } = Components;
+function App() { return <Card><CardContent><Badge>x</Badge></CardContent></Card> }
+export default App`
+    const result = await transformArtifactCode(source)
+    // The destructuring line should be stripped
+    expect(result.code).not.toContain("Components")
+    // Components should be auto-imported instead
+    const importMatch = result.code.match(/import \{([^}]*)\} from '@hammies\/frontend\/components\/ui'/)
+    expect(importMatch).toBeTruthy()
+    expect(importMatch![1]).toContain("Card")
+    expect(importMatch![1]).toContain("Badge")
+    // Should compile without errors
+    expect(result.code).toContain("createElement")
+  })
+
+  it("wraps bare top-level return in a default App component", async () => {
+    const source = `const items = [{ name: 'A' }, { name: 'B' }];
+
+return (
+  <div>
+    {items.map((item, i) => <span key={i}>{item.name}</span>)}
+  </div>
+);`
+    const result = await transformArtifactCode(source)
+    expect(result.exportedName).toBe("App")
+    expect(result.code).toContain("createElement")
+    // Should not have "return outside of function" error
+    expect(result.code).not.toContain("error")
+  })
+
 describe("escapeForScript", () => {
   it("escapes </script> tags", async () => {
     expect(escapeForScript('var x = "</script>";')).toBe('var x = "<\\/script>";')
