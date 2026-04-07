@@ -26,6 +26,7 @@ import {
   getContentBlocks,
   toolUseSummary,
   toolUseCommand,
+  isWriteArtifact,
   TOOL_DISPLAY_NAME,
   TOOLS_WITH_DESCRIPTION,
 } from "@/lib/session-pipeline"
@@ -565,6 +566,16 @@ function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel =
     }
     // create_file — hidden from transcript (content consumed by present_files)
     if (CREATE_FILE_NAMES.has(block.name)) return null
+    // Write tool creating renderable files (HTML, JSX, etc.) — render as artifact
+    if (isWriteArtifact(block) && sessionId) {
+      if (!visibility.artifacts) return null
+      const filePath = block.input!.file_path as string
+      const content = lookups.fileMap.get(filePath)
+      if (content) {
+        const spec = fileToOutputSpec(filePath, content)
+        return <OutputAccordion spec={spec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
+      }
+    }
     if (block.name === "AskUserQuestion" && block.input?.questions) {
       const resultText = lookups.toolResults.get(block.id) ?? ""
       return <AskUserQuestionEntry questions={block.input.questions as AskUserQuestion[]} resultText={resultText} sessionId={sessionId} sequence={sequence} onAnswer={!resultText ? onAnswer : undefined} />

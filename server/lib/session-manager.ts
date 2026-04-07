@@ -1227,19 +1227,28 @@ function readHeadTailLines(
     const size = stat.size
     if (size === 0) return { headLines: [], tailLines: [] }
 
-    // Read head
-    const headBuf = Buffer.alloc(Math.min(CHUNK * 4, size))
-    const headBytesRead = fs.readSync(fd, headBuf, 0, headBuf.length, 0)
-    const headLines = headBuf.toString("utf-8", 0, headBytesRead).split("\n").slice(0, headCount)
+    // Read head — progressively read more if early lines are very large
+    let headBytes = Math.min(CHUNK * 4, size)
+    const MAX_HEAD = Math.min(512 * 1024, size)
+    let headLines: string[] = []
+    while (true) {
+      const buf = Buffer.allocUnsafe(headBytes)
+      const bytesRead = fs.readSync(fd, buf, 0, headBytes, 0)
+      const lines = buf.toString("utf-8", 0, bytesRead).split("\n")
+      headLines = lines.slice(0, headCount)
+      if (lines.length > headCount || headBytes >= MAX_HEAD) break
+      headBytes = Math.min(headBytes * 2, MAX_HEAD)
+    }
 
-    // Read tail
     const tailLines: string[] = []
-    if (size > headBuf.length) {
-      const tailSize = Math.min(CHUNK * 4, size)
-      const tailBuf = Buffer.alloc(tailSize)
+    const tailSize = Math.min(CHUNK * 4, size)
+    if (size > tailSize) {
+      const tailBuf = Buffer.allocUnsafe(tailSize)
       const tailBytesRead = fs.readSync(fd, tailBuf, 0, tailSize, size - tailSize)
       const allTail = tailBuf.toString("utf-8", 0, tailBytesRead).split("\n")
       tailLines.push(...allTail.slice(-tailCount))
+    } else {
+      tailLines.push(...headLines.slice(-tailCount))
     }
 
     return { headLines, tailLines }

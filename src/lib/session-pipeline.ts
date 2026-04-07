@@ -193,6 +193,18 @@ export function parseIdeContext(msg: UserMessage | AssistantMessage): IdeRef[] {
   return refs
 }
 
+/** File extensions that should render as inline artifacts when created via Write tool */
+const ARTIFACT_EXTENSIONS = new Set(["html", "htm", "jsx", "tsx", "svg"])
+
+/** Check if a Write tool_use block targets a renderable artifact file type. */
+export function isWriteArtifact(block: ContentBlock): boolean {
+  if (block.type !== "tool_use" || block.name !== "Write") return false
+  const filePath = (block as ToolUseBlock).input?.file_path
+  if (typeof filePath !== "string") return false
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? ""
+  return ARTIFACT_EXTENSIONS.has(ext)
+}
+
 /** Group consecutive non-render_output tool_use blocks into arrays; other blocks stay individual. */
 export function groupContentBlocks(blocks: ContentBlock[]): Array<ContentBlock | ToolUseBlock[]> {
   const groups: Array<ContentBlock | ToolUseBlock[]> = []
@@ -204,6 +216,7 @@ export function groupContentBlocks(blocks: ContentBlock[]): Array<ContentBlock |
       !RENDER_OUTPUT_NAMES.has(block.name) &&
       !PRESENT_FILES_NAMES.has(block.name) &&
       !CREATE_FILE_NAMES.has(block.name) &&
+      !isWriteArtifact(block) &&
       block.name !== "AskUserQuestion" &&
       block.name !== "ToolSearch"
     ) {
@@ -281,6 +294,15 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
             typeof (block as any).input?.file_text === "string"
           ) {
             fileMap.set((block as any).input.path, (block as any).input.file_text)
+          }
+          // Collect Write tool content for inline artifact rendering
+          if (
+            block.type === "tool_use" &&
+            block.name === "Write" &&
+            typeof (block as any).input?.file_path === "string" &&
+            typeof (block as any).input?.content === "string"
+          ) {
+            fileMap.set((block as any).input.file_path, (block as any).input.content)
           }
         }
       }
