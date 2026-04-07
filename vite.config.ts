@@ -2,7 +2,7 @@ import path from "path"
 import fs from "fs"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, loadEnv } from "vite"
 
 // Vite plugin to serve pre-built @hammies/frontend artifact assets
 // (component bundle, React/ReactDOM ES modules, Tailwind CSS)
@@ -34,7 +34,17 @@ function serveArtifactAssets() {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  const https = env.VITE_HTTPS_KEY && env.VITE_HTTPS_CERT
+    ? {
+        key: fs.readFileSync(env.VITE_HTTPS_KEY),
+        cert: fs.readFileSync(env.VITE_HTTPS_CERT)
+      }
+    : undefined
+
+  return {
   plugins: [react(), tailwindcss(), serveArtifactAssets()],
   resolve: {
     alias: {
@@ -61,8 +71,10 @@ export default defineConfig({
   },
   server: {
     port: 5175,
+    strictPort: true,
     host: true,
     allowedHosts: true,
+    https,
     proxy: {
       "/api": {
         target: "http://localhost:3002",
@@ -81,5 +93,5 @@ export default defineConfig({
         },
       },
     },
-  },
-})
+  }
+}})
