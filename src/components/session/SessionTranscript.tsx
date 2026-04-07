@@ -1,4 +1,5 @@
 import { useMemo, useRef, useEffect, useCallback, memo, useState, createContext, useContext, Children, isValidElement, type ReactNode } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, FileIcon, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
@@ -86,6 +87,12 @@ const LookupsContext = createContext<MessageLookups>({
 })
 function useLookups() { return useContext(LookupsContext) }
 
+import type { WidgetDef } from "@/types/panels"
+
+type PanelSchemaMap = Record<string, WidgetDef[]>
+const PanelSchemasContext = createContext<PanelSchemaMap | undefined>(undefined)
+function usePanelSchemas() { return useContext(PanelSchemasContext) }
+
 // ---------------------------------------------------------------------------
 // SessionTranscript — pure rendering component
 // ---------------------------------------------------------------------------
@@ -124,6 +131,9 @@ export function SessionTranscript({
     messageCount: messages.length,
     sessionId,
   })
+
+  // Hoist panel-schemas query here so it's fetched once, not per ContentBlockView
+  const { data: panelSchemas } = useQuery({ queryKey: ["panel-schemas"], queryFn: getPanelSchemas, staleTime: 86_400_000 })
 
   // Track artifact loading
   const expectedArtifacts = useMemo(() => {
@@ -169,20 +179,58 @@ export function SessionTranscript({
     }
   }, [expectedArtifacts, messages.length, onArtifactsReady])
 
+  // Virtualizer: only render visible messages + overscan
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 72,
+    overscan: 8,
+    getItemKey: (i) => messages[i]!.source.sequence,
+  })
+
+  // Auto-scroll to bottom when new messages arrive (streaming)
+  const prevCountRef = useRef(messages.length)
+  useEffect(() => {
+    if (messages.length > prevCountRef.current && messages.length > 0) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "smooth" })
+    }
+    prevCountRef.current = messages.length
+  }, [messages.length, virtualizer])
+
   return (
     <LookupsContext.Provider value={lookups}>
+    <PanelSchemasContext.Provider value={panelSchemas}>
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto overflow-x-hidden overscroll-contain"
         onScroll={handleScroll}
       >
-        <div className="p-4 min-w-0 pb-4">
-          {messages.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {messages.map((cm) => (
+        {messages.length > 0 ? (
+          <div
+            className="min-w-0"
+            style={{
+              height: virtualizer.getTotalSize() + 32, // 32px bottom padding
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const cm = messages[virtualRow.index]!
+              return (
                 <div
-                  key={cm.source.sequence}
-                  style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    padding: "0 16px",
+                    paddingTop: virtualRow.index === 0 ? 16 : 6,
+                    paddingBottom: 6,
+                  }}
                 >
                   <TranscriptEntry
                     cm={cm}
@@ -196,14 +244,15 @@ export function SessionTranscript({
                     onArtifactLoaded={handleArtifactLoaded}
                   />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <PanelSkeleton />
-          )}
-          {children}
-        </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="p-4"><PanelSkeleton /></div>
+        )}
+        <div className="px-4 pb-4">{children}</div>
       </div>
+    </PanelSchemasContext.Provider>
     </LookupsContext.Provider>
   )
 }
@@ -541,12 +590,12 @@ function OutputAccordion({ spec, sessionId, sequence, onOpenPanel, onAction, onA
 // Tool call components
 // ---------------------------------------------------------------------------
 
-function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel = "Claude", onOpenPanel, onAction, onAnswer, onArtifactLoaded }: {
+const ContentBlockView = memo(function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel = "Claude", onOpenPanel, onAction, onAnswer, onArtifactLoaded }: {
   block: ContentBlockType; sequence: number; visibility: TranscriptVisibility; sessionId?: string; agentLabel?: string
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void; onAction?: (intent: string) => void; onAnswer?: (answers: Record<string, string>) => Promise<void>; onArtifactLoaded?: () => void
 }) {
   const lookups = useLookups()
-  const { data: panelSchemas } = useQuery({ queryKey: ["panel-schemas"], queryFn: getPanelSchemas, staleTime: 60_000 })
+  const panelSchemas = usePanelSchemas()
   const rehypePlugins = useRehypeHighlight()
 
   if (block.type === "text") {
@@ -650,7 +699,7 @@ function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel =
   }
 
   return null
-}
+})
 
 function ToolCallGroup({ blocks }: { blocks: ToolUseBlock[] }) {
   const summary = blocks.length === 1 ? toolUseSummary(blocks[0]!.name, blocks[0]!.input) : ""

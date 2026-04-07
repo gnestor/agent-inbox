@@ -87,9 +87,15 @@ export function useSessionController({
   const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
   const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning))
 
-  // Invalidate sessions list when session status changes (complete/errored/awaiting_input)
+  // Invalidate sessions list only on terminal status changes, not every status update.
+  // This prevents duplicate /api/sessions fetches when opening a session detail.
+  const prevStreamStatus = useRef<string | null>(null)
   useEffect(() => {
-    if (stream.sessionStatus) qc.invalidateQueries({ queryKey: ["sessions"] })
+    if (!stream.sessionStatus) return
+    // Only invalidate when the status actually changes (not on initial mount)
+    if (prevStreamStatus.current === stream.sessionStatus) return
+    prevStreamStatus.current = stream.sessionStatus
+    qc.invalidateQueries({ queryKey: ["sessions"] })
   }, [stream.sessionStatus, qc])
 
   // --- Phase derivation ---

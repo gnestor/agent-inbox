@@ -186,7 +186,6 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
 
       <div className="flex-1 overflow-hidden">
         <SessionTranscript
-          key={sessionId}
           messages={controller.messages}
           lookups={controller.lookups}
           userProfiles={controller.userProfiles}

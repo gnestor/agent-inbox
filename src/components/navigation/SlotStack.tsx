@@ -6,7 +6,7 @@
  * tracks which tab is most visible on every frame and fires
  * `onActiveKeyChange` to sync the URL and sidebar instantly.
  */
-import { useRef, useEffect, useCallback, useState, type ReactNode } from "react"
+import { useRef, useEffect, useCallback, useState, memo, type ReactNode } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 
 interface SlotStackProps {
@@ -17,6 +17,34 @@ interface SlotStackProps {
   className?: string
   style?: React.CSSProperties
 }
+
+/**
+ * Deferred slot — only mounts its children on first activation.
+ * Before activation, renders nothing (the parent div.h-full provides the
+ * scroll-snap slot height). After activation, content stays mounted forever.
+ *
+ * This avoids the O(N) cost of rendering ALL tabs on initial mount — only the
+ * active tab renders immediately, others render on first visit. Scroll-snap
+ * works because the parent wrapper always has h-full regardless of content.
+ */
+const DeferredSlot = memo(function DeferredSlot({
+  tabKey,
+  isActive,
+  renderItem,
+}: {
+  tabKey: string
+  isActive: boolean
+  renderItem: (key: string) => ReactNode
+}) {
+  const [hasRendered, setHasRendered] = useState(isActive)
+  if (isActive && !hasRendered) setHasRendered(true)
+
+  // Not yet activated — empty div (parent h-full handles scroll-snap height)
+  if (!hasRendered) return null
+
+  // Once activated, render normally and stay mounted forever
+  return <>{renderItem(tabKey)}</>
+})
 
 export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, className = "", style: outerStyle }: SlotStackProps) {
   const isMobile = useIsMobile()
@@ -187,7 +215,10 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
     )
   }
 
-  // Desktop: vertical scroll-snap for tab switching
+  // Desktop: vertical scroll-snap for tab switching.
+  // Each tab is wrapped in DeferredSlot which only renders content once the tab
+  // has been activated, then keeps it mounted (hidden via display:none) for instant
+  // switching. This prevents O(N) rendering of all tabs on every interaction.
   return (
     <div
       ref={setRef}
@@ -206,7 +237,11 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
           className="h-full shrink-0"
           style={{ scrollSnapAlign: "start" }}
         >
-          {renderItem(key)}
+          <DeferredSlot
+            tabKey={key}
+            isActive={key === activeKey}
+            renderItem={renderItem}
+          />
         </div>
       ))}
     </div>
