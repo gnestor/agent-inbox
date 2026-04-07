@@ -175,7 +175,6 @@ export function isSubagentMessage(message: { type: string; message: unknown }): 
 /** Extract a display label for the agent that produced a message. */
 export function getAgentLabel(message: { message: unknown }): string {
   const raw = message.message as Record<string, unknown>
-  if (raw.slug) return String(raw.slug)
   if (raw.agentId) return String(raw.agentId)
   return "Claude"
 }
