@@ -13,7 +13,63 @@ import { useIsMobile } from "@hammies/frontend/hooks"
 import { useNavigation } from "@/hooks/use-navigation"
 import type { TabId } from "@/types/navigation"
 import { getTabOrder } from "@/types/navigation"
-import { DURATION, EASE_CSS } from "@/lib/navigation-constants"
+import { DURATION, EASE, EASE_CSS } from "@/lib/navigation-constants"
+
+// --- JS-driven smooth scroll (replaces browser's scrollTo smooth) ---
+
+/** Evaluate a cubic-bezier curve at parameter t. */
+function cubicBezier(t: number, _x1: number, y1: number, _x2: number, y2: number): number {
+  // De Casteljau's algorithm for cubic bezier with control points (0,0), (x1,y1), (x2,y2), (1,1)
+  const u = 1 - t
+  return 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t
+}
+
+/** Find the t parameter for a given x value on the bezier curve (Newton's method). */
+function bezierT(x: number, x1: number, x2: number): number {
+  let t = x
+  for (let i = 0; i < 8; i++) {
+    const u = 1 - t
+    const currentX = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t
+    const dx = currentX - x
+    if (Math.abs(dx) < 1e-6) break
+    const slope = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2)
+    if (Math.abs(slope) < 1e-6) break
+    t -= dx / slope
+  }
+  return t
+}
+
+/** Animate scrollLeft from current position to target using the app's easing curve. */
+function animateScroll(
+  el: HTMLElement,
+  target: number,
+  durationMs: number,
+  onDone: () => void,
+): () => void {
+  const start = el.scrollLeft
+  const delta = target - start
+  if (Math.abs(delta) < 1) { onDone(); return () => {} }
+  const startTime = performance.now()
+  let cancelled = false
+
+  function tick(now: number) {
+    if (cancelled) return
+    const elapsed = now - startTime
+    const progress = Math.min(elapsed / durationMs, 1)
+    // Map progress through the cubic-bezier easing
+    const t = bezierT(progress, EASE[0], EASE[2])
+    const eased = cubicBezier(t, EASE[0], EASE[1], EASE[2], EASE[3])
+    el.scrollLeft = start + delta * eased
+    if (progress < 1) {
+      requestAnimationFrame(tick)
+    } else {
+      el.scrollLeft = target // ensure exact final position
+      onDone()
+    }
+  }
+  requestAnimationFrame(tick)
+  return () => { cancelled = true }
+}
 
 interface TabProps {
   id: TabId
@@ -67,6 +123,7 @@ function MobileTab({ id, children }: TabProps) {
   const [snapEnabled, setSnapEnabled] = useState(false)
   const hasMounted = useRef(false)
   const isProgrammaticScroll = useRef(false)
+  const cancelScrollRef = useRef<(() => void) | null>(null)
 
   const panels = getPanels(id)
   void getSelectedItemId(id) // trigger re-render on selection change
@@ -102,14 +159,15 @@ function MobileTab({ id, children }: TabProps) {
       isProgrammaticScroll.current = true
       el.style.scrollSnapType = "none"
       if (smooth) {
-        el.scrollTo({ left: target, behavior: "smooth" })
-        const onDone = () => {
+        // JS-driven animation instead of browser smooth scroll — gives us
+        // full control over the easing curve and guarantees pixel-perfect
+        // landing without the snap correction jump at the end.
+        cancelScrollRef.current = animateScroll(el, target, DURATION * 1000, () => {
           el.style.scrollSnapType = "x mandatory"
           setSnapEnabled(true)
           isProgrammaticScroll.current = false
           if (exitChildren) clearExit()
-        }
-        el.addEventListener("scrollend", onDone, { once: true })
+        })
       } else {
         el.scrollLeft = target
         requestAnimationFrame(() => {
