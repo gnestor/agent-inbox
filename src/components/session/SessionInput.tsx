@@ -2,7 +2,7 @@ import { Button, Textarea } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2 } from "lucide-react"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { uploadPendingFiles } from "@/hooks/use-session-view"
-import { FileAttachmentBar, AttachButton, DragOverlay } from "./FileAttachmentBar"
+import { FileAttachmentBar, AttachButton, DragOverlay, HiddenFileInput } from "./FileAttachmentBar"
 import type { useFileAttachments } from "@/hooks/use-file-attachments"
 
 type FileAttachments = ReturnType<typeof useFileAttachments>
@@ -69,7 +69,7 @@ export function SessionInput({ sessionId, isStreaming, isSending, onSend, onAbor
         </div>
       )}
 
-      <div className="flex gap-2 items-end">
+      <div className="flex gap-2 items-center">
         {attachments && <AttachButton onClick={attachments.openFilePicker} />}
         <Textarea
           value={prompt}
@@ -91,6 +91,10 @@ export function SessionInput({ sessionId, isStreaming, isSending, onSend, onAbor
           </Button>
         )}
       </div>
+
+      {attachments && (
+        <HiddenFileInput fileInputRef={attachments.fileInputRef} onFileInputChange={attachments.handleFileInputChange} />
+      )}
     </div>
   )
 }

@@ -9,7 +9,7 @@ import { BookmarkPlus, X, Loader2, Trash2 } from "lucide-react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 import { PanelHeader, BackButton } from "@/components/shared/PanelHeader"
 import { useNavActions } from "@/lib/navigation-store"
-import { createSession, getPluginItem, resumeSession as resumeSessionApi } from "@/api/client"
+import { createSession, getPluginItem } from "@/api/client"
 import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { useLocalDraft } from "@/hooks/use-local-draft"
@@ -134,24 +134,28 @@ function ComposePanel({ panelId, sourceType, sourceId, sourceContent }: { panelI
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      // Create session first, then upload files and append references
+      let fullPrompt = prompt
+
+      // Upload files first using a temporary ID (the endpoint doesn't require
+      // the session to exist), then include file references in the initial prompt
+      // so the agent sees them immediately — avoids a resume 409 race.
+      if (attachments.hasFiles) {
+        const tempId = crypto.randomUUID()
+        const uploaded = await uploadPendingFiles(tempId, attachments.files)
+        if (uploaded.length > 0) {
+          const refs = uploaded.map((f) => `[Attached: ${f.name} at ${f.path}]`).join("\n")
+          fullPrompt = `${fullPrompt}\n\nFiles attached:\n${refs}`
+        }
+        attachments.clearAll()
+      }
+
       const { sessionId } = await createSession({
-        prompt,
+        prompt: fullPrompt,
         linkedSourceType: sourceType,
         linkedSourceId: sourceId,
         linkedSourceContent: sourceContent,
         linkedItemTitle: itemTitle,
       })
-
-      // Upload files after session creation (need sessionId)
-      if (attachments.hasFiles) {
-        const uploaded = await uploadPendingFiles(sessionId, attachments.files)
-        if (uploaded.length > 0) {
-          const refs = uploaded.map((f) => `[Attached: ${f.name} at ${f.path}]`).join("\n")
-          await resumeSessionApi(sessionId, `Files attached:\n${refs}`)
-        }
-        attachments.clearAll()
-      }
 
       return { sessionId }
     },

@@ -1,14 +1,14 @@
 import { useMemo, useRef, useEffect, useCallback, memo, useState, createContext, useContext, Children, isValidElement, type ReactNode } from "react"
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
-import { FileText, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
+import { FileText, FileIcon, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { AskUserQuestion, InboxContextData, InboxResultData } from "@/types"
 import type { ContentBlock as ContentBlockType, ToolUseBlock, AssistantMessage } from "@/types/session-message"
 import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES, PRESENT_FILES_NAMES } from "@/types/session-message"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
-import { getPanelSchemas } from "@/api/client"
+import { getPanelSchemas, getSessionFileUrl } from "@/api/client"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -30,6 +30,23 @@ import {
   TOOL_DISPLAY_NAME,
   TOOLS_WITH_DESCRIPTION,
 } from "@/lib/session-pipeline"
+
+// ---------------------------------------------------------------------------
+// Attachment parsing (module-scope to avoid per-render allocation)
+// ---------------------------------------------------------------------------
+
+const ATTACH_RE = /\[Attached:\s*(.+?)\s+at\s+(.+?)\]/g
+const ATTACH_HEADER_RE = /Files attached:\s*/g
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico"])
+
+function parseAttachments(text: string): { attachments: { name: string; path: string }[]; cleanText: string } {
+  const attachments: { name: string; path: string }[] = []
+  const cleanText = text.replace(ATTACH_RE, (_, name: string, path: string) => {
+    attachments.push({ name, path })
+    return ""
+  }).replace(ATTACH_HEADER_RE, "").trim()
+  return { attachments, cleanText }
+}
 
 // ---------------------------------------------------------------------------
 // Shared markdown config
@@ -262,10 +279,41 @@ const TranscriptEntry = memo(function TranscriptEntry({
       const isCurrentUser = !cm.isSubagent && (!cm.authorEmail || cm.authorEmail === currentUserEmail)
       const profile = cm.authorEmail ? userProfiles?.get(cm.authorEmail) : undefined
       const authorLabel = isCurrentUser ? "You" : cm.isSubagent ? cm.agentLabel : (profile?.name || cm.authorName || "User")
+
+      const { attachments: fileAttachments, cleanText } = cm.text
+        ? parseAttachments(cm.text)
+        : { attachments: [], cleanText: "" }
+
+      if (!cleanText && fileAttachments.length === 0 && cm.ideRefs.length === 0) return null
       return (
         <MessageBubble label={authorLabel} align="right">
           <div className="space-y-1.5">
-            {cm.text && <div className="text-sm whitespace-pre-wrap break-words">{cm.text.replace(/\\\n/g, "\n")}</div>}
+            {cleanText && <div className="text-sm whitespace-pre-wrap break-words">{cleanText.replace(/\\\n/g, "\n")}</div>}
+            {fileAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {fileAttachments.map((att, i) => {
+                  const ext = att.name.split(".").pop()?.toLowerCase() ?? ""
+                  const isImage = IMAGE_EXTS.has(ext)
+                  const url = getSessionFileUrl(sessionId || "", att.name, att.path)
+                  return (
+                    <a
+                      key={i}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center gap-1.5 rounded-md border bg-secondary/50 px-2 py-1.5 text-xs max-w-[200px] hover:bg-secondary transition-colors"
+                    >
+                      {isImage ? (
+                        <img src={url} alt={att.name} className="h-8 w-8 rounded object-cover shrink-0" />
+                      ) : (
+                        <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate text-sm">{att.name}</span>
+                    </a>
+                  )
+                })}
+              </div>
+            )}
             {cm.ideRefs.length > 0 && (
               <div className="flex flex-wrap gap-1.5 justify-end">
                 {cm.ideRefs.map((ref, i) => (
