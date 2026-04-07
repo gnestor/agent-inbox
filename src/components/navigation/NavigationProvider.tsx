@@ -96,26 +96,49 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const lastNavigatedUrl = useRef(location.pathname)
 
-  // Set initial activeTab from URL synchronously so SlotStack renders correctly on first frame.
-  // This runs once before the async hydration completes.
+  // Set initial activeTab AND panels from URL synchronously so the first render
+  // shows the correct panel layout (list + detail) without flashing. The async
+  // hydration from IndexedDB will merge additional state (savedPanels, filters, etc.)
+  // but the panels derived from the URL are enough to prevent the flash.
   const initializedFromUrl = useRef(false)
   if (!initializedFromUrl.current) {
     initializedFromUrl.current = true
     const parsed = parseUrl(location.pathname)
     const store = useNavigationStore.getState()
-    // Only set if different from default to avoid unnecessary update
-    if (store.activeTab !== parsed.tabId) {
-      useNavigationStore.setState({ activeTab: parsed.tabId })
-    }
+
     if (parsed.tabId.startsWith("recent:") && !store.tabs[parsed.tabId]) {
       useNavigationStore.setState((s) => ({
+        activeTab: parsed.tabId,
         tabs: { ...s.tabs, [parsed.tabId]: createRecentTabState(parsed) },
       }))
-    }
-    if (parsed.tabId.startsWith("plugin:") && !store.tabs[parsed.tabId]) {
-      useNavigationStore.setState((s) => ({
-        tabs: { ...s.tabs, [parsed.tabId]: createDefaultTabState() },
-      }))
+    } else {
+      const updates: Partial<typeof store> = {}
+      if (store.activeTab !== parsed.tabId) {
+        updates.activeTab = parsed.tabId
+      }
+      // Build panels from URL so the first render shows the right layout
+      const existingTab = store.tabs[parsed.tabId]
+      if (parsed.selectedId) {
+        const tab = existingTab ?? createDefaultTabState()
+        tab.selectedItemId = parsed.selectedId
+        tab.panels = [
+          tab.panels[0] ?? { id: "list", type: "list", props: {} },
+          { id: `detail:${parsed.selectedId}`, type: "detail", props: { itemId: parsed.selectedId } },
+        ]
+        if (parsed.sessionId) {
+          tab.panels.push({
+            id: `session:${parsed.sessionId}`,
+            type: "session",
+            props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
+          })
+        }
+        updates.tabs = { ...store.tabs, [parsed.tabId]: tab }
+      } else if (!existingTab && parsed.tabId.startsWith("plugin:")) {
+        updates.tabs = { ...store.tabs, [parsed.tabId]: createDefaultTabState() }
+      }
+      if (Object.keys(updates).length > 0) {
+        useNavigationStore.setState(updates)
+      }
     }
   }
 

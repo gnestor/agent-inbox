@@ -259,14 +259,19 @@ export function useTabPanels(tabId?: TabId): PanelState[] {
 
 /**
  * Returns panels for a tab, gated on hydration.
- * Before the store is rehydrated from localStorage, only "list" panels are
- * returned to prevent flashing detail panels that get replaced on hydration.
+ * Before the store is rehydrated from IndexedDB, only "list" panels are
+ * returned — UNLESS the URL-derived sync initialization already set up
+ * detail panels (panels.length > 1), in which case they're correct and
+ * should be shown immediately to avoid flashing.
  */
 export function useHydratedPanels(tabId?: TabId): PanelState[] {
   return useNavigationStore(useShallow((s) => {
     const id = tabId ?? s.activeTab
     const panels = s.tabs[id]?.panels ?? EMPTY_PANELS
-    return s._initialized ? panels : panels.filter((p) => p.type === "list")
+    if (s._initialized) return panels
+    // If URL sync already set up detail panels, show them immediately
+    if (panels.length > 1) return panels
+    return panels.filter((p) => p.type === "list")
   }))
 }
 
