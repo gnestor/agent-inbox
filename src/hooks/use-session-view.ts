@@ -101,10 +101,7 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: upload pending files and return upload results
-// ---------------------------------------------------------------------------
-
+/** Upload pending files in parallel. Failures are logged and skipped. */
 export async function uploadPendingFiles(
   sessionId: string,
   files: PendingFile[],

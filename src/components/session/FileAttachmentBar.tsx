@@ -1,10 +1,6 @@
 import { X, Paperclip, FileIcon, AlertCircle } from "lucide-react"
 import type { PendingFile } from "@/hooks/use-file-attachments"
 
-// ---------------------------------------------------------------------------
-// File chip — shows thumbnail for images, icon for other types
-// ---------------------------------------------------------------------------
-
 function FileChip({ file, onRemove }: { file: PendingFile; onRemove: () => void }) {
   const isImage = file.previewUrl !== null
 
@@ -41,9 +37,6 @@ interface FileAttachmentBarProps {
   error: string | null
   onRemove: (id: string) => void
   onClearError: () => void
-  /** Hidden file input — render this inside the bar container */
-  fileInputRef: React.RefObject<HTMLInputElement | null>
-  onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void
 }
 
 export function FileAttachmentBar({
@@ -51,12 +44,9 @@ export function FileAttachmentBar({
   error,
   onRemove,
   onClearError,
-  fileInputRef,
-  onFileInputChange,
 }: FileAttachmentBarProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      {/* Error message */}
       {error && (
         <div className="flex items-center gap-1.5 text-xs text-destructive">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -71,7 +61,6 @@ export function FileAttachmentBar({
         </div>
       )}
 
-      {/* File chips */}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {files.map((f) => (
@@ -79,22 +68,28 @@ export function FileAttachmentBar({
           ))}
         </div>
       )}
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={onFileInputChange}
-      />
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Attach button — paperclip icon for the input area
-// ---------------------------------------------------------------------------
+/** Hidden file input — render once, unconditionally, wherever file attachments are used */
+export function HiddenFileInput({
+  fileInputRef,
+  onFileInputChange,
+}: {
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+}) {
+  return (
+    <input
+      ref={fileInputRef}
+      type="file"
+      multiple
+      className="hidden"
+      onChange={onFileInputChange}
+    />
+  )
+}
 
 export function AttachButton({ onClick }: { onClick: () => void }) {
   return (
@@ -108,10 +103,6 @@ export function AttachButton({ onClick }: { onClick: () => void }) {
     </button>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Drag overlay — shows when dragging files over the input area
-// ---------------------------------------------------------------------------
 
 export function DragOverlay({ visible }: { visible: boolean }) {
   if (!visible) return null

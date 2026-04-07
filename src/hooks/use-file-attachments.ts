@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useRef } from "react"
+import { useReducer, useCallback, useMemo, useRef } from "react"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,6 +192,15 @@ export function useFileAttachments() {
     [addFiles],
   )
 
+  const dragHandlers = useMemo(
+    () => ({
+      onDragOver: handleDragOver,
+      onDragLeave: handleDragLeave,
+      onDrop: handleDrop,
+    }),
+    [handleDragOver, handleDragLeave, handleDrop],
+  )
+
   return {
     files: state.files,
     error: state.error,
@@ -204,13 +213,7 @@ export function useFileAttachments() {
     openFilePicker,
     fileInputRef,
     handleFileInputChange,
-    // Drag/drop handlers — spread onto the drop zone container
-    dragHandlers: {
-      onDragOver: handleDragOver,
-      onDragLeave: handleDragLeave,
-      onDrop: handleDrop,
-    },
-    // Paste handler — spread onto the textarea/input
+    dragHandlers,
     handlePaste,
   }
 }
