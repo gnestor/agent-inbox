@@ -17,7 +17,7 @@ const TEST_WORKSPACE_PATH = resolve(__dirname, "../fixtures/test-workspace")
 config({ path: resolve(__dirname, "../../../.env") })
 
 function getConnectionString(): string {
-  return process.env.DATABASE_URL || "postgresql://localhost:5432/inbox_test"
+  return process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "postgresql://localhost:5432/inbox_test"
 }
 
 /** Truncate all data tables (preserving schema). Idempotent. */

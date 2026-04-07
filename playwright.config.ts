@@ -69,7 +69,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
     env: {
-      DATABASE_URL: process.env.DATABASE_URL || "postgresql://localhost:5432/inbox_test",
+      DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "postgresql://localhost:5432/inbox_test",
       VAULT_SECRET: process.env.VAULT_SECRET || "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "test-client-id",
       ALLOWED_ORIGINS: "http://localhost:5175,http://localhost:3002",

@@ -8,7 +8,7 @@ const AUTH_FILE = resolve(__dirname, ".auth/user.json")
 
 setup("authenticate", async ({ page }) => {
   // Insert a test user and session directly into PostgreSQL
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+  const client = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL })
   await client.connect()
 
   const now = new Date().toISOString()
