@@ -72,6 +72,16 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     })
   }, [thread?.id])
 
+  const sentMessages = thread ? thread.messages.filter((m) => !m.labelIds.includes("DRAFT")) : []
+  const lastMessage = sentMessages[sentMessages.length - 1] ?? thread?.messages[0]
+  const replyRecipients = useMemo(() => {
+    if (!lastMessage) return ""
+    const all = new Set<string>()
+    if (lastMessage.from) all.add(lastMessage.from.trim())
+    if (lastMessage.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
+    return [...all].map(formatEmailAddress).join(", ")
+  }, [lastMessage])
+
   const header = (
     <PanelHeader
       left={
@@ -169,15 +179,6 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
       </div>
     )
   }
-
-  const sentMessages = thread.messages.filter((m) => !m.labelIds.includes("DRAFT"))
-  const lastMessage = sentMessages[sentMessages.length - 1] ?? thread.messages[0]
-  const replyRecipients = useMemo(() => {
-    const all = new Set<string>()
-    if (lastMessage?.from) all.add(lastMessage.from.trim())
-    if (lastMessage?.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
-    return [...all].map(formatEmailAddress).join(", ")
-  }, [lastMessage])
 
   return (
     <div className="flex flex-col h-full">
