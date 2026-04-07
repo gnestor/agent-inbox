@@ -132,7 +132,8 @@ export function useSessionController({
     if (
       next.toolResults.size === prev.toolResults.size &&
       next.resolvedToolUseIDs.size === prev.resolvedToolUseIDs.size &&
-      next.authorEmails.length === prev.authorEmails.length
+      next.authorEmails.length === prev.authorEmails.length &&
+      next.fileMap.size === prev.fileMap.size
     ) {
       return prev
     }

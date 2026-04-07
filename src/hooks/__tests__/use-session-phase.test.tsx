@@ -39,7 +39,7 @@ vi.mock("../use-session-mutations", () => ({
 vi.mock("@/lib/session-pipeline", () => ({
   processTranscript: vi.fn((msgs: any[]) => ({
     classified: msgs,
-    lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [] },
+    lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [], fileMap: new Map() },
   })),
   filterVisible: vi.fn((msgs: any[]) => msgs),
 }))
