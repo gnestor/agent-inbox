@@ -45,8 +45,8 @@ export function getItemTimestamp(item: PluginItem | Record<string, unknown>, fie
       if (val) {
         if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
         if (typeof val === "string") {
-          const n = parseFloat(val)
-          if (!isNaN(n) && val.includes(".")) return new Date(n * 1000).toLocaleDateString()
+          const n = Number(val)
+          if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString()
           return new Date(val).toLocaleDateString()
         }
       }
@@ -57,8 +57,8 @@ export function getItemTimestamp(item: PluginItem | Record<string, unknown>, fie
     if (!val) continue
     if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
     if (typeof val === "string") {
-      const n = parseFloat(val)
-      if (!isNaN(n) && val.includes(".")) return new Date(n * 1000).toLocaleDateString()
+      const n = Number(val)
+      if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString()
       return new Date(val).toLocaleDateString()
     }
   }
