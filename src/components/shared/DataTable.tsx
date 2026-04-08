@@ -83,19 +83,19 @@ export function DataTable({
   })
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 h-full">
       {shouldSearch && (
-        <div className="px-1">
+        <div className="px-1 shrink-0">
           <Input
             placeholder="Filter..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="h-8 text-xs max-w-xs"
+            className="h-8 text-xs"
           />
         </div>
       )}
-      <div className="overflow-x-auto">
-        <Table>
+      <div className="overflow-auto flex-1 min-h-0">
+        <Table className="w-auto min-w-full">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -131,7 +131,7 @@ export function DataTable({
         </Table>
       </div>
       {shouldPaginate && (
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between px-1 shrink-0">
           <span className="text-xs text-muted-foreground">
             {table.getFilteredRowModel().rows.length} row{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
           </span>

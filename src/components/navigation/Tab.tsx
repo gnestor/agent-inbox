@@ -361,15 +361,26 @@ function DesktopTab({ id, children }: TabProps) {
     return () => exitingPanel.removeEventListener("transitionend", onEnd)
   }, [renderedChildren, children, clearExit])
 
-  // Intercept horizontal wheel → redirect to outer scroll
+  // Intercept horizontal wheel → redirect to outer scroll,
+  // but let elements with their own horizontal scroll (tables, code blocks) handle it
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault()
-        el.scrollLeft += e.deltaX
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
+      // Walk up from target to find a horizontally scrollable ancestor that can
+      // still scroll in the wheel direction. If it's at the edge, let the tab handle it.
+      let node = e.target as HTMLElement | null
+      while (node && node !== el) {
+        if (node.scrollWidth > node.clientWidth + 1) {
+          const atLeft = node.scrollLeft <= 0
+          const atRight = node.scrollLeft + node.clientWidth >= node.scrollWidth - 1
+          if ((e.deltaX < 0 && !atLeft) || (e.deltaX > 0 && !atRight)) return
+        }
+        node = node.parentElement
       }
+      e.preventDefault()
+      el.scrollLeft += e.deltaX
     }
     el.addEventListener("wheel", handler, { passive: false })
     return () => el.removeEventListener("wheel", handler)

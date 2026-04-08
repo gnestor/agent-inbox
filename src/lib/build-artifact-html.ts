@@ -1,18 +1,5 @@
 import { escapeForScript } from "./artifact-transform"
-
-// CSS variable names to forward from the app theme into the iframe
-const THEME_VARS = [
-  "background", "foreground", "card", "card-foreground",
-  "primary", "primary-foreground", "secondary", "secondary-foreground",
-  "muted", "muted-foreground", "border", "input", "ring",
-  "destructive", "destructive-foreground",
-  "accent", "accent-foreground",
-  "popover", "popover-foreground",
-  "chart-1", "chart-2", "chart-3", "chart-4", "chart-5",
-  "radius", "font-sans", "font-mono",
-] as const
-
-const THEME_VARS_JSON = JSON.stringify(THEME_VARS)
+import { THEME_VARS_JSON } from "./iframe-theme"
 
 /**
  * Build an HTML document that loads React UMD, Tailwind CDN, and the
@@ -89,6 +76,8 @@ export function buildArtifactHtml(
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+  --tracking-normal: var(--tracking-normal);
 }
 @layer base {
   * { @apply border-border; }
@@ -98,6 +87,8 @@ export function buildArtifactHtml(
 <style>
 body {
   font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-normal, 0);
   padding: 1px;
   overflow-x: hidden;
 }

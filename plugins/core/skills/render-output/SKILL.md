@@ -130,6 +130,43 @@ Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, B
 See `references/component-patterns.md` for complete examples.
 See `references/app-components.md` for real-world examples from the Inbox app.
 
+## HTML Outputs
+
+HTML outputs (`.html` files and `type: "html"`) render inside a sandboxed iframe. The app injects CSS theme variables (`--foreground`, `--background`, `--border`, etc.) onto `:root`, so they are available via `var()`.
+
+### Styling Rules
+
+- **Never hardcode colors** — no `color: #1a1a1a`, `background: white`, or any hex/rgb values. Use CSS variables: `var(--foreground)`, `var(--background)`, `var(--muted-foreground)`, etc.
+- **Never set font-family** — the app provides `var(--font-sans)` on `body`
+- **No root-level styling** — don't set `max-width`, `padding`, `color`, `background`, or `font-family` on the root element or `<body>`. The app handles these.
+- **Available color variables**: `--foreground`, `--background`, `--muted-foreground`, `--primary`, `--primary-foreground`, `--secondary`, `--secondary-foreground`, `--border`, `--card`, `--card-foreground`, `--accent`, `--accent-foreground`, `--chart-1` through `--chart-5`
+- **Tailwind is NOT available** in HTML outputs (unlike React artifacts). Use plain CSS with `var()` references.
+
+### Template
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  h2 { font-size: 14px; font-weight: 600; }
+  p { font-size: 14px; }
+  .secondary { font-size: 12px; color: var(--muted-foreground); }
+  .border-b { border-bottom: 1px solid var(--border); }
+  a { color: var(--primary); }
+</style>
+</head>
+<body>
+  <h2>Title</h2>
+  <p>Content inherits foreground color from the app theme.</p>
+  <p class="secondary">Secondary text.</p>
+</body>
+</html>
+```
+
+**Prefer React artifacts (`.jsx`)** over HTML for anything interactive or complex. HTML outputs are best for simple static content or reports.
+
 ## Table (render_output)
 ```json
 {

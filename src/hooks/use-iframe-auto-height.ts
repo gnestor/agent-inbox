@@ -1,6 +1,5 @@
 import { useRef, useEffect } from "react"
-
-const EMAIL_THEME_VARS = ["foreground", "card", "font-sans", "font-mono"] as const
+import { THEME_VARS } from "@/lib/iframe-theme"
 
 /**
  * Manages iframe auto-height by observing the iframe body's scroll height
@@ -19,7 +18,7 @@ export function useIframeAutoHeight(srcDoc: string) {
       if (!doc) return
       const parentStyle = getComputedStyle(document.documentElement)
       const root = doc.documentElement
-      for (const name of EMAIL_THEME_VARS) {
+      for (const name of THEME_VARS) {
         const val = parentStyle.getPropertyValue(`--${name}`).trim()
         if (val) root.style.setProperty(`--${name}`, val)
       }

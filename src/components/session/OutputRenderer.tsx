@@ -5,6 +5,8 @@ import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
 import { DataTable } from "@/components/shared/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
+import { useTheme } from "@hammies/frontend"
+import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@/lib/iframe-theme"
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
 
@@ -76,7 +78,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
     case "html":
       return <HtmlOutput data={spec.data} fillPanel={fillPanel} />
     case "table":
-      return <TableOutput data={spec.data} />
+      return <TableOutput data={spec.data} fillPanel={fillPanel} />
     case "json":
       return <JsonOutput data={spec.data} />
     case "chart": {
@@ -137,6 +139,35 @@ function MarkdownOutput({ data }: { data: string }) {
 
 const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
 
+/** Resolved dark/light state — reacts to both manual theme changes and OS-level
+ *  dark mode switches when the user preference is "system". */
+function useResolvedDark(): boolean {
+  const { theme } = useTheme()
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"))
+  useEffect(() => {
+    const observer = new MutationObserver(() => setIsDark(document.documentElement.classList.contains("dark")))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
+  // Re-sync immediately when theme preference changes
+  useEffect(() => { setIsDark(document.documentElement.classList.contains("dark")) }, [theme])
+  return isDark
+}
+
+/** Snapshot current computed theme vars into a <style> block for cross-origin iframes.
+ *  Recomputes when the resolved theme changes (manual toggle or OS dark mode). */
+function useThemeStyle(): string {
+  const isDark = useResolvedDark()
+  return useMemo(() => {
+    const style = getComputedStyle(document.documentElement)
+    const vars = THEME_VARS
+      .map(v => { const val = style.getPropertyValue(`--${v}`).trim(); return val ? `--${v}:${val}` : "" })
+      .filter(Boolean)
+      .join(";")
+    return `<style>:root{${vars}}${IFRAME_BASE_CSS}</style>`
+  }, [isDark])
+}
+
 function useIframeAutoHeight(max = 600) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(300)
@@ -155,12 +186,9 @@ function useIframeAutoHeight(max = 600) {
 
 function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) {
   const { ref: iframeRef, height } = useIframeAutoHeight()
+  const themeStyle = useThemeStyle()
 
-  const srcDoc = useMemo(() => {
-    if (data.includes('</body>')) return data.replace('</body>', HEIGHT_SCRIPT + '</body>')
-    if (data.includes('</html>')) return data.replace('</html>', HEIGHT_SCRIPT + '</html>')
-    return data + HEIGHT_SCRIPT
-  }, [data])
+  const srcDoc = useMemo(() => injectIntoHtml(data, themeStyle, HEIGHT_SCRIPT), [data, themeStyle])
 
   return (
     <iframe
@@ -176,8 +204,15 @@ function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) 
 
 // --- Table ---
 
-function TableOutput({ data }: { data: TableData }) {
-  return <DataTable columns={data.columns} rows={data.rows} />
+function TableOutput({ data, fillPanel }: { data: TableData; fillPanel?: boolean }) {
+  if (fillPanel) {
+    return (
+      <div className="h-full">
+        <DataTable columns={data.columns} rows={data.rows} paginated={false} />
+      </div>
+    )
+  }
+  return <DataTable columns={data.columns} rows={data.rows} pageSize={20} />
 }
 
 // --- JSON tree ---
@@ -404,18 +439,20 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
 
   // Fetch HTML content and inject height script — avoids allow-same-origin
   // (which would trigger CORS on external images like Klaviyo CDN assets)
-  const [htmlSrcDoc, setHtmlSrcDoc] = useState<string | null>(null)
+  const themeStyle = useThemeStyle()
+  const [rawHtml, setRawHtml] = useState<string | null>(null)
   useEffect(() => {
     if (!isHtml) return
     fetch(downloadUrl)
       .then(r => r.text())
-      .then(html => {
-        if (html.includes('</body>')) setHtmlSrcDoc(html.replace('</body>', HEIGHT_SCRIPT + '</body>'))
-        else if (html.includes('</html>')) setHtmlSrcDoc(html.replace('</html>', HEIGHT_SCRIPT + '</html>'))
-        else setHtmlSrcDoc(html + HEIGHT_SCRIPT)
-      })
+      .then(setRawHtml)
       .catch((err) => console.warn("[output] Failed to fetch HTML file:", err))
   }, [downloadUrl, isHtml])
+
+  const htmlSrcDoc = useMemo(() => {
+    if (!rawHtml) return null
+    return injectIntoHtml(rawHtml, themeStyle, HEIGHT_SCRIPT)
+  }, [rawHtml, themeStyle])
 
   const { ref: htmlRef, height: htmlHeight } = useIframeAutoHeight()
 

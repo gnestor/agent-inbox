@@ -6,6 +6,7 @@ import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
+import { IFRAME_BASE_CSS } from "@/lib/iframe-theme"
 import { usePlugins, usePluginItems, usePluginSubItems, usePluginItem } from "@/hooks/use-plugins"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { useNavActions } from "@/lib/navigation-store"
@@ -86,10 +87,9 @@ function formatTs(ts: string): string {
 
 function HtmlMessageBody({ html }: { html: string }) {
   const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    ${IFRAME_BASE_CSS}
     *, *::before, *::after { box-sizing: border-box; background: none !important; }
-    html, body { margin: 0; padding: 0; overflow: hidden; background: transparent !important;
-      color: var(--foreground, inherit); font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-      font-size: 14px; line-height: 1.5; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: transparent !important; }
     img { max-width: 100%; height: auto; }
     a { color: var(--foreground, inherit) !important; opacity: 0.7; word-break: break-all; }
     blockquote { margin: 0.5em 0; padding-left: 0.75em; border-left: 2px solid color-mix(in srgb, var(--foreground) 20%, transparent); }
