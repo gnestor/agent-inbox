@@ -161,12 +161,12 @@ export const PRESENT_FILES_NAMES = new Set(["present_files", "mcp__artifact__pre
 export function isSubagentMessage(message: { type: string; message: unknown }): boolean {
   const raw = message.message as Record<string, unknown>
   // isSidechain: true = subagent conversation
-  // parentUuid: set = message in a parent-child chain (agent → subagent)
   // sourceToolUseID: set = message injected by a tool (skill, agent)
   // agentId on user messages = prompt sent TO a subagent
+  // NOTE: parentUuid is NOT a subagent signal — it's set on all messages in
+  // multi-turn conversations (resumes) for conversation threading.
   return !!(
     raw.isSidechain === true ||
-    raw.parentUuid ||
     raw.sourceToolUseID ||
     (raw.agentId && message.type === "user")
   )

@@ -82,6 +82,7 @@ export { DEFAULT_TRANSCRIPT_VISIBILITY } from "@/lib/session-pipeline"
 const LookupsContext = createContext<MessageLookups>({
   toolResults: new Map(),
   resolvedToolUseIDs: new Set(),
+  agentDescriptions: new Map(),
   authorEmails: [],
   fileMap: new Map(),
 })
@@ -282,6 +283,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
   onAnswer?: (answers: Record<string, string>) => Promise<void>
   onArtifactLoaded?: () => void
 }) {
+  const lookups = useLookups()
   switch (cm.displayType) {
     case "system_attached":
       return (
@@ -327,7 +329,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
       if (!cm.text && cm.ideRefs.length === 0) return null
       const isCurrentUser = !cm.isSubagent && (!cm.authorEmail || cm.authorEmail === currentUserEmail)
       const profile = cm.authorEmail ? userProfiles?.get(cm.authorEmail) : undefined
-      const authorLabel = isCurrentUser ? "You" : cm.isSubagent ? cm.agentLabel : (profile?.name || cm.authorName || "User")
+      const sourceToolId = (cm.source.message as Record<string, unknown>).sourceToolUseID as string | undefined
+      const agentDesc = sourceToolId ? lookups.agentDescriptions.get(sourceToolId) : undefined
+      const authorLabel = isCurrentUser ? "You" : cm.isSubagent ? (agentDesc || cm.agentLabel) : (profile?.name || cm.authorName || "User")
 
       const { attachments: fileAttachments, cleanText } = cm.text
         ? parseAttachments(cm.text)
@@ -337,7 +341,11 @@ const TranscriptEntry = memo(function TranscriptEntry({
       return (
         <MessageBubble label={authorLabel} align="right">
           <div className="space-y-1.5">
-            {cleanText && <div className="text-sm whitespace-pre-wrap break-words">{cleanText.replace(/\\\n/g, "\n")}</div>}
+            {cleanText && (
+              <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{cleanText.replace(/\\\n/g, "\n")}</ReactMarkdown>
+              </div>
+            )}
             {fileAttachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5 justify-end">
                 {fileAttachments.map((att, i) => {

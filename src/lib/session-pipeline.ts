@@ -41,6 +41,8 @@ export interface MessageLookups {
   authorEmails: string[]
   /** file path → file_text from create_file tool_use blocks (latest version wins) */
   fileMap: Map<string, string>
+  /** tool_use_id → human-readable description for Agent/Skill tool calls */
+  agentDescriptions: Map<string, string>
 }
 
 export interface IdeRef {
@@ -260,6 +262,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
   const resolvedToolUseIDs = new Set<string>()
   const emailSet = new Set<string>()
   const fileMap = new Map<string, string>()
+  const agentDescriptions = new Map<string, string>()
 
   for (const m of messages) {
     const email = (m.message as any).authorEmail
@@ -285,6 +288,15 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
                 ? block.content.map((c: any) => c.text || c.tool_name || "").join("\n")
                 : ""
             if (text) toolResults.set(block.tool_use_id, text)
+          }
+          // Collect Agent tool descriptions for subagent labeling
+          if (
+            block.type === "tool_use" &&
+            block.name === "Agent" &&
+            typeof block.id === "string" &&
+            typeof (block as any).input?.description === "string"
+          ) {
+            agentDescriptions.set(block.id, (block as any).input.description)
           }
           // Collect create_file content for present_files rendering
           if (
@@ -314,6 +326,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
     resolvedToolUseIDs,
     authorEmails: [...emailSet].sort(),
     fileMap,
+    agentDescriptions,
   }
 }
 
@@ -353,6 +366,11 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
     const authorName = (msg as any).authorName as string | undefined
 
     const userBase = { ...base, authorEmail, authorName }
+
+    // SDK-injected XML messages (task notifications, etc.) — hide from transcript
+    if (text && /^\s*<[a-z]+-[\w-]+>[\s\S]*<\/[a-z]+-[\w-]+>\s*$/.test(text)) {
+      return { ...userBase, displayType: "hidden" }
+    }
 
     // Artifact action
     const actionMatch = text?.match(/^<artifact_action\s+intent="([^"]*)">([\s\S]*?)<\/artifact_action>$/)

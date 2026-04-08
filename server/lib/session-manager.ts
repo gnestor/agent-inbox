@@ -997,7 +997,7 @@ export async function abortRunningSession(sessionId: string): Promise<boolean> {
     controller.abort()
     runningQueries.delete(sessionId)
     pendingQuestions.delete(sessionId)
-    await updateSessionStatus(sessionId, "complete", "Aborted by user")
+    await updateSessionStatus(sessionId, "complete")
     return true
   }
   return false
