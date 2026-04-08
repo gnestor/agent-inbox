@@ -40,6 +40,22 @@ function isAllowedImport(line: string): boolean {
   return ALLOWED_IMPORTS.some((pkg) => new RegExp(`from\\s+['"]${pkg.replace("/", "\\/")}`, "").test(line))
 }
 
+/** Known UI component names that auto-import provides from @hammies/frontend */
+const ARTIFACT_COMPONENTS = new Set([
+  "Button", "Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter", "CardAction",
+  "Badge", "Input", "Textarea", "Label",
+  "Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel", "SelectTrigger", "SelectValue",
+  "Separator", "Switch", "Checkbox",
+  "Tabs", "TabsList", "TabsTrigger", "TabsContent",
+  "Table", "TableHeader", "TableBody", "TableFooter", "TableRow", "TableHead", "TableCell", "TableCaption",
+  "Skeleton", "Progress", "Avatar", "AvatarImage", "AvatarFallback",
+  "Accordion", "AccordionItem", "AccordionTrigger", "AccordionContent",
+  "Alert", "AlertTitle", "AlertDescription",
+  "Toggle", "ToggleGroup", "ToggleGroupItem",
+  "Tooltip", "TooltipTrigger", "TooltipContent", "TooltipProvider",
+  "RadioGroup", "RadioGroupItem", "Spinner",
+])
+
 export async function transformArtifactCode(source: string): Promise<TransformResult> {
   if (!source) return { code: "", exportedName: null }
 
@@ -59,10 +75,14 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
       continue
     }
 
-    // Strip destructuring from undefined globals (e.g. `const { Card, ... } = Components`)
-    // These names will be provided by auto-import instead.
-    if (/^(?:const|let|var)\s+\{[^}]+\}\s*=\s*\w+\s*;?\s*$/.test(trimmed)) {
-      continue
+    // Strip destructuring from hallucinated globals (e.g. `const { Card, ... } = Components`)
+    // Only strip if destructured names overlap with known UI components.
+    const destructMatch = trimmed.match(/^(?:const|let|var)\s+\{([^}]+)\}\s*=\s*\w+\s*;?\s*$/)
+    if (destructMatch) {
+      const names = destructMatch[1]!.split(",").map((s) => s.split(":").pop()!.trim())
+      if (names.some((n) => ARTIFACT_COMPONENTS.has(n))) {
+        continue
+      }
     }
 
     // Detect export default — keep it in the code, record the name for mounting
@@ -108,20 +128,6 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
   code = `${reactImport}\n${code}`
 
   // Auto-inject missing @hammies/frontend component imports
-  const ARTIFACT_COMPONENTS = [
-    "Button", "Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter", "CardAction",
-    "Badge", "Input", "Textarea", "Label",
-    "Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel", "SelectTrigger", "SelectValue",
-    "Separator", "Switch", "Checkbox",
-    "Tabs", "TabsList", "TabsTrigger", "TabsContent",
-    "Table", "TableHeader", "TableBody", "TableFooter", "TableRow", "TableHead", "TableCell", "TableCaption",
-    "Skeleton", "Progress", "Avatar", "AvatarImage", "AvatarFallback",
-    "Accordion", "AccordionItem", "AccordionTrigger", "AccordionContent",
-    "Alert", "AlertTitle", "AlertDescription",
-    "Toggle", "ToggleGroup", "ToggleGroupItem",
-    "Tooltip", "TooltipTrigger", "TooltipContent", "TooltipProvider",
-    "RadioGroup", "RadioGroupItem", "Spinner",
-  ]
   // Consolidate all @hammies/frontend imports (barrel and per-component paths) into one.
   const alreadyImportedComponents = new Set<string>()
   code = code.replace(
@@ -133,10 +139,9 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
   )
   // Find components used in code but not yet imported (skip locally declared ones)
   const localDecls = new Set<string>()
-  // Direct declarations: function Foo, const Foo, class Foo
   for (const m of code.matchAll(/(?:function|class)\s+(\w+)/g)) localDecls.add(m[1]!)
   for (const m of code.matchAll(/(?:const|let|var)\s+(\w+)\s*=/g)) localDecls.add(m[1]!)
-  const usedComponents = ARTIFACT_COMPONENTS.filter((name) =>
+  const usedComponents = [...ARTIFACT_COMPONENTS].filter((name) =>
     !alreadyImportedComponents.has(name) && !localDecls.has(name) && new RegExp(`\\b${name}\\b`).test(code)
   )
   for (const c of usedComponents) alreadyImportedComponents.add(c)
@@ -153,8 +158,8 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
   code = code.replace(/\/\n\/([gimsuy]*)/g, "/\\n/$1")
 
   // Auto-wrap bare top-level `return` in a default-exported App component.
-  // Agents sometimes emit data + JSX without wrapping in a function.
-  if (!exportedName && /^return\s*[\s(]/m.test(code)) {
+  // Only matches unindented `return` (column 0) to avoid matching returns inside functions.
+  if (!exportedName && code.split("\n").some((l) => /^return[\s(]/.test(l))) {
     // Split imports from body — imports must stay at top level
     const importLines: string[] = []
     const bodyLines: string[] = []

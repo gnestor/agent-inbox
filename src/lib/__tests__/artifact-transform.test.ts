@@ -237,6 +237,14 @@ export default App`
     expect(importMatch![1]).not.toContain("Card")
   })
 
+  it("preserves legitimate destructuring (non-component names)", async () => {
+    const source = `const { data, error } = response;
+function App() { return <div>{data}</div> }
+export default App`
+    const result = await transformArtifactCode(source)
+    expect(result.code).toContain("response")
+  })
+
   it("strips destructuring from undefined globals and auto-imports instead", async () => {
     const source = `const { Card, CardHeader, CardTitle, CardContent, Badge, Table } = Components;
 function App() { return <Card><CardContent><Badge>x</Badge></CardContent></Card> }

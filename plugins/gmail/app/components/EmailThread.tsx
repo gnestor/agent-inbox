@@ -80,7 +80,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
     if (lastMessage.from) all.add(lastMessage.from.trim())
     if (lastMessage.to) lastMessage.to.split(",").forEach((e) => all.add(e.trim()))
     return [...all].map(formatEmailAddress).join(", ")
-  }, [lastMessage])
+  }, [lastMessage?.id])
 
   const header = (
     <PanelHeader
