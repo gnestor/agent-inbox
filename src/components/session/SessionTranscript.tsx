@@ -283,7 +283,6 @@ const TranscriptEntry = memo(function TranscriptEntry({
   onAnswer?: (answers: Record<string, string>) => Promise<void>
   onArtifactLoaded?: () => void
 }) {
-  const lookups = useLookups()
   switch (cm.displayType) {
     case "system_attached":
       return (
@@ -316,7 +315,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
     case "user_skill":
       return (
-        <TranscriptAccordionEntry label={cm.skillBlock!.name} color="text-muted-foreground" bold={false}>
+        <TranscriptAccordionEntry label={<ToolCallLabel name="Skill" summary={cm.skillBlock!.name} />} color="text-muted-foreground" bold={false}>
           <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
               {cm.skillBlock!.content}
@@ -325,13 +324,29 @@ const TranscriptEntry = memo(function TranscriptEntry({
         </TranscriptAccordionEntry>
       )
 
+    case "subagent_group": {
+      const children = cm.children ?? []
+      if (children.length === 0) return null
+      return (
+        <SubagentAccordion
+          label={cm.agentLabel}
+          sessionId={sessionId}
+          children={children}
+          visibility={visibility}
+          onOpenPanel={onOpenPanel}
+          onAction={onAction}
+          onAnswer={onAnswer}
+          onArtifactLoaded={onArtifactLoaded}
+        />
+      )
+    }
+
     case "user_message": {
       if (!cm.text && cm.ideRefs.length === 0) return null
       const isCurrentUser = !cm.isSubagent && (!cm.authorEmail || cm.authorEmail === currentUserEmail)
       const profile = cm.authorEmail ? userProfiles?.get(cm.authorEmail) : undefined
-      const sourceToolId = (cm.source.message as Record<string, unknown>).sourceToolUseID as string | undefined
-      const agentDesc = sourceToolId ? lookups.agentDescriptions.get(sourceToolId) : undefined
-      const authorLabel = isCurrentUser ? "You" : cm.isSubagent ? (agentDesc || cm.agentLabel) : (profile?.name || cm.authorName || "User")
+
+      const authorLabel = isCurrentUser ? "You" : (profile?.name || cm.authorName || "User")
 
       const { attachments: fileAttachments, cleanText } = cm.text
         ? parseAttachments(cm.text)
@@ -425,7 +440,8 @@ const TranscriptEntry = memo(function TranscriptEntry({
     }
 
     case "plan": {
-      const planTitle = cm.text.match(/^#\s+(.+)/m)?.[1] || "Plan"
+      const planHeading = cm.text.match(/^#\s+(.+)/m)?.[1]
+      const planTitle = planHeading ? `Plan: ${planHeading}` : "Plan"
       return (
         <OutputAccordion
           spec={{ type: "markdown", data: cm.text, title: planTitle }}
@@ -442,13 +458,84 @@ const TranscriptEntry = memo(function TranscriptEntry({
 })
 
 // ---------------------------------------------------------------------------
+// Subagent accordion — collapsed by default with expand-to-panel button
+// ---------------------------------------------------------------------------
+
+function SubagentAccordion({ label, sessionId, children, visibility, onOpenPanel, onAction, onAnswer, onArtifactLoaded }: {
+  label: string
+  sessionId?: string
+  children: ClassifiedMessage[]
+  visibility: TranscriptVisibility
+  onOpenPanel?: (spec: OutputSpec, sequence: number) => void
+  onAction?: (intent: string) => void
+  onAnswer?: (answers: Record<string, string>) => Promise<void>
+  onArtifactLoaded?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const { pushPanel } = useNavigation()
+  const rehypePlugins = useRehypeHighlight()
+
+  function handleExpand() {
+    if (!sessionId) return
+    const seq = children[0]?.source.sequence ?? 0
+    pushPanel({
+      id: `subagent:${sessionId}:${seq}`,
+      type: "subagent",
+      props: { sessionId, agentLabel: label, children },
+    })
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 py-1.5 w-full">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 flex-1 min-w-0 text-left">
+          <ChevronRight className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`} />
+          <span className="text-xs text-muted-foreground truncate"><span className="font-medium uppercase">Subagent</span> {label}</span>
+        </button>
+        <button type="button" className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0" onClick={handleExpand} title="Open in panel">
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {open && (
+        <div className="pl-[18px] space-y-1">
+          {children.map((child) => {
+            if (child.displayType === "user_message" && child.text) {
+              return (
+                <div key={child.source.sequence} className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>{child.text}</ReactMarkdown>
+                </div>
+              )
+            }
+            if (child.displayType === "assistant_text_only" || child.displayType === "assistant_blocks") {
+              return (
+                <TranscriptEntry
+                  key={child.source.sequence}
+                  cm={{ ...child, isSubagent: false }}
+                  visibility={visibility}
+                  sessionId={sessionId}
+                  onOpenPanel={onOpenPanel}
+                  onAction={onAction}
+                  onAnswer={onAnswer}
+                  onArtifactLoaded={onArtifactLoaded}
+                />
+              )
+            }
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // UI components
 // ---------------------------------------------------------------------------
 
 function TranscriptAccordionEntry({
   label, color, bold = true, defaultOpen = false, extra, children,
 }: {
-  label: string; color: string; bold?: boolean; defaultOpen?: boolean; extra?: ReactNode; children?: ReactNode
+  label: ReactNode; color: string; bold?: boolean; defaultOpen?: boolean; extra?: ReactNode; children?: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -560,6 +647,12 @@ export function AskUserOptions({ questions, selectedLabels }: { questions: AskUs
 // Output / Artifact components
 // ---------------------------------------------------------------------------
 
+function OutputAccordionTitle({ title }: { title: string }) {
+  const colonIdx = title.indexOf(": ")
+  if (colonIdx === -1) return <>{title}</>
+  return <><span className="font-medium uppercase">{title.slice(0, colonIdx)}</span>{title.slice(colonIdx)}</>
+}
+
 function OutputAccordion({ spec, sessionId, sequence, onOpenPanel, onAction, onArtifactLoaded }: {
   spec: OutputSpec; sessionId: string; sequence: number; onOpenPanel?: (spec: OutputSpec, sequence: number) => void; onAction?: (intent: string) => void; onArtifactLoaded?: () => void
 }) {
@@ -577,7 +670,7 @@ function OutputAccordion({ spec, sessionId, sequence, onOpenPanel, onAction, onA
       <div className="flex items-center gap-1.5 py-1.5 w-full">
         <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 flex-1 min-w-0 text-left">
           <ChevronRight className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`} />
-          <span className="text-xs text-muted-foreground truncate">{spec.title || spec.type}</span>
+          <span className="text-xs text-muted-foreground truncate"><OutputAccordionTitle title={spec.title || spec.type} /></span>
         </button>
         {onOpenPanel && (
           <button type="button" className="p-1 rounded-md hover:bg-secondary text-muted-foreground shrink-0" onClick={() => onOpenPanel(spec, sequence)} title="Open in panel">
@@ -685,11 +778,13 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
       const resultText = lookups.toolResults.get(block.id) ?? ""
       return <AskUserQuestionEntry questions={block.input.questions as AskUserQuestion[]} resultText={resultText} sessionId={sessionId} sequence={sequence} onAnswer={!resultText ? onAnswer : undefined} />
     }
+    // Agent tool calls are replaced by subagent_group entries — hide them
+    if (block.name === "Agent") return null
     if (!visibility.toolCalls) return null
     const displayName = TOOL_DISPLAY_NAME[block.name] ?? block.name
     const summary = toolUseSummary(block.name, block.input)
     return (
-      <TranscriptAccordionEntry label={summary ? `${displayName} ${summary}` : displayName} color="text-muted-foreground" bold={false}>
+      <TranscriptAccordionEntry label={<ToolCallLabel name={displayName} summary={summary} />} color="text-muted-foreground" bold={false}>
         <ToolCallDetail name={block.name} input={block.input} toolUseId={block.id} />
       </TranscriptAccordionEntry>
     )
@@ -698,7 +793,7 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
   if (block.type === "thinking") {
     if (!block.thinking || !visibility.thinking) return null
     return (
-      <TranscriptAccordionEntry label="Thinking" color="text-muted-foreground" bold={false} defaultOpen>
+      <TranscriptAccordionEntry label={<span className="font-medium uppercase">Think</span>} color="text-muted-foreground" bold={false} defaultOpen>
         <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>{block.thinking}</ReactMarkdown>
         </div>
@@ -710,15 +805,17 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
 })
 
 function ToolCallGroup({ blocks }: { blocks: ToolUseBlock[] }) {
-  const summary = blocks.length === 1 ? toolUseSummary(blocks[0]!.name, blocks[0]!.input) : ""
+  // Agent tool calls are replaced by subagent_group entries — filter them out
+  const visible = blocks.filter((b) => b.name !== "Agent")
+  if (visible.length === 0) return null
   const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
-  const label = blocks.length === 1
-    ? (summary ? `${displayName(blocks[0]!.name)} ${summary}` : displayName(blocks[0]!.name))
-    : blocks.map((b) => displayName(b.name)).join(", ")
+  const label = visible.length === 1
+    ? <ToolCallLabel name={displayName(visible[0]!.name)} summary={toolUseSummary(visible[0]!.name, visible[0]!.input)} />
+    : <span className="font-medium uppercase">{visible.map((b) => displayName(b.name)).join(", ")}</span>
   return (
     <TranscriptAccordionEntry label={label} color="text-muted-foreground" bold={false}>
       <div className="space-y-2">
-        {blocks.map((block, i) => <ToolCallDetail key={i} name={block.name} input={block.input} toolUseId={block.id} />)}
+        {visible.map((block, i) => <ToolCallDetail key={i} name={block.name} input={block.input} toolUseId={block.id} />)}
       </div>
     </TranscriptAccordionEntry>
   )
@@ -742,6 +839,11 @@ function ArtifactActionDetail({ intent, dataStr }: { intent: string; dataStr: st
       {showOutput && <pre className="text-[11px] rounded overflow-x-auto max-h-[300px] overflow-y-auto text-muted-foreground font-mono whitespace-pre-wrap break-words mt-1">{payload}</pre>}
     </div>
   )
+}
+
+function ToolCallLabel({ name, summary }: { name: string; summary: string }) {
+  if (!summary) return <span className="font-medium uppercase">{name}</span>
+  return <><span className="font-medium uppercase">{name}</span> {summary}</>
 }
 
 function ToolCallDetail({ name, input, toolUseId }: { name: string; input: Record<string, unknown>; toolUseId?: string }) {

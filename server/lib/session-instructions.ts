@@ -29,4 +29,6 @@ When a session includes source context (email thread, Notion task, Gorgias ticke
    - \`html\` for formatted content needing custom styling
    - \`chart\` for data visualization
    - \`react\` for custom UI that doesn't fit the other types (interactive forms, multi-section layouts, styled cards). The \`data\` field must be \`{ code: "<JSX string>" }\` — never pass raw data objects as react type.
+
+6. **Use \`AskUserQuestion\` for all user input** — Never ask questions via plain text messages. Always use the \`AskUserQuestion\` tool, which renders interactive option buttons in the app. This applies to proposing actions, confirming plans, requesting clarification, and any other situation where you need user input.
 `

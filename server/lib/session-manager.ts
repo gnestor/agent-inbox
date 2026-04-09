@@ -1,4 +1,4 @@
-import { resolve, join } from "path"
+import { resolve, join, dirname } from "path"
 import * as fs from "fs"
 import { homedir } from "os"
 import { createLogger } from "./logger.js"
@@ -1519,6 +1519,8 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
     // Collect thinking blocks from partial assistant messages so they can be
     // merged into the next complete assistant message.
     let pendingThinking: Array<Record<string, unknown>> = []
+    // Collect Agent tool_use blocks from partial messages for subagent positioning
+    let pendingAgentToolUse: Array<Record<string, unknown>> = []
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       const msg = JSON.parse(lines[lineIdx]!)
@@ -1551,22 +1553,26 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
         if (msg.type === "assistant") {
           const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
           if (!stop) {
-            // Partial message — collect thinking blocks for the next complete message
+            // Partial message — collect thinking and Agent tool_use blocks
             const content = msg.message?.content
             if (Array.isArray(content)) {
               for (const block of content) {
                 if (block?.type === "thinking" && block.thinking) {
                   pendingThinking.push(block)
                 }
+                if (block?.type === "tool_use" && block.name === "Agent") {
+                  pendingAgentToolUse.push(block)
+                }
               }
             }
             continue
           }
 
-          // Complete message — prepend any collected thinking blocks
-          if (pendingThinking.length > 0 && Array.isArray(msg.message?.content)) {
-            msg.message.content = [...pendingThinking, ...msg.message.content]
+          // Complete message — prepend any collected thinking/Agent blocks
+          if ((pendingThinking.length > 0 || pendingAgentToolUse.length > 0) && Array.isArray(msg.message?.content)) {
+            msg.message.content = [...pendingThinking, ...pendingAgentToolUse, ...msg.message.content]
             pendingThinking = []
+            pendingAgentToolUse = []
           }
         }
 
@@ -1578,6 +1584,119 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
           message: msg,
           createdAt: msg.timestamp || new Date().toISOString(),
         })
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Merge subagent JSONL files from the subagents/ directory.
+    // Each subagent's messages are inserted as a contiguous block right after
+    // the Agent tool_result in the main session (preserving grouping).
+    // -----------------------------------------------------------------------
+    const subagentsDir = join(dirname(sessionFile), sessionId, "subagents")
+    if (fs.existsSync(subagentsDir)) {
+      // Collect Agent tool_use IDs from the main session in order
+      const agentToolUseIds: string[] = []
+      for (const m of messages) {
+        const content: any[] | undefined =
+          (m.message as any)?.message?.content ?? (m.message as any)?.content
+        if (!Array.isArray(content)) continue
+        for (const block of content) {
+          if (block?.type === "tool_use" && block.name === "Agent" && block.id) {
+            agentToolUseIds.push(block.id)
+          }
+        }
+      }
+
+      const subFiles = fs.readdirSync(subagentsDir).filter((f: string) => f.endsWith(".jsonl")).sort()
+
+      // Process each subagent and collect its parsed messages
+      const subagentBatches: Array<{ toolUseId: string; msgs: Array<Record<string, unknown>> }> = []
+
+      for (let si = 0; si < subFiles.length; si++) {
+        const subFile = subFiles[si]!
+        const subPath = join(subagentsDir, subFile)
+        const subContent = fs.readFileSync(subPath, "utf-8")
+        const subLines = subContent.trim().split("\n")
+        const agentId = subFile.replace(/^agent-/, "").replace(/\.jsonl$/, "")
+
+        // Read description from companion .meta.json file
+        let agentDescription: string | undefined
+        const metaPath = join(subagentsDir, `agent-${agentId}.meta.json`)
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"))
+          agentDescription = meta.description
+        } catch { /* no meta file */ }
+
+        const batch: Array<Record<string, unknown>> = []
+        let subPendingThinking: Array<Record<string, unknown>> = []
+
+        for (const line of subLines) {
+          const msg = JSON.parse(line)
+          if (!displayTypes.has(msg.type)) continue
+
+          if (msg.type === "assistant") {
+            const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
+            if (!stop) {
+              const content = msg.message?.content
+              if (Array.isArray(content)) {
+                for (const block of content) {
+                  if (block?.type === "thinking" && block.thinking) {
+                    subPendingThinking.push(block)
+                  }
+                }
+              }
+              continue
+            }
+            if (subPendingThinking.length > 0 && Array.isArray(msg.message?.content)) {
+              msg.message.content = [...subPendingThinking, ...msg.message.content]
+              subPendingThinking = []
+            }
+          }
+
+          if (agentDescription) {
+            msg.agentDescription = agentDescription
+          }
+
+          batch.push({
+            id: `${agentId}-${batch.length}`,
+            sessionId,
+            sequence: 0, // re-numbered below
+            type: msg.type,
+            message: msg,
+            createdAt: msg.timestamp || new Date().toISOString(),
+          })
+        }
+
+        // Match subagent to its Agent tool_use by order
+        const toolUseId = si < agentToolUseIds.length ? agentToolUseIds[si]! : ""
+        subagentBatches.push({ toolUseId, msgs: batch })
+      }
+
+      // Build toolUseId → message index map in one pass
+      const toolUseInsertIdx = new Map<string, number>()
+      for (let mi = 0; mi < messages.length; mi++) {
+        const content: any[] | undefined =
+          (messages[mi]!.message as any)?.message?.content ?? (messages[mi]!.message as any)?.content
+        if (!Array.isArray(content)) continue
+        for (const block of content) {
+          if (block?.type === "tool_use" && block.name === "Agent" && block.id) {
+            toolUseInsertIdx.set(block.id, mi + 1)
+          }
+        }
+      }
+
+      // Insert each batch at its Agent tool_use position.
+      // Process in reverse so earlier insertions don't shift later indices.
+      for (let bi = subagentBatches.length - 1; bi >= 0; bi--) {
+        const { toolUseId, msgs } = subagentBatches[bi]!
+        if (msgs.length === 0) continue
+        const insertIdx = toolUseInsertIdx.get(toolUseId) ?? messages.length
+        messages.splice(insertIdx, 0, ...msgs)
+      }
+
+      // Re-number sequences
+      for (let i = 0; i < messages.length; i++) {
+        messages[i]!.sequence = i
       }
     }
 

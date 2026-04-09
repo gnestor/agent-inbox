@@ -7,6 +7,7 @@ import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PanelHeader } from "@/components/shared/PanelHeader"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
 import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
+import type { ClassifiedMessage } from "@/lib/session-pipeline"
 import { AskUserForm } from "@/components/session/AskUserForm"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { useNavActions } from "@/lib/navigation-store"
@@ -14,6 +15,7 @@ import { resumeSession, answerSessionQuestion } from "@/api/client"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
 import { Skeleton } from "@hammies/frontend/components/ui"
 import { createLogger } from "@/lib/logger"
+import { SessionTranscript } from "@/components/session/SessionTranscript"
 
 const log = createLogger("panel")
 
@@ -162,6 +164,59 @@ function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user
   )
 }
 
+const EMPTY_LOOKUPS = {
+  toolResults: new Map<string, string>(),
+  resolvedToolUseIDs: new Set<string>(),
+  agentDescriptions: new Map<string, string>(),
+  authorEmails: [] as string[],
+  fileMap: new Map<string, string>(),
+}
+const EMPTY_PROFILES = new Map<string, { name: string; picture?: string }>()
+const FULL_VISIBILITY = { messages: true, toolCalls: true, thinking: true, artifacts: true } as const
+
+function SubagentPanel({ panel }: { panel: PanelState & { type: "subagent" } }) {
+  const { removePanel } = useNavActions()
+  const { agentLabel, sessionId, children: rawChildren } = panel.props
+
+  // Reclassify: clear isSubagent so children render as normal session events.
+  // First user message is Claude's prompt to the subagent — show as assistant.
+  const messages = useMemo(
+    () => (rawChildren as ClassifiedMessage[]).map((c, i) => {
+      const cleaned = { ...c, isSubagent: false }
+      if (c.displayType === "user_message" && i === 0) {
+        return { ...cleaned, displayType: "assistant_text_only" as const, agentLabel: "Claude" }
+      }
+      return cleaned
+    }),
+    [rawChildren],
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <span className="text-sm font-semibold">{agentLabel}</span>
+        <button
+          type="button"
+          className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
+          onClick={() => removePanel(panel.id)}
+          aria-label="Close panel"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <SessionTranscript
+          messages={messages}
+          lookups={EMPTY_LOOKUPS}
+          userProfiles={EMPTY_PROFILES}
+          visibility={FULL_VISIBILITY}
+          sessionId={sessionId}
+        />
+      </div>
+    </div>
+  )
+}
+
 interface PanelContentProps {
   panel: PanelState
 }
@@ -210,6 +265,9 @@ export function PanelContent({ panel }: PanelContentProps) {
 
     case "ask_user":
       return <AskUserQuestionPanel panel={panel} />
+
+    case "subagent":
+      return <SubagentPanel panel={panel} />
 
     // Placeholder for unmigrated panel types
     default:

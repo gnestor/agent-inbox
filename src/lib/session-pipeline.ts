@@ -61,6 +61,7 @@ export type MessageDisplayType =
   | "user_skill"
   | "assistant_blocks"
   | "assistant_text_only"
+  | "subagent_group"
   | "plan"
   | "tool_result"
   | "hidden"
@@ -86,6 +87,8 @@ export interface ClassifiedMessage {
   authorEmail?: string
   /** Author display name (user messages only) */
   authorName?: string
+  /** For subagent_group: child messages from the same subagent */
+  children?: ClassifiedMessage[]
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +106,7 @@ export const TOOL_PRIMARY_FIELD: Record<string, string> = {
   Glob: "pattern", Grep: "pattern",
   WebFetch: "url", WebSearch: "query",
   ToolSearch: "query",
+  Skill: "skill",
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +341,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
 /** Classify a single message for rendering. Moves all parsing out of TranscriptEntry. */
 export function classifyMessage(message: SessionMessage): ClassifiedMessage {
   const msg = message.message
+  const isSubagent = isSubagentMessage(message)
   const base = {
     source: message,
     text: "",
@@ -344,8 +349,8 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
     skillBlock: null as { name: string; content: string } | null,
     artifactAction: null as { intent: string; data: string } | null,
     groupedBlocks: null as Array<ContentBlock | ToolUseBlock[]> | null,
-    agentLabel: "Claude",
-    isSubagent: isSubagentMessage(message),
+    agentLabel: isSubagent ? getAgentLabel(message) : "Claude",
+    isSubagent,
   }
 
   if (msg.type === "system") {
@@ -356,16 +361,22 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
   }
 
   if (msg.type === "user") {
-    // Synthetic/meta messages are always hidden
-    if (("isSynthetic" in msg && msg.isSynthetic) || ("isMeta" in msg && msg.isMeta)) {
-      return { ...base, displayType: "hidden" }
-    }
-
     const text = extractText(msg)
     const authorEmail = (msg as any).authorEmail as string | undefined
     const authorName = (msg as any).authorName as string | undefined
 
     const userBase = { ...base, authorEmail, authorName }
+
+    // Skill injection — check before isMeta filter since skill injections are isMeta
+    const skillBlock = extractSkillBlock(msg)
+    if (skillBlock) {
+      return { ...userBase, displayType: "user_skill", text, skillBlock }
+    }
+
+    // Synthetic/meta messages are always hidden (after skill check)
+    if (("isSynthetic" in msg && msg.isSynthetic) || ("isMeta" in msg && msg.isMeta)) {
+      return { ...base, displayType: "hidden" }
+    }
 
     // SDK-injected XML messages (task notifications, etc.) — hide from transcript
     if (text && /^\s*<[a-z]+-[\w-]+>[\s\S]*<\/[a-z]+-[\w-]+>\s*$/.test(text)) {
@@ -381,12 +392,6 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
         text,
         artifactAction: { intent: actionMatch[1]!, data: actionMatch[2]?.trim() ?? "" },
       }
-    }
-
-    // Skill injection
-    const skillBlock = extractSkillBlock(msg)
-    if (skillBlock) {
-      return { ...userBase, displayType: "user_skill", text, skillBlock }
     }
 
     // Normal user message
@@ -484,10 +489,37 @@ export interface ProcessedTranscript {
   classified: ClassifiedMessage[]
 }
 
+/** Group consecutive subagent messages by agentLabel into single subagent_group entries. */
+function groupSubagentMessages(messages: ClassifiedMessage[]): ClassifiedMessage[] {
+  const result: ClassifiedMessage[] = []
+  let i = 0
+  while (i < messages.length) {
+    const cm = messages[i]!
+    if (!cm.isSubagent) {
+      result.push(cm)
+      i++
+      continue
+    }
+    const agentLabel = cm.agentLabel
+    const children: ClassifiedMessage[] = []
+    while (i < messages.length && messages[i]!.isSubagent && messages[i]!.agentLabel === agentLabel) {
+      children.push(messages[i]!)
+      i++
+    }
+    result.push({
+      ...children[0]!,
+      displayType: "subagent_group",
+      agentLabel,
+      children,
+    })
+  }
+  return result
+}
+
 /** Process raw messages into classified messages + lookups. Pure function. */
 export function processTranscript(messages: SessionMessage[]): ProcessedTranscript {
   const lookups = buildLookups(messages)
-  const classified = messages.map(classifyMessage)
+  const classified = groupSubagentMessages(messages.map(classifyMessage))
   return { lookups, classified }
 }
 

@@ -161,13 +161,13 @@ export const PRESENT_FILES_NAMES = new Set(["present_files", "mcp__artifact__pre
 export function isSubagentMessage(message: { type: string; message: unknown }): boolean {
   const raw = message.message as Record<string, unknown>
   // isSidechain: true = subagent conversation
-  // sourceToolUseID: set = message injected by a tool (skill, agent)
   // agentId on user messages = prompt sent TO a subagent
+  // NOTE: sourceToolUseID alone is NOT a subagent signal — skill injections
+  // also have sourceToolUseID but are not subagent messages.
   // NOTE: parentUuid is NOT a subagent signal — it's set on all messages in
   // multi-turn conversations (resumes) for conversation threading.
   return !!(
     raw.isSidechain === true ||
-    raw.sourceToolUseID ||
     (raw.agentId && message.type === "user")
   )
 }
@@ -175,6 +175,8 @@ export function isSubagentMessage(message: { type: string; message: unknown }): 
 /** Extract a display label for the agent that produced a message. */
 export function getAgentLabel(message: { message: unknown }): string {
   const raw = message.message as Record<string, unknown>
+  // Prefer server-injected description over raw agentId
+  if (raw.agentDescription) return String(raw.agentDescription)
   if (raw.agentId) return String(raw.agentId)
   return "Claude"
 }
