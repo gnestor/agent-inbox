@@ -197,7 +197,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
           onAnswer={controller.answerQuestion}
           onArtifactsReady={handleArtifactsReady}
         >
-          {sessionView.isStreaming && <WorkingIndicator eventCount={controller.eventCount} />}
+          {sessionView.isStreaming && !controller.hasPartialMessage && <WorkingIndicator eventCount={controller.eventCount} />}
           {controller.phase.status === "errored" && (
             <div className="mx-4 mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               The agent process exited unexpectedly. You can send another message to retry.

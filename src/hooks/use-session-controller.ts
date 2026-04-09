@@ -4,7 +4,8 @@ import { getSession, answerSessionQuestion, getUserProfiles } from "@/api/client
 import { useSessionStream } from "./use-session-stream"
 import { useSessionMutations } from "./use-session-mutations"
 import { normalizeMessagePayload } from "@/types/session-message"
-import { processTranscript, filterVisible } from "@/lib/session-pipeline"
+import { processTranscript, filterVisible, classifyMessage } from "@/lib/session-pipeline"
+import { usePartialMessage } from "./use-partial-message"
 import type { Session, PendingQuestion, SessionMessage, PresenceUser } from "@/types"
 import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@/lib/session-pipeline"
 
@@ -42,6 +43,7 @@ export interface SessionController {
   presenceUsers: PresenceUser[]
   eventCount: number
   isLive: boolean
+  hasPartialMessage: boolean
 
   resumeSession: (prompt: string) => void
   answerQuestion: (answers: Record<string, string>) => Promise<void>
@@ -82,10 +84,13 @@ export function useSessionController({
   // --- Mutations ---
   const mutations = useSessionMutations({ sessionId, onResume, onArchive })
 
+  // --- Partial message streaming ---
+  const { partialMessage, hasPartialMessage, handleStreamEvent, clear: clearPartial } = usePartialMessage(sessionId)
+
   // --- Streaming ---
   const queryStatus = data?.session.status as string | undefined
   const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
-  const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning))
+  const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning), handleStreamEvent)
 
   // Invalidate sessions list only on terminal status changes, not every status update.
   // This prevents duplicate /api/sessions fetches when opening a session detail.
@@ -148,10 +153,48 @@ export function useSessionController({
   }, [processed.lookups])
 
   // --- Filter by visibility (separate memo so visibility changes don't recompute classification) ---
-  const messages = useMemo(
+  const filteredMessages = useMemo(
     () => filterVisible(processed.classified, visibility),
     [processed.classified, visibility],
   )
+
+  // --- Clear partial when a new complete assistant message arrives ---
+  const assistantCountRef = useRef(0)
+  const assistantCount = useMemo(
+    () => normalizedMessages.filter((m) => m.type === "assistant").length,
+    [normalizedMessages],
+  )
+  useEffect(() => {
+    if (assistantCount > assistantCountRef.current && assistantCountRef.current > 0) {
+      clearPartial()
+    }
+    assistantCountRef.current = assistantCount
+  }, [assistantCount, clearPartial])
+
+  // --- Append partial message to visible messages ---
+  const messages = useMemo(() => {
+    if (!partialMessage) return filteredMessages
+
+    // Build a synthetic ClassifiedMessage from the partial
+    const syntheticSource: SessionMessage = {
+      id: -9999,
+      sessionId,
+      sequence: -9999,
+      type: "assistant",
+      message: {
+        type: "assistant",
+        content: [
+          ...(partialMessage.text ? [{ type: "text" as const, text: partialMessage.text }] : []),
+          ...(partialMessage.thinking ? [{ type: "thinking" as const, thinking: partialMessage.thinking }] : []),
+        ],
+      },
+      createdAt: new Date().toISOString(),
+    }
+    const classified = classifyMessage(syntheticSource)
+    classified.isPartial = true
+
+    return [...filteredMessages, classified]
+  }, [filteredMessages, partialMessage, sessionId])
 
   // --- User profiles (fetch from API based on emails extracted by pipeline) ---
   const emailsKey = lookups.authorEmails.join(",")
@@ -209,6 +252,7 @@ export function useSessionController({
     presenceUsers: stream.presenceUsers,
     eventCount: stream.eventCount,
     isLive: stream.connected,
+    hasPartialMessage,
     resumeSession,
     answerQuestion,
     mutations,

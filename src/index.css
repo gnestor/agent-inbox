@@ -36,3 +36,17 @@ body {
 .prose pre {
   background: var(--muted, hsl(230, 1%, 98%));
 }
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: currentColor;
+  animation: cursor-blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0; }
+}

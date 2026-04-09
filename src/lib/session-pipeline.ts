@@ -82,6 +82,8 @@ export interface ClassifiedMessage {
   agentLabel: string
   /** Whether this is from a subagent */
   isSubagent: boolean
+  /** Whether this message is still being streamed (partial) */
+  isPartial?: boolean
   /** Author email (user messages only) */
   authorEmail?: string
   /** Author display name (user messages only) */

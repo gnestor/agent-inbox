@@ -394,10 +394,14 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
     case "assistant_text_only":
       if (!cm.text) return null
-      return <MarkdownEntry text={cm.text} label={cm.agentLabel} />
+      return <MarkdownEntry text={cm.text} label={cm.agentLabel} isPartial={cm.isPartial} />
 
     case "assistant_blocks": {
       const grouped = cm.groupedBlocks!
+      // Find the last text/thinking block index to attach the streaming cursor
+      const lastContentIdx = cm.isPartial
+        ? grouped.reduce((acc, item, i) => (!Array.isArray(item) && (item.type === "text" || item.type === "thinking") ? i : acc), -1)
+        : -1
       return (
         <div className="space-y-1">
           {grouped.map((item, i) => {
@@ -413,6 +417,7 @@ const TranscriptEntry = memo(function TranscriptEntry({
                 visibility={visibility}
                 sessionId={sessionId}
                 agentLabel={cm.agentLabel}
+                isPartial={i === lastContentIdx}
                 onOpenPanel={onOpenPanel}
                 onAction={onAction}
                 onAnswer={onAnswer}
@@ -474,11 +479,12 @@ function MessageBubble({ label, align, transparent, children }: { label: string;
   )
 }
 
-function MarkdownEntry({ text, label = "Claude" }: { text: string; label?: string }) {
+function MarkdownEntry({ text, label = "Claude", isPartial }: { text: string; label?: string; isPartial?: boolean }) {
   return (
     <MessageBubble label={label} align="left" transparent>
       <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>{text}</ReactMarkdown>
+        {isPartial && <span className="streaming-cursor" />}
       </div>
     </MessageBubble>
   )
@@ -598,8 +604,8 @@ function OutputAccordion({ spec, sessionId, sequence, onOpenPanel, onAction, onA
 // Tool call components
 // ---------------------------------------------------------------------------
 
-const ContentBlockView = memo(function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel = "Claude", onOpenPanel, onAction, onAnswer, onArtifactLoaded }: {
-  block: ContentBlockType; sequence: number; visibility: TranscriptVisibility; sessionId?: string; agentLabel?: string
+const ContentBlockView = memo(function ContentBlockView({ block, sequence, visibility, sessionId, agentLabel = "Claude", isPartial, onOpenPanel, onAction, onAnswer, onArtifactLoaded }: {
+  block: ContentBlockType; sequence: number; visibility: TranscriptVisibility; sessionId?: string; agentLabel?: string; isPartial?: boolean
   onOpenPanel?: (spec: OutputSpec, sequence: number) => void; onAction?: (intent: string) => void; onAnswer?: (answers: Record<string, string>) => Promise<void>; onArtifactLoaded?: () => void
 }) {
   const lookups = useLookups()
@@ -636,7 +642,7 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
         }
       }
     }
-    return <MarkdownEntry text={block.text} label={agentLabel} />
+    return <MarkdownEntry text={block.text} label={agentLabel} isPartial={isPartial} />
   }
 
   if (block.type === "tool_use") {
@@ -701,6 +707,7 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
       <TranscriptAccordionEntry label="Thinking" color="text-muted-foreground" bold={false} defaultOpen>
         <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>{block.thinking}</ReactMarkdown>
+          {isPartial && <span className="streaming-cursor" />}
         </div>
       </TranscriptAccordionEntry>
     )

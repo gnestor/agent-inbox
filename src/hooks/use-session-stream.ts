@@ -11,7 +11,11 @@ type SessionStatusFromStream = "complete" | "errored" | "awaiting_user_input" | 
 // in session.status (updated optimistically in resumeSession and via the
 // session_complete/session_error WS events below).
 
-export function useSessionStream(sessionId: string | undefined, enabled = true) {
+export function useSessionStream(
+  sessionId: string | undefined,
+  enabled = true,
+  onStreamEvent?: (data: any) => void,
+) {
   const queryClient = useQueryClient()
   const { subscribe, isConnected } = useWsStream()
   const [sessionStatus, setSessionStatus] = useState<SessionStatusFromStream>(null)
@@ -19,6 +23,8 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
   const [eventCount, setEventCount] = useState(0)
   const seenSequences = useRef(new Set<number>())
+  const onStreamEventRef = useRef(onStreamEvent)
+  onStreamEventRef.current = onStreamEvent
 
   useEffect(() => {
     seenSequences.current.clear()
@@ -38,6 +44,7 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
     }
 
     return subscribe(sessionId, (data) => {
+      console.log("[ws-event]", data.type ?? data.message?.type ?? "seq:" + data.sequence, data)
       setEventCount((c) => c + 1)
 
       if (data.type === "session_complete" || data.type === "session_error") {
@@ -56,6 +63,15 @@ export function useSessionStream(sessionId: string | undefined, enabled = true) 
       }
       if (data.type === "presence") {
         setPresenceUsers(data.users ?? [])
+        return
+      }
+
+      // Divert stream_event messages to the partial message handler.
+      // Server broadcasts as { sequence, message } — the type is inside message, not at top level.
+      // Don't add stream_event sequences to seenSequences — they don't need dedup
+      // and tracking them doesn't interfere with complete message dedup (different sequences).
+      if (data.message?.type === "stream_event" && onStreamEventRef.current) {
+        onStreamEventRef.current(data.message)
         return
       }
 
