@@ -33,6 +33,6 @@ body {
   --secondary: oklch(0 0 0 / 0.05);
 }
 
-.hljs {
-  background: var(--card);
+.prose pre {
+  background: var(--muted, hsl(230, 1%, 98%));
 }
