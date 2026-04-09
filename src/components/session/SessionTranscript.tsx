@@ -539,7 +539,7 @@ function TranscriptAccordionEntry({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 flex flex-col">
       <div className="flex items-center gap-1.5 py-1.5 w-full">
         <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 text-left min-w-0">
           <ChevronRight className={`h-3 w-3 shrink-0 transition-transform duration-200 text-muted-foreground ${open ? "rotate-90" : ""}`} />
@@ -780,6 +780,8 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
     }
     // Agent tool calls are replaced by subagent_group entries — hide them
     if (block.name === "Agent") return null
+    // Skill tool calls are followed by a user_skill injection with the actual content — hide the tool_use
+    if (block.name === "Skill") return null
     if (!visibility.toolCalls) return null
     const displayName = TOOL_DISPLAY_NAME[block.name] ?? block.name
     const summary = toolUseSummary(block.name, block.input)
@@ -805,8 +807,8 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
 })
 
 function ToolCallGroup({ blocks }: { blocks: ToolUseBlock[] }) {
-  // Agent tool calls are replaced by subagent_group entries — filter them out
-  const visible = blocks.filter((b) => b.name !== "Agent")
+  // Agent/Skill tool calls are replaced by subagent_group/user_skill entries — filter them out
+  const visible = blocks.filter((b) => b.name !== "Agent" && b.name !== "Skill")
   if (visible.length === 0) return null
   const displayName = (name: string) => TOOL_DISPLAY_NAME[name] ?? name
   const label = visible.length === 1
@@ -850,7 +852,9 @@ function ToolCallDetail({ name, input, toolUseId }: { name: string; input: Recor
   const lookups = useLookups()
   const [showOutput, setShowOutput] = useState(false)
   const command = toolUseCommand(name, input)
-  const resultText = toolUseId ? lookups.toolResults.get(toolUseId) : undefined
+  const rawResult = toolUseId ? lookups.toolResults.get(toolUseId) : undefined
+  // Skill tool results like "Launching skill: X" are just confirmations — hide them
+  const resultText = rawResult?.startsWith("Launching skill:") ? undefined : rawResult
   const hasDescription = TOOLS_WITH_DESCRIPTION.has(name)
 
   return (

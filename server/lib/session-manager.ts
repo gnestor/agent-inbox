@@ -1568,10 +1568,23 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
             continue
           }
 
-          // Complete message — prepend any collected thinking/Agent blocks
-          if ((pendingThinking.length > 0 || pendingAgentToolUse.length > 0) && Array.isArray(msg.message?.content)) {
-            msg.message.content = [...pendingThinking, ...pendingAgentToolUse, ...msg.message.content]
-            pendingThinking = []
+          // Emit each collected thinking block as its own message so they
+          // don't visually nest with each other or with subsequent tool calls.
+          for (let ti = 0; ti < pendingThinking.length; ti++) {
+            messages.push({
+              id: `${lineIdx}-thinking-${ti}`,
+              sessionId,
+              sequence: lineIdx + (ti + 1) * 0.001,
+              type: "assistant",
+              message: { type: "assistant", message: { content: [pendingThinking[ti]], stop_reason: "end_turn" } },
+              createdAt: msg.timestamp || new Date().toISOString(),
+            })
+          }
+          pendingThinking = []
+
+          // Prepend any collected Agent tool_use blocks into the complete message
+          if (pendingAgentToolUse.length > 0 && Array.isArray(msg.message?.content)) {
+            msg.message.content = [...pendingAgentToolUse, ...msg.message.content]
             pendingAgentToolUse = []
           }
         }

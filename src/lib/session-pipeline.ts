@@ -458,6 +458,7 @@ export function isVisible(cm: ClassifiedMessage, visibility: TranscriptVisibilit
 
     case "user_artifact_action":
     case "user_skill":
+    case "subagent_group":
       return true
 
     case "user_message":
