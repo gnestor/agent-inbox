@@ -96,6 +96,21 @@ Three tiers, each with different infrastructure requirements:
 - **`api`** — Server-only integration tests using Playwright's `request` fixture. Hit the real Hono server + DB. No browser or Vite needed — **safe to run from worktrees**.
 - **`api` + `mocked`** combined via `test:e2e:all` for full coverage.
 
+### API testing (curl)
+
+All `/api/*` routes require the `inbox_session` cookie. To get a valid token:
+
+```bash
+psql $DATABASE_URL -t -c "SELECT token FROM auth_sessions LIMIT 1"
+```
+
+Then pass it with curl:
+
+```bash
+curl -s -X POST http://localhost:3002/api/backfill/sessions \
+  -b "inbox_session=<token>"
+```
+
 ### Browser testing
 
 Use `npm run dev` from the inbox package directory to start both servers (Vite client + Hono API). The client runs on port 5175 (or next available) and proxies `/api` to the server on port 3002.

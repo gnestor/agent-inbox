@@ -11,7 +11,7 @@ The knowledge base has two layers in a single directory tree:
 - `context/*.md` — curated summaries (entity pages, decisions, timelines, cross-links)
 - `context/{source}/{id}.md` — raw source files indexed by the context-backfill workflow
 
-Sources: `gmail/`, `notion/`, `gorgias/`, `slack/`, `transcripts/`
+Sources: `gmail/`, `notion/`, `gorgias/`, `slack/`, `sessions/`
 
 Both layers are indexed in the `hammies-context` qmd collection. Curated pages rank higher for entity-identity queries; raw sources rank higher for specific factual lookups. **Raw source files are written exclusively by the context-backfill workflow — do not write to source subdirectories from within a session.**
 
@@ -102,12 +102,9 @@ After any write:
 - Update `last_updated` in frontmatter to today's date
 - Add cross-links in `## Related` if new relationships were identified
 
-### Session End
+### Context Backfill
 
-The Stop hook will remind you to update context before stopping. At that point:
-
-1. Review what was learned this session — any new entities, decisions, relationships, or useful information
-2. Create or update context pages for anything that will be useful in future sessions
+Context updates from session work are handled automatically by the scheduled context backfill process. The server periodically indexes completed session transcripts into `context/sessions/` and launches a curation session to update curated pages. Sessions do not need to update context before stopping.
 
 ---
 

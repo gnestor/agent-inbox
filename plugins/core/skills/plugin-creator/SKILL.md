@@ -110,11 +110,15 @@ const plugin: Plugin = {
   ],
 
   async query(filters, cursor) {
-    // Fetch items with pagination
-    const data = await apiRequest<{ items: any[]; next?: string }>("/items", {
-      status: filters.status,
-      cursor,
-    })
+    // Incremental backfill: filters.since is an ISO timestamp from last run.
+    // Use it to fetch only items modified after that time.
+    // Strategy depends on the API:
+    //   - Server-side: pass as query param (e.g. `modified_after`, `after:date`)
+    //   - Client-side: fetch all, filter on updatedAt > since
+    const params: Record<string, unknown> = { status: filters.status, cursor }
+    if (filters.since) params.modified_after = filters.since
+
+    const data = await apiRequest<{ items: any[]; next?: string }>("/items", params)
     return {
       items: data.items.map((i) => ({ id: i.id, ...i })),
       nextCursor: data.next,
@@ -184,7 +188,7 @@ The process skill defines how the agent should handle items from this source:
 4. Execute approved actions
 5. Update context with findings
 
-### Step 3.6 — Add itemToContext (optional)
+### Step 3.6 — Add itemToContext for context backfill (optional)
 
 If this plugin's items should be indexed for context search, add `itemToContext`:
 
@@ -194,6 +198,8 @@ itemToContext(item) {
   return `# ${item.title}\n\n${item.body || item.snippet || ""}`
 },
 ```
+
+The backfill system (`POST /api/backfill`) calls `query({ since: "<ISO timestamp>" })` then `itemToContext()` for each item, writing results to `context/{pluginId}/{itemId}.md`. The `since` filter ensures only modified items are re-indexed on subsequent runs. See the Plugin interface for details.
 
 ### Step 4 — Save and activate
 

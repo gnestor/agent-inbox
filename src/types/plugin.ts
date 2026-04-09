@@ -172,6 +172,13 @@ export interface Plugin {
    * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
+   *
+   * **Backfill:** When called by the backfill system, `filters.since` is set
+   * to the ISO timestamp of the last backfill run. Plugins should use this to
+   * return only items modified after that time (server-side filter preferred,
+   * client-side filter acceptable). On the first run `since` is absent — return
+   * all items. See individual plugin implementations for API-specific strategies.
+   *
    * Optional for skills-only plugins.
    */
   query?(

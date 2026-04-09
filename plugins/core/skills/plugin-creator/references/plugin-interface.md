@@ -22,7 +22,9 @@ interface Plugin {
   /** True for skills-only plugins (no data source, no tab) */
   hasSkills?: boolean
 
-  /** Fetch a page of items. Filters match FieldDef.id where filterable is true. Optional for skills-only plugins. */
+  /** Fetch a page of items. Filters match FieldDef.id where filterable is true.
+   *  Backfill passes filters.since (ISO timestamp) — return only items modified after that time.
+   *  Optional for skills-only plugins. */
   query?(filters: Record<string, string>, cursor?: string, ctx?: PluginContext): Promise<QueryResult>
 
   /** Perform a mutation. Actions are plugin-defined strings. Optional for skills-only plugins. */
