@@ -1,5 +1,7 @@
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getSessions } from "@/api/client"
+import type { Session } from "@/types"
 
 interface SessionFilters {
   status?: string
@@ -23,4 +25,26 @@ export function useSessions(filters?: SessionFilters, options?: { enabled?: bool
     error: result.error?.message ?? null,
     refresh: () => result.refetch(),
   }
+}
+
+const ONE_DAY_MS = 86_400_000
+
+export function isRecentSession(session: Session): boolean {
+  if (session.status === "archived") return false
+  if (session.status === "running" || session.status === "awaiting_user_input") return true
+  const ref = session.completedAt ?? session.updatedAt
+  return Date.now() - new Date(ref).getTime() < ONE_DAY_MS
+}
+
+/**
+ * Single source of truth for recent sessions.
+ * Both the sidebar and the tab container derive from this.
+ */
+export function useRecentSessions() {
+  const { sessions, loading } = useSessions(undefined, { refetchInterval: 5_000 })
+  const recent = useMemo(
+    () => sessions.filter(isRecentSession).slice(0, 10),
+    [sessions],
+  )
+  return { recent, loading }
 }

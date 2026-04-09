@@ -6,7 +6,8 @@ import { LoginPage } from "@/components/layout/LoginPage"
 import { LiquidGlassFilter } from "@hammies/frontend/components/LiquidGlassFilter"
 import { UserContext, useUserProvider, useUser } from "@/hooks/use-user"
 import { NavigationProvider } from "@/components/navigation"
-import { useNavigationStore, useActiveTab, useNavActions, useSourceTab } from "@/lib/navigation-store"
+import { useActiveTab, useNavActions, useSourceTab, useStorePluginKeys } from "@/lib/navigation-store"
+import { useRecentSessions } from "@/hooks/use-sessions"
 import { useSortedPlugins } from "@/hooks/use-plugins"
 import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
@@ -96,7 +97,8 @@ function RecentTabSlot({ tabId }: { tabId: TabId }) {
 
 function TabContainer() {
   const activeTab = useActiveTab()
-  const tabs = useNavigationStore((s) => s.tabs)
+  const storePluginKeys = useStorePluginKeys()
+  const { recent } = useRecentSessions()
   const sortedPlugins = useSortedPlugins()
   const { switchTab } = useNavActions()
 
@@ -108,16 +110,13 @@ function TabContainer() {
   }, [sortedPlugins])
 
   const keys = useMemo(() => {
-    if (!tabs) return STATIC_SLOTS
-
     // Collect plugin tabs from loaded plugins (respecting user order)
     const pluginKeys = sortedPlugins.length > 0
       ? sortedPlugins.map((p) => `plugin:${p.id}`)
-      : Object.keys(tabs).filter((k) => k.startsWith("plugin:"))
+      : storePluginKeys
 
-    const recentKeys = Object.keys(tabs)
-      .filter((k) => k.startsWith("recent:"))
-      .sort((a, b) => (tabs[a]?.sidebarIndex ?? 0) - (tabs[b]?.sidebarIndex ?? 0))
+    // Recent tabs derived from server session data — same source as the sidebar
+    const recentKeys = recent.map((s) => `recent:${s.id}`)
 
     // Settings tabs: mount at the top, unmount on navigate away
     const settingsKey = SETTINGS_TABS.has(activeTab) ? [activeTab] : []
@@ -128,7 +127,7 @@ function TabContainer() {
       ...recentKeys,
       ...STATIC_SLOTS,
     ]
-  }, [tabs, sortedPlugins, activeTab])
+  }, [storePluginKeys, recent, sortedPlugins, activeTab])
 
   // When user scroll-snaps to a different tab, sync the URL/sidebar
   const handleActiveKeyChange = useCallback((key: string) => {

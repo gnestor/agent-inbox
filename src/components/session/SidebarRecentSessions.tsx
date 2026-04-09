@@ -13,20 +13,11 @@ import { cn } from "@hammies/frontend/lib/utils"
 import { getPluginItem } from "@/api/client"
 import { getItemTitle } from "@/lib/formatters"
 import { useWorkspaceId } from "@/hooks/use-user"
-import { useSessions } from "@/hooks/use-sessions"
+import { useRecentSessions } from "@/hooks/use-sessions"
 import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import type { Session } from "@/types"
 import type { TabId } from "@/types/navigation"
 import { ACTIVE_TAB_CLASSES } from "@/lib/navigation-constants"
-
-const ONE_DAY_MS = 86_400_000
-
-export function isRecentSession(session: Session): boolean {
-  if (session.status === "archived") return false
-  if (session.status === "running" || session.status === "awaiting_user_input") return true
-  const ref = session.completedAt ?? session.updatedAt
-  return Date.now() - new Date(ref).getTime() < ONE_DAY_MS
-}
 
 const IDLE_MS = 30 * 60 * 1000
 
@@ -59,9 +50,7 @@ export function SidebarRecentSessions() {
   const activeTab = useActiveTab()
   const { isMobile, setOpenMobile } = useSidebar()
   const wsId = useWorkspaceId()
-  const { sessions } = useSessions(undefined, { refetchInterval: 5_000 })
-
-  const recent = sessions.filter(isRecentSession).slice(0, 10)
+  const { recent } = useRecentSessions()
 
   // Collect linked items that need title lookups (no linkedItemTitle yet)
   const linkedItems = useMemo(

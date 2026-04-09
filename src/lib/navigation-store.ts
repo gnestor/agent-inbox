@@ -315,6 +315,14 @@ export function useSourceTab(tabId?: TabId): TabId | undefined {
   })
 }
 
+/** Returns plugin:* tab keys from the store. Fallback for before plugins load. */
+const EMPTY_STRINGS: string[] = []
+export function useStorePluginKeys(): string[] {
+  return useNavigationStore(useShallow((s) =>
+    Object.keys(s.tabs).filter((k) => k.startsWith("plugin:"))
+  )) ?? EMPTY_STRINGS
+}
+
 /** Returns all action functions. Stable references — never causes re-renders. */
 export function useNavActions() {
   return useNavigationStore(useShallow((s) => ({

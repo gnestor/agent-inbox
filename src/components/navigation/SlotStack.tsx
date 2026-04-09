@@ -6,7 +6,7 @@
  * tracks which tab is most visible on every frame and fires
  * `onActiveKeyChange` to sync the URL and sidebar instantly.
  */
-import { useRef, useEffect, useCallback, useState, memo, type ReactNode } from "react"
+import { useRef, useEffect, useCallback, useState, memo, type ReactNode, type RefObject } from "react"
 import { useIsMobile } from "@hammies/frontend/hooks"
 
 interface SlotStackProps {
@@ -19,30 +19,44 @@ interface SlotStackProps {
 }
 
 /**
- * Deferred slot — only mounts its children on first activation.
- * Before activation, renders nothing (the parent div.h-full provides the
- * scroll-snap slot height). After activation, content stays mounted forever.
- *
- * This avoids the O(N) cost of rendering ALL tabs on initial mount — only the
- * active tab renders immediately, others render on first visit. Scroll-snap
- * works because the parent wrapper always has h-full regardless of content.
+ * LazySlot — mounts content when the slot enters the scroll container's
+ * extended viewport (via IntersectionObserver with rootMargin). The active
+ * tab renders immediately; neighbors pre-render when within 1 viewport
+ * height of the visible area. Once mounted, content stays mounted.
  */
-const DeferredSlot = memo(function DeferredSlot({
+const LazySlot = memo(function LazySlot({
   tabKey,
   isActive,
   renderItem,
+  scrollRoot,
 }: {
   tabKey: string
   isActive: boolean
   renderItem: (key: string) => ReactNode
+  scrollRoot: RefObject<HTMLDivElement | null>
 }) {
-  const [hasRendered, setHasRendered] = useState(isActive)
-  if (isActive && !hasRendered) setHasRendered(true)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(isActive)
 
-  // Not yet activated — empty div (parent h-full handles scroll-snap height)
-  if (!hasRendered) return null
+  // Active tab mounts synchronously (no flash)
+  if (isActive && !mounted) setMounted(true)
 
-  // Once activated, render normally and stay mounted forever
+  useEffect(() => {
+    if (mounted) return
+    const el = sentinelRef.current
+    const root = scrollRoot.current
+    if (!el || !root) return
+
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) setMounted(true) },
+      { root, rootMargin: "100%" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [mounted, scrollRoot])
+
+  if (!mounted) return <div ref={sentinelRef} />
+
   return <>{renderItem(tabKey)}</>
 })
 
@@ -216,9 +230,6 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
   }
 
   // Desktop: vertical scroll-snap for tab switching.
-  // Each tab is wrapped in DeferredSlot which only renders content once the tab
-  // has been activated, then keeps it mounted (hidden via display:none) for instant
-  // switching. This prevents O(N) rendering of all tabs on every interaction.
   return (
     <div
       ref={setRef}
@@ -237,10 +248,11 @@ export function SlotStack({ activeKey, keys, renderItem, onActiveKeyChange, clas
           className="h-full shrink-0"
           style={{ scrollSnapAlign: "start" }}
         >
-          <DeferredSlot
+          <LazySlot
             tabKey={key}
             isActive={key === activeKey}
             renderItem={renderItem}
+            scrollRoot={scrollRef}
           />
         </div>
       ))}
