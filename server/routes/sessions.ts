@@ -138,6 +138,9 @@ sessionRoutes.get("/", async (c) => {
         linkedItemTitle: db.linked_item_title || null,
       }
     }
+    // Detect context-backfill sessions by prompt content (JSONL-only sessions
+    // created before DB tracking was added don't have trigger_source set)
+    const isBackfill = s.firstPrompt?.startsWith("You are updating the curated context knowledge base") ?? false
     return {
       id: s.sessionId,
       status: "complete" as const,
@@ -148,7 +151,7 @@ sessionRoutes.get("/", async (c) => {
       completedAt: new Date(s.lastModified).toISOString(),
       linkedSourceType: null,
       linkedSourceId: null,
-      triggerSource: "manual" as const,
+      triggerSource: isBackfill ? "context-backfill" as const : "manual" as const,
       project: s.project,
       linkedItemTitle: null,
     }

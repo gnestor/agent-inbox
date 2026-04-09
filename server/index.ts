@@ -386,6 +386,10 @@ const server = serve({ fetch: app.fetch, port }, () => {
   process.env.WORKSPACE_PATH = workspacePaths[0]
   const firstRegistered = registeredWorkspaces[0]
   if (firstRegistered) {
+    // Schedule periodic context backfill (raw indexing + curated updates)
+    import("./lib/context-backfill-scheduler.js")
+      .then(({ scheduleContextBackfill }) => scheduleContextBackfill(firstRegistered.path, firstRegistered.id))
+      .catch((err: unknown) => log.warn("Failed to schedule context backfill", { error: err instanceof Error ? err.message : String(err) }))
     loadPanels(firstRegistered.path).catch((err) => log.warn("Failed to load panels", { error: err.message }))
   }
 })

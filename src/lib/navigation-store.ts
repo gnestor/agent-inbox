@@ -7,6 +7,7 @@ import { create } from "zustand"
 import { useShallow } from "zustand/shallow"
 import type { NavigationState, PanelState, TabId, TabState } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState, makeNewSessionPanel } from "@/types/navigation"
+import { cleanFilters } from "@/lib/navigation-storage"
 
 // Stable empty arrays/objects for selector fallbacks — prevents new-reference infinite loops
 const EMPTY_PANELS: PanelState[] = []
@@ -229,7 +230,7 @@ export const useNavigationStore = create<NavigationStore>()((set) => ({
 
   setFilter: (key, value) => set((s) => {
     const tab = { ...getOrCreateTab(s.tabs, s.activeTab) }
-    tab.activeFilters = { ...tab.activeFilters, [key]: value }
+    tab.activeFilters = cleanFilters({ ...tab.activeFilters, [key]: value })
     return { tabs: { ...s.tabs, [s.activeTab]: tab } }
   }),
 

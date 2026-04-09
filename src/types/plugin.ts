@@ -172,6 +172,13 @@ export interface Plugin {
    * Fetch a page of items from the plugin.
    * `filters` keys match FieldDef.id values where filter.filterable is true.
    * Values are strings; multi-select values are comma-separated.
+   *
+   * **Backfill:** When called by the backfill system, `filters.since` is set
+   * to the ISO timestamp of the last backfill run. Plugins should use this to
+   * return only items modified after that time (server-side filter preferred,
+   * client-side filter acceptable). On the first run `since` is absent — return
+   * all items. See individual plugin implementations for API-specific strategies.
+   *
    * Optional for skills-only plugins.
    */
   query?(
@@ -249,6 +256,33 @@ export interface Plugin {
    * Used by the context backfill system.
    */
   itemToContext?(item: PluginItem): string | null
+
+  /**
+   * Override the directory where backfill writes raw files.
+   * Default: `context/{pluginId}/` (inside the qmd-indexed tree).
+   * Set to e.g. `backfill-cache/{pluginId}/` to write outside the search
+   * index for plugins whose stubs are metadata-only (no searchable content).
+   */
+  backfillDir?: string
+
+  /**
+   * Build the full curation session prompt for a batch of files from this plugin.
+   * Return null to skip curation for this source.
+   *
+   * Most plugins call `buildDefaultCurationPrompt` (exported from the backfill
+   * scheduler) with source-specific instructions. Plugins that need a different
+   * flow — e.g., scoped output to a specific file, no global cross-referencing —
+   * return a fully custom prompt.
+   */
+  curationPrompt?(files: string[]): string | null
+
+  /**
+   * Target content budget (in tokens) for a single curation session.
+   * The scheduler packs files into a batch until their combined estimated
+   * token count reaches this budget, then dispatches one session.
+   * Default: 500_000 (~500K tokens).
+   */
+  curationBatchTokens?: number
 }
 
 /** @deprecated Use Plugin instead */

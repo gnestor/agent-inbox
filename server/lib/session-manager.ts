@@ -171,15 +171,20 @@ function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] 
   return plugins
 }
 
+/** Encode a workspace path to its Claude projects directory name. */
+function encodeWorkspacePath(path: string): string {
+  return path.replace(/\//g, "-")
+}
+
 /** Resolve a session's JSONL file path from its cwd (or default workspace). */
 function sessionJsonlPath(sessionId: string, cwd?: string): string {
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  const encodedDir = encodeWorkspacePath(cwd || defaultWorkspacePath)
   return join(homedir(), ".claude", "projects", encodedDir, `${sessionId}.jsonl`)
 }
 
 /** Resolve the projects directory for a workspace path. */
 function workspaceProjectsDir(cwd?: string): string {
-  const encodedDir = (cwd || defaultWorkspacePath).replace(/\//g, "-")
+  const encodedDir = encodeWorkspacePath(cwd || defaultWorkspacePath)
   return join(homedir(), ".claude", "projects", encodedDir)
 }
 
@@ -331,6 +336,17 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   if (rowCount === 0 && process.env.NODE_ENV !== "production") {
     const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
     log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
+  }
+
+  // Auto-archive automated sessions (context-backfill) when they complete
+  if (status === "complete" && rowCount > 0) {
+    const row = await queryOne<{ trigger_source: string }>("SELECT trigger_source FROM sessions WHERE id = $1", [sessionId])
+    if (row?.trigger_source === "context-backfill") {
+      await execute(
+        "UPDATE sessions SET status = 'archived', updated_at = $1 WHERE id = $2 AND status = 'complete'",
+        [now, sessionId],
+      )
+    }
   }
 }
 
@@ -1196,7 +1212,7 @@ export async function findAgentSession(sessionId: string) {
   }
 
   // Try the current workspace directory first (most common case)
-  const primaryDir = join(projectsDir, defaultWorkspacePath.replace(/\//g, "-"))
+  const primaryDir = join(projectsDir, encodeWorkspacePath(defaultWorkspacePath))
   const primary = tryDir(primaryDir)
   if (primary) return primary
 
@@ -1331,7 +1347,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
 
   // If workspace path provided, only scan its specific directory
   const dirs = wsPath
-    ? [wsPath.replace(/\//g, "-")]
+    ? [encodeWorkspacePath(wsPath)]
     : fs.readdirSync(projectsDir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name)
@@ -1395,12 +1411,13 @@ export async function listAllAgentSessions(wsPath?: string) {
   const projectsDir = join(homedir(), ".claude", "projects")
   if (!fs.existsSync(projectsDir)) return []
 
-  // If workspace path provided, only scan its specific directory
-  const dirs = wsPath
-    ? [wsPath.replace(/\//g, "-")]
+  // If workspace path provided, only scan its specific directory and use it
+  // as the known cwd for every session — no need to extract from file content.
+  const dirEntries: Array<{ name: string; knownCwd: string | null }> = wsPath
+    ? [{ name: encodeWorkspacePath(wsPath), knownCwd: wsPath }]
     : fs.readdirSync(projectsDir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
-        .map((d) => d.name)
+        .map((d) => ({ name: d.name, knownCwd: null }))
 
   const results: Array<{
     sessionId: string
@@ -1411,7 +1428,7 @@ export async function listAllAgentSessions(wsPath?: string) {
     project: string
   }> = []
 
-  for (const dirName of dirs) {
+  for (const { name: dirName, knownCwd } of dirEntries) {
     const dirPath = join(projectsDir, dirName)
     if (!fs.existsSync(dirPath)) continue
     try {
@@ -1423,15 +1440,19 @@ export async function listAllAgentSessions(wsPath?: string) {
           const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
           const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
 
-          if (!cwd) continue
+          const resolvedCwd = knownCwd ?? cwd
+          if (!resolvedCwd) continue
+
+          // Skip aborted sessions (file-history-snapshot entries only)
+          if (!firstPrompt && !summary) continue
 
           results.push({
             sessionId: fileName.replace(".jsonl", ""),
             summary,
             lastModified: stat.mtimeMs,
             firstPrompt,
-            cwd,
-            project: projectLabel(cwd),
+            cwd: resolvedCwd,
+            project: projectLabel(resolvedCwd),
           })
         } catch {
           /* skip unreadable files */
@@ -1466,7 +1487,7 @@ export function registerWorkspacePath(path: string) { registeredPaths.push(resol
 function findSessionWorkspace(sessionId: string): string | null {
   const projectsDir = join(homedir(), ".claude", "projects")
   for (const p of registeredPaths) {
-    const encodedDir = p.replace(/\//g, "-")
+    const encodedDir = encodeWorkspacePath(p)
     const jsonlPath = join(projectsDir, encodedDir, `${sessionId}.jsonl`)
     if (fs.existsSync(jsonlPath)) return p
     // Also check subdirectories (subagent sessions)
