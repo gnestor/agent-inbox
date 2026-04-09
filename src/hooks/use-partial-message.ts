@@ -88,11 +88,10 @@ interface BlockAccumulator {
 
 interface Accumulator {
   blocks: Map<number, BlockAccumulator>
-  pendingClear: boolean
 }
 
 function createAccumulator(): Accumulator {
-  return { blocks: new Map(), pendingClear: false }
+  return { blocks: new Map() }
 }
 
 function accumulatorToPartial(acc: Accumulator): PartialMessage | null {
@@ -183,17 +182,13 @@ export function usePartialMessage(sessionId: string) {
         break
       }
 
-      case "content_block_stop": {
-        // Block is complete but we keep it in the accumulator
-        scheduleFlush()
+      case "content_block_stop":
+        // No accumulator change — flush not needed
         break
-      }
 
-      case "message_stop": {
-        acc.pendingClear = true
-        scheduleFlush()
+      case "message_stop":
+        // Partial stays visible until caller invokes clear() after the complete message arrives
         break
-      }
     }
   }, [scheduleFlush])
 
