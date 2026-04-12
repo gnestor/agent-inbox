@@ -120,13 +120,12 @@ export async function uploadPendingFiles(
   )
 
   const results: UploadedFile[] = []
-  for (let i = 0; i < settled.length; i++) {
-    const result = settled[i]
+  settled.forEach((result, i) => {
     if (result.status === "fulfilled") {
       results.push(result.value)
     } else {
-      console.error(`Failed to upload ${files[i].name}:`, result.reason)
+      console.error(`Failed to upload ${files[i]?.name}:`, result.reason)
     }
-  }
+  })
   return results
 }

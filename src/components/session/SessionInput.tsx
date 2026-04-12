@@ -63,8 +63,6 @@ export function SessionInput({ sessionId, isStreaming, isSending, onSend, onAbor
             error={attachments.error}
             onRemove={attachments.removeFile}
             onClearError={attachments.clearError}
-            fileInputRef={attachments.fileInputRef}
-            onFileInputChange={attachments.handleFileInputChange}
           />
         </div>
       )}
