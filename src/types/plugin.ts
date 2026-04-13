@@ -283,6 +283,36 @@ export interface Plugin {
    * Default: 500_000 (~500K tokens).
    */
   curationBatchTokens?: number
+
+  /**
+   * Extract seed entities from a PluginItem. Called after itemToContext during
+   * raw backfill. The returned entities are stored in the source_entities table
+   * and used to group sources for proximity-based curation (one curation session
+   * per entity, processing all sources that mention it).
+   *
+   * Plugin-owned because each source type reveals different entity kinds:
+   *  - Gmail    → sender, recipients, subject keywords
+   *  - Gorgias  → customer email + domain, assignee, tags
+   *  - Slack    → channel, members from topic/purpose
+   *  - Notion   → database id, assignees
+   *  - Drive    → full folder-path entities (one per ancestor), owner
+   *  - Sessions → skills referenced, linked source type+id
+   *
+   * Plugins without this method fall back to a generic stub-frontmatter scan
+   * (emails, `folder-path` arrays) so the system still has something to group by.
+   */
+  extractEntities?(item: PluginItem): Entity[]
+}
+
+/**
+ * Seed entity extracted from a PluginItem. Pairs of (type, value) are the
+ * grouping key used by the entity curation flow.
+ */
+export interface Entity {
+  /** Entity class: "person" | "company" | "domain" | "folder" | "channel" | "database" | "skill" | ... */
+  type: string
+  /** Canonical form — lowercased email, slugged name, folder id, etc. */
+  value: string
 }
 
 /** @deprecated Use Plugin instead */

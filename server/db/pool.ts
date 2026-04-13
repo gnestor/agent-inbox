@@ -75,6 +75,7 @@ export async function initializeDatabase(): Promise<void> {
     "004_drop_api_cache.sql",
     "005_drop_session_messages.sql",
     "006_backfill_state.sql",
+    "007_source_entities.sql",
   ]
   for (const file of migrations) {
     const sql = readFileSync(resolve(__dirname, "migrations", file), "utf-8")

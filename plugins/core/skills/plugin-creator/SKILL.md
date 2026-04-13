@@ -72,6 +72,19 @@ Before writing code, define:
 
 Show the user the mapping plan and ask for confirmation before writing code.
 
+### Step 2.5 — Gather user direction for processing and curation
+
+Before writing code, ask the user two explicit questions and capture their answers:
+
+1. **Processing (process-* skill):** *"When an individual item from this plugin is processed (e.g. the user opens it and runs process-* on it), what should the agent do? What context should it gather first, what actions should it propose, what output should it produce?"*
+   - The answer shapes `{workspace}/plugins/{id}/skills/process-{source}/SKILL.md`.
+
+2. **Curation (curationPrompt):** *"When curating items from this plugin into the context knowledge base, what entities should be captured, and what attributes or timeline events link from them? What's worth extracting, and what should be skipped?"*
+   - The answer becomes the guide string passed to `buildDefaultCurationPrompt()`.
+   - Examples: *"Emails reveal vendor contacts, PO milestones, and meeting outcomes. Skip marketing newsletters and delivery confirmations."*
+
+These answers are starting points. The curation agent is allowed to refine `curationPrompt` and `itemToContext` over time (see Step 4.5).
+
 ### Step 3 — Generate TypeScript
 
 Create `{workspace}/plugins/{id}/plugin.ts`:
@@ -195,11 +208,50 @@ If this plugin's items should be indexed for context search, add `itemToContext`
 ```typescript
 itemToContext(item) {
   // Return markdown string for context index, or null to skip
+  // Return null to filter irrelevant items out of curation (they still appear in the app list view)
   return `# ${item.title}\n\n${item.body || item.snippet || ""}`
 },
 ```
 
-The backfill system (`POST /api/backfill`) calls `query({ since: "<ISO timestamp>" })` then `itemToContext()` for each item, writing results to `context/{pluginId}/{itemId}.md`. The `since` filter ensures only modified items are re-indexed on subsequent runs. See the Plugin interface for details.
+The backfill system (`POST /api/backfill`) calls `query({ since: "<ISO timestamp>" })` then `itemToContext()` for each item, writing results to `context/{pluginId}/{itemId}.md`. The `since` filter ensures only modified items are re-indexed on subsequent runs.
+
+### Step 3.7 — Add extractEntities for relationship curation (recommended)
+
+`extractEntities` is what makes proximity-based entity curation work. Each `Entity` is a `(type, value)` pair that groups sources for curation — one Claude session per entity processes all the sources that mention it.
+
+```typescript
+extractEntities(item): Entity[] {
+  return [
+    { type: "person", value: item.from },
+    { type: "domain", value: item.from?.split("@")[1] },
+    ...(item.tags ?? []).map(tag => ({ type: "tag", value: tag })),
+  ].filter(e => e.value)
+},
+```
+
+Common entity types: `person`, `company`, `domain`, `folder`, `channel`, `database`, `tag`, `project`, `skill`, `status`.
+
+Values are canonicalized by the entity extractor (lowercased, emails kept as-is, names slugged). Skip noisy values (automated sender addresses, system labels).
+
+Plugins without `extractEntities` fall back to a generic stub-frontmatter scan (emails + folder-path arrays), so the system still has something to group by.
+
+### Step 3.8 — Write the curationPrompt
+
+Use the user's Step 2.5 curation direction as the guide string:
+
+```typescript
+import { buildDefaultCurationPrompt } from "../../../inbox/server/lib/context-backfill-scheduler.js"
+
+curationPrompt(files: string[]): string {
+  return buildDefaultCurationPrompt("my-source", files, `Short guide describing what entities this source reveals and what to link from them.
+
+**Extract and curate:**
+- ...
+
+**Skip:**
+- ...`)
+}
+```
 
 ### Step 4 — Save and activate
 
@@ -209,6 +261,17 @@ The backfill system (`POST /api/backfill`) calls `query({ since: "<ISO timestamp
 4. Tell the user which env vars to fill in (if not already set)
 
 > **Note**: The server watches `{workspace}/plugins/` and auto-reloads on `.ts`/`.js` file changes. A full server restart is only needed when adding new env vars to `.env`.
+
+### Step 4.5 — Agent-driven refinement (what the curation agent is allowed to edit)
+
+Once a plugin is live, the context curation agent is **allowed to edit two fields of plugin code directly**:
+
+- **`curationPrompt`** — to refine what entities/attributes/timeline events to capture as it learns what the source actually reveals
+- **`itemToContext`** — to add filter logic that returns `null` for irrelevant items (skips curation but leaves them in the app's list view)
+
+The agent **must NOT edit `query`**, because `query` drives the app's list view in the inbox UI and the curation agent doesn't have visibility into how the UI uses each item.
+
+Plugin files are in a git-tracked workspace, so agent edits are reviewable via `git diff` and commit history. No proposals workflow, no sibling config files — the agent edits, commits, and moves on.
 
 ### Step 5 — Verify
 
