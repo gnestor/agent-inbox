@@ -42,15 +42,11 @@ export async function runContextBackfill(
   try {
     const raw = await runRawBackfill(workspacePath, workspaceId)
 
-    // Phase 2: dispatch one curation session per source plugin (subject to
-    // the pending-row lock, so only idle sources will get a new session)
-    const plugins = getPlugins(workspaceId).filter((p) => p.itemToContext)
-    const curation: Record<string, { sessionId: string } | { skipped: string } | { error: string }> = {}
-    for (const p of plugins) {
-      const result = await runCuratedUpdate(workspacePath, workspaceId, p.id)
-      if ("sessionId" in result) curation[p.id] = { sessionId: result.sessionId }
-      else curation[p.id] = result
-    }
+    // Phase 2 (per-source curation) is DISABLED. The new entity-curation flow
+    // (entity-curator.ts) replaces it, driven externally by a bash loop calling
+    // /api/backfill/curate-entity/next. Leaving per-source curation on here
+    // would compete with that driver and double-dispatch sessions.
+    const curation: Record<string, { skipped: string }> = {}
 
     return { raw, curation }
   } finally {

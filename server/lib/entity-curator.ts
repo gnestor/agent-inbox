@@ -27,6 +27,17 @@ const log = createLogger("entity-curator")
 
 const CURATOR_KEY_PREFIX = "entity-curation"
 
+// Domains that appear across many unrelated pages. Skipping auto-candidate for
+// these forces the agent to find the canonical curated page via INDEX.md
+// (e.g. shopify.com → shopify-store.md, not a random page that mentions Shopify).
+const AMBIGUOUS_DOMAINS = new Set([
+  "shopify.com", "instagram.com", "facebook.com", "meta.com",
+  "google.com", "youtube.com", "tiktok.com", "pinterest.com",
+  "klaviyo.com", "gorgias.com", "notion.so", "slack.com",
+  "stripe.com", "paypal.com", "quickbooks.com", "gusto.com",
+  "shopify.io", "fb.com",
+])
+
 type CurateResult =
   | { sessionId: string; entity: { type: string; value: string }; sources: number; candidate: string | null }
   | { skipped: string }
@@ -65,8 +76,27 @@ async function findCandidatePage(
     return `context/${slug}.md`
   } catch { /* not found */ }
 
-  // 2. ripgrep literal
-  const rg = spawnSync("rg", ["-l", "--glob", "*.md", "-F", entityValue, contextDir], { encoding: "utf8" })
+  // For person-emails, the ripgrep+qmd fallbacks produce false positives on
+  // pages whose title shares the local-part (e.g. sarah@hammies.com →
+  // sarah-kozusko.md). Skip auto-match and let the agent find the right page
+  // via INDEX.md, which has full entity names and tags.
+  if (entityType === "person" && entityValue.includes("@")) {
+    return null
+  }
+
+  // Same issue for ubiquitous third-party platform domains — they appear in
+  // dozens of unrelated pages, so ripgrep/qmd false-match. The agent should
+  // find the right canonical page (e.g. shopify-store.md) via INDEX.md.
+  if (entityType === "domain" && AMBIGUOUS_DOMAINS.has(entityValue.toLowerCase())) {
+    return null
+  }
+
+  // 2. ripgrep literal — only top-level curated pages, not source subdirectories
+  const rg = spawnSync(
+    "rg",
+    ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", "--glob", "!_template.md", contextDir],
+    { encoding: "utf8" },
+  )
   if (rg.status === 0 && rg.stdout.trim()) {
     const lines = rg.stdout.trim().split("\n")
     // Prefer files with slug in the name
@@ -75,13 +105,17 @@ async function findCandidatePage(
     return pick.startsWith(contextDir) ? `context/${pick.slice(contextDir.length).replace(/^\/+/, "")}` : pick
   }
 
-  // 3. qmd query (expansion + rerank, local models)
-  const qmd = spawnSync("qmd", ["query", entityValue, "-c", "context", "--files", "-n", "3"], { encoding: "utf8" })
+  // 3. qmd query (expansion + rerank, local models) — only top-level pages
+  const qmd = spawnSync("qmd", ["query", entityValue, "-c", "context", "--files", "-n", "10"], { encoding: "utf8" })
   if (qmd.status === 0 && qmd.stdout.trim()) {
-    const line = qmd.stdout.trim().split("\n")[0]!
-    // qmd prints paths like "qmd://context/foo.md"
-    const m = line.match(/qmd:\/\/context\/(\S+\.md)/)
-    if (m) return `context/${m[1]}`
+    for (const line of qmd.stdout.trim().split("\n")) {
+      const m = line.match(/qmd:\/\/context\/(\S+\.md)/)
+      if (!m) continue
+      const path = m[1]!
+      // Accept only top-level context/*.md (no slash in relative path — excludes
+      // source subdirs like gmail/, gorgias/, sessions/)
+      if (!path.includes("/")) return `context/${path}`
+    }
   }
 
   return null
@@ -111,8 +145,23 @@ function buildEntityPrompt(
 ): string {
   const sourceList = sourcePaths.map((p) => `- ${p}`).join("\n")
   const candidateSection = candidatePath && candidateContent
-    ? `## Existing page — update it\n\nPath: \`${candidatePath}\`\n\n\`\`\`markdown\n${candidateContent}\n\`\`\``
-    : `## No existing page\n\nCreate a new page for this entity. Use canonical slug \`${entityToSlug(entityType, entityValue)}.md\` unless \`context/INDEX.md\` suggests a better name.`
+    ? `## Candidate page — verify, then update
+
+Automated lookup found this page as a likely match for this entity:
+
+Path: \`${candidatePath}\`
+
+\`\`\`markdown
+${candidateContent}
+\`\`\`
+
+Before editing, confirm this page is actually about the entity (\`${entityType}: ${entityValue}\`). If it's the wrong page, search \`context/INDEX.md\` for a better match or create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\`.`
+    : `## No candidate page found
+
+Automated lookup (slug → ripgrep → qmd) did not find an existing page for this entity. Before creating a new one:
+
+1. Read \`context/INDEX.md\` — an existing page may use a different slug than the entity value. For example, \`thesourcingco.net\` is about "The Sourcing Company" and likely corresponds to \`sourcing-company.md\`. \`kurt@incip.com\` likely corresponds to \`kurt-koenig.md\`. Always prefer updating an existing page over creating a duplicate.
+2. If nothing in INDEX.md matches, create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\` and add an entry to \`context/INDEX.md\`.`
 
   return `You are maintaining a single entity's page in Hammies' relationship index.
 
@@ -185,7 +234,24 @@ export async function curateEntity(
   const cursorKey = `${CURATOR_KEY_PREFIX}:${entityType}:${entityValue}`
   const pendingKey = `${cursorKey}:pending`
 
-  // Reconcile any in-flight session
+  // Defense in depth: even if the pending row was cleared (e.g. manually), check
+  // the sessions table for any still-running entity curation for this entity.
+  // Session summaries have the form "Entity curation — <type>: <value> (N sources)".
+  const summaryPrefix = `Entity curation — ${entityType}: ${entityValue}`
+  const concurrentRunning = await queryOne<{ id: string; status: string }>(
+    `SELECT id, status FROM sessions
+     WHERE trigger_source = 'context-backfill'
+       AND status IN ('running', 'awaiting_user_input')
+       AND summary LIKE $1
+     ORDER BY started_at DESC
+     LIMIT 1`,
+    [`${summaryPrefix}%`],
+  )
+  if (concurrentRunning) {
+    return { skipped: `session ${concurrentRunning.id} for ${entityType}:${entityValue} is still ${concurrentRunning.status}` }
+  }
+
+  // Reconcile any in-flight session recorded in the pending row
   const pendingRow = await queryOne<{ last_cursor: string | null }>(
     "SELECT last_cursor FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
     [pendingKey, wsId],

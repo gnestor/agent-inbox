@@ -20,6 +20,11 @@ const log = createLogger("entity-extractor")
 // Email pattern, conservative — matches most real addresses without false positives
 const EMAIL_RE = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g
 
+// Noise filtering is plugin-specific and lives in each plugin's
+// itemToContext / extractEntities methods. The fallback scanner and the bulk
+// /extract-entities endpoint are naive by design — they trust that stubs
+// reaching disk were already filtered by the plugin that wrote them.
+
 /**
  * Turn an entity value into a canonical form for matching + slugging.
  * - Emails: lowercased
@@ -53,7 +58,8 @@ async function fallbackFromStub(stubPath: string): Promise<Entity[]> {
 
   const entities: Entity[] = []
 
-  // Extract emails (frontmatter + body)
+  // Extract emails (frontmatter + body). The plugin is responsible for filtering
+  // noise before a stub reaches disk — see gmail plugin's itemToContext.
   const emails = new Set<string>()
   for (const match of content.matchAll(EMAIL_RE)) {
     emails.add(match[0].toLowerCase())
@@ -162,18 +168,22 @@ export async function topUnprocessedEntities(
 }
 
 /**
- * All unprocessed source paths for a given entity.
+ * Unprocessed source paths for a given entity, capped to prevent a single
+ * session from trying to process thousands of sources. Remaining sources
+ * advance through subsequent calls as earlier ones are marked processed.
  */
 export async function unprocessedSourcesForEntity(
   workspaceId: string,
   entityType: string,
   entityValue: string,
+  limit = 100,
 ): Promise<string[]> {
   const rows = await dbQuery<{ source_path: string }>(
     `SELECT source_path FROM source_entities
      WHERE workspace_id = $1 AND entity_type = $2 AND entity_value = $3 AND processed_for_entity = 0
-     ORDER BY source_added_at ASC`,
-    [workspaceId, entityType, entityValue],
+     ORDER BY source_added_at ASC
+     LIMIT $4`,
+    [workspaceId, entityType, entityValue, limit],
   )
   return rows.map((r) => r.source_path)
 }
