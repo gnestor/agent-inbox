@@ -54,6 +54,19 @@ function zodErrorMessage(err: ZodError): string {
   return err.issues[0]?.message ?? "Invalid request body"
 }
 
+/** Detect context-backfill sessions by prompt content.
+ * Covers current patterns and old prompt variants from prior code generations. */
+function isContextBackfillPrompt(prompt: string | null | undefined): boolean {
+  if (!prompt) return false
+  return (
+    prompt.startsWith("You are updating the curated context knowledge base") ||
+    prompt.startsWith("You are maintaining a single entity's page in Hammies'") ||
+    prompt.startsWith("You are maintaining Hammies' relationship index") ||
+    prompt.startsWith("You are building a scoped") ||
+    prompt.startsWith("# Prune curated context pages")
+  )
+}
+
 export const sessionRoutes = new Hono<AppBindings>()
 
 sessionRoutes.post("/", rateLimit({
@@ -121,37 +134,37 @@ sessionRoutes.get("/", async (c) => {
 
   let results = agentSessions.map((s) => {
     const db = dbRecords.get(s.sessionId)
+    const prompt = db ? (db.prompt || s.firstPrompt || "") : (s.firstPrompt || "")
     // DB record takes priority for status, summary, and linked items
     if (db) {
       return {
         id: s.sessionId,
         status: db.status,
-        prompt: db.prompt || s.firstPrompt || "",
+        prompt,
         summary: db.summary || s.summary || null,
         startedAt: db.started_at || new Date(s.lastModified).toISOString(),
         updatedAt: db.updated_at || new Date(s.lastModified).toISOString(),
         completedAt: db.completed_at || null,
         linkedSourceType: db.linked_source_type || null,
         linkedSourceId: db.linked_source_id || null,
-        triggerSource: db.trigger_source || "manual",
+        triggerSource: db.trigger_source || (isContextBackfillPrompt(prompt) ? "context-backfill" as const : "manual" as const),
         project: s.project,
         linkedItemTitle: db.linked_item_title || null,
       }
     }
     // Detect context-backfill sessions by prompt content (JSONL-only sessions
     // created before DB tracking was added don't have trigger_source set)
-    const isBackfill = s.firstPrompt?.startsWith("You are updating the curated context knowledge base") ?? false
     return {
       id: s.sessionId,
       status: "complete" as const,
-      prompt: s.firstPrompt || "",
+      prompt,
       summary: s.summary || null,
       startedAt: new Date(s.lastModified).toISOString(),
       updatedAt: new Date(s.lastModified).toISOString(),
       completedAt: new Date(s.lastModified).toISOString(),
       linkedSourceType: null,
       linkedSourceId: null,
-      triggerSource: isBackfill ? "context-backfill" as const : "manual" as const,
+      triggerSource: isContextBackfillPrompt(prompt) ? "context-backfill" as const : "manual" as const,
       project: s.project,
       linkedItemTitle: null,
     }
