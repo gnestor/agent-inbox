@@ -126,7 +126,11 @@ sessionRoutes.get("/", async (c) => {
   // Enrich with DB metadata (status overrides, summaries, linked items)
   const dbRecords = new Map<string, sessions.SessionDbRow>()
   if (agentSessions.length > 0) {
-    const allDbSessions = await sessions.listSessionRecords({ q: q || undefined })
+    // Don't filter by q here — we need DB records for all sessions found by the
+    // JSONL search, regardless of whether their prompt/summary matches q.
+    // (searchAgentSessions is case-insensitive; LIKE is not, so filtering by q
+    // would silently miss DB records and fall back to raw firstPrompt as summary.)
+    const allDbSessions = await sessions.listSessionRecords()
     for (const s of allDbSessions) {
       dbRecords.set(s.id, s)
     }
