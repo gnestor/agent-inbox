@@ -54,19 +54,6 @@ function zodErrorMessage(err: ZodError): string {
   return err.issues[0]?.message ?? "Invalid request body"
 }
 
-/** Detect context-backfill sessions by prompt content.
- * Covers current patterns and old prompt variants from prior code generations. */
-function isContextBackfillPrompt(prompt: string | null | undefined): boolean {
-  if (!prompt) return false
-  return (
-    prompt.startsWith("You are updating the curated context knowledge base") ||
-    prompt.startsWith("You are maintaining a single entity's page in Hammies'") ||
-    prompt.startsWith("You are maintaining Hammies' relationship index") ||
-    prompt.startsWith("You are building a scoped") ||
-    prompt.startsWith("# Prune curated context pages")
-  )
-}
-
 export const sessionRoutes = new Hono<AppBindings>()
 
 sessionRoutes.post("/", rateLimit({
@@ -151,13 +138,11 @@ sessionRoutes.get("/", async (c) => {
         completedAt: db.completed_at || null,
         linkedSourceType: db.linked_source_type || null,
         linkedSourceId: db.linked_source_id || null,
-        triggerSource: db.trigger_source || (isContextBackfillPrompt(prompt) ? "context-backfill" as const : "manual" as const),
+        triggerSource: db.trigger_source || "manual" as const,
         project: s.project,
         linkedItemTitle: db.linked_item_title || null,
       }
     }
-    // Detect context-backfill sessions by prompt content (JSONL-only sessions
-    // created before DB tracking was added don't have trigger_source set)
     return {
       id: s.sessionId,
       status: "complete" as const,
@@ -168,7 +153,7 @@ sessionRoutes.get("/", async (c) => {
       completedAt: new Date(s.lastModified).toISOString(),
       linkedSourceType: null,
       linkedSourceId: null,
-      triggerSource: isContextBackfillPrompt(prompt) ? "context-backfill" as const : "manual" as const,
+      triggerSource: "manual" as const,
       project: s.project,
       linkedItemTitle: null,
     }

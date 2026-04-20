@@ -4,16 +4,18 @@
  * Given an entity (type + value), gather all unprocessed sources that mention
  * it, locate the candidate curated context page (via tiered lookup), and
  * dispatch a tightly-scoped session that updates or creates the page, discovers
- * new entities, and leaves links behind. Pending-session lock prevents
- * concurrent runs for the same entity.
+ * new entities, and leaves links behind.
+ *
+ * Session lifecycle runs through `runBackgroundCurationSession`: sessions use
+ * CWD = `{workspace}/context`, skip creating rows in `sessions`, and advance
+ * state via the `onComplete` callback (marking sources processed here). A
+ * stale-lock TTL recovers from server crashes that leave pending rows behind.
  */
 
 import { readFile } from "fs/promises"
 import { join, resolve } from "path"
 import { spawnSync } from "child_process"
 import { createLogger } from "./logger.js"
-import { queryOne, execute } from "../db/pool.js"
-import { startSession } from "./session-manager.js"
 import {
   canonicalize,
   topUnprocessedEntities,
@@ -21,6 +23,7 @@ import {
   markProcessed,
   insertDiscoveredEntities,
 } from "./entity-extractor.js"
+import { runBackgroundCurationSession } from "./curation-session.js"
 import type { Entity } from "../../src/types/plugin.js"
 
 const log = createLogger("entity-curator")
@@ -44,6 +47,16 @@ type CurateResult =
   | { error: string }
 
 /**
+ * Strip the leading `context/` segment from a path stored in source_entities
+ * so it becomes relative to the curation CWD.
+ */
+function toCurationRelative(pathFromWorkspace: string): string {
+  return pathFromWorkspace.startsWith("context/")
+    ? pathFromWorkspace.slice("context/".length)
+    : pathFromWorkspace
+}
+
+/**
  * Derive a filename slug from an entity value.
  * - emails → local-part-domain-tld
  * - names → lowercase-hyphens
@@ -57,8 +70,10 @@ function entityToSlug(type: string, value: string): string {
 }
 
 /**
- * Tiered candidate-page lookup:
- *  1. Canonical slug → context/<slug>.md
+ * Tiered candidate-page lookup. Returned path is relative to the context
+ * directory (no `context/` prefix) so it's usable directly from the curation
+ * session's CWD.
+ *  1. Canonical slug → <slug>.md
  *  2. ripgrep literal match
  *  3. qmd query (local Qwen expansion, no Claude)
  */
@@ -69,11 +84,10 @@ async function findCandidatePage(
 ): Promise<string | null> {
   const slug = entityToSlug(entityType, entityValue)
 
-  // 1. Direct slug match
   const slugPath = join(contextDir, `${slug}.md`)
   try {
     await readFile(slugPath, "utf8")
-    return `context/${slug}.md`
+    return `${slug}.md`
   } catch { /* not found */ }
 
   // For person-emails, the ripgrep+qmd fallbacks produce false positives on
@@ -84,14 +98,12 @@ async function findCandidatePage(
     return null
   }
 
-  // Same issue for ubiquitous third-party platform domains — they appear in
-  // dozens of unrelated pages, so ripgrep/qmd false-match. The agent should
-  // find the right canonical page (e.g. shopify-store.md) via INDEX.md.
+  // Ubiquitous third-party platform domains false-match across dozens of
+  // unrelated pages. The agent should find the canonical page via INDEX.md.
   if (entityType === "domain" && AMBIGUOUS_DOMAINS.has(entityValue.toLowerCase())) {
     return null
   }
 
-  // 2. ripgrep literal — only top-level curated pages, not source subdirectories
   const rg = spawnSync(
     "rg",
     ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", "--glob", "!_template.md", contextDir],
@@ -99,22 +111,19 @@ async function findCandidatePage(
   )
   if (rg.status === 0 && rg.stdout.trim()) {
     const lines = rg.stdout.trim().split("\n")
-    // Prefer files with slug in the name
     const preferred = lines.find((p) => p.toLowerCase().includes(slug))
     const pick = preferred ?? lines[0]!
-    return pick.startsWith(contextDir) ? `context/${pick.slice(contextDir.length).replace(/^\/+/, "")}` : pick
+    return pick.startsWith(contextDir) ? pick.slice(contextDir.length).replace(/^\/+/, "") : pick
   }
 
-  // 3. qmd query (expansion + rerank, local models) — only top-level pages
   const qmd = spawnSync("qmd", ["query", entityValue, "-c", "context", "--files", "-n", "10"], { encoding: "utf8" })
   if (qmd.status === 0 && qmd.stdout.trim()) {
     for (const line of qmd.stdout.trim().split("\n")) {
       const m = line.match(/qmd:\/\/context\/(\S+\.md)/)
       if (!m) continue
       const path = m[1]!
-      // Accept only top-level context/*.md (no slash in relative path — excludes
-      // source subdirs like gmail/, gorgias/, sessions/)
-      if (!path.includes("/")) return `context/${path}`
+      // Top-level pages only (no slash) — excludes source subdirs
+      if (!path.includes("/")) return path
     }
   }
 
@@ -155,15 +164,17 @@ Path: \`${candidatePath}\`
 ${candidateContent}
 \`\`\`
 
-Before editing, confirm this page is actually about the entity (\`${entityType}: ${entityValue}\`). If it's the wrong page, search \`context/INDEX.md\` for a better match or create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\`.`
+Before editing, confirm this page is actually about the entity (\`${entityType}: ${entityValue}\`). If it's the wrong page, search \`INDEX.md\` for a better match or create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\`.`
     : `## No candidate page found
 
 Automated lookup (slug → ripgrep → qmd) did not find an existing page for this entity. Before creating a new one:
 
-1. Read \`context/INDEX.md\` — an existing page may use a different slug than the entity value. For example, \`thesourcingco.net\` is about "The Sourcing Company" and likely corresponds to \`sourcing-company.md\`. \`kurt@incip.com\` likely corresponds to \`kurt-koenig.md\`. Always prefer updating an existing page over creating a duplicate.
-2. If nothing in INDEX.md matches, create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\` and add an entry to \`context/INDEX.md\`.`
+1. Read \`INDEX.md\` — an existing page may use a different slug than the entity value. For example, \`thesourcingco.net\` is about "The Sourcing Company" and likely corresponds to \`sourcing-company.md\`. \`kurt@incip.com\` likely corresponds to \`kurt-koenig.md\`. Always prefer updating an existing page over creating a duplicate.
+2. If nothing in INDEX.md matches, create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\` and add an entry to \`INDEX.md\`.`
 
   return `You are maintaining a single entity's page in Hammies' relationship index.
+
+Your working directory is the \`context/\` folder — all paths below are relative to it.
 
 ## Entity
 - **Type:** ${entityType}
@@ -188,7 +199,7 @@ Automated lookup (slug → ripgrep → qmd) did not find an existing page for th
 
 ## Linking
 - Use dense inline links throughout prose, not just in Sources/Related
-- Flat format from \`context/\`: \`[Title](filename.md)\` for curated pages, \`[Subject](gmail/id.md)\` for sources, \`[File](../backfill-cache/google-drive/id.md)\` for Drive
+- Flat format: \`[Title](filename.md)\` for curated pages, \`[Subject](gmail/id.md)\` for sources, \`[File](../backfill-cache/google-drive/id.md)\` for Drive
 - When A → B, also link B → A
 
 ## Entity discovery
@@ -212,7 +223,7 @@ ${sourceList}
 ## Output
 Make the minimum edits needed: add inline links, timeline entries, sources, and related pages. Don't rewrite existing content. Update \`last_updated\` in frontmatter.
 
-After editing, append a line to \`context/LOG.md\`:
+After editing, append a line to \`LOG.md\`:
 \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`
 
 End your response with the \`<new-entities>\` block (empty if none discovered).
@@ -220,10 +231,6 @@ End your response with the \`<new-entities>\` block (empty if none discovered).
 Do NOT dispatch background subagents.`
 }
 
-/**
- * Run an entity curation session. Pending-row lock prevents concurrent runs.
- * Cursor key for pending: "entity-curation:<type>:<value>:pending" with value "sessionId|sources-json".
- */
 export async function curateEntity(
   workspacePath: string,
   entityType: string,
@@ -231,124 +238,48 @@ export async function curateEntity(
   workspaceId?: string,
 ): Promise<CurateResult> {
   const wsId = workspaceId || "agent"
-  const cursorKey = `${CURATOR_KEY_PREFIX}:${entityType}:${entityValue}`
-  const pendingKey = `${cursorKey}:pending`
+  const pendingKey = `${CURATOR_KEY_PREFIX}:${entityType}:${entityValue}:pending`
 
-  // Defense in depth: even if the pending row was cleared (e.g. manually), check
-  // the sessions table for any still-running entity curation for this entity.
-  // Session summaries have the form "Entity curation — <type>: <value> (N sources)".
-  const summaryPrefix = `Entity curation — ${entityType}: ${entityValue}`
-  const concurrentRunning = await queryOne<{ id: string; status: string }>(
-    `SELECT id, status FROM sessions
-     WHERE trigger_source = 'context-backfill'
-       AND status IN ('running', 'awaiting_user_input')
-       AND summary LIKE $1
-     ORDER BY started_at DESC
-     LIMIT 1`,
-    [`${summaryPrefix}%`],
-  )
-  if (concurrentRunning) {
-    return { skipped: `session ${concurrentRunning.id} for ${entityType}:${entityValue} is still ${concurrentRunning.status}` }
-  }
-
-  // Reconcile any in-flight session recorded in the pending row
-  const pendingRow = await queryOne<{ last_cursor: string | null }>(
-    "SELECT last_cursor FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
-    [pendingKey, wsId],
-  )
-
-  if (pendingRow?.last_cursor) {
-    const sepIdx = pendingRow.last_cursor.indexOf("|")
-    const pendingSessionId = sepIdx >= 0 ? pendingRow.last_cursor.slice(0, sepIdx) : pendingRow.last_cursor
-    const encodedSources = sepIdx >= 0 ? pendingRow.last_cursor.slice(sepIdx + 1) : "[]"
-
-    const session = await queryOne<{ status: string }>(
-      "SELECT status FROM sessions WHERE id = $1",
-      [pendingSessionId],
-    )
-
-    if (session?.status === "running" || session?.status === "awaiting_user_input") {
-      return { skipped: `previous entity curation session ${pendingSessionId} still ${session.status}` }
-    }
-
-    if (session?.status === "complete" || session?.status === "archived") {
-      // Previous session finished — mark its sources as processed for this entity
-      let processedSources: string[] = []
-      try {
-        processedSources = JSON.parse(encodedSources)
-      } catch { /* ignore */ }
-      if (processedSources.length > 0) {
-        await markProcessed(wsId, entityType, entityValue, processedSources)
-      }
-
-      // Parse new entities from the session's transcript (best-effort — if the
-      // agent emitted them as a <new-entities> block in its final message).
-      // We don't have direct access to transcript text here without loading the
-      // JSONL; skip for now and rely on the curation agent's own file writes.
-      log.info("Advanced entity curation", {
-        sessionId: pendingSessionId,
-        entity: `${entityType}:${entityValue}`,
-        sources: processedSources.length,
-      })
-    } else {
-      log.warn("Previous entity curation did not complete cleanly, retrying", {
-        sessionId: pendingSessionId,
-        status: session?.status ?? "missing",
-      })
-    }
-
-    await execute(
-      "DELETE FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
-      [pendingKey, wsId],
-    )
-  }
-
-  // Gather unprocessed sources for this entity
   const sources = await unprocessedSourcesForEntity(wsId, entityType, entityValue)
   if (sources.length === 0) {
     return { skipped: `no unprocessed sources for ${entityType}:${entityValue}` }
   }
 
-  // Find candidate page
   const contextDir = resolve(workspacePath, "context")
   const candidatePath = await findCandidatePage(contextDir, entityType, entityValue)
   let candidateContent: string | null = null
   if (candidatePath) {
     try {
-      candidateContent = await readFile(resolve(workspacePath, candidatePath), "utf8")
+      candidateContent = await readFile(join(contextDir, candidatePath), "utf8")
     } catch {
       candidateContent = null
     }
   }
 
-  const prompt = buildEntityPrompt(entityType, entityValue, candidatePath, candidateContent, sources)
+  // source_entities stores workspace-relative paths; strip "context/" so the
+  // agent can reference them from its CWD.
+  const promptSources = sources.map(toCurationRelative)
+  const prompt = buildEntityPrompt(entityType, entityValue, candidatePath, candidateContent, promptSources)
 
-  try {
-    const sessionId = await startSession(prompt, {
-      triggerSource: "context-backfill",
-      workspacePath,
-      linkedItemTitle: `Entity curation — ${entityType}: ${entityValue} (${sources.length} sources)`,
-    })
+  const result = await runBackgroundCurationSession({
+    workspacePath,
+    workspaceId: wsId,
+    pendingKey,
+    prompt,
+    linkedItemTitle: `Entity curation — ${entityType}: ${entityValue} (${sources.length} sources)`,
+    onComplete: async () => {
+      await markProcessed(wsId, entityType, entityValue, sources)
+      log.info("Entity curation complete", {
+        entity: `${entityType}:${entityValue}`,
+        sources: sources.length,
+      })
+    },
+  })
 
-    const now = new Date().toISOString()
-    // Encode sources into the pending cursor so the next call can mark them processed
-    const cursorValue = `${sessionId}|${JSON.stringify(sources)}`
-    await execute(
-      `INSERT INTO backfill_state (plugin_id, workspace_id, last_cursor, last_run_at, total_indexed, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $4)
-       ON CONFLICT (plugin_id, workspace_id) DO UPDATE
-         SET last_cursor = EXCLUDED.last_cursor,
-             last_run_at = EXCLUDED.last_run_at,
-             total_indexed = backfill_state.total_indexed + EXCLUDED.total_indexed,
-             updated_at = EXCLUDED.updated_at`,
-      [pendingKey, wsId, cursorValue, now, sources.length],
-    )
-
-    return { sessionId, entity: { type: entityType, value: entityValue }, sources: sources.length, candidate: candidatePath }
-  } catch (err) {
-    log.error("Entity curation failed to start", { error: (err as Error).message })
-    return { error: (err as Error).message }
+  if ("sessionId" in result) {
+    return { sessionId: result.sessionId, entity: { type: entityType, value: entityValue }, sources: sources.length, candidate: candidatePath }
   }
+  return result
 }
 
 /**

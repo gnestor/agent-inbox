@@ -172,7 +172,7 @@ function getAgentPluginPaths(wsPath: string): { type: "local"; path: string }[] 
 }
 
 /** Encode a workspace path to its Claude projects directory name. */
-function encodeWorkspacePath(path: string): string {
+export function encodeWorkspacePath(path: string): string {
   return path.replace(/\//g, "-")
 }
 
@@ -183,7 +183,7 @@ function sessionJsonlPath(sessionId: string, cwd?: string): string {
 }
 
 /** Resolve the projects directory for a workspace path. */
-function workspaceProjectsDir(cwd?: string): string {
+export function workspaceProjectsDir(cwd?: string): string {
   const encodedDir = encodeWorkspacePath(cwd || defaultWorkspacePath)
   return join(homedir(), ".claude", "projects", encodedDir)
 }
@@ -336,17 +336,6 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   if (rowCount === 0 && process.env.NODE_ENV !== "production") {
     const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
     log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
-  }
-
-  // Auto-archive automated sessions (context-backfill) when they complete
-  if (status === "complete" && rowCount > 0) {
-    const row = await queryOne<{ trigger_source: string }>("SELECT trigger_source FROM sessions WHERE id = $1", [sessionId])
-    if (row?.trigger_source === "context-backfill") {
-      await execute(
-        "UPDATE sessions SET status = 'archived', updated_at = $1 WHERE id = $2 AND status = 'complete'",
-        [now, sessionId],
-      )
-    }
   }
 }
 
@@ -748,6 +737,20 @@ export async function startSession(
     triggerSource?: string
     userSessionToken?: string
     workspacePath?: string
+    /**
+     * Skip inserting a row into the `sessions` table and avoid touching/updating
+     * its status. Used by background jobs (e.g., entity curation) that track
+     * lifecycle externally via `backfill_state`. Session JSONL is still written
+     * by the Agent SDK into the CWD's project directory.
+     */
+    skipDbRecord?: boolean
+    /**
+     * Called when the background message loop finishes. Receives the session ID
+     * and a terminal status. Only invoked when `skipDbRecord` is set — callers
+     * without a DB row use this as their "session done" hook to advance their
+     * own tracking state.
+     */
+    onEnd?: (sessionId: string, status: "complete" | "errored", error?: string) => void | Promise<void>
   },
 ): Promise<string> {
   // Dynamic import to avoid issues at startup
@@ -786,6 +789,13 @@ export async function startSession(
   })
   let sequence = 0
   let gotResult = false
+  let onEndFired = false
+  const fireOnEnd = async (status: "complete" | "errored", error?: string) => {
+    if (onEndFired || !options?.skipDbRecord || !options.onEnd) return
+    onEndFired = true
+    try { await options.onEnd(sessionId!, status, error) }
+    catch (err) { log.warn("onEnd callback failed", { sessionId, error: err instanceof Error ? err.message : String(err) }) }
+  }
 
   // Process messages in background
   ;(async () => {
@@ -795,7 +805,9 @@ export async function startSession(
         if (isInitMessage(message)) {
           sessionId = message.session_id
 
-          await createSessionRecord(sessionId!, prompt, options)
+          if (!options?.skipDbRecord) {
+            await createSessionRecord(sessionId!, prompt, options)
+          }
           runningQueries.set(sessionId!, abortController)
 
           // Broadcast the user's initial prompt as a synthetic message.
@@ -807,7 +819,9 @@ export async function startSession(
         }
 
         if (sessionId) {
-          await touchSession(sessionId)
+          if (!options?.skipDbRecord) {
+            await touchSession(sessionId)
+          }
           broadcastToSession(sessionId, { sequence, message })
           sequence++
         }
@@ -816,7 +830,9 @@ export async function startSession(
         if (isResultMessage(message)) {
           gotResult = true
           if (sessionId) {
-            await updateSessionStatus(sessionId, "complete")
+            if (!options?.skipDbRecord) {
+              await updateSessionStatus(sessionId, "complete")
+            }
             broadcastToSession(sessionId, {
               type: "session_complete",
               status: "complete",
@@ -826,9 +842,12 @@ export async function startSession(
       }
 
       if (sessionId) {
-        await updateSessionStatus(sessionId, "complete")
-        autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
+        if (!options?.skipDbRecord) {
+          await updateSessionStatus(sessionId, "complete")
+          autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
+        }
         runningQueries.delete(sessionId)
+        await fireOnEnd("complete")
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
@@ -836,13 +855,16 @@ export async function startSession(
       if (sessionId) {
         // Don't override "complete" if we already received a result
         if (!gotResult) {
-          await updateSessionStatus(sessionId, "errored", message)
+          if (!options?.skipDbRecord) {
+            await updateSessionStatus(sessionId, "errored", message)
+          }
           broadcastToSession(sessionId, {
             type: "session_error",
             error: message,
           })
         }
         runningQueries.delete(sessionId)
+        await fireOnEnd(gotResult ? "complete" : "errored", gotResult ? undefined : message)
       }
     }
   })()

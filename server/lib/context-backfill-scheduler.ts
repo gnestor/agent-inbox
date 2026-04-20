@@ -14,7 +14,7 @@ import { createLogger } from "./logger.js"
 import { getPlugins } from "./plugin-loader.js"
 import { runBackfill } from "../routes/backfill.js"
 import { queryOne, execute } from "../db/pool.js"
-import { startSession } from "./session-manager.js"
+import { runBackgroundCurationSession } from "./curation-session.js"
 
 const log = createLogger("context-backfill")
 
@@ -120,54 +120,10 @@ export async function runCuratedUpdate(
     return { error: `unknown source '${sourceFilter}'` }
   }
 
-  // Cursor keys: separate per source so they advance independently.
-  // The :pending row tracks in-flight sessions — its cursor stores "sessionId|maxMtimeMs".
+  // Cursor keys: separate per source so they advance independently. The
+  // pending row is managed by runBackgroundCurationSession.
   const cursorKey = `${CURATION_PLUGIN_ID}:${sourceFilter}`
   const pendingKey = `${cursorKey}:pending`
-
-  // Reconcile any in-flight session from the previous call
-  const pendingRow = await queryOne<{ last_cursor: string | null }>(
-    "SELECT last_cursor FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
-    [pendingKey, wsId],
-  )
-
-  if (pendingRow?.last_cursor) {
-    const [pendingSessionId, pendingMtime] = pendingRow.last_cursor.split("|")
-    const session = await queryOne<{ status: string }>(
-      "SELECT status FROM sessions WHERE id = $1",
-      [pendingSessionId],
-    )
-
-    if (session?.status === "running" || session?.status === "awaiting_user_input") {
-      return { skipped: `previous curation session ${pendingSessionId} still ${session.status}` }
-    }
-
-    if (session?.status === "complete" || session?.status === "archived") {
-      // Previous session finished — advance the real cursor
-      const now = new Date().toISOString()
-      await execute(
-        `INSERT INTO backfill_state (plugin_id, workspace_id, last_cursor, last_run_at, total_indexed, updated_at)
-         VALUES ($1, $2, $3, $4, 0, $4)
-         ON CONFLICT (plugin_id, workspace_id) DO UPDATE
-           SET last_cursor = EXCLUDED.last_cursor,
-               last_run_at = EXCLUDED.last_run_at,
-               updated_at = EXCLUDED.updated_at`,
-        [cursorKey, wsId, pendingMtime, now],
-      )
-      log.info("Advanced curation cursor", { sessionId: pendingSessionId, cursor: pendingMtime })
-    } else {
-      // errored, missing, or unknown — discard pending and retry the same range
-      log.warn("Previous curation session did not complete cleanly, retrying range", {
-        sessionId: pendingSessionId,
-        status: session?.status ?? "missing",
-      })
-    }
-
-    await execute(
-      "DELETE FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
-      [pendingKey, wsId],
-    )
-  }
 
   const curationRow = await queryOne<{ last_cursor: string | null }>(
     "SELECT last_cursor FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
@@ -234,8 +190,15 @@ export async function runCuratedUpdate(
     remaining,
   })
 
-  // Build the prompt via the plugin's curationPrompt method
-  const filePaths = batch.map((f) => f.path)
+  // Paths in the batch are workspace-relative (e.g. "context/gmail/abc.md"
+  // or "backfill-cache/google-drive/abc.md"). The curation CWD is
+  // {workspace}/context, so strip the context/ prefix for files inside it
+  // and prefix "../" for files outside it.
+  const filePaths = batch.map((f) => (
+    f.path.startsWith("context/")
+      ? f.path.slice("context/".length)
+      : `../${f.path}`
+  ))
   if (!plugin.curationPrompt) {
     return { skipped: `plugin ${sourceFilter} has no curationPrompt` }
   }
@@ -244,32 +207,31 @@ export async function runCuratedUpdate(
     return { skipped: `curation skipped for ${sourceFilter}` }
   }
 
-  try {
-    const sessionId = await startSession(prompt, {
-      triggerSource: "context-backfill",
-      workspacePath,
-      linkedItemTitle: `Context curation — ${batch.length} files (${remaining} remaining)`,
-    })
+  const result = await runBackgroundCurationSession({
+    workspacePath,
+    workspaceId: wsId,
+    pendingKey,
+    prompt,
+    linkedItemTitle: `Context curation — ${batch.length} files (${remaining} remaining)`,
+    onComplete: async () => {
+      const completedAt = new Date().toISOString()
+      await execute(
+        `INSERT INTO backfill_state (plugin_id, workspace_id, last_cursor, last_run_at, total_indexed, updated_at)
+         VALUES ($1, $2, $3, $4, 0, $4)
+         ON CONFLICT (plugin_id, workspace_id) DO UPDATE
+           SET last_cursor = EXCLUDED.last_cursor,
+               last_run_at = EXCLUDED.last_run_at,
+               updated_at = EXCLUDED.updated_at`,
+        [cursorKey, wsId, String(maxMtimeMs), completedAt],
+      )
+      log.info("Advanced curation cursor", { source: sourceFilter, cursor: maxMtimeMs })
+    },
+  })
 
-    // Store pending state — the next call will advance the real cursor only if
-    // this session completes successfully.
-    const now = new Date().toISOString()
-    await execute(
-      `INSERT INTO backfill_state (plugin_id, workspace_id, last_cursor, last_run_at, total_indexed, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $4)
-       ON CONFLICT (plugin_id, workspace_id) DO UPDATE
-         SET last_cursor = EXCLUDED.last_cursor,
-             last_run_at = EXCLUDED.last_run_at,
-             total_indexed = backfill_state.total_indexed + EXCLUDED.total_indexed,
-             updated_at = EXCLUDED.updated_at`,
-      [pendingKey, wsId, `${sessionId}|${maxMtimeMs}`, now, batch.length],
-    )
-
-    return { sessionId, remaining }
-  } catch (err) {
-    log.error("Curation session failed to start", { error: (err as Error).message })
-    return { error: (err as Error).message }
+  if ("sessionId" in result) {
+    return { sessionId: result.sessionId, remaining }
   }
+  return result
 }
 
 /**
@@ -289,6 +251,8 @@ export function buildDefaultCurationPrompt(
   const fileList = files.map((f) => `- ${f}`).join("\n")
 
   return `You are maintaining Hammies' relationship index by curating ${source} source files.
+
+Your working directory is the \`context/\` folder — all paths below are relative to it.
 
 ## A context page IS
 - An index of an entity's identity, attributes, and dense links to other entities and sources
@@ -312,7 +276,7 @@ export function buildDefaultCurationPrompt(
 Use dense inline links throughout prose, not just in Sources/Related:
 - "[Grant](grant-nestor.md) hired [Kurt Koenig](kurt-koenig.md) for the [Levi's lawsuit](levi-lawsuit.md)"
 
-Flat format from \`context/\`:
+Flat format (relative to \`context/\`):
 - Curated page: \`[Title](filename.md)\`
 - Gmail source: \`[Subject](gmail/threadId.md)\`
 - Gorgias source: \`[Ticket #id](gorgias/ticketId.md)\`
@@ -324,10 +288,10 @@ When A → B, also link B → A.
 
 ## Process
 
-1. Read \`context/INDEX.md\` to find existing pages.
-2. For each source file, update existing pages or create new ones (per \`context/SCHEMAS.md\`).
+1. Read \`INDEX.md\` to find existing pages.
+2. For each source file, update existing pages or create new ones (per \`SCHEMAS.md\`).
 3. Only add information not already present — do not rewrite existing content.
-4. Append each change to \`context/LOG.md\`: \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`
+4. Append each change to \`LOG.md\`: \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`
 5. Run \`qmd update && qmd embed\`.
 
 ## Source-specific guidance for ${source}
@@ -339,7 +303,7 @@ ${guide}
 ${fileList}
 
 ## Rules
-- Only write to curated pages (\`context/*.md\`) and \`context/INDEX.md\` / \`context/LOG.md\`
+- Only write to curated pages (\`*.md\` at the top level) and \`INDEX.md\` / \`LOG.md\`
 - Update \`last_updated\` on any page you modify
 - Do NOT dispatch background subagents`
 }

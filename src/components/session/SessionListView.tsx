@@ -9,7 +9,6 @@ import type { FieldDef } from "@/types/plugin"
 import { Plus } from "lucide-react"
 
 const SESSION_FILTER_STATUSES = ["running", "complete", "awaiting_user_input", "errored", "archived"] as const
-const CONTEXT_BACKFILL_TRIGGER = "context-backfill"
 
 const sessionFieldSchema: FieldDef[] = [
   { id: "summary", label: "Title", type: "text", listRole: "title" },
@@ -68,7 +67,6 @@ export function SessionListView() {
   const showArchived = selectedStatuses.includes("archived")
   const filtered = useMemo(
     () => sessions.filter((s) => {
-      if (s.triggerSource === CONTEXT_BACKFILL_TRIGGER) return false
       if (!showArchived && s.status === "archived") return false
       return true
     }),
