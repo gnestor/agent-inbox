@@ -46,7 +46,7 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const location = useLocation()
   const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
   const { data: linkedData } = useQuery({
-    queryKey: ["linked-session", "thread", threadId],
+    queryKey: ["linked-session", "gmail", threadId],
     queryFn: () => getLinkedSession(threadId, "gmail"),
   })
   const linkedSession = linkedData?.session
