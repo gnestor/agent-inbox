@@ -733,23 +733,11 @@ function buildSourceContext(
  *  last user or assistant turn. These are written by `attachSourceToSession`
  *  when the user attaches an email/etc. to an already-running session, but
  *  the Agent SDK's resume flow only sees standard user/assistant messages,
- *  so without inlining, the agent never learns the attached content.
- *  Exported for testing. */
+ *  so without inlining, the agent never learns the attached content. */
 export function collectPendingAttachments(
-  sessionId: string,
-  cwd?: string,
+  lines: string[],
 ): Array<{ sourceType: string; sourceId: string; title: string; content: string }> {
-  const file = sessionJsonlPath(sessionId, cwd)
-  if (!fs.existsSync(file)) return []
-  let content: string
-  try {
-    content = fs.readFileSync(file, "utf-8")
-  } catch {
-    return []
-  }
-  const lines = content.trim().split("\n")
   const pending: Array<{ sourceType: string; sourceId: string; title: string; content: string }> = []
-  // Scan backwards: collect attached_context entries until we hit a real turn.
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
     if (!line) continue
@@ -769,9 +757,20 @@ export function collectPendingAttachments(
   return pending
 }
 
+/** Read a session's JSONL as a line array. Returns [] if the file is
+ *  unreadable (missing, permission denied, etc.). */
+function readSessionJsonlLines(sessionId: string, cwd?: string): string[] {
+  try {
+    const content = fs.readFileSync(sessionJsonlPath(sessionId, cwd), "utf-8")
+    return content.length > 0 ? content.trim().split("\n") : []
+  } catch {
+    return []
+  }
+}
+
 /** Prepend pending attached-context blocks onto a prompt so the agent can read
  *  them. Each block is delimited so it's obvious which content is attached vs.
- *  typed by the user. Exported for testing. */
+ *  typed by the user. */
 export function inlineAttachments(
   prompt: string,
   attachments: Array<{ sourceType: string; sourceId: string; title: string; content: string }>,
@@ -986,7 +985,14 @@ export async function resumeSessionQuery(
       sessionRecord?.linked_source_id ?? undefined,
     )
 
-    sequence = await getSessionMessageCount(sessionId)
+    // Find the workspace path where this session's JSONL lives.
+    // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
+    const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
+
+    // Single read of the JSONL, shared for sequence (line count) and for
+    // scanning attached_context entries to inline into the prompt.
+    const jsonlLines = readSessionJsonlLines(sessionId, wsPath)
+    sequence = jsonlLines.length
 
     // Broadcast the user's prompt so it appears in the live transcript. We
     // broadcast the plain user text (what the user actually typed) — the
@@ -1003,12 +1009,7 @@ export async function resumeSessionQuery(
     broadcastToSession(sessionId, { sequence, message: userMessage })
     sequence++
 
-    // Find the workspace path where this session's JSONL lives.
-    // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
-    const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
-
-    const pendingAttachments = collectPendingAttachments(sessionId, wsPath)
-    const promptWithAttachments = inlineAttachments(prompt, pendingAttachments)
+    const promptWithAttachments = inlineAttachments(prompt, collectPendingAttachments(jsonlLines))
 
     q = agentQuery({
       prompt: promptWithAttachments,
