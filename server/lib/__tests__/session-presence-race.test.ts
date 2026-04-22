@@ -85,9 +85,10 @@ describe("session presence race conditions", () => {
   })
 
   it("broadcasts are debounced: rapid add/remove produces one broadcast", async () => {
-    const { addSseClient, addPresenceUser, removePresenceUser } = await import("../session-manager.js")
-    const received: string[] = []
-    await addSseClient("race-6", (data) => received.push(data))
+    const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser } = await import("../session-manager.js")
+    const received: any[] = []
+    addWsClient("c-6", (data) => received.push(data))
+    await wsSubscribe("c-6", ["race-6"])
 
     // 10 rapid operations — should coalesce into a single broadcast.
     for (let i = 0; i < 5; i++) {
@@ -96,35 +97,38 @@ describe("session presence race conditions", () => {
     for (let i = 0; i < 3; i++) {
       removePresenceUser("race-6", `u${i}@test.com`)
     }
-    // No broadcast has fired yet (still debouncing).
-    expect(received).toHaveLength(0)
+    // Only the subscribe-time initial replay might have fired so far; no *presence* broadcast yet (still debouncing).
+    expect(received.filter((m) => m.data?.type === "presence" && m.sessionId === "race-6")).toHaveLength(0)
     // Wait past the 200ms debounce window.
     await sleep(250)
     // Exactly one coalesced broadcast.
-    expect(received).toHaveLength(1)
-    const event = JSON.parse(received[0]!)
-    expect(event.type).toBe("presence")
-    expect(event.users).toHaveLength(2) // u3, u4 remain
+    const presence = received.filter((m) => m.data?.type === "presence" && m.sessionId === "race-6")
+    expect(presence).toHaveLength(1)
+    expect(presence[0]!.data.users).toHaveLength(2) // u3, u4 remain
   })
 
   it("broadcasts separated beyond debounce window are distinct", async () => {
-    const { addSseClient, addPresenceUser } = await import("../session-manager.js")
-    const received: string[] = []
-    await addSseClient("race-7", (data) => received.push(data))
+    const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
+    const received: any[] = []
+    addWsClient("c-7", (data) => received.push(data))
+    await wsSubscribe("c-7", ["race-7"])
 
     addPresenceUser("race-7", { email: "alice@test.com", name: "Alice" })
     await sleep(250)
     addPresenceUser("race-7", { email: "bob@test.com", name: "Bob" })
     await sleep(250)
-    expect(received).toHaveLength(2)
+    const presence = received.filter((m) => m.data?.type === "presence" && m.sessionId === "race-7")
+    expect(presence).toHaveLength(2)
   })
 
   it("removing a user who isn't present is a no-op (no broadcast)", async () => {
-    const { addSseClient, removePresenceUser } = await import("../session-manager.js")
-    const received: string[] = []
-    await addSseClient("race-8", (data) => received.push(data))
+    const { addWsClient, wsSubscribe, removePresenceUser } = await import("../session-manager.js")
+    const received: any[] = []
+    addWsClient("c-8", (data) => received.push(data))
+    await wsSubscribe("c-8", ["race-8"])
     removePresenceUser("race-8", "ghost@test.com")
     await sleep(250)
-    expect(received).toHaveLength(0)
+    const presence = received.filter((m) => m.data?.type === "presence" && m.sessionId === "race-8")
+    expect(presence).toHaveLength(0)
   })
 })

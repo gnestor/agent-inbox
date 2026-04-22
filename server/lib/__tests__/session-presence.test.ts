@@ -38,24 +38,25 @@ describe("session presence tracking", () => {
     expect(users[0]!).toMatchObject({ email: "alice@test.com", name: "Alice" })
   })
 
-  it("addPresenceUser broadcasts presence event to SSE clients (debounced)", async () => {
-    const { addSseClient, addPresenceUser } = await import("../session-manager.js")
-    const received: string[] = []
-    addSseClient("sess-2", (data) => received.push(data))
+  it("addPresenceUser broadcasts presence event to WS clients (debounced)", async () => {
+    const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
+    const received: any[] = []
+    addWsClient("c-2", (data) => received.push(data))
+    await wsSubscribe("c-2", ["sess-2"])
     addPresenceUser("sess-2", { email: "alice@test.com", name: "Alice" })
     // Debounced: wait for the broadcast timer to fire.
     await new Promise((r) => setTimeout(r, 250))
-    expect(received).toHaveLength(1)
-    const event = JSON.parse(received[0]!)
-    expect(event.type).toBe("presence")
-    expect(event.users).toHaveLength(1)
-    expect(event.users[0]!.email).toBe("alice@test.com")
+    const presenceEvents = received.filter((m) => m.data?.type === "presence" && m.sessionId === "sess-2")
+    expect(presenceEvents).toHaveLength(1)
+    expect(presenceEvents[0]!.data.users).toHaveLength(1)
+    expect(presenceEvents[0]!.data.users[0]!.email).toBe("alice@test.com")
   })
 
   it("removePresenceUser removes user from presence map and broadcasts", async () => {
-    const { addSseClient, addPresenceUser, removePresenceUser, getPresenceUsers } = await import("../session-manager.js")
-    const received: string[] = []
-    addSseClient("sess-3", (data) => received.push(data))
+    const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser, getPresenceUsers } = await import("../session-manager.js")
+    const received: any[] = []
+    addWsClient("c-3", (data) => received.push(data))
+    await wsSubscribe("c-3", ["sess-3"])
     addPresenceUser("sess-3", { email: "alice@test.com", name: "Alice" })
     addPresenceUser("sess-3", { email: "bob@test.com", name: "Bob" })
     removePresenceUser("sess-3", "alice@test.com")
@@ -64,10 +65,9 @@ describe("session presence tracking", () => {
     const users = getPresenceUsers("sess-3")
     expect(users).toHaveLength(1)
     expect(users[0]!.email).toBe("bob@test.com")
-    expect(received).toHaveLength(1)
-    const lastEvent = JSON.parse(received[0]!)
-    expect(lastEvent.type).toBe("presence")
-    expect(lastEvent.users).toHaveLength(1)
+    const presenceEvents = received.filter((m) => m.data?.type === "presence" && m.sessionId === "sess-3")
+    expect(presenceEvents).toHaveLength(1)
+    expect(presenceEvents[0]!.data.users).toHaveLength(1)
   })
 
   it("removePresenceUser cleans up empty session maps (no memory leak)", async () => {
@@ -110,12 +110,12 @@ describe("resumeSessionQuery author attribution", () => {
       createSdkMcpServer: vi.fn(),
     }))
 
-    const { resumeSessionQuery, broadcastToSession, addSseClient } = await import("../session-manager.js")
+    const { resumeSessionQuery, addWsClient, wsSubscribe } = await import("../session-manager.js")
 
-    // Add an SSE client to capture broadcasts
-    const broadcasts: unknown[] = []
-    const send = (data: string) => { broadcasts.push(JSON.parse(data)) }
-    await addSseClient("sess-auth-1", send)
+    // Register a WS client and subscribe to capture broadcasts
+    const broadcasts: any[] = []
+    addWsClient("c-auth-1", (data) => broadcasts.push(data))
+    await wsSubscribe("c-auth-1", ["sess-auth-1"])
 
     await resumeSessionQuery("sess-auth-1", "Hello world", undefined, {
       email: "alice@test.com",
@@ -123,10 +123,10 @@ describe("resumeSessionQuery author attribution", () => {
       picture: "https://example.com/alice.jpg",
     })
 
-    const userBroadcast = broadcasts.find((b: any) => b?.message?.type === "user") as any
+    const userBroadcast = broadcasts.find((b) => b.data?.message?.type === "user")
     expect(userBroadcast).toBeDefined()
-    expect(userBroadcast.message.authorEmail).toBe("alice@test.com")
-    expect(userBroadcast.message.authorName).toBe("Alice")
+    expect(userBroadcast.data.message.authorEmail).toBe("alice@test.com")
+    expect(userBroadcast.data.message.authorName).toBe("Alice")
   })
 
   it("omits author fields when no userProfile provided (backward compat)", async () => {
@@ -138,18 +138,18 @@ describe("resumeSessionQuery author attribution", () => {
       createSdkMcpServer: vi.fn(),
     }))
 
-    const { resumeSessionQuery, addSseClient } = await import("../session-manager.js")
+    const { resumeSessionQuery, addWsClient, wsSubscribe } = await import("../session-manager.js")
 
-    const broadcasts: unknown[] = []
-    const send = (data: string) => { broadcasts.push(JSON.parse(data)) }
-    await addSseClient("sess-auth-2", send)
+    const broadcasts: any[] = []
+    addWsClient("c-auth-2", (data) => broadcasts.push(data))
+    await wsSubscribe("c-auth-2", ["sess-auth-2"])
 
     await resumeSessionQuery("sess-auth-2", "Hello world", undefined, undefined)
 
-    const userBroadcast = broadcasts.find((b: any) => b?.message?.type === "user") as any
+    const userBroadcast = broadcasts.find((b) => b.data?.message?.type === "user")
     expect(userBroadcast).toBeDefined()
-    expect(userBroadcast.message.authorEmail).toBeUndefined()
-    expect(userBroadcast.message.authorName).toBeUndefined()
+    expect(userBroadcast.data.message.authorEmail).toBeUndefined()
+    expect(userBroadcast.data.message.authorName).toBeUndefined()
   })
 })
 
