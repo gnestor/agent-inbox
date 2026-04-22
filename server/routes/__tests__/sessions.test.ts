@@ -707,40 +707,40 @@ describe("session routes", () => {
       mockPatchArtifactCode.mockResolvedValue(true)
 
       const res = await patchJson(app, "/sessions/s1/artifact", {
-        sequence: 1,
+        toolUseId: "toolu_abc",
         code: "console.log('hello')",
       })
       expect(res.status).toBe(200)
       const data = await res.json()
       expect(data.ok).toBe(true)
-      expect(mockPatchArtifactCode).toHaveBeenCalledWith("s1", 1, "console.log('hello')")
+      expect(mockPatchArtifactCode).toHaveBeenCalledWith("s1", "toolu_abc", "console.log('hello')")
     })
 
-    it("returns 404 when artifact not found at sequence", async () => {
+    it("returns 404 when no tool_use matches the id", async () => {
       mockPatchArtifactCode.mockResolvedValue(false)
 
       const res = await patchJson(app, "/sessions/s1/artifact", {
-        sequence: 99,
+        toolUseId: "toolu_missing",
         code: "test",
       })
       expect(res.status).toBe(404)
       const data = await res.json()
-      expect(data.error).toBe("Artifact not found at the given sequence")
+      expect(data.error).toBe("Artifact not found for the given tool_use id")
     })
 
-    it("returns 400 when sequence is missing", async () => {
+    it("returns 400 when toolUseId is missing", async () => {
       const res = await patchJson(app, "/sessions/s1/artifact", { code: "test" })
       expect(res.status).toBe(400)
     })
 
     it("returns 400 when code is missing", async () => {
-      const res = await patchJson(app, "/sessions/s1/artifact", { sequence: 1 })
+      const res = await patchJson(app, "/sessions/s1/artifact", { toolUseId: "toolu_abc" })
       expect(res.status).toBe(400)
     })
 
-    it("returns 400 when sequence is not an integer", async () => {
+    it("returns 400 when toolUseId is empty", async () => {
       const res = await patchJson(app, "/sessions/s1/artifact", {
-        sequence: 1.5,
+        toolUseId: "",
         code: "test",
       })
       expect(res.status).toBe(400)

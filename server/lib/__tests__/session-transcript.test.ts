@@ -178,3 +178,99 @@ describe("session transcript and artifact patching", () => {
     expect(renderMsg!.sequence).toBe(7)  // Line index, not filtered count
   })
 })
+
+// ---------------------------------------------------------------------------
+// patchArtifactCode — locate by tool_use id, patch the right field per tool
+// ---------------------------------------------------------------------------
+
+const PATCH_SESSION_ID = "test-patch-456"
+
+function buildPatchJsonl(): string {
+  const lines = [
+    // Head must include cwd so findAgentSession can locate the session
+    JSON.stringify({ type: "summary", summary: "patch test", cwd: TEST_DIR }),
+    JSON.stringify({ type: "user", message: { content: "Make stuff", role: "user" }, cwd: TEST_DIR, timestamp: "2026-01-01T00:00:00Z" }),
+    // render_output assistant
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tu_render", name: "mcp__render_output__render_output", input: { type: "react", title: "T1", data: { code: "old render" } } }], stop_reason: "tool_use" },
+      timestamp: "2026-01-01T00:00:01Z",
+    }),
+    // create_file assistant
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tu_create", name: "mcp__artifact__create_file", input: { description: "x", path: "/mnt/user-data/outputs/foo.jsx", file_text: "old create" } }], stop_reason: "tool_use" },
+      timestamp: "2026-01-01T00:00:02Z",
+    }),
+    // Write assistant
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tu_write", name: "Write", input: { file_path: "/tmp/foo.jsx", content: "old write" } }], stop_reason: "tool_use" },
+      timestamp: "2026-01-01T00:00:03Z",
+    }),
+    // unrelated tool
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tu_other", name: "Bash", input: { command: "ls" } }], stop_reason: "tool_use" },
+      timestamp: "2026-01-01T00:00:04Z",
+    }),
+  ]
+  return lines.join("\n") + "\n"
+}
+
+describe("patchArtifactCode by tool_use id", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    mkdirSync(PROJECT_DIR, { recursive: true })
+    writeFileSync(join(PROJECT_DIR, `${PATCH_SESSION_ID}.jsonl`), buildPatchJsonl())
+  })
+
+  async function readBlock(toolUseId: string) {
+    const fs = await import("fs")
+    const jsonlPath = join(PROJECT_DIR, `${PATCH_SESSION_ID}.jsonl`)
+    const lines = fs.readFileSync(jsonlPath, "utf-8").trim().split("\n")
+    for (const line of lines) {
+      const msg = JSON.parse(line)
+      const content = msg.message?.content ?? msg.content
+      if (!Array.isArray(content)) continue
+      for (const b of content) if (b.id === toolUseId) return b
+    }
+    return null
+  }
+
+  it("patches render_output input.data.code", async () => {
+    const { patchArtifactCode } = await import("../session-manager.js")
+    const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_render", "new render")
+    expect(ok).toBe(true)
+    const block = await readBlock("tu_render")
+    expect(block.input.data.code).toBe("new render")
+  })
+
+  it("patches create_file input.file_text", async () => {
+    const { patchArtifactCode } = await import("../session-manager.js")
+    const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_create", "new create")
+    expect(ok).toBe(true)
+    const block = await readBlock("tu_create")
+    expect(block.input.file_text).toBe("new create")
+  })
+
+  it("patches Write input.content", async () => {
+    const { patchArtifactCode } = await import("../session-manager.js")
+    const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_write", "new write")
+    expect(ok).toBe(true)
+    const block = await readBlock("tu_write")
+    expect(block.input.content).toBe("new write")
+  })
+
+  it("returns false for unknown tool_use id", async () => {
+    const { patchArtifactCode } = await import("../session-manager.js")
+    const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_does_not_exist", "x")
+    expect(ok).toBe(false)
+  })
+
+  it("returns false for tool_use whose tool name we don't know how to patch", async () => {
+    const { patchArtifactCode } = await import("../session-manager.js")
+    const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_other", "x")
+    expect(ok).toBe(false)
+  })
+})

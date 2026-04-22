@@ -96,10 +96,10 @@ export async function resumeSession(sessionId: string, prompt: string) {
   })
 }
 
-export async function updateArtifactCode(sessionId: string, sequence: number, code: string) {
+export async function updateArtifactCode(sessionId: string, toolUseId: string, code: string) {
   return request<{ ok: boolean }>(`/sessions/${sessionId}/artifact`, {
     method: "PATCH",
-    body: JSON.stringify({ sequence, code }),
+    body: JSON.stringify({ toolUseId, code }),
   })
 }
 

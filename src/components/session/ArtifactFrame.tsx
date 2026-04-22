@@ -147,6 +147,17 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   const iframeHeight = hasHeight ? Math.min(contentHeight, 600) : 200
   const showIframe = heightReported
 
+  // Render compile/runtime errors in flow so they don't overlap transcript content below.
+  if (transformError || runtimeError) {
+    return (
+      <div className={className ?? "w-full"}>
+        <div className="bg-destructive p-4 rounded-md overflow-auto">
+          <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative w-full h-full">
       {/* Don't render iframe until Babel has transformed the code and produced srcDoc */}
@@ -161,16 +172,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
           onLoad={handleLoad}
         />
       )}
-      {(!showIframe || transformLoading) && !transformError && !runtimeError && (
+      {(!showIframe || transformLoading) && (
         <Skeleton
           className={className ? "w-full h-full rounded-md" : "w-full rounded-md"}
           style={className ? undefined : { height: iframeHeight }}
         />
-      )}
-      {(transformError || runtimeError) && (
-        <div className="min-h-[150px] bg-destructive p-4 rounded-md overflow-auto absolute inset-0">
-          <pre className="text-white text-xs font-mono whitespace-pre-wrap">{transformError || runtimeError}</pre>
-        </div>
       )}
     </div>
   )

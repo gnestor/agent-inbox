@@ -443,11 +443,11 @@ sessionRoutes.patch("/:id/artifact", async (c) => {
   } catch (err) {
     return c.json({ error: zodErrorMessage(err as ZodError) }, 400)
   }
-  const { sequence, code } = body
-  const ok = await sessions.patchArtifactCode(sessionId, sequence, code)
+  const { toolUseId, code } = body
+  const ok = await sessions.patchArtifactCode(sessionId, toolUseId, code)
   if (!ok) {
-    log.warn("Artifact patch failed", { sessionId, sequence })
-    return c.json({ error: "Artifact not found at the given sequence" }, 404)
+    log.warn("Artifact patch failed", { sessionId, toolUseId })
+    return c.json({ error: "Artifact not found for the given tool_use id" }, 404)
   }
   return c.json({ ok: true })
 })

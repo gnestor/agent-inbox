@@ -41,6 +41,12 @@ export interface MessageLookups {
   authorEmails: string[]
   /** file path → file_text from create_file tool_use blocks (latest version wins) */
   fileMap: Map<string, string>
+  /**
+   * file path → tool_use id of the create_file/Write block that wrote it
+   * (latest version wins). Used by the artifact editor to PATCH the correct
+   * JSONL block when the user saves edits.
+   */
+  fileIdMap: Map<string, string>
   /** tool_use_id → human-readable description for Agent/Skill tool calls */
   agentDescriptions: Map<string, string>
 }
@@ -257,6 +263,43 @@ export function toolUseCommand(name: string, input: Record<string, unknown>): st
 }
 
 // ---------------------------------------------------------------------------
+// Artifact-code lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the current source code held by the tool_use block with the given id.
+ * Mirrors the server's patch dispatch in `session-manager.ts#patchToolUseBlock`:
+ * render_output → input.data.code, create_file → input.file_text, Write → input.content.
+ */
+export function findCodeByToolUseId(messages: SessionMessage[] | undefined, toolUseId: string): string | null {
+  if (!messages) return null
+  for (const m of messages) {
+    const raw = m.message as unknown as Record<string, unknown> | undefined
+    const content = (raw?.message as Record<string, unknown> | undefined)?.content ?? raw?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type !== "tool_use" || block.id !== toolUseId) continue
+      const name = block.name as string
+      const input = block.input as Record<string, unknown> | undefined
+      if (!input) return null
+      if (RENDER_OUTPUT_NAMES.has(name)) {
+        const data = input.data
+        if (typeof data === "string") return data
+        if (data && typeof data === "object") {
+          const code = (data as Record<string, unknown>).code
+          return typeof code === "string" ? code : null
+        }
+        return null
+      }
+      if (CREATE_FILE_NAMES.has(name)) return typeof input.file_text === "string" ? input.file_text : null
+      if (name === "Write") return typeof input.content === "string" ? input.content : null
+      return null
+    }
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline: buildLookups — single O(n) pass
 // ---------------------------------------------------------------------------
 
@@ -266,6 +309,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
   const resolvedToolUseIDs = new Set<string>()
   const emailSet = new Set<string>()
   const fileMap = new Map<string, string>()
+  const fileIdMap = new Map<string, string>()
   const agentDescriptions = new Map<string, string>()
 
   for (const m of messages) {
@@ -309,7 +353,9 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
             typeof (block as any).input?.path === "string" &&
             typeof (block as any).input?.file_text === "string"
           ) {
-            fileMap.set((block as any).input.path, (block as any).input.file_text)
+            const path = (block as any).input.path as string
+            fileMap.set(path, (block as any).input.file_text)
+            if (typeof (block as any).id === "string") fileIdMap.set(path, (block as any).id)
           }
           // Collect Write tool content for inline artifact rendering
           if (
@@ -318,7 +364,9 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
             typeof (block as any).input?.file_path === "string" &&
             typeof (block as any).input?.content === "string"
           ) {
-            fileMap.set((block as any).input.file_path, (block as any).input.content)
+            const path = (block as any).input.file_path as string
+            fileMap.set(path, (block as any).input.content)
+            if (typeof (block as any).id === "string") fileIdMap.set(path, (block as any).id)
           }
         }
       }
@@ -330,6 +378,7 @@ export function buildLookups(messages: SessionMessage[]): MessageLookups {
     resolvedToolUseIDs,
     authorEmails: [...emailSet].sort(),
     fileMap,
+    fileIdMap,
     agentDescriptions,
   }
 }

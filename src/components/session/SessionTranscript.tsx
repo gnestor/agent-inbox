@@ -85,6 +85,7 @@ const LookupsContext = createContext<MessageLookups>({
   agentDescriptions: new Map(),
   authorEmails: [],
   fileMap: new Map(),
+  fileIdMap: new Map(),
 })
 function useLookups() { return useContext(LookupsContext) }
 
@@ -735,7 +736,8 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
   if (block.type === "tool_use") {
     if (RENDER_OUTPUT_NAMES.has(block.name) && block.input && sessionId) {
       if (!visibility.artifacts) return null
-      return <OutputAccordion spec={block.input as OutputSpec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
+      const spec = withSourceToolUseId(block.input as OutputSpec, block.id)
+      return <OutputAccordion spec={spec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
     }
     // present_files — render artifacts from create_file content
     if (PRESENT_FILES_NAMES.has(block.name) && block.input?.filepaths && sessionId) {
@@ -746,7 +748,7 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
           {filepaths.map((fp, idx) => {
             const content = lookups.fileMap.get(fp)
             if (!content) return null
-            const spec = fileToOutputSpec(fp, content)
+            const spec = withSourceToolUseId(fileToOutputSpec(fp, content), lookups.fileIdMap.get(fp))
             return (
               <OutputAccordion
                 key={`${fp}-${idx}`}
@@ -770,7 +772,7 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
       const filePath = block.input!.file_path as string
       const content = lookups.fileMap.get(filePath)
       if (content) {
-        const spec = fileToOutputSpec(filePath, content)
+        const spec = withSourceToolUseId(fileToOutputSpec(filePath, content), block.id)
         return <OutputAccordion spec={spec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
       }
     }
@@ -880,6 +882,12 @@ function ToolCallDetail({ name, input, toolUseId }: { name: string; input: Recor
 // ---------------------------------------------------------------------------
 
 /** Convert a file path + content into an OutputSpec based on extension. */
+/** Attach the underlying tool_use id to a react spec so the artifact editor can PATCH it. */
+function withSourceToolUseId(spec: OutputSpec, toolUseId: string | undefined): OutputSpec {
+  if (!toolUseId || spec.type !== "react") return spec
+  return { ...spec, sourceToolUseId: toolUseId }
+}
+
 function fileToOutputSpec(path: string, content: string): OutputSpec {
   const ext = path.split(".").pop()?.toLowerCase() ?? ""
   const name = path.split("/").pop() ?? path

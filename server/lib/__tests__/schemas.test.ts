@@ -230,30 +230,30 @@ describe("AttachToSessionBody", () => {
 describe("PatchArtifactBody", () => {
   it("accepts valid body", () => {
     const result = PatchArtifactBody.safeParse({
-      sequence: 1,
+      toolUseId: "toolu_abc",
       code: "console.log('hi')",
     })
     expect(result.success).toBe(true)
   })
 
   it("accepts empty code string (no min constraint)", () => {
-    const result = PatchArtifactBody.safeParse({ sequence: 0, code: "" })
+    const result = PatchArtifactBody.safeParse({ toolUseId: "toolu_abc", code: "" })
     expect(result.success).toBe(true)
   })
 
-  it("rejects non-integer sequence", () => {
-    const result = PatchArtifactBody.safeParse({ sequence: 1.5, code: "x" })
+  it("rejects empty toolUseId", () => {
+    const result = PatchArtifactBody.safeParse({ toolUseId: "", code: "x" })
     expect(result.success).toBe(false)
   })
 
-  it("rejects string sequence", () => {
-    const result = PatchArtifactBody.safeParse({ sequence: "1", code: "x" })
+  it("rejects non-string toolUseId", () => {
+    const result = PatchArtifactBody.safeParse({ toolUseId: 123, code: "x" })
     expect(result.success).toBe(false)
   })
 
   it("rejects missing fields", () => {
     expect(PatchArtifactBody.safeParse({}).success).toBe(false)
-    expect(PatchArtifactBody.safeParse({ sequence: 1 }).success).toBe(false)
+    expect(PatchArtifactBody.safeParse({ toolUseId: "toolu_abc" }).success).toBe(false)
     expect(PatchArtifactBody.safeParse({ code: "x" }).success).toBe(false)
   })
 })

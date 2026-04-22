@@ -2,9 +2,11 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { X, Save } from "lucide-react"
 import { toast } from "sonner"
 import { common, createLowlight } from "lowlight"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigation } from "@/hooks/use-navigation"
-import { setEditingCode, getEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
-import { updateArtifactCode } from "@/api/client"
+import { setEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
+import { getSession, updateArtifactCode } from "@/api/client"
+import { findCodeByToolUseId } from "@/lib/session-pipeline"
 import { hastToHtml, escapeHtml } from "@/lib/hast-html"
 import type { PanelState } from "@/types/navigation"
 
@@ -25,21 +27,32 @@ interface CodeEditorPanelProps {
 }
 
 export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
-  const { sessionId, sequence, initialCode, artifactPanelId } = panel.props
+  const { sessionId, sequence, toolUseId, initialCode, artifactPanelId } = panel.props
   const { removePanel, replacePanel, getPanels } = useNavigation()
+  const qc = useQueryClient()
   const key = artifactEditorKey(sessionId, sequence)
-  const [code, setCode] = useState(initialCode)
+  const [userEdit, setUserEdit] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const highlightRef = useRef<HTMLPreElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // Initialize the editing store (only if not already editing)
-  useEffect(() => {
-    if (!getEditingCode(key)) setEditingCode(key, initialCode)
-  }, [key, initialCode])
+  // The persisted `initialCode` prop is captured at panel-open time and goes
+  // stale after save+reload, so the JSONL is the authoritative source.
+  const { data: sessionData } = useQuery({
+    queryKey: ["session", sessionId],
+    queryFn: () => getSession(sessionId),
+  })
+  const freshCode = useMemo(
+    () => findCodeByToolUseId(sessionData?.messages, toolUseId),
+    [sessionData?.messages, toolUseId],
+  )
 
-  // Sync scroll between textarea and highlight overlay
+  // Derived editor value: user's in-progress edits win, otherwise use the
+  // latest JSONL code, otherwise the persisted panel prop (shown briefly
+  // while the session query resolves on reload).
+  const code = userEdit ?? freshCode ?? initialCode
+
   useEffect(() => {
     const textarea = textareaRef.current
     const highlight = highlightRef.current
@@ -56,12 +69,9 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
 
   const handleChange = useCallback(
     (value: string) => {
-      setCode(value)
-      // Debounced hot-reload
+      setUserEdit(value)
       clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        setEditingCode(key, value)
-      }, 300)
+      debounceRef.current = setTimeout(() => setEditingCode(key, value), 300)
     },
     [key],
   )
@@ -69,9 +79,8 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      await updateArtifactCode(sessionId, sequence, code)
+      await updateArtifactCode(sessionId, toolUseId, code)
 
-      // Update the artifact panel's spec so the saved code persists after editor closes
       const panels = getPanels()
       const artifactPanel = panels.find((p) => p.id === artifactPanelId)
       if (artifactPanel && artifactPanel.type === "output") {
@@ -84,13 +93,15 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
         } as typeof artifactPanel)
       }
 
+      qc.invalidateQueries({ queryKey: ["session", sessionId] })
+
       toast.success("Artifact saved")
     } catch (err) {
       toast.error("Failed to save artifact")
     } finally {
       setSaving(false)
     }
-  }, [sessionId, sequence, code, artifactPanelId, getPanels, replacePanel])
+  }, [sessionId, sequence, toolUseId, code, artifactPanelId, getPanels, replacePanel, qc])
 
   const handleClose = useCallback(() => {
     clearTimeout(debounceRef.current)

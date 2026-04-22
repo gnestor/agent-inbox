@@ -19,6 +19,10 @@ if ("serviceWorker" in navigator) {
 function isTransientQuery(status: string, queryKey: readonly unknown[], data: unknown): boolean {
   if (status === "error" || status === "pending") return true
   if (queryKey[0] === "sessions") return true
+  // Individual session transcripts change every time the agent writes to the JSONL
+  // (or the user edits an artifact). Serving the persisted copy on reload shows
+  // pre-edit code and confuses users; always re-fetch the authoritative version.
+  if (queryKey[0] === "session") return true
   if (data && typeof data === "object" && "pages" in data) return true
   return false
 }
@@ -31,7 +35,7 @@ const persister = createAsyncStoragePersister({
     setItem: set,
     removeItem: del,
   },
-  key: "INBOX_QUERY_CACHE_V2",
+  key: "INBOX_QUERY_CACHE_V3",
   deserialize: (cached) => {
     try {
       const parsed = typeof cached === "string" ? JSON.parse(cached) : cached

@@ -20,7 +20,11 @@ export type OutputSpec =
   | { type: "chart"; data: ChartData; title?: string }
   | { type: "file"; data: FileData; title?: string }
   | { type: "conversation"; data: ConversationData; title?: string }
-  | { type: "react"; data: ReactArtifactData; title?: string }
+  // sourceToolUseId points at the tool_use block in the session JSONL that owns
+  // the artifact's source code (render_output's input.data, create_file's
+  // input.file_text, or Write's input.content). Lets the editor PATCH the
+  // correct block and lets consumers re-derive fresh code across reloads.
+  | { type: "react"; data: ReactArtifactData; title?: string; sourceToolUseId?: string }
 
 export interface TableData {
   columns: string[]

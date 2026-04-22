@@ -66,11 +66,11 @@ Single tool call with `type` and `data`. Best for non-interactive output:
 - **Tailwind CSS** — all styling via utility classes
 - **shadcn/ui** — `import { Button, Badge, ... } from "@hammies/frontend/components/ui"`
 - **React hooks** — `import { useState, useEffect, ... } from "react"`
-- **Utilities** — `import { cn } from "@hammies/frontend/lib/utils"`
+- **`cn` utility** — `import { cn } from "@hammies/frontend/lib/utils"` ONLY. Do NOT also import `cn` from `@hammies/frontend/components/ui` — it's re-exported there for convenience but importing from both paths produces a duplicate-identifier compile error.
 - **Charts** — `import { LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer } from "recharts"`
 - **Icons** — `import { Search, Mail, Check, X, ... } from "lucide-react"`
 - **Data viz** — `import * as d3 from "d3"`
-- **Utilities** — `import _ from "lodash"`
+- **Lodash** — `import _ from "lodash"`
 
 **IMPORTANT:** Always use ES module `import` syntax. NEVER use `require()` or `window["..."]`.
 
@@ -123,7 +123,9 @@ Always handle loading and error states:
 
 Import from `@hammies/frontend/components/ui`:
 
-Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner, cn
+Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner
+
+> Note: `cn` is also re-exported from this path, but always import it from `@hammies/frontend/lib/utils` instead. Importing from both produces a duplicate-identifier compile error.
 
 ### Component Patterns
 

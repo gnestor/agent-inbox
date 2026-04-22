@@ -28,7 +28,7 @@ import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 import { buildArtifactMcpServer } from "./artifact-tools.js"
-import { RENDER_OUTPUT_NAMES } from "../../src/types/session-message.js"
+import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES } from "../../src/types/session-message.js"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
@@ -1903,68 +1903,92 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
 }
 
 /**
- * Patch the code of a render_output artifact.
- * Handles both DB sessions and JSONL-only sessions.
+ * Patch the code of an artifact by tool_use id.
+ *
+ * Scans the session's JSONL plus any subagent JSONLs for a tool_use block
+ * with the given id, then rewrites the field that holds the artifact source:
+ *
+ * - render_output / mcp__render_output__render_output → input.data.code (or input.data if it's a string)
+ * - create_file / mcp__artifact__create_file → input.file_text
+ * - Write → input.content
+ *
+ * Returns false if no matching tool_use block is found, or if the block's
+ * tool name is not one we know how to patch.
  */
-export async function patchArtifactCode(sessionId: string, sequence: number, code: string): Promise<boolean> {
+export async function patchArtifactCode(sessionId: string, toolUseId: string, code: string): Promise<boolean> {
   const agentSession = await findAgentSession(sessionId)
-  if (agentSession) {
-    return patchArtifactInJsonl(sessionId, sequence, code, agentSession.cwd)
+  if (!agentSession) return false
+
+  const sessionFile = sessionJsonlPath(sessionId, agentSession.cwd)
+  if (patchArtifactInFile(sessionFile, toolUseId, code)) return true
+
+  // Fall back to subagent JSONLs
+  const subagentsDir = join(dirname(sessionFile), sessionId, "subagents")
+  if (!fs.existsSync(subagentsDir)) return false
+  const subFiles = fs.readdirSync(subagentsDir).filter((f) => f.endsWith(".jsonl"))
+  for (const subFile of subFiles) {
+    if (patchArtifactInFile(join(subagentsDir, subFile), toolUseId, code)) return true
   }
   return false
 }
 
-/** Mutate a render_output tool_use block's code in a parsed message. Returns true if modified. */
-function patchRenderOutputCode(msg: Record<string, unknown>, code: string): boolean {
-  const msgInner = msg.message as Record<string, unknown> | undefined
-  const content = msgInner?.content || msg.content || []
-  if (!Array.isArray(content)) return false
-  for (const block of content) {
-    if (block.type !== "tool_use") continue
-    if (!RENDER_OUTPUT_NAMES.has(block.name)) continue
-    if (typeof block.input?.data === "string") {
-      block.input.data = code
-    } else if (block.input?.data && typeof block.input.data === "object") {
-      block.input.data.code = code
+/** Apply the patch to a single JSONL file in place. Returns true if a matching block was patched. */
+function patchArtifactInFile(filePath: string, toolUseId: string, code: string): boolean {
+  let content: string
+  try {
+    content = fs.readFileSync(filePath, "utf-8")
+  } catch {
+    return false
+  }
+  const lines = content.trim().split("\n")
+  for (let i = 0; i < lines.length; i++) {
+    // Fast string pre-filter: tool_use ids are unique, so lines that don't
+    // contain the id literally can't match — skip JSON.parse for them.
+    if (!lines[i]!.includes(toolUseId)) continue
+    let msg: Record<string, unknown>
+    try {
+      msg = JSON.parse(lines[i]!)
+    } catch {
+      continue
     }
+    if (!patchToolUseBlock(msg, toolUseId, code)) continue
+    lines[i] = JSON.stringify(msg)
+    fs.writeFileSync(filePath, lines.join("\n") + "\n")
     return true
   }
   return false
 }
 
-async function patchArtifactInJsonl(sessionId: string, sequence: number, code: string, cwd?: string): Promise<boolean> {
-  const sessionFile = sessionJsonlPath(sessionId, cwd)
+/** Mutate a tool_use block matching toolUseId. Returns true if modified. */
+function patchToolUseBlock(msg: Record<string, unknown>, toolUseId: string, code: string): boolean {
+  const msgInner = msg.message as Record<string, unknown> | undefined
+  const content = msgInner?.content ?? msg.content
+  if (!Array.isArray(content)) return false
+  for (const block of content as Array<Record<string, unknown>>) {
+    if (block.type !== "tool_use" || block.id !== toolUseId) continue
+    const name = block.name as string
+    const input = block.input as Record<string, unknown> | undefined
+    if (!input) return false
 
-  try {
-    const content = fs.readFileSync(sessionFile, "utf-8")
-    const lines = content.trim().split("\n")
-
-    // Try by line index first (matches getAgentSessionTranscript)
-    if (sequence >= 0 && sequence < lines.length) {
-      const msg = JSON.parse(lines[sequence]!)
-      if (msg.type === "assistant" && patchRenderOutputCode(msg, code)) {
-        lines[sequence] = JSON.stringify(msg)
-        fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
-        return true
+    if (RENDER_OUTPUT_NAMES.has(name)) {
+      if (typeof input.data === "string") {
+        input.data = code
+      } else if (input.data && typeof input.data === "object") {
+        ;(input.data as Record<string, unknown>).code = code
+      } else {
+        return false
       }
+      return true
     }
-
-    // Fallback: scan all assistant messages for a render_output to patch.
-    // Handles SSE-cached sessions where sequence doesn't match line index.
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const msg = JSON.parse(lines[i]!)
-      if (msg.type !== "assistant") continue
-      const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
-      if (!stop) continue
-      if (patchRenderOutputCode(msg, code)) {
-        lines[i] = JSON.stringify(msg)
-        fs.writeFileSync(sessionFile, lines.join("\n") + "\n")
-        return true
-      }
+    if (CREATE_FILE_NAMES.has(name)) {
+      input.file_text = code
+      return true
     }
-
-    return false
-  } catch {
+    if (name === "Write") {
+      input.content = code
+      return true
+    }
     return false
   }
+  return false
 }

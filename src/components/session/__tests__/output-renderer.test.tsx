@@ -19,6 +19,13 @@ vi.mock("@/api/client", () => ({
   getSessionFileUrl: (sid: string, name: string) => `/api/sessions/${sid}/files/${encodeURIComponent(name)}`,
 }))
 
+// Mock Babel transform — dynamic import of @babel/standalone is slow and flaky in jsdom.
+// The test only verifies ArtifactFrame renders an iframe for a successful transform.
+vi.mock("@/lib/artifact-transform", () => ({
+  transformArtifactCode: vi.fn(async (code: string) => ({ code, exportedName: "App" })),
+  escapeForScript: (code: string) => code,
+}))
+
 describe("OutputRenderer", () => {
   it("renders markdown content", () => {
     render(

@@ -49,7 +49,7 @@ export const AttachToSessionBody = z.object({
 export type AttachToSessionBody = z.infer<typeof AttachToSessionBody>
 
 export const PatchArtifactBody = z.object({
-  sequence: z.number().int(),
+  toolUseId: z.string().min(1),
   code: z.string(),
 })
 export type PatchArtifactBody = z.infer<typeof PatchArtifactBody>

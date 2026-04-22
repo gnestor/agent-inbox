@@ -1,17 +1,17 @@
 // src/components/navigation/PanelContent.tsx
 import { lazy, Suspense, useState, useCallback, useMemo } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { X, Pencil } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PanelHeader } from "@/components/shared/PanelHeader"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
 import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
-import type { ClassifiedMessage } from "@/lib/session-pipeline"
+import { findCodeByToolUseId, type ClassifiedMessage } from "@/lib/session-pipeline"
 import { AskUserForm } from "@/components/session/AskUserForm"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { useNavActions } from "@/lib/navigation-store"
-import { resumeSession, answerSessionQuestion } from "@/api/client"
+import { resumeSession, answerSessionQuestion, getSession } from "@/api/client"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
 import { Skeleton } from "@hammies/frontend/components/ui"
 import { createLogger } from "@/lib/logger"
@@ -40,33 +40,60 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   const editorKey = artifactEditorKey(sessionId, sequence)
   const editingCode = useEditingCode(editorKey)
 
+  // Persisted specs can go stale on reload. Re-derive the current code from
+  // the session transcript so saved edits survive reloads even when the
+  // persisted nav state is out of date.
+  const toolUseId = spec?.type === "react" ? spec.sourceToolUseId : undefined
+  const { data: sessionData } = useQuery({
+    queryKey: ["session", sessionId],
+    queryFn: () => getSession(sessionId),
+    enabled: !!toolUseId,
+  })
+  const freshCode = useMemo(
+    () => (toolUseId ? findCodeByToolUseId(sessionData?.messages, toolUseId) : null),
+    [sessionData?.messages, toolUseId],
+  )
+
   const handleAction = useCallback(
     (intent: string) => { resumeSession(sessionId, intent).catch((err) => log.error("Resume session failed", { sessionId, error: err instanceof Error ? err.message : String(err) })) },
     [sessionId],
   )
 
-  // Override spec with editing code for hot-reload
+  // Override spec code: prefer live editing buffer, fall back to JSONL-derived code.
   const activeSpec = useMemo((): OutputSpec | undefined => {
     if (!spec) return undefined
-    if (editingCode == null || spec.type !== "react") return spec
-    const data = typeof spec.data === "string" ? { code: editingCode } : { ...spec.data, code: editingCode }
+    if (spec.type !== "react") return spec
+    const override = editingCode ?? freshCode
+    if (override == null) return spec
+    const data = typeof spec.data === "string" ? { code: override } : { ...spec.data, code: override }
     return { ...spec, data }
-  }, [spec, editingCode])
+  }, [spec, editingCode, freshCode])
 
   // For react artifacts, show panel skeleton until the iframe has rendered.
   const [artifactReady, setArtifactReady] = useState(spec?.type !== "react")
   const handleArtifactLoaded = useCallback(() => setArtifactReady(true), [])
 
+  const editableArtifact = useMemo(() => {
+    if (!spec || spec.type !== "react" || !spec.sourceToolUseId) return null
+    const fallback = typeof spec.data === "string" ? spec.data : spec.data?.code ?? ""
+    return { code: freshCode ?? fallback, toolUseId: spec.sourceToolUseId }
+  }, [spec, freshCode])
+
   const handleEdit = useCallback(() => {
-    if (!spec || spec.type !== "react") return
-    const code = typeof spec.data === "string" ? spec.data : spec.data?.code || ""
-    setEditingCode(editorKey, code)
+    if (!editableArtifact) return
+    setEditingCode(editorKey, editableArtifact.code)
     pushPanel({
       id: `editor:${sessionId}:${sequence}`,
       type: "code_editor",
-      props: { sessionId, sequence, initialCode: code, artifactPanelId: panel.id },
+      props: {
+        sessionId,
+        sequence,
+        toolUseId: editableArtifact.toolUseId,
+        initialCode: editableArtifact.code,
+        artifactPanelId: panel.id,
+      },
     })
-  }, [spec, editorKey, sessionId, sequence, pushPanel, panel.id])
+  }, [editableArtifact, editorKey, sessionId, sequence, pushPanel, panel.id])
 
   return (
     <div className="flex flex-col h-full relative">
@@ -82,7 +109,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="text-sm font-semibold">{spec?.title || spec?.type || "Output"}</span>
         <div className="flex items-center gap-0.5">
-          {spec?.type === "react" && (
+          {editableArtifact && (
             <button
               type="button"
               className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground"
@@ -170,6 +197,7 @@ const EMPTY_LOOKUPS = {
   agentDescriptions: new Map<string, string>(),
   authorEmails: [] as string[],
   fileMap: new Map<string, string>(),
+  fileIdMap: new Map<string, string>(),
 }
 const EMPTY_PROFILES = new Map<string, { name: string; picture?: string }>()
 const FULL_VISIBILITY = { messages: true, toolCalls: true, thinking: true, artifacts: true } as const

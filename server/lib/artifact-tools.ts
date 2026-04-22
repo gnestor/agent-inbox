@@ -25,7 +25,8 @@ Supported renderable extensions:
 
 For React (.jsx):
 - Use Tailwind utility classes for all styling
-- Import components from '@hammies/frontend/components/ui': Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner, cn
+- Import components from '@hammies/frontend/components/ui': Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner
+- Import 'cn' from '@hammies/frontend/lib/utils' ONLY. It is also re-exported from '@hammies/frontend/components/ui' but importing from both paths produces a duplicate-identifier compile error.
 - Import hooks from 'react': useState, useEffect, useRef, useCallback, useMemo
 - Import charts from 'recharts': LineChart, BarChart, AreaChart, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer
 - Import icons from 'lucide-react': any icon e.g. Search, Mail, Check, X, ChevronRight, etc.
