@@ -5,7 +5,7 @@ import { createDefaultTabState } from "@/types/navigation"
 
 const STORAGE_KEY = "INBOX_NAV_STATE"
 const VERSION_KEY = "INBOX_NAV_STATE_VERSION"
-const CURRENT_VERSION = 2
+const CURRENT_VERSION = 3
 
 /** Strip empty-string values and return undefined if nothing remains. */
 export function cleanFilters(

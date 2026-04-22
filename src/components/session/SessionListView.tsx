@@ -106,6 +106,7 @@ export function SessionListView() {
       </ListView.Header>
       <ListView.Search
         placeholder="Search sessions..."
+        value={filters.q ?? ""}
         onSearch={(q) => setFilter("q", q)}
       />
       <ListView.Body

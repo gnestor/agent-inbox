@@ -99,14 +99,16 @@ function ListViewHeader({ title, children }: { title: string; children?: React.R
 
 interface ListViewSearchProps {
   placeholder?: string
+  value?: string
   onSearch?: (query: string) => void
 }
 
-function ListViewSearch({ placeholder, onSearch }: ListViewSearchProps) {
-  const [value, setValue] = useState("")
+function ListViewSearch({ placeholder, value: controlledValue, onSearch }: ListViewSearchProps) {
+  const [internalValue, setInternalValue] = useState(controlledValue ?? "")
+  const value = controlledValue ?? internalValue
 
   function handleSearch(v: string) {
-    setValue(v)
+    setInternalValue(v)
     onSearch?.(v)
   }
 
