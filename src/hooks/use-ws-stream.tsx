@@ -1,14 +1,28 @@
 import { createContext, useContext, useEffect, useRef, useCallback, useState, type ReactNode } from "react"
+import {
+  useWsConnectionStore,
+  getWsConnectionStatus,
+} from "@/stores/ws-connection-store"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type SessionEventCallback = (data: any) => void
+type ConnectCallback = () => void
 
 interface WsStreamContextValue {
   /** Subscribe to events for a session. Returns an unsubscribe function. */
   subscribe: (sessionId: string, callback: SessionEventCallback) => () => void
+  /**
+   * Register a callback that fires every time the WebSocket (re)opens.
+   * If the socket is already open when this is called, the callback fires
+   * on the next microtask so callers can rely on connect-driven refetch
+   * semantics without a separate "run-on-mount" path.
+   *
+   * Returns an unregister function.
+   */
+  onConnect: (callback: ConnectCallback) => () => void
   /** Whether the WebSocket is currently connected */
   isConnected: boolean
 }
@@ -33,6 +47,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null)
   const clientIdRef = useRef<string | null>(null)
   const listenersRef = useRef(new Map<string, Set<SessionEventCallback>>())
+  const connectListenersRef = useRef(new Set<ConnectCallback>())
   const [isConnected, setIsConnected] = useState(false)
   const retriesRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -65,6 +80,8 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(() => {
     if (!mountedRef.current) return
 
+    useWsConnectionStore.getState().recordAttempt()
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
     wsRef.current = ws
@@ -72,34 +89,55 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     ws.onopen = () => {
       retriesRef.current = 0
       setIsConnected(true)
+      useWsConnectionStore.getState().recordOpened()
+
+      // Fire all registered onConnect callbacks — this covers both the first
+      // connection and every reconnection. Callers (e.g. useSessionTranscript)
+      // use this as the signal to run a fresh snapshot.
+      for (const cb of connectListenersRef.current) {
+        try { cb() } catch (err) { console.error("[ws] onConnect callback threw", err) }
+      }
     }
 
     ws.onmessage = (evt) => {
+      let msg: any
       try {
-        const msg = JSON.parse(evt.data)
+        msg = JSON.parse(evt.data)
+      } catch (err) {
+        console.error("[ws] failed to parse message", err, evt.data)
+        return
+      }
 
-        if (msg.type === "connected") {
-          clientIdRef.current = msg.clientId
-          // Re-subscribe all active sessions on (re)connect
-          const sessionIds = [...listenersRef.current.keys()]
-          if (sessionIds.length > 0) {
-            ws.send(JSON.stringify({ type: "subscribe", sessionIds }))
-          }
-          return
+      if (msg.type === "connected") {
+        clientIdRef.current = msg.clientId
+        // Re-subscribe all active sessions on (re)connect
+        const sessionIds = [...listenersRef.current.keys()]
+        if (sessionIds.length > 0) {
+          ws.send(JSON.stringify({ type: "subscribe", sessionIds }))
         }
+        return
+      }
 
-        if (msg.type === "session_event" && msg.sessionId) {
-          const callbacks = listenersRef.current.get(msg.sessionId)
-          if (callbacks) {
-            for (const cb of callbacks) cb(msg.data)
+      if (msg.type === "session_event" && msg.sessionId) {
+        const callbacks = listenersRef.current.get(msg.sessionId)
+        if (callbacks) {
+          for (const cb of callbacks) {
+            try { cb(msg.data) } catch (err) {
+              console.error("[ws] session event callback threw", err, msg)
+            }
           }
         }
-      } catch { /* ignore parse errors */ }
+      }
     }
 
-    ws.onclose = () => {
+    ws.onerror = () => {
+      useWsConnectionStore.getState().recordErrored("websocket error")
+    }
+
+    ws.onclose = (evt) => {
       setIsConnected(false)
       clientIdRef.current = null
+      useWsConnectionStore.getState().recordClosed({ code: evt.code, reason: evt.reason })
       if (!mountedRef.current) return
       // Exponential backoff reconnect: 1s, 2s, 4s, ... 30s
       const delay = Math.min(1000 * 2 ** retriesRef.current, 30000)
@@ -111,10 +149,22 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     mountedRef.current = true
     connect()
+
+    const onOnline = () => useWsConnectionStore.getState().setOnline(true)
+    const onOffline = () => useWsConnectionStore.getState().setOnline(false)
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", onOnline)
+      window.addEventListener("offline", onOffline)
+    }
+
     return () => {
       mountedRef.current = false
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       if (batchTimerRef.current) clearTimeout(batchTimerRef.current)
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", onOnline)
+        window.removeEventListener("offline", onOffline)
+      }
       const ws = wsRef.current
       if (ws) {
         // Defer close until open to avoid "closed before established" in StrictMode
@@ -154,8 +204,22 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
   }, [scheduleBatch])
 
+  const onConnect = useCallback((callback: ConnectCallback) => {
+    connectListenersRef.current.add(callback)
+    // If the socket is already open, fire the callback on next microtask so
+    // callers can depend on connect-driven behavior regardless of race with mount.
+    if (getWsConnectionStatus().phase === "connected") {
+      queueMicrotask(() => {
+        if (connectListenersRef.current.has(callback)) callback()
+      })
+    }
+    return () => {
+      connectListenersRef.current.delete(callback)
+    }
+  }, [])
+
   return (
-    <WsStreamContext.Provider value={{ subscribe, isConnected }}>
+    <WsStreamContext.Provider value={{ subscribe, onConnect, isConnected }}>
       {children}
     </WsStreamContext.Provider>
   )
