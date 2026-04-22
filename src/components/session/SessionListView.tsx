@@ -5,6 +5,7 @@ import { ListView } from "@/components/shared/ListView"
 import { sessionStatusBadgeClass, sessionStatusLabel } from "@/lib/formatters"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
+import { cleanFilters } from "@/lib/navigation-storage"
 import type { FieldDef } from "@/types/plugin"
 import { Plus } from "lucide-react"
 
@@ -52,9 +53,7 @@ const getId = (s: Record<string, unknown>) => s.id as string
 export function SessionListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter, openNewSession } = useNavigation()
   const filters = getFilters("sessions")
-  const { sessions, loading, error } = useSessions(
-    Object.keys(filters).length > 0 ? filters : undefined,
-  )
+  const { sessions, loading, error } = useSessions(cleanFilters(filters))
 
   const [showStatus, setShowStatus] = usePreference("sessions.showStatus", true)
   const hiddenBadgeFields = useMemo(() => {

@@ -169,6 +169,7 @@ export function EmailListView() {
       </ListView.Header>
       <ListView.Search
         placeholder="Search emails..."
+        value={filters.q ?? ""}
         onSearch={(q) => setFilter("q", q)}
       />
       <ListView.Body

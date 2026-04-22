@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useMemo, useCallback, useState, useEffect } from "react"
+import { createContext, useContext, useRef, useMemo, useCallback, useEffect } from "react"
 import { ListItem, type ListItemBadge } from "./ListItem"
 import { PanelHeader, SidebarButton } from "./PanelHeader"
 import { SearchInput } from "./SearchInput"
@@ -99,23 +99,15 @@ function ListViewHeader({ title, children }: { title: string; children?: React.R
 
 interface ListViewSearchProps {
   placeholder?: string
-  value?: string
-  onSearch?: (query: string) => void
+  value: string
+  onSearch: (query: string) => void
 }
 
-function ListViewSearch({ placeholder, value: controlledValue, onSearch }: ListViewSearchProps) {
-  const [internalValue, setInternalValue] = useState(controlledValue ?? "")
-  const value = controlledValue ?? internalValue
-
-  function handleSearch(v: string) {
-    setInternalValue(v)
-    onSearch?.(v)
-  }
-
+function ListViewSearch({ placeholder, value, onSearch }: ListViewSearchProps) {
   return (
     <SearchInput
       value={value}
-      onChange={handleSearch}
+      onChange={onSearch}
       placeholder={placeholder ?? "Search..."}
     />
   )
