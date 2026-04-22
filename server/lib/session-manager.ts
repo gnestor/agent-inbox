@@ -1640,25 +1640,39 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
 
       if (displayTypes.has(msg.type)) {
         if (msg.type === "assistant") {
-          const stop = msg.message?.stop_reason ?? msg.message?.stopReason ?? msg.stop_reason ?? msg.stopReason
-          if (!stop) {
-            // Partial message — collect thinking and Agent tool_use blocks
-            const content = msg.message?.content
-            if (Array.isArray(content)) {
-              for (const block of content) {
-                if (block?.type === "thinking" && block.thinking) {
-                  pendingThinking.push(block)
-                }
-                if (block?.type === "tool_use" && block.name === "Agent") {
-                  pendingAgentToolUse.push(block)
-                }
-              }
+          // The Agent SDK writes each streaming delta as its own JSONL entry.
+          // Entries share a message.id but carry DIFFERENT content blocks —
+          // typically an early entry has thinking/text, a later entry has
+          // tool_use. Only the last entry in a turn has stop_reason set.
+          //
+          // Content routing:
+          // - thinking        → emit as its own message so the UI renders it
+          //                     standalone (not nested with the next tool call)
+          // - tool_use (Agent)→ defer so we can prepend it into the next
+          //                     emitted entry (keeps the subagent grouping
+          //                     contiguous with its parent Agent call)
+          // - text / other tool_use → emit with the entry
+          const content: Array<Record<string, unknown>> = Array.isArray(msg.message?.content)
+            ? msg.message.content
+            : []
+
+          const emitBlocks: Array<Record<string, unknown>> = []
+          for (const block of content) {
+            if (block?.type === "thinking" && block.thinking) {
+              pendingThinking.push(block)
+            } else if (block?.type === "tool_use" && block.name === "Agent") {
+              pendingAgentToolUse.push(block)
+            } else {
+              emitBlocks.push(block)
             }
-            continue
           }
 
-          // Emit each collected thinking block as its own message so they
-          // don't visually nest with each other or with subsequent tool calls.
+          // If this entry contributed nothing but thinking/Agent tool_use
+          // (which are handled specially above), skip emitting it — they'll
+          // be emitted when the next entry with real content comes through.
+          if (emitBlocks.length === 0) continue
+
+          // Flush pending thinking blocks as standalone messages before this one.
           for (let ti = 0; ti < pendingThinking.length; ti++) {
             messages.push({
               id: `${lineIdx}-thinking-${ti}`,
@@ -1671,11 +1685,14 @@ export async function getAgentSessionTranscript(sessionId: string, cwd?: string)
           }
           pendingThinking = []
 
-          // Prepend any collected Agent tool_use blocks into the complete message
-          if (pendingAgentToolUse.length > 0 && Array.isArray(msg.message?.content)) {
-            msg.message.content = [...pendingAgentToolUse, ...msg.message.content]
-            pendingAgentToolUse = []
-          }
+          // Prepend any pending Agent tool_use blocks so subagent expansion
+          // renders contiguously with its parent tool call.
+          const finalContent = pendingAgentToolUse.length > 0
+            ? [...pendingAgentToolUse, ...emitBlocks]
+            : emitBlocks
+          pendingAgentToolUse = []
+
+          msg.message = { ...msg.message, content: finalContent }
         }
 
         messages.push({

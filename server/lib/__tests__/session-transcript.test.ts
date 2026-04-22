@@ -25,7 +25,10 @@ const SESSION_ID = "test-transcript-123"
 const ENCODED_DIR = TEST_DIR.replace(/\//g, "-")
 const PROJECT_DIR = join(homedir(), ".claude", "projects", ENCODED_DIR)
 
-// Build a realistic JSONL with partial messages, tool results, and render_output
+// Build a realistic JSONL with streaming deltas (stop_reason:null), tool
+// results, and render_output. The Agent SDK writes each streaming delta as
+// its own entry with its own content blocks; only the last delta in a turn
+// has stop_reason set.
 function buildTestJsonl(): string {
   const lines = [
     // Line 0: queue operation (non-display)
@@ -34,14 +37,14 @@ function buildTestJsonl(): string {
     JSON.stringify({ type: "queue-operation", operation: "dequeue", sessionId: SESSION_ID }),
     // Line 2: user message
     JSON.stringify({ type: "user", message: { content: "Create a plan", role: "user" }, timestamp: "2026-01-01T00:00:00Z" }),
-    // Line 3: partial assistant (no stop_reason) — should be filtered
+    // Line 3: streaming text delta (stop_reason:null, real content) — should render
     JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Let me think..." }], stop_reason: null }, timestamp: "2026-01-01T00:00:01Z" }),
-    // Line 4: complete assistant
+    // Line 4: final delta of same turn — should render
     JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Here is my analysis" }], stop_reason: "tool_use" }, timestamp: "2026-01-01T00:00:02Z" }),
     // Line 5: tool result (non-display)
     JSON.stringify({ type: "tool_result", tool_use_id: "tu1", content: "ok" }),
-    // Line 6: partial assistant with render_output (no stop_reason) — should be filtered
-    JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__render_output__render_output", id: "tu2", input: { type: "react", title: "My Plan", data: { code: "partial code" } } }], stop_reason: null }, timestamp: "2026-01-01T00:00:03Z" }),
+    // Line 6: streaming preamble text before a tool call — should render
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Now let me render the plan." }], stop_reason: null }, timestamp: "2026-01-01T00:00:03Z" }),
     // Line 7: complete assistant with render_output
     JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__render_output__render_output", id: "tu2", input: { type: "react", title: "My Plan", data: { code: "original code" } } }], stop_reason: "tool_use" }, timestamp: "2026-01-01T00:00:04Z" }),
     // Line 8: complete assistant text
@@ -60,26 +63,59 @@ describe("session transcript and artifact patching", () => {
     writeFileSync(join(PROJECT_DIR, `${SESSION_ID}.jsonl`), buildTestJsonl())
   })
 
-  it("getAgentSessionTranscript filters partial messages and uses line index as sequence", async () => {
+  it("getAgentSessionTranscript emits streaming deltas with content and uses line index as sequence", async () => {
     const { getAgentSessionTranscript } = await import("../session-manager.js")
 
     const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
 
-    // Should include: line 2 (user), line 4 (assistant), line 7 (render_output), line 8 (done)
-    // Should NOT include: line 0-1 (queue), line 3 (partial), line 5 (tool_result), line 6 (partial)
+    // All assistant entries with real content render — including streaming
+    // deltas where stop_reason is null. Each delta has its own content blocks,
+    // so dropping them loses text preambles and split tool_use sequences.
     const types = messages.map((m: any) => `${m.type}@seq${m.sequence}`)
     expect(types).toContain("user@seq2")
+    expect(types).toContain("assistant@seq3")
     expect(types).toContain("assistant@seq4")
+    expect(types).toContain("assistant@seq6")
     expect(types).toContain("assistant@seq7")
     expect(types).toContain("assistant@seq8")
-
-    // Partial messages should be filtered
-    expect(types).not.toContain("assistant@seq3")
-    expect(types).not.toContain("assistant@seq6")
 
     // Non-display types should be filtered
     expect(messages.every((m: any) => m.type !== "queue-operation")).toBe(true)
     expect(messages.every((m: any) => m.type !== "tool_result")).toBe(true)
+  })
+
+  it("getAgentSessionTranscript emits thinking blocks standalone and defers Agent tool_use", async () => {
+    const fs = await import("fs")
+    const lines = [
+      JSON.stringify({ type: "user", message: { content: "Launch an agent", role: "user" }, timestamp: "2026-01-01T00:00:00Z" }),
+      // Thinking-only partial — collected, emitted as its own message before next
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "Planning the agent invocation" }], stop_reason: null }, timestamp: "2026-01-01T00:00:01Z" }),
+      // Agent tool_use partial — collected, prepended to next message with content
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Agent", id: "agent_1", input: { description: "sub" } }], stop_reason: null }, timestamp: "2026-01-01T00:00:02Z" }),
+      // Complete turn with text — should receive the prepended Agent tool_use
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Launched." }], stop_reason: "end_turn" }, timestamp: "2026-01-01T00:00:03Z" }),
+    ]
+    fs.writeFileSync(join(PROJECT_DIR, `${SESSION_ID}.jsonl`), lines.join("\n") + "\n")
+
+    const { getAgentSessionTranscript } = await import("../session-manager.js")
+    const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+
+    // Thinking is emitted as a standalone assistant message with fractional
+    // sequence so it sorts between lines.
+    const thinkingMsg = messages.find((m: any) => {
+      const blocks = m.message?.message?.content ?? []
+      return Array.isArray(blocks) && blocks.some((b: any) => b.type === "thinking")
+    }) as any
+    expect(thinkingMsg).toBeDefined()
+
+    // The complete text message gets the Agent tool_use prepended.
+    const textWithAgent = messages.find((m: any) => {
+      const blocks = m.message?.message?.content ?? []
+      if (!Array.isArray(blocks)) return false
+      return blocks.some((b: any) => b.type === "tool_use" && b.name === "Agent")
+        && blocks.some((b: any) => b.type === "text" && b.text === "Launched.")
+    })
+    expect(textWithAgent).toBeDefined()
   })
 
   it("patchArtifactInJsonl patches the correct line by sequence (line index)", async () => {
