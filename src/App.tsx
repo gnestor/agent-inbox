@@ -13,6 +13,7 @@ import type { TabId } from "@/types/navigation"
 import { setPluginOrder } from "@/types/navigation"
 import { SlotStack } from "@/components/navigation/SlotStack"
 import { SessionTab } from "@/components/session/SessionTab"
+import { SessionConnectionSurface } from "@/components/session/SessionConnectionSurface"
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
@@ -191,6 +192,7 @@ export function App() {
     <ErrorBoundary label="App">
       <UserContext.Provider value={userContext}>
         <AppContent />
+        <SessionConnectionSurface />
         <Toaster theme="dark" position="bottom-right" richColors />
       </UserContext.Provider>
     </ErrorBoundary>
