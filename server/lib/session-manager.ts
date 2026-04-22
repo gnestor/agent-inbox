@@ -55,6 +55,14 @@ const runningQueries = new Map<string, AbortController>()
 // Pending AskUserQuestion answers: sessionId → resolver function
 const pendingQuestions = new Map<string, (answers: Record<string, string>) => void>()
 
+// Session statuses where the agent is actively working — either iterating
+// (`running`) or paused waiting for user input (`awaiting_user_input`).
+const SESSION_ACTIVE_STATUSES = ["running", "awaiting_user_input"] as const
+type SessionActiveStatus = typeof SESSION_ACTIVE_STATUSES[number]
+function isActiveStatus(status: string | undefined): status is SessionActiveStatus {
+  return status === "running" || status === "awaiting_user_input"
+}
+
 // Provide an answer to a pending AskUserQuestion. Returns true if a question was waiting.
 export function provideAskUserAnswer(sessionId: string, answers: Record<string, string>): boolean {
   const resolver = pendingQuestions.get(sessionId)
@@ -847,6 +855,7 @@ export async function startSession(
           autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
         }
         runningQueries.delete(sessionId)
+        pendingQuestions.delete(sessionId)
         await fireOnEnd("complete")
       }
     } catch (err: unknown) {
@@ -864,6 +873,7 @@ export async function startSession(
           })
         }
         runningQueries.delete(sessionId)
+        pendingQuestions.delete(sessionId)
         await fireOnEnd(gotResult ? "complete" : "errored", gotResult ? undefined : message)
       }
     }
@@ -889,62 +899,96 @@ export async function resumeSessionQuery(
   userSessionToken?: string,
   userProfile?: { name: string; email: string; picture?: string },
 ): Promise<{ started: boolean }> {
-  // Guard against double-resume (e.g. server recovery + frontend orphan detection racing).
-  // Claim the slot before the dynamic import to close the TOCTOU window.
-  if (runningQueries.has(sessionId)) return { started: false }
+  // Reconcile against DB: if the in-memory entry exists but the session is no
+  // longer in an active status, the prior iterator failed silently or hung —
+  // abort it and replace rather than rejecting forever with 409. Only fetch
+  // the record on collision, so the happy path doesn't pay an extra DB query.
+  let sessionRecord = runningQueries.has(sessionId) ? await getSessionRecord(sessionId) : null
+  if (runningQueries.has(sessionId)) {
+    if (isActiveStatus(sessionRecord?.status)) {
+      return { started: false }
+    }
+    log.warn("Clearing stale runningQueries entry", { sessionId, dbStatus: sessionRecord?.status })
+    runningQueries.get(sessionId)?.abort()
+    runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
+  }
   const abortController = new AbortController()
   runningQueries.set(sessionId, abortController)
 
-  const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
+  type AgentQuery = Awaited<typeof import("@anthropic-ai/claude-agent-sdk")>["query"]
+  let q: ReturnType<AgentQuery>
+  let sequence: number
+  try {
+    const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
-  await updateSessionStatus(sessionId, "running")
+    await updateSessionStatus(sessionId, "running")
 
-  const sessionRecord = await getSessionRecord(sessionId)
-  const resumeSourceContext = buildSourceContext(
-    sessionRecord?.linked_source_type ?? undefined,
-    sessionRecord?.linked_source_id ?? undefined,
-  )
+    // Reuse the record fetched during stale-check if available; otherwise fetch now.
+    sessionRecord = sessionRecord ?? await getSessionRecord(sessionId)
+    const resumeSourceContext = buildSourceContext(
+      sessionRecord?.linked_source_type ?? undefined,
+      sessionRecord?.linked_source_id ?? undefined,
+    )
 
-  let sequence = await getSessionMessageCount(sessionId)
+    sequence = await getSessionMessageCount(sessionId)
 
-  // Broadcast the user's prompt so it appears in the live transcript
-  const userMessage = {
-    type: "user",
-    content: prompt,
-    ...(userProfile && {
-      authorEmail: userProfile.email,
-      authorName: userProfile.name,
-    }),
-  }
-  broadcastToSession(sessionId, { sequence, message: userMessage })
-  sequence++
+    // Broadcast the user's prompt so it appears in the live transcript
+    const userMessage = {
+      type: "user",
+      content: prompt,
+      ...(userProfile && {
+        authorEmail: userProfile.email,
+        authorName: userProfile.name,
+      }),
+    }
+    broadcastToSession(sessionId, { sequence, message: userMessage })
+    sequence++
 
-  // Find the workspace path where this session's JSONL lives.
-  // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
-  const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
+    // Find the workspace path where this session's JSONL lives.
+    // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
+    const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
 
-  const q = agentQuery({
-    prompt,
-    options: {
-      resume: sessionId,
-      cwd: wsPath,
-      systemPrompt: buildSystemPrompt(resumeSourceContext),
-      settingSources: ["project"],
-      allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      includePartialMessages: true,
-      abortController,
-      env: buildAgentEnv(undefined, userSessionToken),
-      canUseTool: makeCanUseTool(() => sessionId),
-      plugins: getAgentPluginPaths(wsPath),
-      mcpServers: {
-        render_output: buildRenderOutputMcpServer(),
-        artifact: buildArtifactMcpServer(),
+    q = agentQuery({
+      prompt,
+      options: {
+        resume: sessionId,
+        cwd: wsPath,
+        systemPrompt: buildSystemPrompt(resumeSourceContext),
+        settingSources: ["project"],
+        allowedTools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"],
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        includePartialMessages: true,
+        abortController,
+        env: buildAgentEnv(undefined, userSessionToken),
+        canUseTool: makeCanUseTool(() => sessionId),
+        plugins: getAgentPluginPaths(wsPath),
+        mcpServers: {
+          render_output: buildRenderOutputMcpServer(),
+          artifact: buildArtifactMcpServer(),
+        },
+        betas: AGENT_SDK_BETAS
       },
-      betas: AGENT_SDK_BETAS
-    },
-  })
+    })
+  } catch (err) {
+    // Iterator IIFE owns its own cleanup; this catch handles the window before
+    // it starts so the runningQueries entry can't leak past the failed setup.
+    runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
+    const message = err instanceof Error ? err.message : String(err)
+    log.error("Session resume setup failed", { sessionId, error: message })
+    try {
+      await updateSessionStatus(sessionId, "errored", message)
+    } catch (statusErr) {
+      log.warn("Failed to mark session errored after setup failure", {
+        sessionId,
+        error: statusErr instanceof Error ? statusErr.message : String(statusErr),
+      })
+    }
+    broadcastToSession(sessionId, { type: "session_error", error: message })
+    throw err
+  }
 
   let gotResult = false
   ;(async () => {
@@ -968,6 +1012,7 @@ export async function resumeSessionQuery(
       broadcastToSession(sessionId, { type: "session_complete", status: "complete" })
       autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
       runningQueries.delete(sessionId)
+      pendingQuestions.delete(sessionId)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       log.error("Session resume error", { sessionId, error: message })
@@ -979,6 +1024,7 @@ export async function resumeSessionQuery(
         })
       }
       runningQueries.delete(sessionId)
+      pendingQuestions.delete(sessionId)
     }
   })()
 
@@ -1086,10 +1132,10 @@ export async function indexAllAgentSessions() {
 export async function recoverStaleSessions(cutoffMinutes = 30) {
   const cutoff = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString()
 
-  // Find all sessions stuck in running/awaiting_user_input
+  // Find all sessions stuck in an active status
   const staleSessions = await query<{ id: string; status: string; updated_at: string }>(
-    `SELECT id, status, updated_at FROM sessions
-     WHERE status IN ('running', 'awaiting_user_input')`,
+    `SELECT id, status, updated_at FROM sessions WHERE status = ANY($1::text[])`,
+    [SESSION_ACTIVE_STATUSES as readonly string[]],
   )
 
   if (staleSessions.length === 0) return

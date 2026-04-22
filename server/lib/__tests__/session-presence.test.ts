@@ -152,3 +152,76 @@ describe("resumeSessionQuery author attribution", () => {
     expect(userBroadcast.message.authorName).toBeUndefined()
   })
 })
+
+describe("resumeSessionQuery stale-entry recovery", () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    mockExecute.mockReset()
+    mockQueryOne.mockReset()
+    mockQuery.mockResolvedValue([])
+    // Make updateSessionStatus's UPDATE succeed so it doesn't fall through to a
+    // diagnostic queryOne and shift our queryOne mock sequence.
+    mockExecute.mockResolvedValue({ rowCount: 1 })
+  })
+
+  it("clears stale runningQueries entry when DB shows session not running", async () => {
+    // First resume: agentQuery throws synchronously, so the IIFE never runs
+    // and the runningQueries entry would leak without the catch block.
+    vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
+      query: vi.fn(() => { throw new Error("agent setup boom") }),
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
+    }))
+
+    // First call: only sessionRecord queryOne fires (returns undefined).
+    // Second call: stale-entry check sees "errored" → reconcile and proceed.
+    //              Then sessionRecord lookup returns undefined again.
+    mockQueryOne
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ status: "errored" })
+      .mockResolvedValue(undefined)
+
+    const { resumeSessionQuery } = await import("../session-manager.js")
+
+    await expect(
+      resumeSessionQuery("sess-stale-1", "first try", undefined, undefined),
+    ).rejects.toThrow("agent setup boom")
+
+    // Swap the SDK mock to a non-throwing one for the retry.
+    vi.doUnmock("@anthropic-ai/claude-agent-sdk")
+    vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
+      query: vi.fn(() => ({ [Symbol.asyncIterator]: async function* () {} })),
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
+    }))
+
+    const result = await resumeSessionQuery("sess-stale-1", "retry", undefined, undefined)
+    expect(result.started).toBe(true)
+  })
+
+  it("returns started=false when DB confirms session truly is running", async () => {
+    vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
+      query: vi.fn(() => ({
+        [Symbol.asyncIterator]: async function* () {
+          await new Promise(() => {}) // hang forever to keep entry alive
+        },
+      })),
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
+    }))
+
+    // First call: sessionRecord lookup → undefined.
+    // Second call: stale-entry check sees status "running" → return started=false.
+    mockQueryOne
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ status: "running" })
+
+    const { resumeSessionQuery } = await import("../session-manager.js")
+
+    const first = await resumeSessionQuery("sess-active-1", "first", undefined, undefined)
+    expect(first.started).toBe(true)
+
+    const second = await resumeSessionQuery("sess-active-1", "second", undefined, undefined)
+    expect(second.started).toBe(false)
+  })
+})
