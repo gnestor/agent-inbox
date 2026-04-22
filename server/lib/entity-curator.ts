@@ -14,8 +14,11 @@
 
 import { readFile } from "fs/promises"
 import { join, resolve } from "path"
-import { spawnSync } from "child_process"
+import { execFile } from "child_process"
+import { promisify } from "util"
 import { createLogger } from "./logger.js"
+
+const execFileAsync = promisify(execFile)
 import {
   canonicalize,
   topUnprocessedEntities,
@@ -104,28 +107,36 @@ async function findCandidatePage(
     return null
   }
 
-  const rg = spawnSync(
-    "rg",
-    ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", "--glob", "!_template.md", contextDir],
-    { encoding: "utf8" },
-  )
-  if (rg.status === 0 && rg.stdout.trim()) {
-    const lines = rg.stdout.trim().split("\n")
-    const preferred = lines.find((p) => p.toLowerCase().includes(slug))
-    const pick = preferred ?? lines[0]!
-    return pick.startsWith(contextDir) ? pick.slice(contextDir.length).replace(/^\/+/, "") : pick
-  }
-
-  const qmd = spawnSync("qmd", ["query", entityValue, "-c", "context", "--files", "-n", "10"], { encoding: "utf8" })
-  if (qmd.status === 0 && qmd.stdout.trim()) {
-    for (const line of qmd.stdout.trim().split("\n")) {
-      const m = line.match(/qmd:\/\/context\/(\S+\.md)/)
-      if (!m) continue
-      const path = m[1]!
-      // Top-level pages only (no slash) — excludes source subdirs
-      if (!path.includes("/")) return path
+  try {
+    const { stdout } = await execFileAsync(
+      "rg",
+      ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", "--glob", "!_template.md", contextDir],
+      { encoding: "utf8" },
+    )
+    if (stdout.trim()) {
+      const lines = stdout.trim().split("\n")
+      const preferred = lines.find((p) => p.toLowerCase().includes(slug))
+      const pick = preferred ?? lines[0]!
+      return pick.startsWith(contextDir) ? pick.slice(contextDir.length).replace(/^\/+/, "") : pick
     }
-  }
+  } catch { /* rg exit 1 (no matches) or not installed */ }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "qmd",
+      ["query", entityValue, "-c", "context", "--files", "-n", "10"],
+      { encoding: "utf8" },
+    )
+    if (stdout.trim()) {
+      for (const line of stdout.trim().split("\n")) {
+        const m = line.match(/qmd:\/\/context\/(\S+\.md)/)
+        if (!m) continue
+        const path = m[1]!
+        // Top-level pages only (no slash) — excludes source subdirs
+        if (!path.includes("/")) return path
+      }
+    }
+  } catch { /* qmd not installed or no results */ }
 
   return null
 }
