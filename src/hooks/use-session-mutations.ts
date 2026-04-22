@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { resumeSession, abortSession, archiveSession, unarchiveSession, updateSession } from "@/api/client"
 import { toast } from "sonner"
-import type { Session, SessionMessage, SessionStatus } from "@/types"
+import type { Session, SessionStatus } from "@/types"
 import { createLogger } from "@/lib/logger"
+import { useSessionStore } from "@/stores/session-store"
 
 const log = createLogger("session-mutations")
 
-interface SessionDetailCache { session: Session; messages: SessionMessage[] }
 interface SessionListCache { sessions: Session[] }
 
 interface UseSessionMutationsOptions {
@@ -17,13 +17,6 @@ interface UseSessionMutationsOptions {
 
 type QC = ReturnType<typeof useQueryClient>
 
-function setSessionStatus(qc: QC, sessionId: string, status: SessionStatus) {
-  qc.setQueryData<SessionDetailCache | undefined>(["session", sessionId], (old: SessionDetailCache | undefined) => {
-    if (!old) return old
-    return { ...old, session: { ...old.session, status } }
-  })
-}
-
 function setSessionListStatus(qc: QC, sessionId: string, status: SessionStatus) {
   qc.setQueriesData<SessionListCache>({ queryKey: ["sessions"] }, (old) => {
     if (!old?.sessions) return old
@@ -31,23 +24,31 @@ function setSessionListStatus(qc: QC, sessionId: string, status: SessionStatus) 
   })
 }
 
+function setSessionListSummary(qc: QC, sessionId: string, summary: string) {
+  qc.setQueriesData<SessionListCache>({ queryKey: ["sessions"] }, (old) => {
+    if (!old?.sessions) return old
+    return { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, summary } : s)) }
+  })
+}
+
 /** Shared optimistic update pattern: cancel in-flight → set status → invalidate on settle → rollback on error */
-function optimisticStatusSwitch(qc: QC, sessionId: string, target: SessionStatus, rollback: SessionStatus) {
+function optimisticStatusSwitch(
+  qc: QC,
+  sessionId: string,
+  target: SessionStatus,
+  rollback: SessionStatus,
+) {
   return {
     onMutate: async () => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ["sessions"] }),
-        qc.cancelQueries({ queryKey: ["session", sessionId] }),
-      ])
-      setSessionStatus(qc, sessionId, target)
+      await qc.cancelQueries({ queryKey: ["sessions"] })
+      useSessionStore.getState().setSessionStatus(sessionId, target)
       setSessionListStatus(qc, sessionId, target)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
     },
     onError: (err: Error) => {
-      setSessionStatus(qc, sessionId, rollback)
+      useSessionStore.getState().setSessionStatus(sessionId, rollback)
       setSessionListStatus(qc, sessionId, rollback)
       log.error("Failed to update session status", { sessionId, target, error: err.message })
     },
@@ -57,10 +58,12 @@ function optimisticStatusSwitch(qc: QC, sessionId: string, target: SessionStatus
 export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessionMutationsOptions) {
   const qc = useQueryClient()
 
+  // resume — the store already flipped status to "running" via submitOptimisticPrompt
+  // in useSessionController, so here we only need to keep the sessions list in sync
+  // and handle the error rollback.
   const resume = useMutation({
     mutationFn: (prompt: string) => resumeSession(sessionId, prompt),
     onMutate: () => {
-      setSessionStatus(qc, sessionId, "running")
       setSessionListStatus(qc, sessionId, "running")
     },
     onSuccess: () => {
@@ -69,23 +72,22 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     },
     onError: (err: Error) => {
       log.error("Failed to resume session", { sessionId, error: err.message })
-      setSessionStatus(qc, sessionId, "complete")
+      useSessionStore.getState().setSessionStatus(sessionId, "complete")
       setSessionListStatus(qc, sessionId, "complete")
       toast.error(`Failed to resume session: ${err.message}`)
     },
-    // No onSettled refetch — SSE owns the message cache during streaming.
-    // A REST refetch here races with JSONL writes and clobbers SSE-pushed messages.
+    // No onSettled detail refetch — the store is the source of truth and WS
+    // events drive final status. A refetch here would race with in-flight
+    // JSONL writes.
   })
 
   const abort = useMutation({
     mutationFn: () => abortSession(sessionId),
     onMutate: () => {
-      setSessionStatus(qc, sessionId, "complete")
+      useSessionStore.getState().setSessionStatus(sessionId, "complete")
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      // No detail refetch — SSE session_complete/session_error handles status.
-      // Refetching here races with final JSONL writes.
     },
     onError: (err: Error) => log.error("Failed to abort session", { sessionId, error: err.message }),
   })
@@ -109,29 +111,20 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
   const rename = useMutation({
     mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
     onMutate: async (newTitle: string) => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ["sessions"] }),
-        qc.cancelQueries({ queryKey: ["session", sessionId] }),
-      ])
-      const previousDetail = qc.getQueryData<SessionDetailCache>(["session", sessionId])
+      await qc.cancelQueries({ queryKey: ["sessions"] })
+      const previousSummary =
+        useSessionStore.getState().sessions[sessionId]?.session.summary ?? null
       const previousList = qc.getQueriesData<SessionListCache>({ queryKey: ["sessions"] })
-      qc.setQueryData<SessionDetailCache | undefined>(["session", sessionId], (old: SessionDetailCache | undefined) => {
-        if (!old) return old
-        return { ...old, session: { ...old.session, summary: newTitle } }
-      })
-      qc.setQueriesData<SessionListCache>({ queryKey: ["sessions"] }, (old) => {
-        if (!old?.sessions) return old
-        return { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, summary: newTitle } : s)) }
-      })
-      return { previousDetail, previousList }
+      useSessionStore.getState().setSessionSummary(sessionId, newTitle)
+      setSessionListSummary(qc, sessionId, newTitle)
+      return { previousSummary, previousList }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["session", sessionId] })
       qc.invalidateQueries({ queryKey: ["sessions"] })
     },
     onError: (err, _vars, context) => {
-      if (context?.previousDetail) {
-        qc.setQueryData(["session", sessionId], context.previousDetail)
+      if (context?.previousSummary !== undefined && context.previousSummary !== null) {
+        useSessionStore.getState().setSessionSummary(sessionId, context.previousSummary)
       }
       if (context?.previousList) {
         for (const [key, data] of context.previousList) {

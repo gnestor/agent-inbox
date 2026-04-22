@@ -66,6 +66,10 @@ interface SessionStoreState {
   clearPendingQuestion(sessionId: string): void
   /** Drop a session slice from memory (e.g. when navigating away and it's no longer needed). */
   removeSession(sessionId: string): void
+  /** Optimistic session.status setter, used by mutations before the server confirms. */
+  setSessionStatus(sessionId: string, status: import("@/types").SessionStatus): void
+  /** Optimistic session.summary setter, used by the rename mutation. */
+  setSessionSummary(sessionId: string, summary: string): void
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +271,32 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     delete nextSessions[sessionId]
     delete nextCoords[sessionId]
     set({ ...rest, sessions: nextSessions, _coordinators: nextCoords })
+  },
+
+  setSessionStatus: (sessionId, status) => {
+    const s0 = get()
+    const slice = s0.sessions[sessionId]
+    if (!slice || slice.session.status === status) return
+    set({
+      ...s0,
+      sessions: {
+        ...s0.sessions,
+        [sessionId]: { ...slice, session: { ...slice.session, status } },
+      },
+    })
+  },
+
+  setSessionSummary: (sessionId, summary) => {
+    const s0 = get()
+    const slice = s0.sessions[sessionId]
+    if (!slice || slice.session.summary === summary) return
+    set({
+      ...s0,
+      sessions: {
+        ...s0.sessions,
+        [sessionId]: { ...slice, session: { ...slice.session, summary } },
+      },
+    })
   },
 }))
 
