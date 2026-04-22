@@ -159,10 +159,13 @@ sessionRoutes.get("/", async (c) => {
     }
   })
 
-  // Apply status filter
+  // Apply status filter. If no status filter is set, hide archived by default —
+  // the user can opt in by selecting "archived" in the status filter.
   if (status) {
     const statuses = status.split(",")
     results = results.filter((s) => statuses.includes(s.status))
+  } else {
+    results = results.filter((s) => s.status !== "archived")
   }
 
   // Sort by most recently updated

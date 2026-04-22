@@ -62,17 +62,7 @@ export function SessionListView() {
     return hidden
   }, [showStatus])
 
-  const selectedStatuses = filters.status?.split(",") ?? []
-  const showArchived = selectedStatuses.includes("archived")
-  const filtered = useMemo(
-    () => sessions.filter((s) => {
-      if (!showArchived && s.status === "archived") return false
-      return true
-    }),
-    [sessions, showArchived],
-  )
-
-  const items = filtered.map((s) => ({
+  const items = sessions.map((s) => ({
     ...s,
     summary: s.summary || (s.prompt ? s.prompt.slice(0, 60) : "Untitled session"),
   }))

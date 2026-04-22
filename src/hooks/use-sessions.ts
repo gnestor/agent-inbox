@@ -30,7 +30,6 @@ export function useSessions(filters?: SessionFilters, options?: { enabled?: bool
 const ONE_DAY_MS = 86_400_000
 
 export function isRecentSession(session: Session): boolean {
-  if (session.status === "archived") return false
   if (session.status === "running" || session.status === "awaiting_user_input") return true
   const ref = session.completedAt ?? session.updatedAt
   return Date.now() - new Date(ref).getTime() < ONE_DAY_MS

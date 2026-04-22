@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { SlidersHorizontal } from "lucide-react"
 import {
@@ -18,6 +18,8 @@ import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import { SearchInput } from "@/components/shared/SearchInput"
 import { useNavActions } from "@/lib/navigation-store"
+import { useNavigation } from "@/hooks/use-navigation"
+import type { TabId } from "@/types/navigation"
 import { getItemTitle, getItemSubtitle, getItemTimestamp } from "@/lib/plugin-utils"
 import type { PluginManifest } from "@/api/client"
 import type { PluginItem, FieldDef } from "@/types/plugin"
@@ -69,8 +71,11 @@ function PluginListInner({
   onSelectedTitleChange,
 }: PluginListInnerProps) {
   const { selectItem } = useNavActions()
+  const { getFilters, setFilter } = useNavigation()
   const wsId = useWorkspaceId()
-  const [searchQuery, setSearchQuery] = useState("")
+  const pluginTabId: TabId = `plugin:${plugin.id}`
+  const navFilters = getFilters(pluginTabId)
+  const searchQuery = navFilters.q ?? ""
 
   // Persist filter state per plugin via user preferences
   const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
@@ -306,7 +311,7 @@ function PluginListInner({
 
       <SearchInput
         value={searchQuery}
-        onChange={setSearchQuery}
+        onChange={(q) => setFilter("q", q)}
         placeholder={`Search ${plugin.name.toLowerCase()}...`}
       />
 
