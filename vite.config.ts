@@ -1,8 +1,23 @@
 import path from "path"
 import fs from "fs"
+import { execFileSync } from "child_process"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
+
+/** Build identifier injected into the client as __APP_VERSION__.
+ *  Used as the React Query persist buster — cache is discarded whenever
+ *  this changes, so a rebuild after pulling new code invalidates stale
+ *  persisted query data without asking users to clear site data. */
+function resolveAppVersion(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim()
+  } catch {
+    return `dev-${Date.now()}`
+  }
+}
 
 // Vite plugin to serve pre-built @hammies/frontend artifact assets
 // (component bundle, React/ReactDOM ES modules, Tailwind CSS)
@@ -45,6 +60,9 @@ export default defineConfig(({ mode }) => {
     : undefined
 
   return {
+  define: {
+    __APP_VERSION__: JSON.stringify(resolveAppVersion()),
+  },
   plugins: [react(), tailwindcss(), serveArtifactAssets()],
   resolve: {
     alias: {

@@ -56,6 +56,7 @@ createRoot(document.getElementById("root")!).render(
           client={queryClient}
           persistOptions={{
             persister,
+            buster: __APP_VERSION__,
             dehydrateOptions: {
               shouldDehydrateQuery: (query) =>
                 !isTransientQuery(query.state.status, query.queryKey, query.state.data),
