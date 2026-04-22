@@ -31,19 +31,22 @@ export function useSessionTranscript(
 
   useEffect(() => {
     if (!sessionId) return
-    let alive = true
 
     const store = useSessionStore.getState()
 
+    // Once beginSnapshot returns true, the caller has taken the coordinator's
+    // inFlight token and MUST release it (via applySnapshot or failSnapshot)
+    // before returning. No early returns — a late store update after unmount
+    // is harmless because the store is independent of React's mount lifecycle.
+    // This matters under StrictMode, where the mount → cleanup → remount cycle
+    // can race with a slow fetch; an early return on `!alive` would leak
+    // inFlight and cause every subsequent WS event to be deferred forever.
     const runSnapshot = async (reason: SessionRecoveryReason) => {
-      if (!alive) return
       if (!store.beginSnapshot(sessionId, reason)) return
       try {
         const data = await getSession(sessionId)
-        if (!alive) return
         store.applySnapshot(sessionId, data)
       } catch (err) {
-        if (!alive) return
         console.error("[session] snapshot fetch failed", { sessionId, err })
         store.failSnapshot(sessionId)
       }
@@ -63,7 +66,6 @@ export function useSessionTranscript(
     })
 
     return () => {
-      alive = false
       unsubEvents()
       unsubReconnect()
     }
@@ -71,28 +73,22 @@ export function useSessionTranscript(
 
   // Reactive: if an event classified as "recover" (gap detected) landed mid-
   // stream, trigger a snapshot. pendingReplay is cleared by completeSnapshot,
-  // so this effect is idempotent.
+  // so this effect is idempotent. Same inFlight-release rule as above.
   useEffect(() => {
     if (!sessionId) return
     const rec = slice?.recovery
     if (!rec?.pendingReplay || rec.inFlight) return
     const store = useSessionStore.getState()
-    let alive = true
-    ;(async () => {
+    void (async () => {
       if (!store.beginSnapshot(sessionId, "sequence-gap")) return
       try {
         const data = await getSession(sessionId)
-        if (!alive) return
         store.applySnapshot(sessionId, data)
       } catch (err) {
-        if (!alive) return
         console.error("[session] gap-triggered snapshot failed", { sessionId, err })
         store.failSnapshot(sessionId)
       }
     })()
-    return () => {
-      alive = false
-    }
   }, [sessionId, slice?.recovery.pendingReplay, slice?.recovery.inFlight])
 
   return slice

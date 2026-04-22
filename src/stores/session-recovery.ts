@@ -136,7 +136,14 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
     },
 
     failSnapshotRecovery() {
-      state = { ...state, inFlight: null }
+      // Clear pendingReplay too: otherwise the caller's effect would re-fire
+      // immediately because the condition `pendingReplay && !inFlight` is
+      // still true, producing an infinite retry loop on a persistent failure
+      // (network down, server 500s, etc). If there's still a real gap, the
+      // next classifyEvent will re-set pendingReplay and the effect fires
+      // once more. If the failure is permanent, the client falls back to
+      // whatever it has and the next WS reconnect triggers a fresh snapshot.
+      state = { ...state, inFlight: null, pendingReplay: false }
     },
   }
 }
