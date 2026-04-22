@@ -729,6 +729,61 @@ function buildSourceContext(
   return null
 }
 
+/** Collect attached_context system entries appended to the JSONL since the
+ *  last user or assistant turn. These are written by `attachSourceToSession`
+ *  when the user attaches an email/etc. to an already-running session, but
+ *  the Agent SDK's resume flow only sees standard user/assistant messages,
+ *  so without inlining, the agent never learns the attached content.
+ *  Exported for testing. */
+export function collectPendingAttachments(
+  sessionId: string,
+  cwd?: string,
+): Array<{ sourceType: string; sourceId: string; title: string; content: string }> {
+  const file = sessionJsonlPath(sessionId, cwd)
+  if (!fs.existsSync(file)) return []
+  let content: string
+  try {
+    content = fs.readFileSync(file, "utf-8")
+  } catch {
+    return []
+  }
+  const lines = content.trim().split("\n")
+  const pending: Array<{ sourceType: string; sourceId: string; title: string; content: string }> = []
+  // Scan backwards: collect attached_context entries until we hit a real turn.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (!line) continue
+    try {
+      const msg = JSON.parse(line)
+      if (msg.type === "user" || msg.type === "assistant") break
+      if (msg.type === "system" && msg.subtype === "attached_context" && typeof msg.content === "string") {
+        pending.unshift({
+          sourceType: String(msg.sourceType ?? ""),
+          sourceId: String(msg.sourceId ?? ""),
+          title: String(msg.title ?? ""),
+          content: msg.content,
+        })
+      }
+    } catch { /* skip malformed lines */ }
+  }
+  return pending
+}
+
+/** Prepend pending attached-context blocks onto a prompt so the agent can read
+ *  them. Each block is delimited so it's obvious which content is attached vs.
+ *  typed by the user. Exported for testing. */
+export function inlineAttachments(
+  prompt: string,
+  attachments: Array<{ sourceType: string; sourceId: string; title: string; content: string }>,
+): string {
+  if (attachments.length === 0) return prompt
+  const blocks = attachments.map((a) => {
+    const header = `source=${a.sourceType}:${a.sourceId} title=${JSON.stringify(a.title)}`
+    return `<attached_context ${header}>\n${a.content}\n</attached_context>`
+  })
+  return `${blocks.join("\n\n")}\n\n${prompt}`
+}
+
 function buildSystemPrompt(context: string | null) {
   const append = [SESSION_INSTRUCTIONS, context].filter(Boolean).join("\n\n")
   return { type: "preset" as const, preset: "claude_code" as const, append }
@@ -933,7 +988,10 @@ export async function resumeSessionQuery(
 
     sequence = await getSessionMessageCount(sessionId)
 
-    // Broadcast the user's prompt so it appears in the live transcript
+    // Broadcast the user's prompt so it appears in the live transcript. We
+    // broadcast the plain user text (what the user actually typed) — the
+    // attached-context blocks are inlined into the prompt we send to the SDK
+    // only, since they already render as their own chips in the UI.
     const userMessage = {
       type: "user",
       content: prompt,
@@ -949,8 +1007,11 @@ export async function resumeSessionQuery(
     // The CLI stores sessions in ~/.claude/projects/{encoded-cwd}/{sessionId}.jsonl
     const wsPath = findSessionWorkspace(sessionId) || defaultWorkspacePath
 
+    const pendingAttachments = collectPendingAttachments(sessionId, wsPath)
+    const promptWithAttachments = inlineAttachments(prompt, pendingAttachments)
+
     q = agentQuery({
-      prompt,
+      prompt: promptWithAttachments,
       options: {
         resume: sessionId,
         cwd: wsPath,
