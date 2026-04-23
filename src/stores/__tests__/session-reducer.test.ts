@@ -85,6 +85,34 @@ describe("reduceSnapshot", () => {
     expect(next.presence).toHaveLength(1)
   })
 
+  it("clears pending prompts whose text matches a hydrated user message with nested content", () => {
+    // REGRESSION: the REST snapshot / JSONL format nests user content under
+    // `message.message.content`. Before the fix, extractUserText only looked
+    // at `message.content` and missed this shape, leaving the optimistic
+    // prompt stranded at the tail of the transcript.
+    const prev: SessionSlice = {
+      session: makeSession(),
+      messageIds: [],
+      messageById: {},
+      pendingPrompts: [
+        { localId: "a", prompt: "hello server", createdAt: "t1" },
+      ],
+      pendingQuestion: null,
+      presence: [],
+    }
+    const nestedUserMsg: any = {
+      id: 0,
+      sessionId: "s1",
+      sequence: 0,
+      type: "user",
+      // JSONL-shaped content nested under `message.content`
+      message: { type: "user", message: { role: "user", content: "hello server" } },
+      createdAt: "t1",
+    }
+    const next = reduceSnapshot(prev, { session: makeSession(), messages: [nestedUserMsg] })
+    expect(next.pendingPrompts).toEqual([])
+  })
+
   it("clears pending prompts whose text matches a hydrated user message", () => {
     const prev: SessionSlice = {
       session: makeSession(),

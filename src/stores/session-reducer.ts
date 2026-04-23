@@ -176,9 +176,14 @@ function insertSequenceSorted(ids: readonly number[], seq: number): number[] {
 
 function extractUserText(msg: SessionMessage | undefined): string | null {
   if (!msg || msg.type !== "user") return null
-  const payload = msg.message as { content?: unknown }
-  const content = payload?.content
-  if (typeof content === "string") return content.trim()
+  // Content can live in two places depending on which path produced the
+  // message: top-level `payload.content` is what our manual broadcast uses
+  // on resume; `payload.message.content` is what the Agent SDK's JSONL
+  // format nests under — so a snapshot from REST carries the nested shape.
+  // Check both.
+  const payload = msg.message as { content?: unknown; message?: { content?: unknown } }
+  const content = payload?.content ?? payload?.message?.content
+  if (typeof content === "string") return content.trim() || null
   if (Array.isArray(content)) {
     const text = content
       .filter((b): b is { type: "text"; text: string } => !!b && typeof b === "object" && (b as { type?: unknown }).type === "text")
