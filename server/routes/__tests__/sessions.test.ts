@@ -26,8 +26,6 @@ const mockUnarchiveSession = vi.fn()
 const mockPatchArtifactCode = vi.fn()
 const mockGetWorkspacePath = vi.fn(() => "/workspace")
 const mockProjectLabel = vi.fn(() => "test-project")
-const mockAddSseClient = vi.fn()
-const mockRemoveSseClient = vi.fn()
 const mockAddPresenceUser = vi.fn()
 const mockRemovePresenceUser = vi.fn()
 const mockGetLinkedSession = vi.fn()
@@ -55,8 +53,6 @@ vi.mock("../../lib/session-manager.js", () => ({
   patchArtifactCode: (...args: unknown[]) => mockPatchArtifactCode(...args),
   getWorkspacePath: () => mockGetWorkspacePath(),
   projectLabel: (...args: unknown[]) => (mockProjectLabel as (...args: unknown[]) => unknown)(...args),
-  addSseClient: (...args: unknown[]) => mockAddSseClient(...args),
-  removeSseClient: (...args: unknown[]) => mockRemoveSseClient(...args),
   addPresenceUser: (...args: unknown[]) => mockAddPresenceUser(...args),
   removePresenceUser: (...args: unknown[]) => mockRemovePresenceUser(...args),
   getLinkedSession: (...args: unknown[]) => mockGetLinkedSession(...args),

@@ -53,7 +53,12 @@ const getId = (s: Record<string, unknown>) => s.id as string
 export function SessionListView() {
   const { selectItem, getSelectedItemId, getFilters, setFilter, openNewSession } = useNavigation()
   const filters = getFilters("sessions")
-  const { sessions, loading, error } = useSessions(cleanFilters(filters))
+  // We intentionally ignore the `error` field from useSessions here: when the
+  // backend is unreachable, SessionConnectionSurface already shows a sonner
+  // toast with the WS connection state, so a duplicate inline red banner is
+  // redundant. Showing the cached list (data ?? []) is a better UX — users
+  // keep their scroll position and can navigate to recently-viewed sessions.
+  const { sessions, loading } = useSessions(cleanFilters(filters))
 
   const [showStatus, setShowStatus] = usePreference("sessions.showStatus", true)
   const hiddenBadgeFields = useMemo(() => {
@@ -101,7 +106,6 @@ export function SessionListView() {
       <ListView.Body
         itemHeight={74}
         loading={loading}
-        error={error}
         hiddenBadgeFields={hiddenBadgeFields}
         emptyMessage="No sessions found"
       />

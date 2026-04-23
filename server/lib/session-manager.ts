@@ -37,9 +37,6 @@ export function setCredentialProxy(proxy: CredentialProxy) {
   credentialProxy = proxy
 }
 
-// Store active SSE clients per session
-const sseClients = new Map<string, Set<(data: string) => void>>()
-
 // Store multiplexed WebSocket clients (one WS per browser tab, watches many sessions)
 interface WsClient {
   id: string
@@ -329,7 +326,7 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   }
 
   // Don't overwrite user-facing summary with error messages — error details are
-  // broadcast via SSE session_error event and shown in the UI error banner.
+  // broadcast via the session_error WS event and shown in the UI error banner.
   const summaryToStore = status === "errored" ? null : summary
 
   // Atomic CAS: only update if current status is a valid source for this transition
@@ -483,7 +480,7 @@ export async function listSessionRecords(filters?: {
 }
 
 // In-memory presence map: sessionId → Map<email, { user, lastSeen }>
-// lastSeen is used as a heartbeat so we can reap zombie entries from SSE clients
+// lastSeen is used as a heartbeat so we can reap zombie entries from WS clients
 // that disconnected without running their cleanup (tab closed, network drop, etc.)
 type PresenceUser = { name: string; email: string; picture?: string }
 type PresenceEntry = { user: PresenceUser; lastSeen: number }
@@ -575,54 +572,7 @@ function startPresenceReaper() {
 }
 startPresenceReaper()
 
-// SSE client management
-export async function addSseClient(sessionId: string, send: (data: string) => void) {
-  if (!sseClients.has(sessionId)) {
-    sseClients.set(sessionId, new Set())
-  }
-  sseClients.get(sessionId)!.add(send)
-  if (process.env.NODE_ENV !== "production") {
-    log.debug("SSE client connected", { sessionId, total: sseClients.get(sessionId)!.size })
-  }
-
-  // Send current session status on connect so the client doesn't rely on
-  // stale React Query cache. Covers cases where the session completed or
-  // errored before the SSE connection was established.
-  const session = await getSessionRecord(sessionId)
-  if (session?.status === "complete") {
-    send(JSON.stringify({ type: "session_complete", status: "complete" }))
-  } else if (session?.status === "errored") {
-    send(JSON.stringify({ type: "session_error", status: "errored" }))
-  } else if (session?.status === "awaiting_user_input") {
-    // Re-deliver the last AskUserQuestion — the original broadcast may have
-    // fired before any browser was connected.
-    const questions = await getLastAskUserQuestions(sessionId)
-    if (questions) {
-      send(JSON.stringify({ type: "ask_user_question", questions }))
-    }
-  }
-}
-
-export function removeSseClient(sessionId: string, send: (data: string) => void) {
-  sseClients.get(sessionId)?.delete(send)
-  const remaining = sseClients.get(sessionId)?.size ?? 0
-  if (process.env.NODE_ENV !== "production") {
-    log.debug("SSE client disconnected", { sessionId, remaining })
-  }
-  if (remaining === 0) {
-    sseClients.delete(sessionId)
-  }
-}
-
 export function broadcastToSession(sessionId: string, data: unknown) {
-  // Per-session SSE clients (legacy — kept for backward compat)
-  const clients = sseClients.get(sessionId)
-  if (clients) {
-    const json = JSON.stringify(data)
-    for (const send of clients) send(json)
-  }
-
-  // Multiplexed WS clients
   for (const client of wsClients.values()) {
     if (client.sessions.has(sessionId)) {
       client.send({ type: "session_event", sessionId, data })
@@ -1188,7 +1138,7 @@ export async function indexAllAgentSessions() {
 
 /** Recover sessions that were running when the server last shut down.
  *  - `running` sessions updated within cutoffMinutes are auto-resumed.
- *  - `awaiting_user_input` sessions are left as-is; the SSE handler
+ *  - `awaiting_user_input` sessions are left as-is; `wsSubscribe`
  *    re-delivers the original question when the user reconnects.
  *  - Old stale sessions are marked as errored. */
 export async function recoverStaleSessions(cutoffMinutes = 30) {
@@ -1204,7 +1154,7 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
 
   const old = staleSessions.filter((s) => s.updated_at <= cutoff)
   // Only auto-resume running sessions; awaiting_user_input sessions are
-  // re-delivered to the user via the SSE handler when they reconnect.
+  // re-delivered to the user via wsSubscribe when they reconnect.
   const toResume = staleSessions.filter((s) => s.updated_at > cutoff && s.status === "running")
   const toWait = staleSessions.filter((s) => s.updated_at > cutoff && s.status === "awaiting_user_input")
 

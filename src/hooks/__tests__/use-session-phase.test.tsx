@@ -3,19 +3,11 @@ import React from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import * as client from "@/api/client"
 
-// Mocks for dependencies — hoisted so vi.mock can access them
-const streamMockState = {
-  connected: false,
-  sessionStatus: null as string | null,
-  pendingQuestion: null as any,
-  presenceUsers: [] as any[],
-  eventCount: 0,
-  disconnect: vi.fn(),
-  clearPendingQuestion: vi.fn(),
-}
+import type { SessionSlice } from "@/stores/session-store"
+import type { Session } from "@/types"
 
+// Mocks — must be declared before the target module is imported
 const mutationsMockState = {
   resume: { isPending: false, mutate: vi.fn() },
   abort: { isPending: false, mutate: vi.fn() },
@@ -23,12 +15,12 @@ const mutationsMockState = {
   unarchive: { isPending: false, mutate: vi.fn() },
   rename: { isPending: false, mutate: vi.fn() },
 }
-
 let lastMutationsOptions: any = null
 
-vi.mock("@/api/client")
-vi.mock("../use-session-stream", () => ({
-  useSessionStream: vi.fn(() => streamMockState),
+let sliceMock: SessionSlice | undefined
+
+vi.mock("../use-session-transcript", () => ({
+  useSessionTranscript: vi.fn(() => sliceMock),
 }))
 vi.mock("../use-session-mutations", () => ({
   useSessionMutations: vi.fn((opts: any) => {
@@ -43,11 +35,14 @@ vi.mock("@/lib/session-pipeline", () => ({
   })),
   filterVisible: vi.fn((msgs: any[]) => msgs),
 }))
-vi.mock("@/types/session-message", () => ({
-  normalizeMessagePayload: vi.fn((m: any) => m),
+vi.mock("@/api/client", () => ({
+  answerSessionQuestion: vi.fn(),
+  getUserProfiles: vi.fn(() => Promise.resolve({ users: [] })),
 }))
 
-import { useSessionController as useSessionPhase } from "../use-session-controller"
+// Import AFTER mocks are registered
+import { useSessionController } from "../use-session-controller"
+import { useSessionStore } from "@/stores/session-store"
 
 const DEFAULT_VISIBILITY = { messages: true, toolCalls: true, thinking: true, artifacts: true }
 
@@ -61,12 +56,42 @@ function makeWrapper(queryClient: QueryClient) {
   }
 }
 
-function resetStream(next: Partial<typeof streamMockState> = {}) {
-  streamMockState.connected = next.connected ?? false
-  streamMockState.sessionStatus = next.sessionStatus ?? null
-  streamMockState.pendingQuestion = next.pendingQuestion ?? null
-  streamMockState.presenceUsers = next.presenceUsers ?? []
-  streamMockState.eventCount = next.eventCount ?? 0
+function makeSession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: "s1",
+    status: "running",
+    prompt: "",
+    summary: null,
+    startedAt: "2026-04-22T00:00:00Z",
+    updatedAt: "2026-04-22T00:00:00Z",
+    completedAt: null,
+    linkedSourceType: null,
+    linkedSourceId: null,
+    triggerSource: "manual",
+    project: "demo",
+    linkedItemTitle: null,
+    ...overrides,
+  }
+}
+
+function makeSlice(overrides: Partial<SessionSlice> = {}): SessionSlice {
+  return {
+    session: makeSession(),
+    messageIds: [],
+    messageById: {},
+    pendingPrompts: [],
+    pendingQuestion: null,
+    presence: [],
+    recovery: {
+      latestSequence: 0,
+      highestObservedSequence: 0,
+      bootstrapped: true,
+      pendingReplay: false,
+      inFlight: null,
+    },
+    deferredEvents: [],
+    ...overrides,
+  }
 }
 
 function resetMutations() {
@@ -77,7 +102,7 @@ function resetMutations() {
   mutationsMockState.rename = { isPending: false, mutate: vi.fn() }
 }
 
-describe("useSessionPhase", () => {
+describe("useSessionController (phase derivation)", () => {
   let queryClient: QueryClient
   let wrapper: ReturnType<typeof makeWrapper>
 
@@ -89,195 +114,130 @@ describe("useSessionPhase", () => {
       },
     })
     wrapper = makeWrapper(queryClient)
-    vi.resetAllMocks()
-    resetStream()
+    sliceMock = undefined
     resetMutations()
     lastMutationsOptions = null
+    // Clear store
+    const s = useSessionStore.getState()
+    for (const id of Object.keys(s.sessions)) s.removeSession(id)
   })
 
-  it("returns loading phase while the session query is pending", () => {
-    // Never resolves
-    vi.mocked(client.getSession).mockImplementation(() => new Promise(() => {}))
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
+  it("returns loading phase when the slice hasn't bootstrapped yet", () => {
+    sliceMock = undefined // no slice yet
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
     expect(result.current.phase.status).toBe("loading")
   })
 
-  it("returns error phase when the query fails", async () => {
-    vi.mocked(client.getSession).mockRejectedValueOnce(new Error("Boom"))
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("error"))
-    if (result.current.phase.status === "error") {
-      expect(result.current.phase.message).toBe("Boom")
-    }
-  })
-
-  it("returns streaming phase when session is running and stream is connected", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "running" } as any,
-      messages: [],
+  it("returns loading phase when bootstrap is still in flight", () => {
+    sliceMock = makeSlice({
+      recovery: {
+        latestSequence: 0,
+        highestObservedSequence: 0,
+        bootstrapped: false,
+        pendingReplay: false,
+        inFlight: { kind: "snapshot", reason: "bootstrap" },
+      },
     })
-    resetStream({ connected: true, sessionStatus: "running" })
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("streaming"))
-  })
-
-  it("returns loading phase when running but stream not yet connected", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "running" } as any,
-      messages: [],
-    })
-    resetStream({ connected: false, sessionStatus: "running" })
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    // Wait for data to resolve, then confirm status
-    await waitFor(() => expect(result.current.session).toBeDefined())
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
     expect(result.current.phase.status).toBe("loading")
   })
 
-  it("returns awaiting_input phase with pending question", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "awaiting_user_input" } as any,
-      messages: [],
+  it("returns streaming phase when bootstrapped and session is running", () => {
+    sliceMock = makeSlice({ session: makeSession({ status: "running" }) })
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("streaming")
+  })
+
+  it("returns awaiting_input phase when pendingQuestion is set", () => {
+    const question = { questions: [{ id: "q1" } as any] }
+    sliceMock = makeSlice({
+      session: makeSession({ status: "awaiting_user_input" }),
+      pendingQuestion: question as any,
     })
-    const question = { questions: [{ id: "q1", text: "Pick one", options: ["a", "b"] }] as any }
-    resetStream({ connected: true, sessionStatus: "awaiting_user_input", pendingQuestion: question })
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("awaiting_input"))
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("awaiting_input")
     if (result.current.phase.status === "awaiting_input") {
       expect(result.current.phase.question).toEqual(question)
     }
   })
 
-  it("returns idle phase when complete and not streaming", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "complete" } as any,
-      messages: [],
-    })
-    resetStream({ connected: false, sessionStatus: null })
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("idle"))
-  })
-
-  it("returns archived phase when session is archived", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "archived" } as any,
-      messages: [],
-    })
-    resetStream({ connected: true, sessionStatus: null })
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("archived"))
-  })
-
-  it("returns sending phase when resume mutation is pending", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "complete" } as any,
-      messages: [],
-    })
+  it("returns sending phase when resume mutation is pending", () => {
+    sliceMock = makeSlice({ session: makeSession({ status: "complete" }) })
     mutationsMockState.resume = { isPending: true, mutate: vi.fn() }
-
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.phase.status).toBe("sending"))
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("sending")
   })
 
-  it("passes onResume/onArchive callbacks through to mutations", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "complete" } as any,
-      messages: [],
-    })
+  it("returns idle phase when bootstrapped and status is complete", () => {
+    sliceMock = makeSlice({ session: makeSession({ status: "complete" }) })
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("idle")
+  })
+
+  it("returns errored phase when status is errored", () => {
+    sliceMock = makeSlice({ session: makeSession({ status: "errored" }) })
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("errored")
+  })
+
+  it("returns archived phase when status is archived", () => {
+    sliceMock = makeSlice({ session: makeSession({ status: "archived" }) })
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    expect(result.current.phase.status).toBe("archived")
+  })
+
+  it("passes onResume/onArchive through to mutations", () => {
+    sliceMock = makeSlice()
     const onResume = vi.fn()
     const onArchive = vi.fn()
-
-    renderHook(
-      () => useSessionPhase(makeOpts({ onResume, onArchive })),
-      { wrapper },
-    )
-
+    renderHook(() => useSessionController(makeOpts({ onResume, onArchive })), { wrapper })
     expect(lastMutationsOptions).toMatchObject({ sessionId: "s1", onResume, onArchive })
   })
 
-  it("resumeSession adds an optimistic user message and calls resume.mutate", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "complete" } as any,
+  it("resumeSession submits an optimistic prompt and calls resume.mutate", async () => {
+    // Seed the store with an existing slice so submitOptimisticPrompt has somewhere to write
+    useSessionStore.getState().beginSnapshot("s1", "bootstrap")
+    useSessionStore.getState().applySnapshot("s1", {
+      session: makeSession({ status: "complete" }),
       messages: [],
     })
+    // After applySnapshot the real store has our slice; use it as the mock.
+    sliceMock = useSessionStore.getState().sessions["s1"]
 
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.session).toBeDefined())
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
 
     act(() => {
       result.current.resumeSession("hello there")
     })
 
-    const cached = queryClient.getQueryData<any>(["session", "s1"])
-    expect(cached.messages).toHaveLength(1)
-    expect(cached.messages[0].type).toBe("user")
-    expect(cached.messages[0].sequence).toBeLessThan(0)
+    const updated = useSessionStore.getState().sessions["s1"]!
+    expect(updated.pendingPrompts).toHaveLength(1)
+    expect(updated.pendingPrompts[0]!.prompt).toBe("hello there")
+    expect(updated.session.status).toBe("running")
     expect(mutationsMockState.resume.mutate).toHaveBeenCalledWith("hello there")
   })
 
-  it("returns messages from the cache", async () => {
-    vi.mocked(client.getSession).mockResolvedValueOnce({
-      session: { id: "s1", status: "complete" } as any,
-      messages: [
-        {
+  it("exposes combined real + optimistic messages via the pipeline", async () => {
+    sliceMock = makeSlice({
+      messageIds: [1],
+      messageById: {
+        1: {
           id: 1,
           sessionId: "s1",
           sequence: 1,
           type: "user",
-          message: { type: "user", content: "hi" },
+          message: { type: "user", content: "hi" } as any,
           createdAt: "2026-01-01T00:00:00Z",
-        } as any,
-      ],
+        },
+      },
+      pendingPrompts: [{ localId: "a", prompt: "pending", createdAt: "2026-01-01T00:00:00Z" }],
     })
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
 
-    const { result } = renderHook(
-      () => useSessionPhase(makeOpts()),
-      { wrapper },
-    )
-
-    await waitFor(() => expect(result.current.messages.length).toBe(1))
-    expect(result.current.messages[0].sequence).toBe(1)
+    await waitFor(() => expect(result.current.messages.length).toBe(2))
+    // processTranscript is mocked to pass messages through unwrapped
+    const raw = result.current.messages as unknown as Array<{ sequence: number }>
+    expect(raw[0]!.sequence).toBe(1)
+    expect(raw[1]!.sequence).toBeGreaterThan(1000)
   })
 })

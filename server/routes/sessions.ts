@@ -1,5 +1,4 @@
 import { Hono } from "hono"
-import { streamSSE } from "hono/streaming"
 import { getCookie } from "hono/cookie"
 import { readFileSync } from "fs"
 import { resolve, normalize, basename, sep } from "path"
@@ -27,7 +26,7 @@ type UserProfile = { name: string; email: string; picture?: string }
 /**
  * The Agent SDK JSONL doesn't include the initial user prompt (it's passed
  * as an argument, not emitted in the message stream). Prepend a synthetic
- * user message so REST responses match what SSE broadcasts at seq 0.
+ * user message so REST responses match what the WS broadcast emits at seq 0.
  */
 function withInitialUserPrompt(
   transcript: Array<Record<string, unknown>>,
@@ -200,8 +199,7 @@ sessionRoutes.get("/:id", async (c) => {
   const session = await sessions.getSessionRecord(sessionId)
 
   if (session) {
-    // JSONL is the source of truth for session transcript.
-    // SSE pushes new messages to the client's React Query cache in real-time.
+    // JSONL is the source of truth for session transcript; WS pushes live updates.
     const agentSession = await sessions.findAgentSession(sessionId)
     const transcript = agentSession
       ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
@@ -371,36 +369,6 @@ sessionRoutes.post("/:id/attach", async (c) => {
   })
 
   return c.json({ ok: true })
-})
-
-sessionRoutes.get("/:id/stream", async (c) => {
-  const sessionId = c.req.param("id")
-  const user = c.get("user")
-
-  return streamSSE(c, async (stream) => {
-    const send = (data: string) => {
-      stream.writeSSE({ data, event: "message" })
-    }
-
-    await sessions.addSseClient(sessionId, send)
-    if (user) sessions.addPresenceUser(sessionId, user)
-
-    // Keep connection alive
-    const keepAlive = setInterval(() => {
-      stream.writeSSE({ data: "", event: "ping" })
-    }, 15_000)
-
-    // Wait for client disconnect
-    try {
-      await new Promise((resolve) => {
-        stream.onAbort(() => resolve(undefined))
-      })
-    } finally {
-      clearInterval(keepAlive)
-      sessions.removeSseClient(sessionId, send)
-      if (user) sessions.removePresenceUser(sessionId, user.email)
-    }
-  })
 })
 
 sessionRoutes.post("/:id/abort", async (c) => {

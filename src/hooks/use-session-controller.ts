@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getSession, answerSessionQuestion, getUserProfiles } from "@/api/client"
-import { useSessionStream } from "./use-session-stream"
+import { answerSessionQuestion, getUserProfiles } from "@/api/client"
+import { useSessionTranscript } from "./use-session-transcript"
+import { useSessionStore } from "@/stores/session-store"
 import { useSessionMutations } from "./use-session-mutations"
-import { normalizeMessagePayload } from "@/types/session-message"
 import { processTranscript, filterVisible } from "@/lib/session-pipeline"
 import type { Session, PendingQuestion, SessionMessage, PresenceUser } from "@/types"
 import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@/lib/session-pipeline"
-
-type SessionQueryData = { session: Session; messages: SessionMessage[] }
+import type { SessionSlice } from "@/stores/session-store"
+import type { PendingPrompt } from "@/stores/session-reducer"
 
 // ---------------------------------------------------------------------------
 // Phase discriminated union
@@ -61,8 +61,12 @@ interface UseSessionControllerOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Hook implementation
+// Hook
 // ---------------------------------------------------------------------------
+
+const EMPTY_MESSAGE_IDS: readonly number[] = Object.freeze([])
+const EMPTY_MESSAGE_BY_ID: Readonly<Record<number, SessionMessage>> = Object.freeze({})
+const EMPTY_PENDING: readonly PendingPrompt[] = Object.freeze([])
 
 export function useSessionController({
   sessionId,
@@ -73,60 +77,72 @@ export function useSessionController({
 }: UseSessionControllerOptions): SessionController {
   const qc = useQueryClient()
 
-  // --- Data fetching ---
-  const { data, isPending, error: queryError } = useQuery({
-    queryKey: ["session", sessionId],
-    queryFn: () => getSession(sessionId),
-  })
+  // --- Session transcript (store + WS + REST) ---
+  const slice: SessionSlice | undefined = useSessionTranscript(isActive ? sessionId : undefined)
 
-  // --- Mutations ---
+  // --- Mutations (still owns ["sessions"] list optimistic updates) ---
   const mutations = useSessionMutations({ sessionId, onResume, onArchive })
 
-  // --- Streaming ---
-  const queryStatus = data?.session.status as string | undefined
-  const isRunning = queryStatus === "running" || queryStatus === "awaiting_user_input"
-  const stream = useSessionStream(sessionId, !isPending && !queryError && (isActive || isRunning))
-
-  // Invalidate sessions list only on terminal status changes, not every status update.
-  // This prevents duplicate /api/sessions fetches when opening a session detail.
-  const prevStreamStatus = useRef<string | null>(null)
+  // --- Invalidate sessions list on terminal status changes ---
+  const prevStatusRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!stream.sessionStatus) return
-    // Only invalidate when the status actually changes (not on initial mount)
-    if (prevStreamStatus.current === stream.sessionStatus) return
-    prevStreamStatus.current = stream.sessionStatus
-    qc.invalidateQueries({ queryKey: ["sessions"] })
-  }, [stream.sessionStatus, qc])
+    const status = slice?.session.status
+    if (!status) return
+    if (prevStatusRef.current === status) return
+    prevStatusRef.current = status
+    if (status === "complete" || status === "errored" || status === "archived") {
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    }
+  }, [slice?.session.status, qc])
 
   // --- Phase derivation ---
-  // queryStatus is the source of truth: resumeSession sets it to "running"
-  // optimistically, WS session_complete/session_error update it on terminal events.
-  const phase: SessionPhase =
-    isPending ? { status: "loading" } :
-    queryError ? { status: "error", message: queryError.message } :
-    mutations.resume.isPending ? { status: "sending" } :
-    stream.pendingQuestion ? { status: "awaiting_input", question: stream.pendingQuestion } :
-    queryStatus === "running" && stream.connected ? { status: "streaming" } :
-    queryStatus === "running" && !stream.connected ? { status: "loading" } :
-    queryStatus === "errored" ? { status: "errored" } :
-    queryStatus === "archived" ? { status: "archived" } :
-    { status: "idle" }
+  // Single source of truth: slice.session.status + slice.pendingQuestion +
+  // slice.recovery.bootstrapped. No circular writes.
+  const phase: SessionPhase = useMemo(() => {
+    if (!slice || !slice.recovery.bootstrapped) {
+      // No snapshot yet. If we have a slice at all but bootstrap is pending,
+      // this is the initial loading state.
+      return { status: "loading" }
+    }
+    if (mutations.resume.isPending) return { status: "sending" }
+    if (slice.pendingQuestion) return { status: "awaiting_input", question: slice.pendingQuestion }
+    const status = slice.session.status
+    if (status === "running") return { status: "streaming" }
+    if (status === "errored") return { status: "errored" }
+    if (status === "archived") return { status: "archived" }
+    return { status: "idle" }
+  }, [slice, mutations.resume.isPending])
 
-  // --- Message normalization (REST messages may need patching) ---
-  const dataMatchesSession = data?.session.id === sessionId
-  const rawMessages = dataMatchesSession ? (data?.messages ?? []) : []
-  const normalizedMessages = useMemo(
-    () => rawMessages.map((m: SessionMessage) => ({
-      ...m,
-      message: normalizeMessagePayload(m.message),
-    })),
-    [rawMessages],
-  )
+  // --- Build the message array (real messages + optimistic pending prompts) ---
+  const messageIds = slice?.messageIds ?? EMPTY_MESSAGE_IDS
+  const messageById = slice?.messageById ?? EMPTY_MESSAGE_BY_ID
+  const pendingPrompts = slice?.pendingPrompts ?? EMPTY_PENDING
 
-  // --- Pipeline: classify + build lookups (re-runs when messages change) ---
+  const combinedMessages = useMemo<SessionMessage[]>(() => {
+    const real = messageIds.map((id) => messageById[id]!).filter(Boolean)
+    if (pendingPrompts.length === 0) return real
+    // Optimistic prompts render at the tail. We pick sequence numbers from
+    // the top of the safe-integer range so they can never collide with
+    // real server-assigned sequences, no matter how long the session runs.
+    // The virtualizer keys by sequence, so uniqueness is what matters.
+    const optimistic: SessionMessage[] = pendingPrompts.map((p, i) => {
+      const seq = Number.MAX_SAFE_INTEGER - (pendingPrompts.length - 1 - i)
+      return {
+        id: seq,
+        sessionId,
+        sequence: seq,
+        type: "user",
+        message: { type: "user", content: p.prompt } as any,
+        createdAt: p.createdAt,
+      }
+    })
+    return [...real, ...optimistic]
+  }, [messageIds, messageById, pendingPrompts, sessionId])
+
+  // --- Pipeline: classify + build lookups ---
   const processed = useMemo(
-    () => processTranscript(normalizedMessages),
-    [normalizedMessages],
+    () => processTranscript(combinedMessages),
+    [combinedMessages],
   )
 
   // Stabilize lookups reference — tool results and resolved IDs are append-only,
@@ -147,13 +163,12 @@ export function useSessionController({
     return next
   }, [processed.lookups])
 
-  // --- Filter by visibility (separate memo so visibility changes don't recompute classification) ---
   const messages = useMemo(
     () => filterVisible(processed.classified, visibility),
     [processed.classified, visibility],
   )
 
-  // --- User profiles (fetch from API based on emails extracted by pipeline) ---
+  // --- User profiles ---
   const emailsKey = lookups.authorEmails.join(",")
   const { data: profileData } = useQuery({
     queryKey: ["user-profiles", emailsKey],
@@ -168,47 +183,33 @@ export function useSessionController({
     return map
   }, [profileData])
 
-  // --- Actions (stable callbacks) ---
+  // --- Actions ---
   const resumeSession = useCallback((prompt: string) => {
-    // Optimistically set status to "running" and add user message in one update,
-    // so phase derivation sees "running" before any WS messages arrive.
-    qc.setQueryData(["session", sessionId], (old: SessionQueryData | undefined) => {
-      if (!old) return old
-      const msgs = old.messages ?? []
-      const seq = msgs.length > 0 ? -(msgs.length + 1) : -1
-      const optimistic: SessionMessage = {
-        id: seq,
-        sessionId,
-        sequence: seq,
-        type: "user",
-        message: { type: "user", content: prompt },
-        createdAt: new Date().toISOString(),
-      } as SessionMessage
-      return {
-        ...old,
-        session: { ...old.session, status: "running" as const },
-        messages: [...msgs, optimistic],
-      }
-    })
+    // Optimistically append the prompt to the store so the UI shows it
+    // immediately. Status flips to "running". The reducer reconciles with
+    // the server's echo when it arrives (same text = pending prompt dropped).
+    useSessionStore.getState().submitOptimisticPrompt(sessionId, prompt)
     mutations.resume.mutate(prompt)
-  }, [sessionId, qc, mutations.resume])
+  }, [sessionId, mutations.resume])
 
-  const clearPendingQuestion = stream.clearPendingQuestion
   const answerQuestion = useCallback(async (answers: Record<string, string>) => {
     await answerSessionQuestion(sessionId, answers)
-    clearPendingQuestion()
+    useSessionStore.getState().clearPendingQuestion(sessionId)
     qc.invalidateQueries({ queryKey: ["sessions"] })
-  }, [sessionId, clearPendingQuestion, qc])
+  }, [sessionId, qc])
+
+  // --- Event count (simple render counter from store slice for WorkingIndicator) ---
+  const eventCount = messageIds.length
 
   return {
     phase,
-    session: data?.session,
+    session: slice?.session,
     messages,
     lookups,
     userProfiles,
-    presenceUsers: stream.presenceUsers,
-    eventCount: stream.eventCount,
-    isLive: stream.connected,
+    presenceUsers: slice?.presence ?? [],
+    eventCount,
+    isLive: slice?.recovery.bootstrapped ?? false,
     resumeSession,
     answerQuestion,
     mutations,
