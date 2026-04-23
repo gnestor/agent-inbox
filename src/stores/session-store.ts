@@ -71,6 +71,8 @@ interface SessionStoreState {
   submitOptimisticPrompt(sessionId: string, prompt: string): string
   /** Clear the pending question after the user answers. */
   clearPendingQuestion(sessionId: string): void
+  /** Restore a pending question (used as rollback when answer submission fails). */
+  setPendingQuestion(sessionId: string, question: import("@/types").PendingQuestion): void
   /** Drop a session slice from memory (e.g. when navigating away and it's no longer needed). */
   removeSession(sessionId: string): void
   /** Optimistic session.status setter, used by mutations before the server confirms. */
@@ -273,6 +275,19 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       sessions: {
         ...s0.sessions,
         [sessionId]: { ...reduced, recovery: slice.recovery, deferredEvents: slice.deferredEvents },
+      },
+    })
+  },
+
+  setPendingQuestion: (sessionId, question) => {
+    const s0 = get()
+    const slice = s0.sessions[sessionId]
+    if (!slice) return
+    set({
+      ...s0,
+      sessions: {
+        ...s0.sessions,
+        [sessionId]: { ...slice, pendingQuestion: question },
       },
     })
   },

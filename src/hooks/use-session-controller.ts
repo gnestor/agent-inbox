@@ -193,9 +193,18 @@ export function useSessionController({
   }, [sessionId, mutations.resume])
 
   const answerQuestion = useCallback(async (answers: Record<string, string>) => {
-    await answerSessionQuestion(sessionId, answers)
-    useSessionStore.getState().clearPendingQuestion(sessionId)
-    qc.invalidateQueries({ queryKey: ["sessions"] })
+    // Optimistically clear so a double-click can't re-submit. Restore on error.
+    const store = useSessionStore.getState()
+    const prior = store.sessions[sessionId]?.pendingQuestion ?? null
+    if (!prior) return // no question to answer; defensive no-op
+    store.clearPendingQuestion(sessionId)
+    try {
+      await answerSessionQuestion(sessionId, answers)
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    } catch (err) {
+      useSessionStore.getState().setPendingQuestion(sessionId, prior)
+      throw err
+    }
   }, [sessionId, qc])
 
   // --- Event count (simple render counter from store slice for WorkingIndicator) ---
