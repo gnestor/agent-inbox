@@ -191,53 +191,68 @@ Your working directory is the \`context/\` folder — all paths below are relati
 - **Type:** ${entityType}
 - **Value:** ${entityValue}
 
-## A context page IS
-- An index of identity, attributes, and dense links to other entities and sources
-- Where to find the details — not where the details live
+## What this page is for
 
-## A context page IS NOT
-- A restatement or summary of source files (link them in \`## Timeline\` and \`## Sources\`)
-- A copy of transactional data (orders, invoices, inventory) — link canonical sources instead
-- A standalone read — summaries are generated on-demand from linked sources
+The page is a **navigation index**, not a knowledge summary. Agents querying
+this entity will follow the source links and read the actual files themselves
+(they can also search via qmd). The page exists only to point them to the
+right sources and list related entities.
 
-## Structure
-- Frontmatter (\`tags\`, \`last_updated\`)
-- One-sentence identity line
-- \`## Details\` — key attributes
-- \`## Timeline\` — dated milestones, each linking to the source file that recorded it
-- \`## Sources\` — raw source files that contributed
-- \`## Related\` — other curated pages with one-line relationships
+## Required format (only these sections)
 
-## Linking
-- Use dense inline links throughout prose, not just in Sources/Related
-- Flat format: \`[Title](filename.md)\` for curated pages, \`[Subject](gmail/id.md)\` for sources, \`[File](../backfill-cache/google-drive/id.md)\` for Drive
-- When A → B, also link B → A
+- Frontmatter: \`tags\`, \`last_updated\`
+- One-line identity (≤ 15 words): who/what this entity is, plain language
+- \`## Sources\` — flat list of links, grouped by source type
+  - Subheadings: \`### Gmail\`, \`### Gorgias\`, \`### Drive\`, \`### Notion\`, \`### Slack\`, \`### Sessions\` (only the types that have sources)
+  - Format per item: \`- [<short label>](<path>)\`
+  - Label should come from the source's frontmatter/title (see "Labeling sources" below)
+- \`## Related\` — one-line links to other curated entity pages
+  - Format: \`- [<Name>](<file>.md) — <2-4 word role>\`
+
+## Do NOT write
+
+- A \`## Details\` section with attributes or facts
+- A \`## Timeline\` with dated events
+- Any prose paragraphs describing what the entity does, means, or relates to
+- Anything extracted from source content (attributes, dates, decisions, quotes)
+
+If an existing page already has prose sections (Details, Timeline, etc),
+LEAVE THEM ALONE — do not delete, extend, or reformat them. Only modify
+\`last_updated\`, \`## Sources\`, and \`## Related\`.
+
+## Labeling sources
+
+Use \`grep -h '^title:\\|^subject:\\|^# ' <paths>\` (or similar batch read) to
+extract a short label from each source's frontmatter or first heading.
+Fallback: use the filename stem (\`thread-abc123\` → "thread abc123"). You
+don't need to read source bodies — you're linking, not summarizing.
 
 ## Entity discovery
-Whenever you see a person, company, product, project, or other curatable entity mentioned in the sources that doesn't already have a page, queue it for curation by including it in your response as:
+
+While scanning source frontmatter/titles, note any person, company, product,
+project, folder, or channel that deserves its own page. End your response with:
 
 <new-entities>
 entity_type: canonical_value
 ...
 </new-entities>
 
-Use the same entity types (person, company, product, project, folder, channel, tag, etc.). Do not emit entities for the one you're currently curating.
+Use the same entity types (person, company, product, project, folder, channel, tag, etc.). Do not emit an entity for the one you're currently curating.
 
 ${candidateSection}
 
 ## Sources to process (${sourcePaths.length})
 
-Read the source files you need. You don't need to read all of them — only those that reveal attributes, timeline events, or relationships worth capturing. Cite every source whose content you used.
-
 ${sourceList}
 
 ## Output
-Make the minimum edits needed: add inline links, timeline entries, sources, and related pages. Don't rewrite existing content. Update \`last_updated\` in frontmatter.
 
-After editing, append a line to \`LOG.md\`:
-\`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`
-
-End your response with the \`<new-entities>\` block (empty if none discovered).
+- Append missing entries to \`## Sources\` under the correct type heading
+- Add any newly-identified related pages to \`## Related\` with a role label
+- Update \`last_updated\` in frontmatter
+- Append one line to \`LOG.md\`:
+  \`| YYYY-MM-DD | updated | <filename> | +<N> sources, +<M> related |\`
+- End with the \`<new-entities>\` block (empty if none discovered)
 
 Do NOT dispatch background subagents.`
 }
