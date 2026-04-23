@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest"
-import { useSessionStore } from "../session-store"
+import { useSessionStore, MAX_DEFERRED_EVENTS } from "../session-store"
 import type { Session, SessionMessage } from "@/types"
 
 function makeSession(id = "s1", overrides: Partial<Session> = {}): Session {
@@ -180,5 +180,23 @@ describe("session store — recovery lifecycle", () => {
     store.beginSnapshot("s9", "bootstrap")
     store.failSnapshot("s9")
     expect(store.beginSnapshot("s9", "snapshot-failed")).toBe(true)
+  })
+
+  it("deferredEvents is bounded at MAX_DEFERRED_EVENTS; oldest drops on overflow", () => {
+    const store = useSessionStore.getState()
+    // No bootstrap — all message events get deferred.
+    for (let i = 1; i <= MAX_DEFERRED_EVENTS + 10; i++) {
+      store.ingestEvent("s-cap", {
+        sequence: i,
+        message: { type: "assistant", content: [] },
+      })
+    }
+    const slice = useSessionStore.getState().sessions["s-cap"]!
+    expect(slice.deferredEvents).toHaveLength(MAX_DEFERRED_EVENTS)
+    // The oldest surviving event should be sequence 11 (first 10 dropped).
+    const firstSeq = (slice.deferredEvents[0] as { sequence: number }).sequence
+    expect(firstSeq).toBe(11)
+    // pendingReplay is set (coordinator's signal that a snapshot is needed).
+    expect(slice.recovery.pendingReplay).toBe(true)
   })
 })
