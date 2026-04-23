@@ -73,6 +73,9 @@ interface SessionStoreState {
   clearPendingQuestion(sessionId: string): void
   /** Restore a pending question (used as rollback when answer submission fails). */
   setPendingQuestion(sessionId: string, question: import("@/types").PendingQuestion): void
+  /** Server told us our WS cursor is too old to replay. Invalidate bootstrap
+   *  so the gap-recovery effect runs a fresh snapshot. */
+  handleCursorMiss(sessionId: string): void
   /** Drop a session slice from memory (e.g. when navigating away and it's no longer needed). */
   removeSession(sessionId: string): void
   /** Optimistic session.status setter, used by mutations before the server confirms. */
@@ -290,6 +293,13 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         [sessionId]: { ...slice, pendingQuestion: question },
       },
     })
+  },
+
+  handleCursorMiss: (sessionId) => {
+    const [s0, coord] = ensureCoordinator(get(), sessionId)
+    if (s0 !== get()) set(s0)
+    coord.invalidateBootstrap()
+    syncRecoveryState(get(), sessionId, coord, set)
   },
 
   removeSession: (sessionId) => {

@@ -18,10 +18,26 @@ export const ALIVE_TIMEOUT_MS = 45_000
 
 type SessionEventCallback = (data: any) => void
 type ConnectCallback = () => void
+type CursorMissCallback = () => void
+
+/** Per-session subscription options. */
+export interface SubscribeOptions {
+  /** Called at subscribe/resubscribe time; the returned sequence is sent to
+   *  the server so it can replay missed events. Return undefined for a brand
+   *  new subscriber with no prior state. */
+  getFromSequence?: () => number | undefined
+  /** Fired when the server responds with cursor_miss — caller should invalidate
+   *  bootstrap and refetch. */
+  onCursorMiss?: CursorMissCallback
+}
 
 interface WsStreamContextValue {
   /** Subscribe to events for a session. Returns an unsubscribe function. */
-  subscribe: (sessionId: string, callback: SessionEventCallback) => () => void
+  subscribe: (
+    sessionId: string,
+    callback: SessionEventCallback,
+    options?: SubscribeOptions,
+  ) => () => void
   /**
    * Register a callback that fires every time the WebSocket (re)opens.
    * If the socket is already open when this is called, the callback fires
@@ -55,6 +71,9 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null)
   const clientIdRef = useRef<string | null>(null)
   const listenersRef = useRef(new Map<string, Set<SessionEventCallback>>())
+  // Per-session subscribe options keyed by sessionId. Latest caller wins for
+  // each field — there's normally only one subscriber per session in practice.
+  const optionsRef = useRef(new Map<string, SubscribeOptions>())
   const connectListenersRef = useRef(new Set<ConnectCallback>())
   const [isConnected, setIsConnected] = useState(false)
   const retriesRef = useRef(0)
@@ -87,19 +106,39 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }, ALIVE_TIMEOUT_MS)
   }, [])
 
+  // Build the rich `sessions` array for a subscribe frame by calling each
+  // session's getFromSequence at send-time. Used both by flushBatch and by
+  // the `connected` message handler on (re)open.
+  const buildSubscribePayload = useCallback((ids: Iterable<string>) => {
+    const sessions: Array<{ id: string; fromSequence?: number }> = []
+    for (const id of ids) {
+      const opts = optionsRef.current.get(id)
+      const fromSequence = opts?.getFromSequence?.()
+      sessions.push(
+        typeof fromSequence === "number" && fromSequence > 0
+          ? { id, fromSequence }
+          : { id },
+      )
+    }
+    return sessions
+  }, [])
+
   const flushBatch = useCallback(() => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
 
     if (pendingSubscribe.current.size > 0) {
-      ws.send(JSON.stringify({ type: "subscribe", sessionIds: [...pendingSubscribe.current] }))
+      ws.send(JSON.stringify({
+        type: "subscribe",
+        sessions: buildSubscribePayload(pendingSubscribe.current),
+      }))
       pendingSubscribe.current.clear()
     }
     if (pendingUnsubscribe.current.size > 0) {
       ws.send(JSON.stringify({ type: "unsubscribe", sessionIds: [...pendingUnsubscribe.current] }))
       pendingUnsubscribe.current.clear()
     }
-  }, [])
+  }, [buildSubscribePayload])
 
   const scheduleBatch = useCallback(() => {
     if (batchTimerRef.current) clearTimeout(batchTimerRef.current)
@@ -153,10 +192,21 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
 
       if (msg.type === "connected") {
         clientIdRef.current = msg.clientId
-        // Re-subscribe all active sessions on (re)connect
-        const sessionIds = [...listenersRef.current.keys()]
-        if (sessionIds.length > 0) {
-          ws.send(JSON.stringify({ type: "subscribe", sessionIds }))
+        // Re-subscribe all active sessions on (re)connect with cursors.
+        const ids = [...listenersRef.current.keys()]
+        if (ids.length > 0) {
+          ws.send(JSON.stringify({
+            type: "subscribe",
+            sessions: buildSubscribePayload(ids),
+          }))
+        }
+        return
+      }
+
+      if (msg.type === "cursor_miss" && msg.sessionId) {
+        const opts = optionsRef.current.get(msg.sessionId)
+        try { opts?.onCursorMiss?.() } catch (err) {
+          console.error("[ws] onCursorMiss threw", err, msg)
         }
         return
       }
@@ -188,7 +238,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       retriesRef.current++
       reconnectTimerRef.current = setTimeout(connect, delay)
     }
-  }, [resetAliveTimeout, stopKeepalive])
+  }, [resetAliveTimeout, stopKeepalive, buildSubscribePayload])
 
   useEffect(() => {
     mountedRef.current = true
@@ -220,28 +270,30 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
   }, [connect])
 
-  const subscribe = useCallback((sessionId: string, callback: SessionEventCallback) => {
-    // Add listener
+  const subscribe = useCallback((
+    sessionId: string,
+    callback: SessionEventCallback,
+    options?: SubscribeOptions,
+  ) => {
+    if (options) optionsRef.current.set(sessionId, options)
+
     if (!listenersRef.current.has(sessionId)) {
       listenersRef.current.set(sessionId, new Set())
     }
     const set = listenersRef.current.get(sessionId)!
     set.add(callback)
 
-    // First subscriber for this session — tell server
     if (set.size === 1) {
-      // Cancel any pending unsubscribe for this session
       pendingUnsubscribe.current.delete(sessionId)
       pendingSubscribe.current.add(sessionId)
       scheduleBatch()
     }
 
-    // Return unsubscribe function
     return () => {
       set.delete(callback)
       if (set.size === 0) {
         listenersRef.current.delete(sessionId)
-        // Last subscriber gone — tell server
+        optionsRef.current.delete(sessionId)
         pendingSubscribe.current.delete(sessionId)
         pendingUnsubscribe.current.add(sessionId)
         scheduleBatch()
