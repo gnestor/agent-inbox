@@ -1,16 +1,3 @@
-// Per-session transport hook.
-//
-// Responsibilities, in exactly this order:
-//   1. On every WS (re)open, run a snapshot — full REST refetch of the session.
-//      This covers the initial load and every reconnect, without any race
-//      between fetch and subscribe.
-//   2. Subscribe to WS events; route each through the store's coordinator.
-//   3. Whenever the coordinator sets `pendingReplay` mid-stream (gap detected),
-//      trigger another snapshot.
-//
-// All state ownership is in the session store. This hook is pure orchestration —
-// no useState, no setState outside the store.
-
 import { useEffect, useRef } from "react"
 import { getSession } from "@/api/client"
 import { useWsStream } from "@/hooks/use-ws-stream"
@@ -19,49 +6,47 @@ import {
   type SessionSlice,
 } from "@/stores/session-store"
 import type { SessionRecoveryReason } from "@/stores/session-recovery"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("session-transcript")
+
+// Once beginSnapshot returns true, the caller owns the coordinator's inFlight
+// token and MUST release it (via applySnapshot or failSnapshot) before
+// returning. No early returns on unmount — a late store update is harmless
+// because the store is independent of React's mount lifecycle. This matters
+// under StrictMode, where the mount → cleanup → remount cycle can race a
+// slow fetch; an early return would leak inFlight and cause every subsequent
+// WS event to be deferred forever.
+async function runSnapshot(sessionId: string, reason: SessionRecoveryReason): Promise<void> {
+  const store = useSessionStore.getState()
+  if (!store.beginSnapshot(sessionId, reason)) return
+  try {
+    const data = await getSession(sessionId)
+    useSessionStore.getState().applySnapshot(sessionId, data)
+  } catch (err) {
+    log.error("snapshot fetch failed", { sessionId, reason, err })
+    useSessionStore.getState().failSnapshot(sessionId)
+  }
+}
 
 export function useSessionTranscript(
   sessionId: string | undefined,
 ): SessionSlice | undefined {
   const slice = useSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const { subscribe, onConnect } = useWsStream()
-
-  // Stable refs so our mount-effect's dependency array can stay minimal.
   const runningRef = useRef(false)
 
   useEffect(() => {
     if (!sessionId) return
+    // Reset to "bootstrap" semantics when navigating to a new session.
+    runningRef.current = false
 
-    const store = useSessionStore.getState()
-
-    // Once beginSnapshot returns true, the caller has taken the coordinator's
-    // inFlight token and MUST release it (via applySnapshot or failSnapshot)
-    // before returning. No early returns — a late store update after unmount
-    // is harmless because the store is independent of React's mount lifecycle.
-    // This matters under StrictMode, where the mount → cleanup → remount cycle
-    // can race with a slow fetch; an early return on `!alive` would leak
-    // inFlight and cause every subsequent WS event to be deferred forever.
-    const runSnapshot = async (reason: SessionRecoveryReason) => {
-      if (!store.beginSnapshot(sessionId, reason)) return
-      try {
-        const data = await getSession(sessionId)
-        store.applySnapshot(sessionId, data)
-      } catch (err) {
-        console.error("[session] snapshot fetch failed", { sessionId, err })
-        store.failSnapshot(sessionId)
-      }
-    }
-
-    // Subscribe to live events — events arriving before the first snapshot
-    // completes will be classified as "defer" and buffered.
     const unsubEvents = subscribe(sessionId, (event) => {
       useSessionStore.getState().ingestEvent(sessionId, event)
     })
 
-    // Every WS (re)open triggers a snapshot. Covers initial mount (onConnect
-    // fires on next microtask if already connected) and every reconnection.
     const unsubReconnect = onConnect(() => {
-      void runSnapshot(runningRef.current ? "resubscribe" : "bootstrap")
+      void runSnapshot(sessionId, runningRef.current ? "resubscribe" : "bootstrap")
       runningRef.current = true
     })
 
@@ -71,24 +56,14 @@ export function useSessionTranscript(
     }
   }, [sessionId, subscribe, onConnect])
 
-  // Reactive: if an event classified as "recover" (gap detected) landed mid-
-  // stream, trigger a snapshot. pendingReplay is cleared by completeSnapshot,
-  // so this effect is idempotent. Same inFlight-release rule as above.
+  // Gap recovery: if an event classified as "recover" set pendingReplay,
+  // run another snapshot. pendingReplay is cleared by completeSnapshot, so
+  // this effect is idempotent.
   useEffect(() => {
     if (!sessionId) return
     const rec = slice?.recovery
     if (!rec?.pendingReplay || rec.inFlight) return
-    const store = useSessionStore.getState()
-    void (async () => {
-      if (!store.beginSnapshot(sessionId, "sequence-gap")) return
-      try {
-        const data = await getSession(sessionId)
-        store.applySnapshot(sessionId, data)
-      } catch (err) {
-        console.error("[session] gap-triggered snapshot failed", { sessionId, err })
-        store.failSnapshot(sessionId)
-      }
-    })()
+    void runSnapshot(sessionId, "sequence-gap")
   }, [sessionId, slice?.recovery.pendingReplay, slice?.recovery.inFlight])
 
   return slice

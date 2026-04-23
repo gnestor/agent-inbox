@@ -69,7 +69,7 @@ interface SessionStoreState {
   /** Optimistic session.status setter, used by mutations before the server confirms. */
   setSessionStatus(sessionId: string, status: import("@/types").SessionStatus): void
   /** Optimistic session.summary setter, used by the rename mutation. */
-  setSessionSummary(sessionId: string, summary: string): void
+  setSessionSummary(sessionId: string, summary: string | null): void
 }
 
 // ---------------------------------------------------------------------------
@@ -341,19 +341,26 @@ function syncRecoveryState(
   setFn: (partial: Partial<SessionStoreState> | SessionStoreState) => void,
 ) {
   const slice = state.sessions[sessionId]
-  if (!slice) {
-    // Coordinator is tracking events for a session we don't have a slice for
-    // yet. That's fine; the slice will be created by applySnapshot, and the
-    // coordinator will be read then.
-    return
-  }
+  if (!slice) return
+  const nextRecovery = coord.getState()
+  if (recoveryStateEqual(slice.recovery, nextRecovery)) return
   setFn({
     ...state,
     sessions: {
       ...state.sessions,
-      [sessionId]: { ...slice, recovery: coord.getState() },
+      [sessionId]: { ...slice, recovery: nextRecovery },
     },
   })
+}
+
+function recoveryStateEqual(a: SessionRecoveryState, b: SessionRecoveryState): boolean {
+  return (
+    a.latestSequence === b.latestSequence &&
+    a.highestObservedSequence === b.highestObservedSequence &&
+    a.bootstrapped === b.bootstrapped &&
+    a.pendingReplay === b.pendingReplay &&
+    a.inFlight === b.inFlight // both nulls compare equal; snapshot objects compared by reference
+  )
 }
 
 // ---------------------------------------------------------------------------

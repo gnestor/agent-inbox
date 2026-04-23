@@ -103,9 +103,15 @@ export function reduceEvent(slice: SessionSlice, event: ServerEvent): SessionSli
     const nextById = { ...slice.messageById, [event.sequence]: msg }
 
     // If this is a user message, it may be the echo of an optimistic prompt.
+    // Only check against the new message — pending prompts are rare (usually
+    // 0 or 1) and rebuilding a Set over all N messages on every user event is
+    // wasteful.
     let nextPending = slice.pendingPrompts
-    if (msg.type === "user") {
-      nextPending = reconcilePendingPrompts(slice.pendingPrompts, nextById)
+    if (msg.type === "user" && slice.pendingPrompts.length > 0) {
+      const text = extractUserText(msg)
+      if (text) {
+        nextPending = slice.pendingPrompts.filter((p) => p.prompt.trim() !== text)
+      }
     }
 
     return {

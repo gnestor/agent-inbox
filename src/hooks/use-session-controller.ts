@@ -25,7 +25,7 @@ export type SessionPhase =
   | { status: "archived" }
 
 // ---------------------------------------------------------------------------
-// Controller interface (unchanged from prior version — consumers don't move)
+// Controller interface
 // ---------------------------------------------------------------------------
 
 export interface SessionController {
@@ -121,19 +121,21 @@ export function useSessionController({
   const combinedMessages = useMemo<SessionMessage[]>(() => {
     const real = messageIds.map((id) => messageById[id]!).filter(Boolean)
     if (pendingPrompts.length === 0) return real
-    // Assign pending prompts sequence numbers beyond any real message so they
-    // render at the tail. The virtualizer uses `sequence` as the key, so the
-    // numbers just need to be unique and monotonically increasing.
-    const lastSeq = real.length > 0 ? real[real.length - 1]!.sequence : -1
-    const tailStart = lastSeq + 1000
-    const optimistic: SessionMessage[] = pendingPrompts.map((p, i) => ({
-      id: tailStart + i,
-      sessionId,
-      sequence: tailStart + i,
-      type: "user",
-      message: { type: "user", content: p.prompt } as any,
-      createdAt: p.createdAt,
-    }))
+    // Optimistic prompts render at the tail. We pick sequence numbers from
+    // the top of the safe-integer range so they can never collide with
+    // real server-assigned sequences, no matter how long the session runs.
+    // The virtualizer keys by sequence, so uniqueness is what matters.
+    const optimistic: SessionMessage[] = pendingPrompts.map((p, i) => {
+      const seq = Number.MAX_SAFE_INTEGER - (pendingPrompts.length - 1 - i)
+      return {
+        id: seq,
+        sessionId,
+        sequence: seq,
+        type: "user",
+        message: { type: "user", content: p.prompt } as any,
+        createdAt: p.createdAt,
+      }
+    })
     return [...real, ...optimistic]
   }, [messageIds, messageById, pendingPrompts, sessionId])
 

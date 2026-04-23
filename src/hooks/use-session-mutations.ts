@@ -112,19 +112,20 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     mutationFn: (newTitle: string) => updateSession(sessionId, { summary: newTitle }),
     onMutate: async (newTitle: string) => {
       await qc.cancelQueries({ queryKey: ["sessions"] })
-      const previousSummary =
-        useSessionStore.getState().sessions[sessionId]?.session.summary ?? null
+      const slice = useSessionStore.getState().sessions[sessionId]
+      const prior: { summary: string | null } | null = slice ? { summary: slice.session.summary } : null
       const previousList = qc.getQueriesData<SessionListCache>({ queryKey: ["sessions"] })
       useSessionStore.getState().setSessionSummary(sessionId, newTitle)
       setSessionListSummary(qc, sessionId, newTitle)
-      return { previousSummary, previousList }
+      return { prior, previousList }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["sessions"] })
     },
     onError: (err, _vars, context) => {
-      if (context?.previousSummary !== undefined && context.previousSummary !== null) {
-        useSessionStore.getState().setSessionSummary(sessionId, context.previousSummary)
+      // Always restore prior summary on error — including null (untitled session).
+      if (context?.prior) {
+        useSessionStore.getState().setSessionSummary(sessionId, context.prior.summary)
       }
       if (context?.previousList) {
         for (const [key, data] of context.previousList) {
