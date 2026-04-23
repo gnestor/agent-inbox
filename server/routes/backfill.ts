@@ -221,6 +221,95 @@ backfillRoutes.post("/extract-entities", async (c) => {
   return c.json({ results })
 })
 
+/**
+ * POST /api/backfill/extract-bodies?source={pluginId}&limit=N
+ *
+ * Bulk body-text entity extraction via a local LLM (Ollama). For each stub
+ * that hasn't been processed yet (tracked in body_extraction_log), sends the
+ * body to Qwen 3.5 and inserts discovered entities into source_entities.
+ * Skips sources that already appear in body_extraction_log. One source per
+ * call is processed serially (Ollama serializes anyway).
+ *
+ * Required: ?source={pluginId}
+ * Optional: ?limit=N (default 100) — number of stubs to process this call
+ */
+backfillRoutes.post("/extract-bodies", async (c) => {
+  const workspacePath = getWorkspacePath(c)
+  if (!workspacePath) throw new HTTPException(400, { message: "No active workspace" })
+
+  const wsId = getWorkspaceId(c) || "agent"
+  const sourceFilter = c.req.query("source")
+  if (!sourceFilter) throw new HTTPException(400, { message: "?source={pluginId} is required" })
+
+  const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100", 10), 1), 500)
+
+  const plugin = getPlugins(wsId).find((p) => p.id === sourceFilter)
+  if (!plugin || !plugin.itemToContext) {
+    throw new HTTPException(400, { message: `unknown or unsupported source '${sourceFilter}'` })
+  }
+
+  const { readdir, readFile } = await import("fs/promises")
+  const { extractBodyEntities } = await import("../lib/body-extractor.js")
+
+  const relDir = plugin.backfillDir ?? `context/${plugin.id}`
+  const absDir = join(workspacePath, relDir)
+
+  let files: string[]
+  try {
+    files = await readdir(absDir)
+  } catch {
+    return c.json({ scanned: 0, extracted: 0, entities: 0, error: `no directory for ${sourceFilter}` })
+  }
+
+  // Already-done source_paths to skip.
+  const done = new Set<string>()
+  const doneRows = await (await import("../db/pool.js")).query<{ source_path: string }>(
+    `SELECT source_path FROM body_extraction_log WHERE workspace_id = $1 AND plugin_id = $2`,
+    [wsId, plugin.id],
+  )
+  for (const r of doneRows) done.add(r.source_path)
+
+  let scanned = 0
+  let extracted = 0
+  let totalEntities = 0
+  const now = new Date().toISOString()
+
+  for (const file of files) {
+    if (!file.endsWith(".md")) continue
+    const sourcePath = `${relDir}/${file}`
+    if (done.has(sourcePath)) continue
+    if (extracted >= limit) break
+    scanned++
+
+    let content: string
+    try { content = await readFile(join(absDir, file), "utf8") }
+    catch { continue }
+
+    const entities = await extractBodyEntities(content)
+
+    for (const e of entities) {
+      await execute(
+        `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
+         VALUES ($1, $2, $3, $4, $5, $6, 0)
+         ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
+        [sourcePath, plugin.id, wsId, e.type, e.value, now],
+      )
+      totalEntities++
+    }
+
+    await execute(
+      `INSERT INTO body_extraction_log (source_path, workspace_id, plugin_id, extracted_at, entity_count)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (source_path, workspace_id) DO UPDATE
+         SET extracted_at = EXCLUDED.extracted_at, entity_count = EXCLUDED.entity_count`,
+      [sourcePath, wsId, plugin.id, now, entities.length],
+    )
+    extracted++
+  }
+
+  return c.json({ source: sourceFilter, scanned, extracted, entities: totalEntities, remaining: Math.max(0, files.length - done.size - extracted) })
+})
+
 /** POST /api/backfill/:pluginId — run context backfill for a single plugin */
 backfillRoutes.post("/:pluginId", async (c) => {
   const { pluginId } = c.req.param()
