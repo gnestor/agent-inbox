@@ -42,7 +42,7 @@ describe("session presence tracking", () => {
     const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-2", (data) => received.push(data))
-    await wsSubscribe("c-2", ["sess-2"])
+    await wsSubscribe("c-2", [{ id: "sess-2" }])
     addPresenceUser("sess-2", { email: "alice@test.com", name: "Alice" })
     // Debounced: wait for the broadcast timer to fire.
     await new Promise((r) => setTimeout(r, 250))
@@ -56,7 +56,7 @@ describe("session presence tracking", () => {
     const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser, getPresenceUsers } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-3", (data) => received.push(data))
-    await wsSubscribe("c-3", ["sess-3"])
+    await wsSubscribe("c-3", [{ id: "sess-3" }])
     addPresenceUser("sess-3", { email: "alice@test.com", name: "Alice" })
     addPresenceUser("sess-3", { email: "bob@test.com", name: "Bob" })
     removePresenceUser("sess-3", "alice@test.com")
@@ -115,7 +115,7 @@ describe("resumeSessionQuery author attribution", () => {
     // Register a WS client and subscribe to capture broadcasts
     const broadcasts: any[] = []
     addWsClient("c-auth-1", (data) => broadcasts.push(data))
-    await wsSubscribe("c-auth-1", ["sess-auth-1"])
+    await wsSubscribe("c-auth-1", [{ id: "sess-auth-1" }])
 
     await resumeSessionQuery("sess-auth-1", "Hello world", undefined, {
       email: "alice@test.com",
@@ -142,7 +142,7 @@ describe("resumeSessionQuery author attribution", () => {
 
     const broadcasts: any[] = []
     addWsClient("c-auth-2", (data) => broadcasts.push(data))
-    await wsSubscribe("c-auth-2", ["sess-auth-2"])
+    await wsSubscribe("c-auth-2", [{ id: "sess-auth-2" }])
 
     await resumeSessionQuery("sess-auth-2", "Hello world", undefined, undefined)
 

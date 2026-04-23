@@ -90,3 +90,66 @@ describe("broadcast buffer", () => {
     expect(readBroadcastBufferSince("buf-clear", 5)).toBeNull()
   })
 })
+
+describe("wsSubscribe cursor replay", () => {
+  beforeEach(() => { vi.resetModules() })
+
+  it("replays buffered events after a fromSequence cursor", async () => {
+    const {
+      addWsClient, wsSubscribe, broadcastToSession, clearBroadcastBuffer,
+    } = await import("../session-manager.js")
+
+    clearBroadcastBuffer("sess-cr-1")
+    for (let i = 1; i <= 4; i++) {
+      broadcastToSession("sess-cr-1", { sequence: i, message: { type: "assistant", i } })
+    }
+
+    const received: any[] = []
+    addWsClient("client-cr-1", (data) => received.push(data))
+    await wsSubscribe("client-cr-1", [{ id: "sess-cr-1", fromSequence: 2 }])
+
+    // Expect session_events for sequences 3 and 4.
+    const replayed = received.filter(
+      (m) => m.type === "session_event" && m.sessionId === "sess-cr-1" && typeof m.data?.sequence === "number",
+    )
+    expect(replayed.map((m) => m.data.sequence)).toEqual([3, 4])
+  })
+
+  it("sends cursor_miss when the cursor is older than the buffer window", async () => {
+    const {
+      addWsClient, wsSubscribe, broadcastToSession, clearBroadcastBuffer, BROADCAST_BUFFER_CAPACITY,
+    } = await import("../session-manager.js")
+
+    clearBroadcastBuffer("sess-cr-miss")
+    for (let i = 1; i <= BROADCAST_BUFFER_CAPACITY + 50; i++) {
+      broadcastToSession("sess-cr-miss", { sequence: i, message: {} })
+    }
+
+    const received: any[] = []
+    addWsClient("client-cr-miss", (data) => received.push(data))
+    await wsSubscribe("client-cr-miss", [{ id: "sess-cr-miss", fromSequence: 5 }])
+
+    const miss = received.find((m) => m.type === "cursor_miss" && m.sessionId === "sess-cr-miss")
+    expect(miss).toBeDefined()
+  })
+
+  it("skips cursor replay entirely when fromSequence is absent (legacy clients)", async () => {
+    const {
+      addWsClient, wsSubscribe, broadcastToSession, clearBroadcastBuffer,
+    } = await import("../session-manager.js")
+
+    clearBroadcastBuffer("sess-cr-legacy")
+    broadcastToSession("sess-cr-legacy", { sequence: 1, message: {} })
+
+    const received: any[] = []
+    addWsClient("client-legacy", (data) => received.push(data))
+    await wsSubscribe("client-legacy", [{ id: "sess-cr-legacy" }])
+
+    const replayed = received.filter(
+      (m) => m.type === "session_event" && m.sessionId === "sess-cr-legacy" && typeof m.data?.sequence === "number",
+    )
+    expect(replayed).toHaveLength(0)
+    const miss = received.find((m) => m.type === "cursor_miss")
+    expect(miss).toBeUndefined()
+  })
+})
