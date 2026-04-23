@@ -242,6 +242,7 @@ backfillRoutes.post("/extract-bodies", async (c) => {
   if (!sourceFilter) throw new HTTPException(400, { message: "?source={pluginId} is required" })
 
   const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100", 10), 1), 500)
+  const modelOverride = c.req.query("model") || undefined
 
   const plugin = getPlugins(wsId).find((p) => p.id === sourceFilter)
   if (!plugin || !plugin.itemToContext) {
@@ -269,45 +270,70 @@ backfillRoutes.post("/extract-bodies", async (c) => {
   )
   for (const r of doneRows) done.add(r.source_path)
 
-  let scanned = 0
-  let extracted = 0
-  let totalEntities = 0
-  const now = new Date().toISOString()
-
+  // Build the work queue up-front, capped at `limit`, skipping sources
+  // already logged.
+  const queue: string[] = []
   for (const file of files) {
     if (!file.endsWith(".md")) continue
     const sourcePath = `${relDir}/${file}`
     if (done.has(sourcePath)) continue
-    if (extracted >= limit) break
-    scanned++
-
-    let content: string
-    try { content = await readFile(join(absDir, file), "utf8") }
-    catch { continue }
-
-    const entities = await extractBodyEntities(content)
-
-    for (const e of entities) {
-      await execute(
-        `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
-         VALUES ($1, $2, $3, $4, $5, $6, 0)
-         ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
-        [sourcePath, plugin.id, wsId, e.type, e.value, now],
-      )
-      totalEntities++
-    }
-
-    await execute(
-      `INSERT INTO body_extraction_log (source_path, workspace_id, plugin_id, extracted_at, entity_count)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (source_path, workspace_id) DO UPDATE
-         SET extracted_at = EXCLUDED.extracted_at, entity_count = EXCLUDED.entity_count`,
-      [sourcePath, wsId, plugin.id, now, entities.length],
-    )
-    extracted++
+    if (queue.length >= limit) break
+    queue.push(file)
   }
 
-  return c.json({ source: sourceFilter, scanned, extracted, entities: totalEntities, remaining: Math.max(0, files.length - done.size - extracted) })
+  const concurrency = Math.max(
+    1,
+    Math.min(queue.length, parseInt(process.env.OLLAMA_NUM_PARALLEL || "2", 10)),
+  )
+
+  let scanned = queue.length
+  let extracted = 0
+  let totalEntities = 0
+  const now = new Date().toISOString()
+
+  async function worker() {
+    while (true) {
+      const file = queue.shift()
+      if (!file) return
+      const sourcePath = `${relDir}/${file}`
+
+      let content: string
+      try { content = await readFile(join(absDir, file), "utf8") }
+      catch { continue }
+
+      const entities = await extractBodyEntities(content, modelOverride)
+
+      for (const e of entities) {
+        await execute(
+          `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
+           VALUES ($1, $2, $3, $4, $5, $6, 0)
+           ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
+          [sourcePath, plugin.id, wsId, e.type, e.value, now],
+        )
+        totalEntities++
+      }
+
+      await execute(
+        `INSERT INTO body_extraction_log (source_path, workspace_id, plugin_id, extracted_at, entity_count)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (source_path, workspace_id) DO UPDATE
+           SET extracted_at = EXCLUDED.extracted_at, entity_count = EXCLUDED.entity_count`,
+        [sourcePath, wsId, plugin.id, now, entities.length],
+      )
+      extracted++
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, worker))
+
+  return c.json({
+    source: sourceFilter,
+    scanned,
+    extracted,
+    entities: totalEntities,
+    concurrency,
+    remaining: Math.max(0, files.length - done.size - extracted),
+  })
 })
 
 /** POST /api/backfill/:pluginId — run context backfill for a single plugin */

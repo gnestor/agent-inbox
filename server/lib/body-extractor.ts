@@ -20,7 +20,8 @@ import type { Entity } from "../../src/types/plugin.js"
 const log = createLogger("body-extractor")
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434"
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3.5:9b"
+// Default to the smaller 4B model; override via env.
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3.5:4b"
 
 // Truncate source bodies before sending to the model. Entities typically
 // surface in the first paragraphs; beyond ~8KB the token cost isn't worth
@@ -62,10 +63,11 @@ interface OllamaChatResponse {
 /**
  * Call Ollama's /api/chat endpoint with the extraction prompt.
  * Uses `format: "json"` to constrain output. Returns null on any error.
+ * Optional `model` override — defaults to OLLAMA_MODEL env var.
  */
-async function callOllama(content: string): Promise<string | null> {
+async function callOllama(content: string, model?: string): Promise<string | null> {
   const body = {
-    model: OLLAMA_MODEL,
+    model: model ?? OLLAMA_MODEL,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: USER_PROMPT_TEMPLATE(content) },
@@ -128,23 +130,23 @@ export function parseModelOutput(raw: string | null): Entity[] {
   return out
 }
 
-export async function extractBodyEntities(content: string): Promise<Entity[]> {
+export async function extractBodyEntities(content: string, model?: string): Promise<Entity[]> {
   const trimmed = content.length > MAX_CONTENT_CHARS
     ? content.slice(0, MAX_CONTENT_CHARS)
     : content
-  const raw = await callOllama(trimmed)
+  const raw = await callOllama(trimmed, model)
   return parseModelOutput(raw)
 }
 
 /**
  * Convenience: read a stub file and extract entities from its body.
  */
-export async function extractBodyEntitiesFromFile(absPath: string): Promise<Entity[]> {
+export async function extractBodyEntitiesFromFile(absPath: string, model?: string): Promise<Entity[]> {
   let content: string
   try {
     content = await readFile(absPath, "utf8")
   } catch {
     return []
   }
-  return extractBodyEntities(content)
+  return extractBodyEntities(content, model)
 }
