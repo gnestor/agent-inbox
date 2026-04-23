@@ -342,6 +342,13 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
     const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
     log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
   }
+
+  // Drop the broadcast buffer for sessions that have left the running state —
+  // no further sequenced events will land, and we don't want to leak memory
+  // across long-lived server processes.
+  if (rowCount > 0 && (status === "complete" || status === "errored" || status === "archived")) {
+    clearBroadcastBuffer(sessionId)
+  }
 }
 
 export async function archiveSession(sessionId: string): Promise<boolean> {
@@ -572,7 +579,65 @@ function startPresenceReaper() {
 }
 startPresenceReaper()
 
+// Per-session ring buffer of recent sequenced broadcasts. A client that
+// reconnects with a `fromSequence` cursor can ask the server to replay the
+// events it missed without triggering a full REST snapshot. Lifecycle events
+// (session_complete, session_error, ask_user_question, presence) are NOT
+// buffered — they are re-derived on subscribe from DB/presence state.
+export const BROADCAST_BUFFER_CAPACITY = 500
+
+interface BufferedBroadcast { sequence: number; data: unknown }
+
+const broadcastBuffers = new Map<string, BufferedBroadcast[]>()
+
+function isSequencedBroadcast(data: unknown): data is { sequence: number; message: unknown } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    typeof (data as { sequence?: unknown }).sequence === "number" &&
+    "message" in data
+  )
+}
+
+function pushBroadcastBuffer(sessionId: string, data: { sequence: number; message: unknown }) {
+  let buf = broadcastBuffers.get(sessionId)
+  if (!buf) {
+    buf = []
+    broadcastBuffers.set(sessionId, buf)
+  }
+  buf.push({ sequence: data.sequence, data })
+  if (buf.length > BROADCAST_BUFFER_CAPACITY) buf.shift()
+}
+
+/** Returns buffered events with sequence > fromSequence, or null if the
+ *  caller's cursor is older than the buffer's oldest entry (i.e. fell out
+ *  of the window — caller must fall back to a full snapshot). */
+export function readBroadcastBufferSince(
+  sessionId: string,
+  fromSequence: number,
+): BufferedBroadcast[] | null {
+  const buf = broadcastBuffers.get(sessionId)
+  if (!buf || buf.length === 0) {
+    // No buffer for this session yet. If the client says "I have no prior
+    // state" (fromSequence <= 0) we can return empty; anything higher is a
+    // miss and must fall back to snapshot.
+    return fromSequence <= 0 ? [] : null
+  }
+  const oldest = buf[0]!.sequence
+  // Buffer covers [oldest..], caller wants (fromSequence..]. Covered iff
+  // the first event we would need to replay (fromSequence + 1) is present.
+  if (fromSequence + 1 < oldest) return null
+  return buf.filter((e) => e.sequence > fromSequence)
+}
+
+export function clearBroadcastBuffer(sessionId: string) {
+  broadcastBuffers.delete(sessionId)
+}
+
 export function broadcastToSession(sessionId: string, data: unknown) {
+  if (isSequencedBroadcast(data)) {
+    pushBroadcastBuffer(sessionId, data)
+  }
   for (const client of wsClients.values()) {
     if (client.sessions.has(sessionId)) {
       client.send({ type: "session_event", sessionId, data })
