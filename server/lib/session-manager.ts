@@ -663,19 +663,39 @@ export function removeWsClient(id: string) {
   wsClients.delete(id)
 }
 
-export async function wsSubscribe(clientId: string, sessionIds: string[]) {
+export interface WsSubscribeEntry {
+  id: string
+  fromSequence?: number
+}
+
+export async function wsSubscribe(clientId: string, sessions: readonly WsSubscribeEntry[]) {
   const client = wsClients.get(clientId)
   if (!client) return
 
-  await Promise.all(sessionIds.map(async (sessionId) => {
+  await Promise.all(sessions.map(async ({ id: sessionId, fromSequence }) => {
     client.sessions.add(sessionId)
 
-    // Add presence
     if (client.user) {
       addPresenceUser(sessionId, client.user)
     }
 
-    // Replay initial state
+    // Cursor-based replay: if the client sent fromSequence, try to replay
+    // any buffered events after that cursor. A null result means the cursor
+    // is outside the buffer window — the client must fall back to a full
+    // snapshot, which we signal with cursor_miss.
+    if (typeof fromSequence === "number") {
+      const replay = readBroadcastBufferSince(sessionId, fromSequence)
+      if (replay === null) {
+        client.send({ type: "cursor_miss", sessionId })
+      } else {
+        for (const entry of replay) {
+          client.send({ type: "session_event", sessionId, data: entry.data })
+        }
+      }
+    }
+
+    // Terminal-state replay runs AFTER the buffer replay so message events
+    // apply before the status transition they describe.
     const session = await getSessionRecord(sessionId)
     if (session?.status === "complete") {
       client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
@@ -688,7 +708,6 @@ export async function wsSubscribe(clientId: string, sessionIds: string[]) {
       }
     }
 
-    // Send presence
     const users = getPresenceUsers(sessionId)
     if (users.length > 0) {
       client.send({ type: "session_event", sessionId, data: { type: "presence", users } })
