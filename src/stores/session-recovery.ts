@@ -19,6 +19,7 @@ export type SessionRecoveryReason =
   | "sequence-gap"
   | "resubscribe"
   | "snapshot-failed"
+  | "cursor-miss"
 
 export interface SessionRecoveryPhase {
   readonly kind: "snapshot"
@@ -46,6 +47,9 @@ export interface SessionRecoveryCoordinator {
   /** Complete a snapshot — returns true if a follow-up is needed (more events arrived mid-flight). */
   completeSnapshotRecovery(snapshotSequence: number): boolean
   failSnapshotRecovery(): void
+  /** Force a return to bootstrap state — the server told us our cursor is no
+   *  longer replayable. The gap effect will then run a fresh snapshot. */
+  invalidateBootstrap(): void
 }
 
 export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
@@ -144,6 +148,14 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
       // once more. If the failure is permanent, the client falls back to
       // whatever it has and the next WS reconnect triggers a fresh snapshot.
       state = { ...state, inFlight: null, pendingReplay: false }
+    },
+
+    invalidateBootstrap() {
+      // Server replied with cursor_miss — our replay window is gone. Roll the
+      // state machine back to pre-bootstrap + pendingReplay so the existing
+      // gap effect runs a snapshot. Preserve observed sequence and current
+      // latest so dedup still works against in-flight events.
+      state = { ...state, bootstrapped: false, pendingReplay: true, inFlight: null }
     },
   }
 }
