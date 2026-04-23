@@ -71,6 +71,9 @@ async function callOllama(content: string): Promise<string | null> {
       { role: "user", content: USER_PROMPT_TEMPLATE(content) },
     ],
     stream: false,
+    // Disable thinking for reasoning models (Qwen 3.5): without this, output
+    // tokens are consumed by the private `thinking` field and `content` is empty.
+    think: false,
     format: "json",
     options: { num_predict: 512, temperature: 0 },
   }
