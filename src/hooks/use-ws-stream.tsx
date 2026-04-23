@@ -4,6 +4,14 @@ import {
   getWsConnectionStatus,
 } from "@/stores/ws-connection-store"
 
+// Keepalive: detect zombie connections (laptop sleep, NAT drop) that would
+// otherwise leave us on a silently-dead socket for minutes before ws.onclose
+// fires. We ping every PING_INTERVAL_MS and expect *any* message within
+// ALIVE_TIMEOUT_MS; if the window elapses we force-close, which triggers
+// the existing reconnect path.
+export const PING_INTERVAL_MS = 20_000
+export const ALIVE_TIMEOUT_MS = 45_000
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -58,6 +66,27 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   const pendingUnsubscribe = useRef(new Set<string>())
   const batchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
+  // Keepalive timers (started on open, cleared on close)
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const aliveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const stopKeepalive = useCallback(() => {
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
+    if (aliveTimeoutRef.current) clearTimeout(aliveTimeoutRef.current)
+    pingIntervalRef.current = undefined
+    aliveTimeoutRef.current = undefined
+  }, [])
+
+  const resetAliveTimeout = useCallback(() => {
+    if (aliveTimeoutRef.current) clearTimeout(aliveTimeoutRef.current)
+    aliveTimeoutRef.current = setTimeout(() => {
+      // No traffic for ALIVE_TIMEOUT_MS — assume the socket is dead even if
+      // ws.onclose hasn't fired yet. Force close; reconnect logic takes over.
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+    }, ALIVE_TIMEOUT_MS)
+  }, [])
+
   const flushBatch = useCallback(() => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
@@ -91,6 +120,14 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       setIsConnected(true)
       useWsConnectionStore.getState().recordOpened()
 
+      // Start keepalive: periodic pings + "no traffic" watchdog.
+      resetAliveTimeout()
+      pingIntervalRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }))
+        }
+      }, PING_INTERVAL_MS)
+
       // Fire all registered onConnect callbacks — this covers both the first
       // connection and every reconnection. Callers (e.g. useSessionTranscript)
       // use this as the signal to run a fresh snapshot.
@@ -100,6 +137,9 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
 
     ws.onmessage = (evt) => {
+      // Any message proves the connection is alive — reset the watchdog.
+      resetAliveTimeout()
+
       let msg: any
       try {
         msg = JSON.parse(evt.data)
@@ -107,6 +147,9 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         console.error("[ws] failed to parse message", err, evt.data)
         return
       }
+
+      // Drop pong frames early — no further handling needed.
+      if (msg.type === "pong") return
 
       if (msg.type === "connected") {
         clientIdRef.current = msg.clientId
@@ -135,6 +178,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
 
     ws.onclose = (evt) => {
+      stopKeepalive()
       setIsConnected(false)
       clientIdRef.current = null
       useWsConnectionStore.getState().recordClosed({ code: evt.code, reason: evt.reason })
@@ -144,7 +188,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       retriesRef.current++
       reconnectTimerRef.current = setTimeout(connect, delay)
     }
-  }, [])
+  }, [resetAliveTimeout, stopKeepalive])
 
   useEffect(() => {
     mountedRef.current = true
@@ -161,6 +205,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       mountedRef.current = false
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       if (batchTimerRef.current) clearTimeout(batchTimerRef.current)
+      stopKeepalive()
       if (typeof window !== "undefined") {
         window.removeEventListener("online", onOnline)
         window.removeEventListener("offline", onOffline)
