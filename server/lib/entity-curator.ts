@@ -193,51 +193,100 @@ Your working directory is the \`context/\` folder — all paths below are relati
 
 ## What this page is for
 
-The page is a **navigation index**, not a knowledge summary. Agents querying
-this entity will follow the source links and read the actual files themselves
-(they can also search via qmd). The page exists only to point them to the
-right sources and list related entities.
+This page captures **non-obvious connections** about the entity. qmd already
+does full-text search across all source files — an agent can query "Caroline
+Tuerk emails" and get every thread. This page exists for what qmd CAN'T
+surface: the synthesized role of the entity in Hammies, the relationships to
+other entities, and the chronology of the relationship.
 
-## Required format (only these sections)
+**Rule of thumb:** a sentence belongs on this page only if it's not directly
+extractable from a single source file. "Caroline emailed about MOQ on Mar 3"
+does NOT belong — it's already in the source. "Caroline is the sales rep for
+Wuxi Hende, Hammies' primary corduroy factory; relationship via INCIP intro
+in 2019" DOES belong — no single source says that.
 
-- Frontmatter: \`tags\`, \`last_updated\`
-- One-line identity (≤ 15 words): who/what this entity is, plain language
-- \`## Sources\` — flat list of links, grouped by source type
-  - Subheadings: \`### Gmail\`, \`### Gorgias\`, \`### Drive\`, \`### Notion\`, \`### Slack\`, \`### Sessions\` (only the types that have sources)
-  - Format per item: \`- [<short label>](<path>)\`
-  - Label should come from the source's frontmatter/title (see "Labeling sources" below)
-- \`## Related\` — one-line links to other curated entity pages
-  - Format: \`- [<Name>](<file>.md) — <2-4 word role>\`
+## First: is this entity worth curating?
 
-## Do NOT write
+Before writing anything, decide. A page is worthwhile only if:
+- The entity is a real person, company, product, project, or meaningful folder
+  (not a generic term, technical subfolder, automated sender, or internal file label).
+- Reading the linked sources would leave an agent needing ADDITIONAL synthesis.
+- There is at least one non-obvious connection to capture (role, relationship, chronology).
 
-- A \`## Details\` section with attributes or facts
-- A \`## Timeline\` with dated events
-- Any prose paragraphs describing what the entity does, means, or relates to
-- Anything extracted from source content (attributes, dates, decisions, quotes)
+If the entity is noise (spam sender, Klaviyo/Mailchimp subfolder, generic
+admin folder, opaque ID), **do NOT create a page**. Instead, respond only
+with an empty \`<new-entities>\` block and a brief explanation. Do not touch
+\`LOG.md\` or \`INDEX.md\` for skipped entities.
 
-If an existing page already has prose sections (Details, Timeline, etc),
-LEAVE THEM ALONE — do not delete, extend, or reformat them. Only modify
-\`last_updated\`, \`## Sources\`, and \`## Related\`.
+## Required structure (for entities worth curating)
 
-## Labeling sources
+Frontmatter:
+\`\`\`yaml
+---
+tags: [<type>, <1-3 topical tags>]
+last_updated: YYYY-MM-DD
+---
+\`\`\`
 
-Use \`grep -h '^title:\\|^subject:\\|^# ' <paths>\` (or similar batch read) to
-extract a short label from each source's frontmatter or first heading.
-Fallback: use the filename stem (\`thread-abc123\` → "thread abc123"). You
-don't need to read source bodies — you're linking, not summarizing.
+**Body sections (in order):**
 
-## Entity discovery
+1. **One-sentence identity** (≤ 20 words) — who/what this is, grounded in
+   Hammies context. E.g., "Caroline Tuerk — sales rep at Wuxi Hende, Hammies'
+   corduroy factory since 2019."
 
-While scanning source frontmatter/titles, note any person, company, product,
-project, folder, or channel that deserves its own page. End your response with:
+2. \`## Role\` (2-5 short bullets) — the non-obvious facts about this entity's
+   place in Hammies. Each bullet must state a connection, not a restatement.
+   Bad: "Sends emails about orders." Good: "Main point of contact for
+   Pacifica PO series (PO-11 through PO-46)."
 
-<new-entities>
-entity_type: canonical_value
-...
-</new-entities>
+3. \`## Relationships\` — bulleted links to other entities, with the WHY on
+   each line. Format: \`- [Name](file.md) — <relationship in 5-15 words>\`.
+   Prefer specific over generic: "referred Kurt Koenig @ INCIP for Levi's
+   lawsuit (Feb 2022)" beats "colleague".
 
-Use the same entity types (person, company, product, project, folder, channel, tag, etc.). Do not emit an entity for the one you're currently curating.
+4. \`## Timeline\` — dated milestones **of the relationship**, not a digest
+   of source files. Only include events that mark a change: first contact,
+   role change, major decision, recurring pattern onset. Each entry:
+   \`- YYYY-MM-DD: <event> — [source](path)\`. If you can't name the event in
+   one short clause, it's probably not timeline-worthy.
+
+5. \`## Sources\` — flat list grouped by source type (\`### Gmail\`,
+   \`### Gorgias\`, \`### Drive\`, \`### Notion\`, \`### Sessions\`).
+   Format: \`- [<short label>](<path>)\`. This section IS a link dump — qmd
+   already indexes these, but listing them here gives agents a scoped view.
+
+## Paths (critical — get these right)
+
+You are in \`context/\`. Links to other pages in this directory are bare
+filenames. Links to source stubs in subdirectories use the subdirectory prefix.
+Drive source stubs live ONE DIRECTORY UP from context/.
+
+- Curated page: \`[Title](filename.md)\`
+- Gmail source: \`[Subject](gmail/threadId.md)\`
+- Gorgias source: \`[Ticket #id](gorgias/ticketId.md)\`
+- Notion source: \`[Title](notion-tasks/pageId.md)\`
+- Session source: \`[Summary](sessions/sessionId.md)\`
+- **Drive source**: \`[Filename](../backfill-cache/google-drive/fileId.md)\` — the \`../\` is REQUIRED. Drive stubs are NOT under \`context/\`.
+
+Broken paths defeat the whole point of the index. Double-check Drive links.
+
+## Reading discipline
+
+- You do NOT need to read every source body. Batch-grep frontmatter/titles
+  with \`grep -h '^title:\\|^subject:\\|^# ' <paths>\` or similar for the
+  Sources list.
+- You SHOULD read 3-10 representative source bodies when writing Role,
+  Relationships, or Timeline — you can't synthesize connections without
+  reading something. Pick the ones likely to reveal the most context (recent,
+  long threads, decisions).
+- If you read nothing beyond frontmatter and still write prose, you're
+  hallucinating.
+
+## Existing pages
+
+If the candidate page has prose you'd otherwise write, EXTEND it — add new
+Relationships, Timeline entries, and Sources. Don't delete or rewrite what's
+there unless it's factually wrong. Update \`last_updated\`.
 
 ${candidateSection}
 
@@ -245,14 +294,25 @@ ${candidateSection}
 
 ${sourceList}
 
+## Entity discovery
+
+While reading, note any other person/company/product/project that deserves
+its own page. End with:
+
+<new-entities>
+entity_type: canonical_value
+...
+</new-entities>
+
+(Empty block is fine.) Do not emit the entity you're currently curating.
+
 ## Output
 
-- Append missing entries to \`## Sources\` under the correct type heading
-- Add any newly-identified related pages to \`## Related\` with a role label
-- Update \`last_updated\` in frontmatter
-- Append one line to \`LOG.md\`:
-  \`| YYYY-MM-DD | updated | <filename> | +<N> sources, +<M> related |\`
-- End with the \`<new-entities>\` block (empty if none discovered)
+- Either: update/create the entity's page per the structure above
+- Or: skip (entity isn't worth curating) — respond only with explanation + empty \`<new-entities>\`
+- If you updated/created: append one line to \`LOG.md\`:
+  \`| YYYY-MM-DD | created|updated|skipped | <filename or entity> | <1-line what changed> |\`
+- If you skipped: log it too so we can audit the skip rate.
 
 Do NOT dispatch background subagents.`
 }

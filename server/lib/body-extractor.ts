@@ -17,6 +17,47 @@ import { createLogger } from "./logger.js"
 import { canonicalize } from "./entity-extractor.js"
 import type { Entity } from "../../src/types/plugin.js"
 
+/**
+ * Noise patterns applied to body-extracted entities. The model sometimes
+ * returns generic terms or automated-sender artifacts despite prompt rules;
+ * this is the last-chance filter before inserting into source_entities.
+ */
+const PROMO_SUBDOMAIN_RE = /^(em|e|mail|mailer|engage|news|newsletter|marketing|promo|bounces?|notifications?|updates|alerts|reply)\./i
+const AUTOMATED_LOCAL_RE = /^(noreply|no-reply|donotreply|do-not-reply|notify|notifications?|updates|alerts|mailer|mailer-daemon|postmaster|auto-confirm|auto-reply|bounces?|reply|support)(@|[-_])/i
+const NOISY_PERSON_NAMES = new Set([
+  "grant nestor",
+  "grant",
+  "customer", "the customer", "team", "the team", "support", "support team",
+  "sender", "recipient", "user", "admin", "administrator", "nobody",
+])
+const NOISY_COMPANY_NAMES = new Set([
+  "hammies", "hammies shorts",                   // self
+  "gmail", "google", "yahoo", "outlook", "hotmail",  // ubiquitous platforms
+  "shopify", "stripe", "paypal", "venmo",
+  "mailchimp", "klaviyo",
+  "ups", "usps", "fedex", "shipbob", "shipmonk",
+])
+
+function isNoiseEntity(type: string, value: string): boolean {
+  const v = value.trim().toLowerCase()
+  if (!v) return true
+  if (type === "person") {
+    if (NOISY_PERSON_NAMES.has(v)) return true
+    if (v.includes("@")) {
+      if (AUTOMATED_LOCAL_RE.test(v)) return true
+      const domain = v.split("@")[1]
+      if (domain && PROMO_SUBDOMAIN_RE.test(domain)) return true
+    }
+  }
+  if (type === "company") {
+    if (NOISY_COMPANY_NAMES.has(v)) return true
+  }
+  if (type === "domain") {
+    if (PROMO_SUBDOMAIN_RE.test(v)) return true
+  }
+  return false
+}
+
 const log = createLogger("body-extractor")
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434"
@@ -120,8 +161,10 @@ export function parseModelOutput(raw: string | null): Entity[] {
     if (!item || typeof item !== "object") continue
     const rec = item as { type?: unknown; value?: unknown }
     if (typeof rec.type !== "string" || typeof rec.value !== "string") continue
+    if (isNoiseEntity(rec.type, rec.value)) continue
     const value = canonicalize(rec.type, rec.value)
     if (!value) continue
+    if (isNoiseEntity(rec.type, value)) continue
     const key = `${rec.type}|${value}`
     if (seen.has(key)) continue
     seen.add(key)
