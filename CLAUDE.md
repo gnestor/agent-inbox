@@ -32,7 +32,7 @@ server/           # Hono API server
   db/             # SQLite schema
 src/              # React frontend
   components/     # email/, task/, session/, layout/
-  hooks/          # use-emails, use-tasks, use-sessions, use-session-stream
+  hooks/          # use-emails, use-tasks, use-sessions, use-session-transcript, use-ws-stream
   api/            # Typed API client
   lib/            # Formatters, utilities
   types/          # TypeScript types
@@ -157,7 +157,7 @@ ln -sf "$(git rev-parse --show-toplevel)/packages/frontend" node_modules/@hammie
 - Import `cn()` from `@hammies/frontend/lib/utils`
 - No local `src/components/ui/` — use shared package
 - Server routes return JSON, errors use Hono's HTTPException
-- Session streaming uses SSE via `/api/sessions/:id/stream`
+- Session streaming uses a multiplexed WebSocket at `/api/ws` (one per browser tab, watches many sessions). Subscribe payload carries an optional per-session `fromSequence` cursor; the server replays from an in-memory buffer or sends `cursor_miss` to fall back to a REST snapshot. See [`docs/session-architecture.md`](docs/session-architecture.md).
 
 ### Text sizes
 
