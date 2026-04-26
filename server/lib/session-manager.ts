@@ -763,6 +763,15 @@ export async function startSession(
      * own tracking state.
      */
     onEnd?: (sessionId: string, status: "complete" | "errored", error?: string) => void | Promise<void>
+    /**
+     * Override the model for this session. Accepts a full model ID (e.g.
+     * `claude-haiku-4-5-20251001`) or alias (`haiku`, `sonnet`, `opus`).
+     * Defaults to the SDK's default (Sonnet) when omitted.
+     *
+     * Used by background curation jobs that want a cheaper model than the
+     * user-facing default — see `runBackgroundCurationSession`.
+     */
+    model?: string
   },
 ): Promise<string> {
   // Dynamic import to avoid issues at startup
@@ -796,7 +805,8 @@ export async function startSession(
         render_output: buildRenderOutputMcpServer(),
         artifact: buildArtifactMcpServer(),
       },
-      betas: AGENT_SDK_BETAS
+      betas: AGENT_SDK_BETAS,
+      ...(options?.model ? { model: options.model } : {}),
     },
   })
   let sequence = 0

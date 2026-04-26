@@ -34,6 +34,35 @@ const log = createLogger("entity-curator")
 
 const CURATOR_KEY_PREFIX = "entity-curation"
 
+// Bounds on how much page content we paste into the prompt. Pasting a
+// 2000-line canonical page on every contact-curation session is the dominant
+// input-token cost. Cap at a generous prefix; the agent can `Read` the file
+// for more if it needs the rest.
+const MAX_CANDIDATE_CHARS = 6000
+const MAX_PARENT_COMPANY_CHARS = 6000
+
+// Cap on sources passed in the prompt. The DB query already pulls at most
+// 100; this is a second cap at prompt-build time so the agent doesn't waste
+// tokens scanning a 100-line filename list it won't fully process.
+const MAX_SOURCES_IN_PROMPT = 30
+
+// Minimum unprocessed-source count before dispatching a curation session for
+// a low-priority entity type. Folder/tag/project entities with one or two
+// sources almost never produce a useful curated page.
+const MIN_SOURCES_BY_TYPE: Record<string, number> = {
+  folder: 5,
+  tag: 5,
+  project: 3,
+  product: 3,
+  channel: 3,
+}
+
+/** Truncate content to a char budget, marking truncation. */
+function clip(content: string, max: number): string {
+  if (content.length <= max) return content
+  return content.slice(0, max) + `\n\n... (truncated ${content.length - max} chars; Read the file for full content)`
+}
+
 // Domains that appear across many unrelated pages. Skipping auto-candidate for
 // these forces the agent to find the canonical curated page via INDEX.md
 // (e.g. shopify.com → shopify-store.md, not a random page that mentions Shopify).
@@ -222,7 +251,7 @@ usually the company page, not a separate person page.
 Path: \`${parentCompanyPath}\`
 
 \`\`\`markdown
-${parentCompanyContent.length > 8000 ? parentCompanyContent.slice(0, 8000) + "\n\n... (truncated)" : parentCompanyContent}
+${clip(parentCompanyContent, MAX_PARENT_COMPANY_CHARS)}
 \`\`\`
 
 **How to merge:**
@@ -243,7 +272,7 @@ Automated lookup found this page as a likely match for this entity:
 Path: \`${candidatePath}\`
 
 \`\`\`markdown
-${candidateContent}
+${clip(candidateContent, MAX_CANDIDATE_CHARS)}
 \`\`\`
 
 Before editing, confirm this page is actually about the entity (\`${entityType}: ${entityValue}\`). If it's the wrong page, search \`INDEX.md\` for a better match or create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\`.`
@@ -415,9 +444,26 @@ export async function curateEntity(
     return { skipped: `gated: ${gate.reason}` }
   }
 
-  const sources = await unprocessedSourcesForEntity(wsId, entityType, entityValue)
+  // Cap the fetch at MAX_SOURCES_IN_PROMPT so the prompt stays bounded.
+  // Remaining sources beyond this batch are picked up by subsequent runs
+  // after the first batch is marked processed.
+  const sources = await unprocessedSourcesForEntity(wsId, entityType, entityValue, MAX_SOURCES_IN_PROMPT)
   if (sources.length === 0) {
     return { skipped: `no unprocessed sources for ${entityType}:${entityValue}` }
+  }
+
+  // Min-source threshold: low-priority entity types (folder/tag/project)
+  // with very few sources rarely produce useful curated pages. Auto-skip
+  // and mark the sources processed so the queue moves on.
+  const minThreshold = MIN_SOURCES_BY_TYPE[entityType] ?? 0
+  if (minThreshold > 0 && sources.length < minThreshold) {
+    await markProcessed(wsId, entityType, entityValue, sources)
+    log.info("Entity below min-source threshold (auto-skip)", {
+      entity: `${entityType}:${entityValue}`,
+      sources: sources.length,
+      threshold: minThreshold,
+    })
+    return { skipped: `below min-source threshold (${sources.length} < ${minThreshold} for ${entityType})` }
   }
 
   const contextDir = resolve(workspacePath, "context")

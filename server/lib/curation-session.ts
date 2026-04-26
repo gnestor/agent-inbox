@@ -30,6 +30,15 @@ type RunResult =
   | { skipped: string }
   | { error: string }
 
+/**
+ * Default model for background curation sessions. Curation is a structured,
+ * tool-heavy task (Read + Edit + Glob + Grep) that Haiku 4.5 handles fine.
+ * Switching off the default Sonnet recovers ~5× on the Sonnet weekly quota.
+ *
+ * Override via `CURATION_MODEL` env var.
+ */
+const DEFAULT_CURATION_MODEL = process.env.CURATION_MODEL ?? "claude-haiku-4-5-20251001"
+
 export async function runBackgroundCurationSession(opts: {
   workspacePath: string
   workspaceId: string
@@ -37,8 +46,11 @@ export async function runBackgroundCurationSession(opts: {
   prompt: string
   linkedItemTitle: string
   onComplete: () => void | Promise<void>
+  /** Override the model. Defaults to Haiku 4.5 (or `CURATION_MODEL` env). */
+  model?: string
 }): Promise<RunResult> {
   const { workspacePath, workspaceId, pendingKey, prompt, linkedItemTitle, onComplete } = opts
+  const model = opts.model ?? DEFAULT_CURATION_MODEL
 
   // Clear any stale lock before attempting to claim.
   const existing = await queryOne<{ last_cursor: string | null; last_run_at: string }>(
@@ -80,6 +92,7 @@ export async function runBackgroundCurationSession(opts: {
       workspacePath: getCurationCwd(workspacePath),
       skipDbRecord: true,
       linkedItemTitle,
+      model,
       onEnd: async (sid, status) => {
         try {
           if (status === "complete") {
