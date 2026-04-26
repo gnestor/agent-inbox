@@ -227,3 +227,15 @@
 - [x] Deferred tab fetching (AnimatePresence mounts only active tab; hasBeenActive ref keeps data alive after switching away)
 - [ ] Sessions infinite scroll (useSessions has no cursor/pagination — currently loads all sessions)
 - [ ] Remove use-swipe.ts (replaced by Framer Motion drag controls; only reference is its own test file)
+
+## Entity curation improvements (2026-04-25)
+
+- [x] Pre-curation deterministic skip gate (`server/lib/entity-gate.ts`) — skips opaque IDs, personal-email-provider domains, self-domains, noise tags before dispatching a Claude session. ~17.5% LOG-recorded skip rate becomes zero-token deterministic skips.
+- [x] Parent-company hint in entity prompt — when curating `person:<email>` and a curated page exists for the email's domain, the prompt instructs the agent to enrich the company page (with a `### Name — role` subsection) rather than create a separate person page.
+- [x] Group-by-domain queue ranking (`topUnprocessedEntities`) — orders queue: domain → company → person → project → product → folder → other. Ensures parent company pages exist before contacts trigger curation.
+- [x] Personal-email-provider domain filter (`isPersonalEmailDomain` in `workspace-filters.ts`) — drops `domain: gmail.com`-style entities at extraction time. Defense-in-depth alongside the gate.
+- [x] Drop Gmail label `tag` extraction — labels rarely produce useful pages; mostly internal categorization.
+- [x] `consolidate-entity` CLI (`scripts/consolidate-entity.sh`) — `merge`, `rename`, `delete`, `audit` subcommands. Codifies the manual consolidation dance.
+- [x] Unify templates — `_template.md` and `SCHEMAS.md` both updated to match `entity-curator.ts` schema.
+- [ ] Move noise/alias filters to JSON config (deferred) — current rules are hard-coded in TS.
+- [ ] Alias map / source_entities canonicalization pass (deferred) — same-person variants produce duplicate queue entries.

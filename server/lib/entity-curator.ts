@@ -26,6 +26,7 @@ import {
   markProcessed,
   insertDiscoveredEntities,
 } from "./entity-extractor.js"
+import { gateEntity } from "./entity-gate.js"
 import { runBackgroundCurationSession } from "./curation-session.js"
 import type { Entity } from "../../src/types/plugin.js"
 
@@ -70,6 +71,47 @@ function entityToSlug(type: string, value: string): string {
     return `${local}-${(domain ?? "").replace(/\./g, "-")}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-")
   }
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+/**
+ * If the entity is a person-with-email AND a curated page exists for the
+ * email's domain (e.g. `pam.watson@ecomcpa.com` → `ecomcpa.md`), return the
+ * domain page. The agent should be told to enrich the company page rather
+ * than create a separate person page.
+ *
+ * Looks up by canonical slug only (cheap; no full-text search). Returns the
+ * domain-page path relative to the context directory, or null.
+ */
+async function findParentCompanyPage(
+  contextDir: string,
+  entityType: string,
+  entityValue: string,
+): Promise<string | null> {
+  if (entityType !== "person" || !entityValue.includes("@")) return null
+  const domain = entityValue.split("@")[1]?.toLowerCase()
+  if (!domain) return null
+  // Slug derivation matches a typical company-page name: `ecomcpa.com` →
+  // `ecomcpa`, `webster-pacific.com` → `webster-pacific`. Drops TLD and
+  // converts dots to hyphens.
+  const tldStripped = domain.replace(/\.[a-z]{2,}$/i, "")
+  const slug = tldStripped.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  if (!slug) return null
+
+  // Try a few candidate slugs in order of likelihood.
+  const candidates = [`${slug}.md`]
+  // Also try the un-stripped form (e.g. ecomcpa-com.md) for older pages we
+  // haven't renamed yet.
+  if (slug !== tldStripped.replace(/\./g, "-")) {
+    candidates.push(`${tldStripped.replace(/\./g, "-")}.md`)
+  }
+
+  for (const candidate of candidates) {
+    try {
+      await readFile(join(contextDir, candidate), "utf8")
+      return candidate
+    } catch { /* not found */ }
+  }
+  return null
 }
 
 /**
@@ -162,8 +204,37 @@ function buildEntityPrompt(
   candidatePath: string | null,
   candidateContent: string | null,
   sourcePaths: string[],
+  parentCompanyPath: string | null,
+  parentCompanyContent: string | null,
 ): string {
   const sourceList = sourcePaths.map((p) => `- ${p}`).join("\n")
+
+  // Parent-company hint takes precedence over standalone-page creation when
+  // the candidate is a person at a domain we already curate. Steers the
+  // agent toward "add Personnel detail to the company page" instead of
+  // "create a new person page".
+  const parentHintSection = parentCompanyPath && parentCompanyContent
+    ? `## Parent company page exists — prefer enriching it
+
+This entity is a person at a domain we already curate. The canonical home is
+usually the company page, not a separate person page.
+
+Path: \`${parentCompanyPath}\`
+
+\`\`\`markdown
+${parentCompanyContent.length > 8000 ? parentCompanyContent.slice(0, 8000) + "\n\n... (truncated)" : parentCompanyContent}
+\`\`\`
+
+**How to merge:**
+- If the company page has a Contacts table, ensure this person is listed (add a row if missing).
+- If the company page has a "Personnel detail" section (or similar), add a \`### <Name> — <role>\` subsection there with their non-obvious role/timeline. Match the existing structure of any sibling subsections.
+- Only create a separate person page if (a) the person has a non-trivial story that wouldn't fit as a subsection on the company page, OR (b) they're notable across multiple companies.
+
+If you do enrich the company page, log to \`LOG.md\` against the company page filename (not the person's email) so future runs find the change.
+
+`
+    : ""
+
   const candidateSection = candidatePath && candidateContent
     ? `## Candidate page — verify, then update
 
@@ -184,6 +255,8 @@ Automated lookup (slug → ripgrep → qmd) did not find an existing page for th
 2. If nothing in INDEX.md matches, create a new page with slug \`${entityToSlug(entityType, entityValue)}.md\` and add an entry to \`INDEX.md\`.`
 
   return `You are maintaining a single entity's page in Hammies' relationship index.
+
+${parentHintSection}
 
 Your working directory is the \`context/\` folder — all paths below are relative to it.
 
@@ -326,6 +399,22 @@ export async function curateEntity(
   const wsId = workspaceId || "agent"
   const pendingKey = `${CURATOR_KEY_PREFIX}:${entityType}:${entityValue}:pending`
 
+  // Deterministic skip gate runs before fetching sources or dispatching a
+  // session. Sources still get marked processed so the queue advances.
+  const gate = gateEntity(entityType, entityValue)
+  if (gate.skip) {
+    const sources = await unprocessedSourcesForEntity(wsId, entityType, entityValue)
+    if (sources.length > 0) {
+      await markProcessed(wsId, entityType, entityValue, sources)
+    }
+    log.info("Entity gated (deterministic skip)", {
+      entity: `${entityType}:${entityValue}`,
+      reason: gate.reason,
+      sources: sources.length,
+    })
+    return { skipped: `gated: ${gate.reason}` }
+  }
+
   const sources = await unprocessedSourcesForEntity(wsId, entityType, entityValue)
   if (sources.length === 0) {
     return { skipped: `no unprocessed sources for ${entityType}:${entityValue}` }
@@ -342,10 +431,32 @@ export async function curateEntity(
     }
   }
 
+  // Parent-company hint: only meaningful for person-with-email and only when
+  // the candidate page isn't already that company page (avoid duplicate
+  // injection). Resolved independently of the candidate-lookup so we can
+  // surface the company even when the slug lookup found a different page.
+  const parentCompanyPath = await findParentCompanyPage(contextDir, entityType, entityValue)
+  let parentCompanyContent: string | null = null
+  if (parentCompanyPath && parentCompanyPath !== candidatePath) {
+    try {
+      parentCompanyContent = await readFile(join(contextDir, parentCompanyPath), "utf8")
+    } catch {
+      parentCompanyContent = null
+    }
+  }
+
   // source_entities stores workspace-relative paths; strip "context/" so the
   // agent can reference them from its CWD.
   const promptSources = sources.map(toCurationRelative)
-  const prompt = buildEntityPrompt(entityType, entityValue, candidatePath, candidateContent, promptSources)
+  const prompt = buildEntityPrompt(
+    entityType,
+    entityValue,
+    candidatePath,
+    candidateContent,
+    promptSources,
+    parentCompanyPath !== candidatePath ? parentCompanyPath : null,
+    parentCompanyPath !== candidatePath ? parentCompanyContent : null,
+  )
 
   const result = await runBackgroundCurationSession({
     workspacePath,

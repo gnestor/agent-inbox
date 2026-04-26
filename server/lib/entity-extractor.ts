@@ -149,7 +149,15 @@ export async function extractAllForPlugin(
 }
 
 /**
- * Return the top entities with unprocessed sources, ordered by count desc.
+ * Return the top entities with unprocessed sources, ranked by:
+ *   1. Domain entities first (so a company page exists before its contacts
+ *      get curated; the parent-company hint then steers contacts into the
+ *      company page rather than spawning standalone person pages).
+ *   2. Then by source count desc.
+ *
+ * Personal email-provider domains and self-domains are filtered upstream by
+ * `gateEntity`, so they never reach the top of this queue.
+ *
  * Used by the curate-entity/next scheduler to pick what to work on.
  */
 export async function topUnprocessedEntities(
@@ -161,7 +169,17 @@ export async function topUnprocessedEntities(
      FROM source_entities
      WHERE workspace_id = $1 AND processed_for_entity = 0
      GROUP BY entity_type, entity_value
-     ORDER BY source_count DESC
+     ORDER BY
+       CASE entity_type
+         WHEN 'domain' THEN 0
+         WHEN 'company' THEN 1
+         WHEN 'person' THEN 2
+         WHEN 'project' THEN 3
+         WHEN 'product' THEN 4
+         WHEN 'folder' THEN 5
+         ELSE 6
+       END,
+       source_count DESC
      LIMIT $2`,
     [workspaceId, limit],
   )
