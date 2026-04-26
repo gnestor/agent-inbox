@@ -171,3 +171,14 @@ Use these consistently across all UI:
 - **Body content** (email bodies, session output): `text-sm`
 
 Never use `text-base` or `text-lg` in panel UI — keep everything compact with `text-sm`/`text-xs`.
+
+## Documentation
+
+Subsystem deep-dives in [`docs/`](docs/):
+
+- [`docs/context-system.md`](docs/context-system.md) — workspace knowledge base: raw backfill, body extraction (Ollama), entity extraction, entity curation (Claude). The full pipeline that produces `{workspace}/context/*.md`. Read this before touching anything in `server/lib/entity-*.ts`, `server/lib/body-extractor.ts`, `server/lib/curation-session.ts`, or `server/routes/backfill.ts`.
+- [`docs/plugin-system.md`](docs/plugin-system.md) — plugin interface, loading, REST routes, components, sidebar. Has a Context System Hooks section covering `itemToContext` / `extractEntities` / `backfillDir`.
+- [`docs/integrations.md`](docs/integrations.md) — credentials, OAuth, env vars.
+- [`docs/session-architecture.md`](docs/session-architecture.md) — Agent SDK lifecycle, JSONL storage, streaming.
+- [`docs/caching-architecture.md`](docs/caching-architecture.md) — React Query + persistence + server-side `api_cache`.
+- [`docs/email-cleaner.md`](docs/email-cleaner.md), [`docs/rich-text-editor.md`](docs/rich-text-editor.md), [`docs/theming.md`](docs/theming.md), [`docs/user-preferences.md`](docs/user-preferences.md), [`docs/virtual-scrolling.md`](docs/virtual-scrolling.md), [`docs/spatial-grid-navigation.md`](docs/spatial-grid-navigation.md), [`docs/rendering-performance.md`](docs/rendering-performance.md), [`docs/custom-xml-and-rich-output.md`](docs/custom-xml-and-rich-output.md), [`docs/e2e-test-plan.md`](docs/e2e-test-plan.md).

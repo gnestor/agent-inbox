@@ -40,7 +40,13 @@ interface Plugin {
 
   // Server extensions
   routes?(hono, helpers): void      // Custom API routes
-  itemToContext?(item): string | null
+
+  // Context system (see docs/context-system.md for the full pipeline)
+  itemToContext?(item): string | null      // → raw stub markdown for context/{id}/{itemId}.md
+  backfillDir?: string                      // override default `context/{id}/` (e.g. `backfill-cache/{id}/` for non-indexed stubs)
+  extractEntities?(item): Entity[]          // → seed entities (person, domain, folder, etc.) for source_entities
+  curationPrompt?(files: string[]): string | null  // legacy per-source curation — disabled, kept for reference
+  curationBatchTokens?: number              // legacy batch token budget — unused
 }
 ```
 
@@ -90,3 +96,35 @@ Each plugin can provide Claude Code skills in a `skills/` directory:
 - `process-*` skills handle items from the plugin's data source
 - Skills are auto-discovered by Claude Code from `.claude-plugin/plugin.json`
 - Core plugin provides: plugin-creator, render-output, context-manager
+
+## Context System Hooks
+
+Plugins participate in the workspace context system through three optional methods. Full pipeline in [`context-system.md`](context-system.md); plugin-author quick reference:
+
+### `itemToContext(item) → string | null`
+
+Convert one item to a raw stub. Frontmatter MUST include enough metadata for downstream stages to work:
+
+- Conventional fields: `type`, `<plugin>-id`, `subject`/`title`, `from`, `date`
+- Plugin-specific: e.g. Drive's `folder-path: [Hammies, Production, 2019]`
+- Body content: cleaned text — Stage 2 (body-extractor) will further compress for noisy sources
+
+Return `null` to **drop the item entirely**. This is the plugin's chance to gate noise (auto-replies, non-business categories) before stubs hit disk. Once written, the body extractor can clean but not skip.
+
+### `extractEntities(item) → Entity[]`
+
+Return seed entities scoped to what this source surfaces. The `Entity` type is `{ type: string, value: string }` — type is free-form (`person`, `company`, `domain`, `folder`, `channel`, `database`, `skill`, etc.), value gets canonicalized by `entity-extractor.ts`.
+
+Reuse the workspace filter helpers from [`packages/agent/plugins/workspace-filters.ts`](../../agent/plugins/workspace-filters.ts):
+
+- `isWorkspaceSelfPerson(name)` — drop the workspace owner
+- `isAutomatedSender(email)` — drop `noreply@`, `notifications@`, etc.
+- `isPromotionalDomain(domain)` — drop `em.*`, `news.*`, etc.
+- `isPersonalEmailDomain(domain)` — drop `gmail.com`, `yahoo.com`, etc. (the matching `person:<email>` is the right unit)
+- `isGenericFolder(name)` — drop `archive`, `invoices`, `clicks`, etc.
+
+If a plugin doesn't implement this, the system falls back to a generic regex scan of the stub's frontmatter (emails + `folder-path`).
+
+### `backfillDir`
+
+By default, raw stubs go to `{workspace}/context/{plugin.id}/`, which is qmd-indexed. For sources where the body content is binary, huge, or otherwise pollutes search (Drive being the canonical case), set `backfillDir: "backfill-cache/{plugin.id}/"` to write outside the index. Curated pages then link with `../backfill-cache/...` (the `../` is required and a common bug source for the curation agent).
