@@ -8,6 +8,38 @@ import { buildPluginContext, getWorkspaceId, getWorkspacePath } from "../lib/plu
 import { extractEntitiesForItem } from "../lib/entity-extractor.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
+/**
+ * Render and write a single item's stub: enrich → render markdown → write file →
+ * extract entities. Used by both the live backfill loop and the re-render endpoint
+ * so they can't drift out of sync. Returns true when a stub was written.
+ */
+async function renderItem(
+  plugin: Plugin,
+  item: import("../../src/types/plugin.js").PluginItem,
+  contextDir: string,
+  workspacePath: string,
+  wsId: string,
+  ctx?: PluginContext,
+): Promise<boolean> {
+  let enriched = item
+  if (plugin.enrichForContext) {
+    try {
+      enriched = await plugin.enrichForContext(item, ctx)
+    } catch (err) {
+      console.warn(`[backfill] enrichForContext failed for ${plugin.id}/${item.id}:`, (err as Error).message)
+    }
+  }
+  const markdown = plugin.itemToContext!(enriched)
+  if (!markdown) return false
+  await writeFile(join(contextDir, `${item.id}.md`), markdown)
+  try {
+    await extractEntitiesForItem(plugin, enriched, workspacePath, wsId)
+  } catch (err) {
+    console.warn(`[backfill] entity extraction failed for ${plugin.id}/${item.id}:`, (err as Error).message)
+  }
+  return true
+}
+
 export async function runBackfill(
   plugin: Plugin,
   workspacePath: string,
@@ -33,18 +65,7 @@ export async function runBackfill(
   const contextDir = join(workspacePath, plugin.backfillDir ?? `context/${plugin.id}`)
   await mkdir(contextDir, { recursive: true })
 
-  const writes = result.items.map(async (item) => {
-    const markdown = plugin.itemToContext!(item)
-    if (!markdown) return false
-    await writeFile(join(contextDir, `${item.id}.md`), markdown)
-    // Extract seed entities for the entity curation flow. Non-fatal on error.
-    try {
-      await extractEntitiesForItem(plugin, item, workspacePath, wsId)
-    } catch (err) {
-      console.warn(`[backfill] entity extraction failed for ${plugin.id}/${item.id}:`, (err as Error).message)
-    }
-    return true
-  })
+  const writes = result.items.map((item) => renderItem(plugin, item, contextDir, workspacePath, wsId, ctx))
   const results = await Promise.all(writes)
   const processed = results.filter(Boolean).length
 
@@ -351,6 +372,65 @@ backfillRoutes.post("/:pluginId", async (c) => {
   const ctx = await buildPluginContext(c)
   const result = await runBackfill(plugin, workspacePath, ctx, getWorkspaceId(c))
   return c.json({ pluginId, ...result })
+})
+
+/**
+ * POST /api/backfill/:pluginId/re-render — re-render existing stubs for a plugin.
+ *
+ * Walks files in the plugin's backfill dir, reconstructs each item via
+ * `plugin.getItem(id)`, runs `enrichForContext` + `itemToContext`, and rewrites
+ * the stub in place. Useful when a plugin's rendering or enrichment logic changes
+ * and we want existing stubs to reflect the new shape without resetting
+ * backfill_state.
+ *
+ * ?limit=N (default 100), ?skip=N (default 0) for pagination.
+ */
+backfillRoutes.post("/:pluginId/re-render", async (c) => {
+  const { pluginId } = c.req.param()
+  const limit = parseInt(c.req.query("limit") || "100", 10)
+  const skip = parseInt(c.req.query("skip") || "0", 10)
+  const workspacePath = getWorkspacePath(c)
+  if (!workspacePath) throw new HTTPException(400, { message: "No active workspace" })
+
+  const plugin = getPlugin(pluginId, getWorkspaceId(c))
+  if (!plugin) throw new HTTPException(404, { message: `Plugin "${pluginId}" not found` })
+  if (!plugin.itemToContext || !plugin.getItem) {
+    throw new HTTPException(400, {
+      message: `Plugin "${pluginId}" needs both itemToContext and getItem to re-render`,
+    })
+  }
+
+  const { readdir } = await import("fs/promises")
+  const dir = join(workspacePath, plugin.backfillDir ?? `context/${plugin.id}`)
+  let allFiles: string[]
+  try {
+    allFiles = (await readdir(dir)).filter((f) => f.endsWith(".md")).sort()
+  } catch {
+    return c.json({ pluginId, processed: 0, total: 0, error: "directory not found" })
+  }
+  const total = allFiles.length
+  const files = allFiles.slice(skip, skip + limit)
+
+  const ctx = await buildPluginContext(c)
+  const wsId = getWorkspaceId(c) || "agent"
+  const counters = { processed: 0, skipped: 0, failed: 0 }
+
+  const writes = files.map(async (file) => {
+    const id = file.replace(/\.md$/, "")
+    try {
+      const item = await plugin.getItem!(id, ctx)
+      if (!item) { counters.skipped++; return }
+      const wrote = await renderItem(plugin, item, dir, workspacePath, wsId, ctx)
+      if (wrote) counters.processed++
+      else counters.skipped++
+    } catch (err) {
+      counters.failed++
+      console.warn(`[re-render] ${pluginId}/${id}:`, (err as Error).message)
+    }
+  })
+  await Promise.all(writes)
+
+  return c.json({ pluginId, ...counters, batchSize: files.length, total, nextSkip: skip + files.length })
 })
 
 /** POST /api/backfill — run context backfill for all plugins with itemToContext */

@@ -251,6 +251,18 @@ export interface Plugin {
   routes?(hono: import("hono").Hono, helpers: { getContext: (c: unknown) => Promise<PluginContext> }): void
 
   /**
+   * Optional: enrich an item with full content before it's written to the
+   * context index. Called during backfill, before `itemToContext`. Use this
+   * when the regular `query()` returns summaries (for fast list rendering)
+   * but the context index needs the full body (e.g. all messages in a
+   * Gorgias ticket, or the full file contents of a Drive doc).
+   *
+   * Return the (possibly mutated) item. The same item is also passed to
+   * `extractEntities` so downstream entity extraction sees the enriched view.
+   */
+  enrichForContext?(item: PluginItem, ctx?: PluginContext): Promise<PluginItem>
+
+  /**
    * Convert an item to a markdown string for the context index.
    * Return null to exclude the item from the context.
    * Used by the context backfill system.
