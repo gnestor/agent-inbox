@@ -19,6 +19,7 @@ TOKEN=$(psql "$DATABASE_URL" -t -c "SELECT token FROM auth_sessions LIMIT 1" | x
 log() { echo "$(date +%FT%T) $*"; }
 
 LIMIT=${LIMIT:-50}
+SOURCES=(${SOURCES:-gorgias gmail google-drive notion slack sessions})
 
 while true; do
   while [ -f /tmp/body-extract.pause ]; do
@@ -26,15 +27,22 @@ while true; do
     sleep 60
   done
 
-  result=$(curl -s -m 1200 -X POST \
-    "http://localhost:3002/api/backfill/extract-bodies?limit=$LIMIT" \
-    -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
-  log "$result"
+  any_processed=0
+  for source in "${SOURCES[@]}"; do
+    result=$(curl -s -m 1200 -X POST \
+      "http://localhost:3002/api/backfill/extract-bodies?source=$source&limit=$LIMIT" \
+      -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
+    log "[$source] $result"
+    # Track whether any source had work; only back off when all are idle.
+    case "$result" in
+      *'"extracted":0'*) ;;
+      *'"extracted"'*)   any_processed=1 ;;
+    esac
+  done
 
-  # Backoff if no work queued, otherwise tight loop.
-  case "$result" in
-    *processed*0*)           sleep 120 ;;
-    *processed*)             sleep 5 ;;
-    *)                       sleep 60 ;;
-  esac
+  if [ "$any_processed" = "0" ]; then
+    sleep 120
+  else
+    sleep 5
+  fi
 done

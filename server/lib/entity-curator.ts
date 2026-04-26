@@ -361,16 +361,17 @@ last_updated: YYYY-MM-DD
 
 You are in \`context/\`. Links to other pages in this directory are bare
 filenames. Links to source stubs in subdirectories use the subdirectory prefix.
-Drive source stubs live ONE DIRECTORY UP from context/.
+All source stubs now live under \`context/\` — no \`../\` prefixes anywhere.
 
 - Curated page: \`[Title](filename.md)\`
 - Gmail source: \`[Subject](gmail/threadId.md)\`
 - Gorgias source: \`[Ticket #id](gorgias/ticketId.md)\`
-- Notion source: \`[Title](notion-tasks/pageId.md)\`
+- Notion source: \`[Title](notion/pageId.md)\`
+- Slack source: \`[Channel](slack/channelId.md)\`
+- Drive source: \`[Filename](google-drive/fileId.md)\`
 - Session source: \`[Summary](sessions/sessionId.md)\`
-- **Drive source**: \`[Filename](../backfill-cache/google-drive/fileId.md)\` — the \`../\` is REQUIRED. Drive stubs are NOT under \`context/\`.
 
-Broken paths defeat the whole point of the index. Double-check Drive links.
+Broken paths defeat the whole point of the index — double-check before saving.
 
 ## Reading discipline
 

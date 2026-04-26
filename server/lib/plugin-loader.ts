@@ -1,11 +1,22 @@
 import { readdir } from "node:fs/promises"
 import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import type { Plugin } from "../../src/types/plugin.js"
 import { createLogger } from "./logger.js"
 
 const log = createLogger("plugins")
 
 type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
+
+/**
+ * Default ESM importer that bypasses Node's module cache. Without the unique
+ * `?v=` query, `import(path)` returns the previously-cached module and the
+ * plugin watcher's hot-reload becomes a no-op for any plugin that imported
+ * cleanly the first time.
+ */
+const cacheBustingImport: Importer = (path) =>
+  import(`${pathToFileURL(path).href}?v=${Date.now()}`) as Promise<{ default: Plugin | Plugin[] }>
+
 
 const registry = new Map<string, Plugin>()
 const builtinIds = new Set<string>()
@@ -44,7 +55,7 @@ export function registerPlugin(plugin: Plugin): void {
  */
 export async function loadBuiltinPlugins(
   builtinDir: string,
-  importer: Importer = (p) => import(p)
+  importer: Importer = cacheBustingImport
 ): Promise<void> {
   try {
     const entries = await readdir(builtinDir, { withFileTypes: true })
@@ -79,7 +90,7 @@ export async function loadBuiltinPlugins(
 export async function loadPlugins(
   workspacePath: string,
   workspaceId?: string,
-  importer: Importer = (p) => import(p)
+  importer: Importer = cacheBustingImport
 ): Promise<void> {
   // If workspace ID provided, load into per-workspace registry
   const targetRegistry = workspaceId ? new Map<string, Plugin>() : registry
@@ -107,10 +118,12 @@ export async function loadPlugins(
               log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
               continue
             }
-            if (!builtinIds.has(plugin.id)) {
-              targetRegistry.set(plugin.id, plugin)
-              pluginDirs.set(plugin.id, join(pluginsDir, entry.name))
-            }
+            // Workspace plugins are always stored — getPlugins() merges
+            // workspace registry on top of builtins so a workspace can
+            // override a builtin (e.g. agent's gmail extends inbox builtin
+            // gmail with itemToContext + enrichForContext).
+            targetRegistry.set(plugin.id, plugin)
+            pluginDirs.set(plugin.id, join(pluginsDir, entry.name))
           }
         } catch (err: unknown) {
           // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
