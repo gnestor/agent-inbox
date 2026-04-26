@@ -408,6 +408,47 @@ entity_type: canonical_value
 
 (Empty block is fine.) Do not emit the entity you're currently curating.
 
+## Process improvement (act when you spot a recurring pattern)
+
+The pipeline only gets sharper if you feed signal back into it. When you skip
+an entity for a deterministic reason, OR when one of the sources you read is
+clearly noise that shouldn't be in the context index at all, do ONE more thing
+in addition to the skip — but cap yourself at 1–2 such edits per session.
+
+**Tier 1 — edit the noise filters directly** (low-risk, pure data; the user
+reviews the diff before committing):
+
+- Personal-email / promotional / automated-sender domain that recurs →
+  append to the matching constant in \`../plugins/workspace-filters.ts\`.
+- Generic folder that recurs → append to \`GENERIC_FOLDERS\` in the same file.
+- New automated-sender prefix or promo-subdomain pattern → extend the
+  \`AUTOMATED_LOCAL_RE\` or \`PROMO_SUBDOMAIN_RE\` regex.
+
+**Tier 2 — edit a plugin's \`itemToContext\`** for source items that should
+never reach context (auto-replies, internal-only notifications,
+status-change webhooks, empty Instagram comments, etc.):
+
+- Edit only \`../plugins/<id>/plugin.ts\` and add a \`return null\` branch
+  inside \`itemToContext\`. Keep the matcher narrow and add a one-line comment
+  with an example trigger.
+- NEVER edit \`query\` — it drives the UI list view.
+
+**Tier 3 — write to \`proposals.md\`** for schema, template, prompt, or
+ranking changes (operator reviews and applies):
+
+- Path: \`proposals.md\` (you're already in \`context/\`).
+- Append a row to the table:
+  \`| YYYY-MM-DD | <area> | <proposed change> | <rationale + 1-2 source paths> |\`
+- Areas: \`schema\`, \`template\`, \`prompt\`, \`ranking\`, \`other\`.
+
+**For all three tiers**, also append one row to \`LOG.md\` so the change is
+auditable alongside the curation work:
+\`| YYYY-MM-DD | filter-update or proposal | <file or area> | <one-line what & why> |\`
+
+Do not bulk-edit. The same pattern will resurface; we'd rather catch it on
+the third sighting than over-edit on the first. Do NOT commit your edits —
+the user reviews the diff and commits.
+
 ## Output
 
 - Either: update/create the entity's page per the structure above
