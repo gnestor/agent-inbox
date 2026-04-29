@@ -311,8 +311,16 @@ app.get("/api/ws", upgradeWebSocket((c) => {
       try {
         const raw = typeof evt.data === "string" ? evt.data : evt.data.toString()
         const msg = JSON.parse(raw)
-        if (msg.type === "subscribe" && Array.isArray(msg.sessionIds)) {
-          wsSubscribe(clientId, msg.sessionIds)
+        if (msg.type === "subscribe") {
+          // Accept both shapes:
+          //   legacy:  { sessionIds: string[] }
+          //   current: { sessions: Array<{ id: string; fromSequence?: number }> }
+          // The legacy form means "no cursor" — we behave as before.
+          if (Array.isArray(msg.sessions)) {
+            wsSubscribe(clientId, msg.sessions)
+          } else if (Array.isArray(msg.sessionIds)) {
+            wsSubscribe(clientId, msg.sessionIds.map((id: string) => ({ id })))
+          }
         } else if (msg.type === "unsubscribe" && Array.isArray(msg.sessionIds)) {
           wsUnsubscribe(clientId, msg.sessionIds)
         } else if (msg.type === "ping") {

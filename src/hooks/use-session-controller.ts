@@ -193,9 +193,24 @@ export function useSessionController({
   }, [sessionId, mutations.resume])
 
   const answerQuestion = useCallback(async (answers: Record<string, string>) => {
-    await answerSessionQuestion(sessionId, answers)
-    useSessionStore.getState().clearPendingQuestion(sessionId)
-    qc.invalidateQueries({ queryKey: ["sessions"] })
+    // Optimistically clear so a double-click can't re-submit; restore on error.
+    // We must NOT gate submission on `prior` being non-null: the transcript
+    // shows the form based on the tool having no result, which can outlive
+    // the slice's pendingQuestion (e.g. the server restarted and lost the
+    // pending resolver, or the session's DB status moved past
+    // awaiting_user_input). In those cases the server's /answer route falls
+    // back to resuming the session with the answers as a prompt — which only
+    // works if we actually send the POST.
+    const store = useSessionStore.getState()
+    const prior = store.sessions[sessionId]?.pendingQuestion ?? null
+    store.clearPendingQuestion(sessionId)
+    try {
+      await answerSessionQuestion(sessionId, answers)
+      qc.invalidateQueries({ queryKey: ["sessions"] })
+    } catch (err) {
+      if (prior) useSessionStore.getState().setPendingQuestion(sessionId, prior)
+      throw err
+    }
   }, [sessionId, qc])
 
   // --- Event count (simple render counter from store slice for WorkingIndicator) ---

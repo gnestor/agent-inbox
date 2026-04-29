@@ -241,3 +241,88 @@ describe("useSessionController (phase derivation)", () => {
     expect(raw[1]!.sequence).toBeGreaterThan(1000)
   })
 })
+
+describe("answerQuestion", () => {
+  let queryClient: QueryClient
+  let wrapper: ReturnType<typeof makeWrapper>
+
+  beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    wrapper = makeWrapper(queryClient)
+    sliceMock = undefined
+    resetMutations()
+    lastMutationsOptions = null
+    const s = useSessionStore.getState()
+    for (const id of Object.keys(s.sessions)) s.removeSession(id)
+  })
+
+  async function seedSlicedWithQuestion() {
+    useSessionStore.getState().beginSnapshot("s1", "bootstrap")
+    useSessionStore.getState().applySnapshot("s1", {
+      session: makeSession({ status: "awaiting_user_input" }),
+      messages: [],
+    })
+    const question = { questions: [{ question: "?", header: "Q", options: [], multiSelect: false }] as any }
+    useSessionStore.getState().setPendingQuestion("s1", question)
+    sliceMock = useSessionStore.getState().sessions["s1"]
+    return question
+  }
+
+  it("clears pending question optimistically before the HTTP call", async () => {
+    const question = await seedSlicedWithQuestion()
+    const answerSpy = vi.mocked(await import("@/api/client")).answerSessionQuestion
+    let resolveHttp: () => void = () => {}
+    answerSpy.mockImplementation(() => new Promise<any>((r) => { resolveHttp = () => r(undefined) }))
+
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+
+    let pending: Promise<void> = Promise.resolve()
+    await act(async () => {
+      pending = result.current.answerQuestion({ q1: "a" })
+    })
+    // HTTP still in flight but the store already cleared.
+    expect(useSessionStore.getState().sessions["s1"]?.pendingQuestion).toBeNull()
+    expect(question).toBeTruthy() // sanity: we had one to begin with
+
+    await act(async () => { resolveHttp(); await pending })
+  })
+
+  it("restores the pending question if the HTTP call fails", async () => {
+    const question = await seedSlicedWithQuestion()
+    const answerSpy = vi.mocked(await import("@/api/client")).answerSessionQuestion
+    answerSpy.mockRejectedValueOnce(new Error("network down"))
+
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+
+    await act(async () => {
+      await expect(result.current.answerQuestion({ q1: "a" })).rejects.toThrow("network down")
+    })
+
+    expect(useSessionStore.getState().sessions["s1"]?.pendingQuestion).toEqual(question)
+  })
+
+  it("submits even when slice.pendingQuestion is already null (transcript-driven form)", async () => {
+    // Seed a slice with NO pendingQuestion — simulates the state after a
+    // server restart or when the session's DB status has moved past
+    // awaiting_user_input. The transcript still shows the form based on the
+    // tool_use having no result, and the server's /answer fallback resumes
+    // via a prompt.
+    useSessionStore.getState().beginSnapshot("s1", "bootstrap")
+    useSessionStore.getState().applySnapshot("s1", {
+      session: makeSession({ status: "complete" }),
+      messages: [],
+    })
+    expect(useSessionStore.getState().sessions["s1"]?.pendingQuestion).toBeNull()
+    sliceMock = useSessionStore.getState().sessions["s1"]
+
+    const answerSpy = vi.mocked(await import("@/api/client")).answerSessionQuestion
+    answerSpy.mockResolvedValueOnce(undefined as any)
+
+    const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
+    await act(async () => {
+      await result.current.answerQuestion({ q1: "Other: custom" })
+    })
+
+    expect(answerSpy).toHaveBeenCalledWith("s1", { q1: "Other: custom" })
+  })
+})

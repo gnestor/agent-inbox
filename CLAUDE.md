@@ -32,7 +32,7 @@ server/           # Hono API server
   db/             # SQLite schema
 src/              # React frontend
   components/     # email/, task/, session/, layout/
-  hooks/          # use-emails, use-tasks, use-sessions, use-session-stream
+  hooks/          # use-emails, use-tasks, use-sessions, use-session-transcript, use-ws-stream
   api/            # Typed API client
   lib/            # Formatters, utilities
   types/          # TypeScript types
@@ -115,15 +115,21 @@ curl -s -X POST http://localhost:3002/api/backfill/sessions \
 
 Use `npm run dev` from the inbox package directory to start both servers (Vite client + Hono API). The client runs on port 5175 (or next available) and proxies `/api` to the server on port 3002.
 
-To test with Claude for Chrome MCP tools:
-1. Navigate to the Vite dev URL (check terminal output for the port)
-2. Use `read_console_messages` to check for errors after each interaction
-3. Key flows to verify:
-   - **Session list** → click a session → transcript renders with messages, tool calls, markdown
-   - **New session** → click "+" → compose panel opens → type prompt → "Start Session" → optimistic message appears → streaming indicator → response renders
-   - **Resume session** → type in input → Cmd+Enter → optimistic message → streaming → response
-   - **Visibility toggles** → click "..." menu → toggle Messages/Tool calls/Thinking/Artifacts → transcript updates
-   - **No console errors** throughout all interactions
+To test in the browser, use `playwright-cli` with the persistent `hammies` profile (see workspace root [CLAUDE.md](../../CLAUDE.md) → Completion Checklist):
+
+```bash
+playwright-cli -s=hammies open --persistent http://localhost:5175
+playwright-cli -s=hammies --raw snapshot
+playwright-cli -s=hammies console        # check for errors
+playwright-cli -s=hammies close
+```
+
+Key flows to verify:
+- **Session list** → click a session → transcript renders with messages, tool calls, markdown
+- **New session** → click "+" → compose panel opens → type prompt → "Start Session" → optimistic message appears → streaming indicator → response renders
+- **Resume session** → type in input → Cmd+Enter → optimistic message → streaming → response
+- **Visibility toggles** → click "..." menu → toggle Messages/Tool calls/Thinking/Artifacts → transcript updates
+- **No console errors** throughout all interactions
 
 ## Worktree Development
 
@@ -157,7 +163,7 @@ ln -sf "$(git rev-parse --show-toplevel)/packages/frontend" node_modules/@hammie
 - Import `cn()` from `@hammies/frontend/lib/utils`
 - No local `src/components/ui/` — use shared package
 - Server routes return JSON, errors use Hono's HTTPException
-- Session streaming uses SSE via `/api/sessions/:id/stream`
+- Session streaming uses a multiplexed WebSocket at `/api/ws` (one per browser tab, watches many sessions). Subscribe payload carries an optional per-session `fromSequence` cursor; the server replays from an in-memory buffer or sends `cursor_miss` to fall back to a REST snapshot. See [`docs/session-architecture.md`](docs/session-architecture.md).
 
 ### Text sizes
 

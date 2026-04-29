@@ -13,6 +13,13 @@
 import { create } from "zustand"
 
 import type { Session, SessionMessage } from "@/types"
+
+// Defense-in-depth cap on the deferred-events buffer. A persistent gap + a
+// failing snapshot recovery loop would otherwise grow this list indefinitely.
+// On overflow we drop the oldest entry and mark pendingReplay so the gap
+// effect fetches a fresh snapshot — the same recovery path that already
+// handles real gaps.
+export const MAX_DEFERRED_EVENTS = 500
 import {
   createSessionRecoveryCoordinator,
   type SessionRecoveryCoordinator,
@@ -64,6 +71,11 @@ interface SessionStoreState {
   submitOptimisticPrompt(sessionId: string, prompt: string): string
   /** Clear the pending question after the user answers. */
   clearPendingQuestion(sessionId: string): void
+  /** Restore a pending question (used as rollback when answer submission fails). */
+  setPendingQuestion(sessionId: string, question: import("@/types").PendingQuestion): void
+  /** Server told us our WS cursor is too old to replay. Invalidate bootstrap
+   *  so the gap-recovery effect runs a fresh snapshot. */
+  handleCursorMiss(sessionId: string): void
   /** Drop a session slice from memory (e.g. when navigating away and it's no longer needed). */
   removeSession(sessionId: string): void
   /** Optimistic session.status setter, used by mutations before the server confirms. */
@@ -119,14 +131,20 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
       if (classification === "defer" || classification === "recover") {
         // Buffer the event. It will be replayed by applySnapshot's flush.
+        // Hard cap: if we've exceeded MAX_DEFERRED_EVENTS, drop the oldest.
+        // classifyEvent has already set pendingReplay, so the gap effect will
+        // still fetch a fresh snapshot even when older events are dropped.
         const slice = ensureSlice(s0, sessionId)
+        const nextDeferred = slice.deferredEvents.length >= MAX_DEFERRED_EVENTS
+          ? [...slice.deferredEvents.slice(-(MAX_DEFERRED_EVENTS - 1)), event]
+          : [...slice.deferredEvents, event]
         set({
           ...s0,
           sessions: {
             ...s0.sessions,
             [sessionId]: {
               ...slice,
-              deferredEvents: [...slice.deferredEvents, event],
+              deferredEvents: nextDeferred,
               recovery: coord.getState(),
             },
           },
@@ -262,6 +280,26 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         [sessionId]: { ...reduced, recovery: slice.recovery, deferredEvents: slice.deferredEvents },
       },
     })
+  },
+
+  setPendingQuestion: (sessionId, question) => {
+    const s0 = get()
+    const slice = s0.sessions[sessionId]
+    if (!slice) return
+    set({
+      ...s0,
+      sessions: {
+        ...s0.sessions,
+        [sessionId]: { ...slice, pendingQuestion: question },
+      },
+    })
+  },
+
+  handleCursorMiss: (sessionId) => {
+    const [s0, coord] = ensureCoordinator(get(), sessionId)
+    if (s0 !== get()) set(s0)
+    coord.invalidateBootstrap()
+    syncRecoveryState(get(), sessionId, coord, set)
   },
 
   removeSession: (sessionId) => {

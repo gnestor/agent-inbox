@@ -268,6 +268,11 @@ function isResultMessage(msg: unknown): msg is Record<string, unknown> & { resul
   return typeof msg === "object" && msg !== null && "result" in msg
 }
 
+/** Type guard for SDK user messages (the SDK echoes the prompt as one of these). */
+function isUserMessage(msg: unknown): msg is Record<string, unknown> & { type: "user" } {
+  return typeof msg === "object" && msg !== null && (msg as Record<string, unknown>).type === "user"
+}
+
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
  *  Reads the JSONL file backward (last 20 lines) for efficiency. */
 export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
@@ -341,6 +346,13 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   if (rowCount === 0 && process.env.NODE_ENV !== "production") {
     const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
     log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
+  }
+
+  // Drop the broadcast buffer for sessions that have left the running state —
+  // no further sequenced events will land, and we don't want to leak memory
+  // across long-lived server processes.
+  if (rowCount > 0 && (status === "complete" || status === "errored" || status === "archived")) {
+    clearBroadcastBuffer(sessionId)
   }
 }
 
@@ -572,7 +584,65 @@ function startPresenceReaper() {
 }
 startPresenceReaper()
 
+// Per-session ring buffer of recent sequenced broadcasts. A client that
+// reconnects with a `fromSequence` cursor can ask the server to replay the
+// events it missed without triggering a full REST snapshot. Lifecycle events
+// (session_complete, session_error, ask_user_question, presence) are NOT
+// buffered — they are re-derived on subscribe from DB/presence state.
+export const BROADCAST_BUFFER_CAPACITY = 500
+
+interface BufferedBroadcast { sequence: number; data: unknown }
+
+const broadcastBuffers = new Map<string, BufferedBroadcast[]>()
+
+function isSequencedBroadcast(data: unknown): data is { sequence: number; message: unknown } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    typeof (data as { sequence?: unknown }).sequence === "number" &&
+    "message" in data
+  )
+}
+
+function pushBroadcastBuffer(sessionId: string, data: { sequence: number; message: unknown }) {
+  let buf = broadcastBuffers.get(sessionId)
+  if (!buf) {
+    buf = []
+    broadcastBuffers.set(sessionId, buf)
+  }
+  buf.push({ sequence: data.sequence, data })
+  if (buf.length > BROADCAST_BUFFER_CAPACITY) buf.shift()
+}
+
+/** Returns buffered events with sequence > fromSequence, or null if the
+ *  caller's cursor is older than the buffer's oldest entry (i.e. fell out
+ *  of the window — caller must fall back to a full snapshot). */
+export function readBroadcastBufferSince(
+  sessionId: string,
+  fromSequence: number,
+): BufferedBroadcast[] | null {
+  const buf = broadcastBuffers.get(sessionId)
+  if (!buf || buf.length === 0) {
+    // No buffer for this session yet. If the client says "I have no prior
+    // state" (fromSequence <= 0) we can return empty; anything higher is a
+    // miss and must fall back to snapshot.
+    return fromSequence <= 0 ? [] : null
+  }
+  const oldest = buf[0]!.sequence
+  // Buffer covers [oldest..], caller wants (fromSequence..]. Covered iff
+  // the first event we would need to replay (fromSequence + 1) is present.
+  if (fromSequence + 1 < oldest) return null
+  return buf.filter((e) => e.sequence > fromSequence)
+}
+
+export function clearBroadcastBuffer(sessionId: string) {
+  broadcastBuffers.delete(sessionId)
+}
+
 export function broadcastToSession(sessionId: string, data: unknown) {
+  if (isSequencedBroadcast(data)) {
+    pushBroadcastBuffer(sessionId, data)
+  }
   for (const client of wsClients.values()) {
     if (client.sessions.has(sessionId)) {
       client.send({ type: "session_event", sessionId, data })
@@ -598,19 +668,39 @@ export function removeWsClient(id: string) {
   wsClients.delete(id)
 }
 
-export async function wsSubscribe(clientId: string, sessionIds: string[]) {
+export interface WsSubscribeEntry {
+  id: string
+  fromSequence?: number
+}
+
+export async function wsSubscribe(clientId: string, sessions: readonly WsSubscribeEntry[]) {
   const client = wsClients.get(clientId)
   if (!client) return
 
-  await Promise.all(sessionIds.map(async (sessionId) => {
+  await Promise.all(sessions.map(async ({ id: sessionId, fromSequence }) => {
     client.sessions.add(sessionId)
 
-    // Add presence
     if (client.user) {
       addPresenceUser(sessionId, client.user)
     }
 
-    // Replay initial state
+    // Cursor-based replay: if the client sent fromSequence, try to replay
+    // any buffered events after that cursor. A null result means the cursor
+    // is outside the buffer window — the client must fall back to a full
+    // snapshot, which we signal with cursor_miss.
+    if (typeof fromSequence === "number") {
+      const replay = readBroadcastBufferSince(sessionId, fromSequence)
+      if (replay === null) {
+        client.send({ type: "cursor_miss", sessionId })
+      } else {
+        for (const entry of replay) {
+          client.send({ type: "session_event", sessionId, data: entry.data })
+        }
+      }
+    }
+
+    // Terminal-state replay runs AFTER the buffer replay so message events
+    // apply before the status transition they describe.
     const session = await getSessionRecord(sessionId)
     if (session?.status === "complete") {
       client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
@@ -623,7 +713,6 @@ export async function wsSubscribe(clientId: string, sessionIds: string[]) {
       }
     }
 
-    // Send presence
     const users = getPresenceUsers(sessionId)
     if (users.length > 0) {
       client.send({ type: "session_event", sessionId, data: { type: "presence", users } })
@@ -933,6 +1022,11 @@ export async function resumeSessionQuery(
   type AgentQuery = Awaited<typeof import("@anthropic-ai/claude-agent-sdk")>["query"]
   let q: ReturnType<AgentQuery>
   let sequence: number
+  // Sequence used for the synthetic user-prompt broadcast. The SDK's first
+  // iterator message is its own echo of the same user prompt; we broadcast
+  // it at this sequence so the recovery coordinator dedupes it against the
+  // synthetic and the live transcript shows one user bubble instead of two.
+  let syntheticUserSequence: number | null = null
   try {
     const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
@@ -966,6 +1060,7 @@ export async function resumeSessionQuery(
         authorName: userProfile.name,
       }),
     }
+    syntheticUserSequence = sequence
     broadcastToSession(sessionId, { sequence, message: userMessage })
     sequence++
 
@@ -1013,10 +1108,24 @@ export async function resumeSessionQuery(
   }
 
   let gotResult = false
+  let userEchoDeduped = false
   ;(async () => {
     try {
       for await (const message of q) {
         await touchSession(sessionId)
+
+        // The SDK's first user message is its echo of the prompt we just
+        // submitted — we already broadcast a synthetic version. Reuse the
+        // synthetic's sequence so the frontend's recovery coordinator drops
+        // the echo as a duplicate. Subsequent SDK messages keep the running
+        // sequence, which stays aligned with JSONL line indices used by the
+        // REST snapshot.
+        if (!userEchoDeduped && isUserMessage(message) && syntheticUserSequence !== null) {
+          userEchoDeduped = true
+          broadcastToSession(sessionId, { sequence: syntheticUserSequence, message })
+          continue
+        }
+
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 

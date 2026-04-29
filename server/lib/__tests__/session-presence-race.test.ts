@@ -88,7 +88,7 @@ describe("session presence race conditions", () => {
     const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-6", (data) => received.push(data))
-    await wsSubscribe("c-6", ["race-6"])
+    await wsSubscribe("c-6", [{ id: "race-6" }])
 
     // 10 rapid operations — should coalesce into a single broadcast.
     for (let i = 0; i < 5; i++) {
@@ -111,7 +111,7 @@ describe("session presence race conditions", () => {
     const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-7", (data) => received.push(data))
-    await wsSubscribe("c-7", ["race-7"])
+    await wsSubscribe("c-7", [{ id: "race-7" }])
 
     addPresenceUser("race-7", { email: "alice@test.com", name: "Alice" })
     await sleep(250)
@@ -125,7 +125,7 @@ describe("session presence race conditions", () => {
     const { addWsClient, wsSubscribe, removePresenceUser } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-8", (data) => received.push(data))
-    await wsSubscribe("c-8", ["race-8"])
+    await wsSubscribe("c-8", [{ id: "race-8" }])
     removePresenceUser("race-8", "ghost@test.com")
     await sleep(250)
     const presence = received.filter((m) => m.data?.type === "presence" && m.sessionId === "race-8")

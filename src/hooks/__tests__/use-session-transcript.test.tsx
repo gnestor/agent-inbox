@@ -14,11 +14,13 @@ import type { Session, SessionMessage } from "@/types"
 
 let mostRecentEventCallback: ((event: any) => void) | null = null
 let mostRecentConnectCallback: (() => void) | null = null
+let mostRecentSubscribeOptions: any = null
 
 vi.mock("@/hooks/use-ws-stream", () => ({
   useWsStream: () => ({
-    subscribe: (_sessionId: string, cb: (e: any) => void) => {
+    subscribe: (_sessionId: string, cb: (e: any) => void, options?: any) => {
       mostRecentEventCallback = cb
+      mostRecentSubscribeOptions = options ?? null
       return () => {
         if (mostRecentEventCallback === cb) mostRecentEventCallback = null
       }
@@ -76,6 +78,7 @@ function makeMsg(sequence: number, type: string, content: unknown = ""): Session
 beforeEach(() => {
   mostRecentEventCallback = null
   mostRecentConnectCallback = null
+  mostRecentSubscribeOptions = null
   vi.mocked(client.getSession).mockReset()
   const s = useSessionStore.getState()
   for (const id of Object.keys(s.sessions)) s.removeSession(id)
@@ -182,6 +185,54 @@ describe("useSessionTranscript", () => {
 
     expect(useSessionStore.getState().sessions["s1"]?.messageIds).toEqual([0, 1])
     expect(useSessionStore.getState().sessions["s1"]?.deferredEvents).toHaveLength(0)
+  })
+
+  it("getFromSequence returns the latest applied sequence for cursor replay", async () => {
+    vi.mocked(client.getSession).mockResolvedValueOnce({
+      session: makeSession(),
+      messages: [makeMsg(0, "user"), makeMsg(1, "assistant")],
+    })
+    renderHook(() => useSessionTranscript("s1"))
+    mostRecentConnectCallback?.()
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions["s1"]?.recovery.latestSequence).toBe(1)
+    })
+
+    expect(mostRecentSubscribeOptions?.getFromSequence()).toBe(1)
+  })
+
+  it("getFromSequence returns undefined before bootstrap so server skips replay", async () => {
+    renderHook(() => useSessionTranscript("s1"))
+    // No snapshot yet — cursor should be undefined.
+    expect(mostRecentSubscribeOptions?.getFromSequence()).toBeUndefined()
+  })
+
+  it("onCursorMiss invalidates bootstrap and the gap effect runs a fresh snapshot", async () => {
+    // Seed a bootstrapped session
+    vi.mocked(client.getSession).mockResolvedValueOnce({
+      session: makeSession(),
+      messages: [makeMsg(0, "user"), makeMsg(1, "assistant")],
+    })
+    renderHook(() => useSessionTranscript("s1"))
+    mostRecentConnectCallback?.()
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions["s1"]?.recovery.bootstrapped).toBe(true)
+    })
+
+    // Queue a second getSession resolution for the cursor_miss snapshot.
+    vi.mocked(client.getSession).mockResolvedValueOnce({
+      session: makeSession(),
+      messages: [makeMsg(0, "user"), makeMsg(1, "assistant"), makeMsg(2, "assistant")],
+    })
+
+    // Server says: cursor is too old.
+    mostRecentSubscribeOptions?.onCursorMiss()
+
+    // Gap effect should run another snapshot; new messageIds include seq 2.
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions["s1"]?.messageIds).toContain(2)
+    })
+    expect(useSessionStore.getState().sessions["s1"]?.recovery.bootstrapped).toBe(true)
   })
 
   it("REGRESSION: gap-triggered snapshot releases inFlight on failure", async () => {
