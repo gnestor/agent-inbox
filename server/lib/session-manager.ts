@@ -268,6 +268,11 @@ function isResultMessage(msg: unknown): msg is Record<string, unknown> & { resul
   return typeof msg === "object" && msg !== null && "result" in msg
 }
 
+/** Type guard for SDK user messages (the SDK echoes the prompt as one of these). */
+function isUserMessage(msg: unknown): msg is Record<string, unknown> & { type: "user" } {
+  return typeof msg === "object" && msg !== null && (msg as Record<string, unknown>).type === "user"
+}
+
 /** Extract the questions array from the last AskUserQuestion tool_use in the session transcript.
  *  Reads the JSONL file backward (last 20 lines) for efficiency. */
 export async function getLastAskUserQuestions(sessionId: string): Promise<unknown[] | null> {
@@ -1017,6 +1022,11 @@ export async function resumeSessionQuery(
   type AgentQuery = Awaited<typeof import("@anthropic-ai/claude-agent-sdk")>["query"]
   let q: ReturnType<AgentQuery>
   let sequence: number
+  // Sequence used for the synthetic user-prompt broadcast. The SDK's first
+  // iterator message is its own echo of the same user prompt; we broadcast
+  // it at this sequence so the recovery coordinator dedupes it against the
+  // synthetic and the live transcript shows one user bubble instead of two.
+  let syntheticUserSequence: number | null = null
   try {
     const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
@@ -1050,6 +1060,7 @@ export async function resumeSessionQuery(
         authorName: userProfile.name,
       }),
     }
+    syntheticUserSequence = sequence
     broadcastToSession(sessionId, { sequence, message: userMessage })
     sequence++
 
@@ -1097,10 +1108,24 @@ export async function resumeSessionQuery(
   }
 
   let gotResult = false
+  let userEchoDeduped = false
   ;(async () => {
     try {
       for await (const message of q) {
         await touchSession(sessionId)
+
+        // The SDK's first user message is its echo of the prompt we just
+        // submitted — we already broadcast a synthetic version. Reuse the
+        // synthetic's sequence so the frontend's recovery coordinator drops
+        // the echo as a duplicate. Subsequent SDK messages keep the running
+        // sequence, which stays aligned with JSONL line indices used by the
+        // REST snapshot.
+        if (!userEchoDeduped && isUserMessage(message) && syntheticUserSequence !== null) {
+          userEchoDeduped = true
+          broadcastToSession(sessionId, { sequence: syntheticUserSequence, message })
+          continue
+        }
+
         broadcastToSession(sessionId, { sequence, message })
         sequence++
 

@@ -136,27 +136,36 @@ function isIdeContextBlock(block: ContentBlock): boolean {
   return block.text.startsWith("<ide_opened_file>") || block.text.startsWith("<ide_selection>")
 }
 
+/** Strip server-injected XML wrappers from displayed text. These tags are
+ *  inlined into the prompt sent to the agent (IDE context, attached sources)
+ *  but are already represented elsewhere in the UI (IDE chips, attached_context
+ *  system widget) and should not be rendered as part of the user's message.
+ *  Only trims when stripping actually occurred so assistant text — which
+ *  never carries these tags — keeps any intentional surrounding whitespace. */
+export function stripInjectedContextTags(text: string): string {
+  if (!text.includes("<")) return text
+  const stripped = text
+    .replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, "")
+    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "")
+    .replace(/<attached_context\b[^>]*>[\s\S]*?<\/attached_context>/g, "")
+  return stripped === text ? text : stripped.trim()
+}
+
 export function extractText(msg: SessionMessagePayload): string {
   if (msg.type === "plan") return msg.content
   if (msg.type === "system" || msg.type === "tool_result") return ""
-  if (typeof msg.content === "string") return msg.content
+  if (typeof msg.content === "string") return stripInjectedContextTags(msg.content)
 
   function extractFromBlocks(blocks: ContentBlock[]): string {
     return (blocks as ContentBlock[])
       .filter((b): b is TextBlock => b.type === "text")
-      .map((b) => {
-        if (!isIdeContextBlock(b)) return b.text
-        return b.text
-          .replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, "")
-          .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "")
-          .trim()
-      })
+      .map((b) => stripInjectedContextTags(b.text))
       .filter(Boolean)
       .join("\n")
   }
 
   if (msg.message?.content) {
-    if (typeof msg.message.content === "string") return msg.message.content
+    if (typeof msg.message.content === "string") return stripInjectedContextTags(msg.message.content)
     if (Array.isArray(msg.message.content)) return extractFromBlocks(msg.message.content as ContentBlock[])
   }
   if (Array.isArray(msg.content)) return extractFromBlocks(msg.content as ContentBlock[])

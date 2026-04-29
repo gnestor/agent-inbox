@@ -234,6 +234,39 @@ describe("extractText", () => {
     } as any)
     expect(result).toBe("Actual prompt")
   })
+
+  it("strips attached_context tags from content blocks", () => {
+    const result = extractText({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{
+          type: "text",
+          text: '<attached_context source=gmail:abc title="RE: Payroll">\nemail body here\nmore body\n</attached_context>\n\nSee the latest response',
+        }],
+      },
+    } as any)
+    expect(result).toBe("See the latest response")
+  })
+
+  it("strips attached_context tags from string content", () => {
+    const result = extractText({
+      type: "user",
+      content: '<attached_context source=gmail:x title="t">\nbody\n</attached_context>\n\nuser typed this',
+    } as any)
+    expect(result).toBe("user typed this")
+  })
+
+  it("strips multiple attached_context blocks", () => {
+    const result = extractText({
+      type: "user",
+      content: [{
+        type: "text",
+        text: '<attached_context source=gmail:a title="a">aaa</attached_context>\n\n<attached_context source=notion:b title="b">bbb</attached_context>\n\nthe prompt',
+      }],
+    } as any)
+    expect(result).toBe("the prompt")
+  })
 })
 
 describe("extractXmlTag", () => {
