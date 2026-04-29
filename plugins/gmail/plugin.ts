@@ -10,13 +10,40 @@ import * as gmail from "./app/lib/gmail.js"
 import type { ThreadSummary } from "./app/lib/gmail.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
-/** Add derived boolean fields from labelIds for badge rendering. */
-function addDerivedFields(thread: ThreadSummary): ThreadSummary & { isImportant: boolean; isStarred: boolean } {
+const MAX_LABEL_BADGES = 3
+
+/** Add derived boolean fields and user label names from labelIds for badge rendering. */
+function addDerivedFields(
+  thread: ThreadSummary,
+  userLabelMap: Map<string, string>,
+): ThreadSummary & { isImportant: boolean; isStarred: boolean; labels: string[] } {
+  const labels: string[] = []
+  for (const id of thread.labelIds) {
+    const name = userLabelMap.get(id)
+    if (name) labels.push(name)
+    if (labels.length >= MAX_LABEL_BADGES) break
+  }
   return {
     ...thread,
     isImportant: thread.labelIds.includes("IMPORTANT"),
     isStarred: thread.labelIds.includes("STARRED"),
+    labels,
   }
+}
+
+const userLabelCache = new Map<string, { value: Map<string, string>; ts: number }>()
+const USER_LABEL_TTL = 5 * 60 * 1000
+
+async function getUserLabelMapCached(accessToken: string): Promise<Map<string, string>> {
+  const cached = userLabelCache.get(accessToken)
+  if (cached && Date.now() - cached.ts < USER_LABEL_TTL) return cached.value
+  const result = await gmail.getLabels(accessToken)
+  const map = new Map<string, string>()
+  for (const l of result.labels) {
+    if (l.type === "user") map.set(l.id, l.name)
+  }
+  userLabelCache.set(accessToken, { value: map, ts: Date.now() })
+  return map
 }
 
 async function requireToken(ctx?: PluginContext): Promise<string> {
@@ -104,7 +131,11 @@ export const gmailPlugin: Plugin = {
       id: "flags", label: "Flags", type: "text", listRole: "hidden",
       filter: { filterable: true, filterOptions: ["important", "starred", "unread", "snoozed"] },
     },
-    { id: "labels", label: "Labels", type: "text", listRole: "hidden", filter: { filterable: true } },
+    {
+      id: "labels", label: "Labels", type: "multiselect",
+      filter: { filterable: true },
+      badge: { show: "if-set", variant: "outline" },
+    },
   ],
 
   async query(filters, cursor, ctx) {
@@ -126,8 +157,14 @@ export const gmailPlugin: Plugin = {
     }
     const query = parts.join(" ")
 
-    const result = await gmail.searchThreads(accessToken, query, 20, cursor || undefined)
-    return { items: result.threads.map(addDerivedFields) as unknown as import("../../src/types/plugin.js").PluginItem[], nextCursor: result.nextPageToken ?? undefined }
+    const [result, userLabelMap] = await Promise.all([
+      gmail.searchThreads(accessToken, query, 20, cursor || undefined),
+      getUserLabelMapCached(accessToken),
+    ])
+    return {
+      items: result.threads.map((t) => addDerivedFields(t, userLabelMap)) as unknown as import("../../src/types/plugin.js").PluginItem[],
+      nextCursor: result.nextPageToken ?? undefined,
+    }
   },
 
   async getItem(threadId, ctx) {
