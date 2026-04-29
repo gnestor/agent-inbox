@@ -12,3 +12,4 @@ playwright-report/
 IMPLEMENTATION.md
 REVIEW.md
 .DS_Store
+.playwright-cli
