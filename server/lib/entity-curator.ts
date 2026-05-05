@@ -25,6 +25,7 @@ import {
   unprocessedSourcesForEntity,
   markProcessed,
   insertDiscoveredEntities,
+  rollupPersonsToDomains,
 } from "./entity-extractor.js"
 import { gateEntity } from "./entity-gate.js"
 import { runBackgroundCurationSession } from "./curation-session.js"
@@ -576,6 +577,13 @@ export async function curateNextEntity(
   workspaceId?: string,
 ): Promise<CurateResult> {
   const wsId = workspaceId || "agent"
+  // Roll up person entities whose domain has its own entity into the domain
+  // before picking. Avoids paying for a session that the prompt would tell
+  // to no-op anyway.
+  const rolled = await rollupPersonsToDomains(wsId)
+  if (rolled > 0) {
+    log.info("Rolled up person entities into matching domain entities", { rolled, workspaceId: wsId })
+  }
   const top = await topUnprocessedEntities(wsId, 1)
   if (top.length === 0) return { skipped: "no unprocessed entities" }
   const { entity_type, entity_value } = top[0]!

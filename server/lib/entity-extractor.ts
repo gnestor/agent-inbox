@@ -149,6 +149,34 @@ export async function extractAllForPlugin(
 }
 
 /**
+ * Pre-picker pass: when a `person:<email>` has the same domain as any
+ * curated/queued `domain:` entity, mark the person rows processed so they
+ * never get a standalone session. The contacts are documented on the company
+ * page instead (see "Group contacts under their organization" in the curation
+ * prompt).
+ *
+ * Returns the count of person rows folded into a domain.
+ */
+export async function rollupPersonsToDomains(workspaceId: string): Promise<number> {
+  const result = await execute(
+    `UPDATE source_entities AS p
+     SET processed_for_entity = 1
+     WHERE p.workspace_id = $1
+       AND p.entity_type = 'person'
+       AND p.processed_for_entity = 0
+       AND p.entity_value LIKE '%@%'
+       AND EXISTS (
+         SELECT 1 FROM source_entities d
+         WHERE d.workspace_id = p.workspace_id
+           AND d.entity_type = 'domain'
+           AND d.entity_value = SPLIT_PART(p.entity_value, '@', 2)
+       )`,
+    [workspaceId],
+  )
+  return result.rowCount ?? 0
+}
+
+/**
  * Return the top entities with unprocessed sources, ranked by:
  *   1. Domain entities first (so a company page exists before its contacts
  *      get curated; the parent-company hint then steers contacts into the
