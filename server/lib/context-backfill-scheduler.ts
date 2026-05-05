@@ -263,6 +263,45 @@ Your working directory is the \`context/\` folder — all paths below are relati
 - A copy of transactional data (orders, invoices, inventory lists) — mention existence, link canonical source
 - A standalone read — summaries are generated on-demand from linked sources in a specific session's context
 
+## Eligibility — when an entity page should exist
+
+An entity page requires **both**:
+
+1. **Two-way exchange** — at least one inbound message (from the entity) AND at least one outbound message (from Hammies/Grant/staff). A single direction is not enough on its own.
+2. **Affirmative outcome** — Hammies took a positive action toward the relationship. Examples:
+   - Accepted a collaboration, partnership, or proposal
+   - Approved a wholesale application
+   - Placed or fulfilled an order
+   - Signed a contract or onboarded a vendor
+   - Invited the contact into a Hammies tool/team (e.g. Figma, Slack, Klaviyo)
+   - Engaged on a sustained follow-up (multiple back-and-forth threads, scheduled call attended)
+
+Do **not** create a page when:
+- Hammies declined the offer/proposal/request, OR replied politely and let it die.
+- The thread ends with us saying no, ghosting, or unresolved "we'll think about it" with no follow-through.
+- Only outbound messages exist (cold pitches we sent, courtesy notices, dispute notifications with no reply).
+- Only inbound messages exist (cold outreach we ignored, broadcast list inclusions, applications we never replied to).
+- The Gorgias stub is empty (no message body) regardless of how many tickets exist.
+- The entity is mentioned only in our internal notes and we never communicated with them.
+
+## Group contacts under their organization
+
+When a person's primary association is with a company that has (or qualifies for) its own page, **do not create a separate person page**. Capture the person's name, role, email, and any timeline events on the company's page instead. Examples:
+- Ryder Chosewood (buyer at Kempt Athens) → all info lives on \`kempt-athens.md\`, not a separate \`ryder-chosewood.md\`
+- Tam Myers (buyer at ban.do) → \`bando-com.md\` (or whatever the company page is named)
+- A contact at Distribution Management → on \`distribution-management.md\`
+
+Person pages are only justified for:
+- Independent individuals not tied to a company we curate (freelance contractors, friends, advisors)
+- Hammies team members
+- People whose relationship to Hammies is independent of any single company (e.g. someone who has worked across multiple vendors)
+
+If a session is dispatched for \`person:<email>\` whose domain has a company page, treat it as a no-op: mark sources processed and skip page creation. Add the person's contact info to the company page if it isn't already there.
+
+See also \`REP_AGGREGATION_DOMAINS\` in \`packages/agent/plugins/workspace-filters.ts\` — domains where the extractor already suppresses person entities up front.
+
+If you encounter sources for an ineligible entity, mark its sources processed (so they don't requeue) but do not create or maintain a page. Don't create empty placeholder pages.
+
 ## Structure
 - Frontmatter: \`tags\`, \`last_updated\`
 - One-sentence identity line
@@ -289,10 +328,13 @@ When A → B, also link B → A.
 ## Process
 
 1. Read \`INDEX.md\` to find existing pages.
-2. For each source file, update existing pages or create new ones (per \`SCHEMAS.md\`).
-3. Only add information not already present — do not rewrite existing content.
-4. Append each change to \`LOG.md\`: \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`
-5. Run \`qmd update && qmd embed\`.
+2. **Read \`SCHEMAS.md\`** and locate the section matching this entity's type (Department, Person, Company/Vendor, Wholesale Customer, Project, Product, Purchase Order, Marketing Event, Technical Reference, Session Log). The schema specifies required sections, required Sources items, naming conventions, and entity-specific extras.
+3. For each source file, update an existing page or create a new one consistent with the matching schema.
+4. **Schema drift audit (existing pages only)**: when you open an existing page, also compare its structure against the matching schema in SCHEMAS.md. If the schema requires a section or a Sources item the page is missing, add it now — even if the current source file you're processing wouldn't otherwise have prompted that change. Examples: a wholesale-customer page that lacks the Shopify customer URL or the Notion Stockists link should get them added on the next touch. Do **not** restructure or rewrite valid existing content; only fill gaps required by the schema.
+5. Use the **brand/business name** as the page slug, not the domain (e.g. \`celeste-store.md\` not \`celestestore-be.md\`). The slug-from-domain default is only for unknown/anonymous entities; rename when the entity is identified.
+6. Only add information not already present — do not rewrite existing content. (The schema-drift audit in step 4 is the only exception, and it adds rather than rewrites.)
+7. Append each change to \`LOG.md\`: \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`. Note schema-audit-only changes as \`updated (schema drift)\` so the source of the change is visible.
+8. Run \`qmd update && qmd embed\`.
 
 ## Source-specific guidance for ${source}
 

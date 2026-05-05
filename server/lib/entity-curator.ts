@@ -181,7 +181,7 @@ async function findCandidatePage(
   try {
     const { stdout } = await execFileAsync(
       "rg",
-      ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", "--glob", "!_template.md", contextDir],
+      ["-l", "--max-depth", "1", "-F", entityValue, "--glob", "*.md", "--glob", "!INDEX.md", "--glob", "!LOG.md", "--glob", "!SCHEMAS.md", contextDir],
       { encoding: "utf8" },
     )
     if (stdout.trim()) {
