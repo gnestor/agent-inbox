@@ -13,3 +13,6 @@ IMPLEMENTATION.md
 REVIEW.md
 .DS_Store
 .playwright-cli
+
+# spec-gen analysis artifacts
+.spec-gen/

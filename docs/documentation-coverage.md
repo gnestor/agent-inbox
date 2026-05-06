@@ -28,6 +28,8 @@ owner-doc | project-file-or-glob
 
 ```docs-coverage
 docs/architecture.md | .claude/**
+docs/architecture.md | ARCHITECTURE.md
+docs/architecture.md | openspec/**
 docs/architecture.md | .env.example
 docs/architecture.md | .gitattributes
 docs/architecture.md | .gitignore
@@ -61,6 +63,7 @@ docs/ci-and-verification.md | package-lock.json
 docs/ci-and-verification.md | package.json
 docs/ci-and-verification.md | playwright.config.ts
 docs/ci-and-verification.md | scripts/check-docs-coverage.ts
+docs/ci-and-verification.md | scripts/archive-proposal.ts
 docs/ci-and-verification.md | tests/e2e/**
 docs/ci-and-verification.md | tsconfig.json
 docs/ci-and-verification.md | tsconfig.node.json
