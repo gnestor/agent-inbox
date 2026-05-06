@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently --kill-others -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
-    "dev:server": "tsx watch --ignore '**/packages/agent/**' --ignore '**/packages/personal-agent/**' server/index.ts",
+    "dev:server": "tsx watch --ignore '../agent/**/*' --ignore '../personal-agent/**/*' server/index.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
