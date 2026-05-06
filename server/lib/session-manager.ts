@@ -279,7 +279,7 @@ export async function getLastAskUserQuestions(sessionId: string): Promise<unknow
   try {
     const agentSession = await findAgentSession(sessionId)
     if (!agentSession) return null
-    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.filePath)
     // Scan assistant messages from the end
     for (let i = transcript.length - 1; i >= 0; i--) {
       const msg = transcript[i]!
@@ -422,7 +422,7 @@ async function getSessionMessageCount(sessionId: string): Promise<number> {
     const agentSession = await findAgentSession(sessionId)
     if (!agentSession) return 0
 
-    const sessionFile = sessionJsonlPath(sessionId, agentSession.cwd)
+    const sessionFile = agentSession.filePath
     const stat = fs.statSync(sessionFile)
     if (stat.size === 0) return 0
     // Count newlines by reading the buffer without splitting into strings
@@ -742,7 +742,7 @@ async function autoNameSession(sessionId: string) {
 
     const agentSession = await findAgentSession(sessionId)
     if (!agentSession) return
-    const transcript = await getAgentSessionTranscript(sessionId, agentSession.cwd)
+    const transcript = await getAgentSessionTranscript(sessionId, agentSession.filePath)
     if (transcript.length < 2) return // Skip trivial sessions (e.g. immediate errors)
 
     const title = await generateSessionTitle(
@@ -798,9 +798,9 @@ export function collectPendingAttachments(
 
 /** Read a session's JSONL as a line array. Returns [] if the file is
  *  unreadable (missing, permission denied, etc.). */
-function readSessionJsonlLines(sessionId: string, cwd?: string): string[] {
+function readSessionJsonlLines(filePath: string): string[] {
   try {
-    const content = fs.readFileSync(sessionJsonlPath(sessionId, cwd), "utf-8")
+    const content = fs.readFileSync(filePath, "utf-8")
     return content.length > 0 ? content.trim().split("\n") : []
   } catch {
     return []
@@ -1045,7 +1045,7 @@ export async function resumeSessionQuery(
 
     // Single read of the JSONL, shared for sequence (line count) and for
     // scanning attached_context entries to inline into the prompt.
-    const jsonlLines = readSessionJsonlLines(sessionId, wsPath)
+    const jsonlLines = readSessionJsonlLines(sessionJsonlPath(sessionId, wsPath))
     sequence = jsonlLines.length
 
     // Broadcast the user's prompt so it appears in the live transcript. We
@@ -1181,7 +1181,7 @@ export async function attachSourceToSession(
   try {
 
     const agentSession = await findAgentSession(sessionId)
-    const sessionFile = sessionJsonlPath(sessionId, agentSession?.cwd)
+    const sessionFile = agentSession?.filePath ?? sessionJsonlPath(sessionId, agentSession?.cwd)
     await fs.promises.appendFile(sessionFile, JSON.stringify(contextMessage) + "\n")
   } catch (err) {
     log.warn("Failed to append to JSONL", { sessionId, error: (err as Error).message })
@@ -1404,6 +1404,7 @@ export async function findAgentSession(sessionId: string) {
         firstPrompt,
         cwd,
         project: projectLabel(cwd),
+        filePath,
       }
     } catch {
       return null
@@ -1474,33 +1475,72 @@ function readHeadTailLines(
   }
 }
 
-function extractSessionMeta(headLines: string[], tailLines: string[]) {
+// XML-like wrappers that are system/tooling injections, not real user prompts.
+// These should be skipped when extracting firstPrompt. Anything else starting
+// with `<` (e.g. `<scheduled-task ...>` for routine runs) is a legitimate
+// prompt and must NOT be filtered out.
+const NON_PROMPT_PREFIXES = [
+  "<system-reminder",
+  "<command-name",
+  "<command-message",
+  "<command-args",
+  "<command-output",
+  "<command-stdout",
+  "<command-stderr",
+  "<local-command-stdout",
+  "<local-command-stderr",
+  "<bash-input",
+  "<bash-stdout",
+  "<bash-stderr",
+  "<user-prompt-submit-hook",
+  "<ide_selection",
+]
+
+function isNonPromptText(text: string): boolean {
+  return NON_PROMPT_PREFIXES.some((p) => text.startsWith(p))
+}
+
+// Routine / scheduled-task prompts open with `<scheduled-task name="...">`.
+// Surface a friendlier label so the list view shows "Routine: <name>" rather
+// than the raw XML wrapper.
+function formatScheduledTaskPrompt(text: string): string | null {
+  if (!text.startsWith("<scheduled-task")) return null
+  const nameMatch = text.match(/<scheduled-task[^>]*\bname="([^"]+)"/)
+  const name = nameMatch?.[1]
+  return name ? `Routine: ${name}` : null
+}
+
+export function extractSessionMeta(headLines: string[], tailLines: string[]) {
   let cwd: string | null = null
   let firstPrompt: string | null = null
   let summary: string | null = null
+  let hasContent = false
 
-  // Head lines: find cwd and firstPrompt
+  // Head lines: find cwd, firstPrompt, and whether the session has any
+  // substantive content (user or assistant message) at all.
   for (const line of headLines) {
     if (!line.trim()) continue
     try {
       const msg = JSON.parse(line)
       if (!cwd && msg.cwd) cwd = msg.cwd
-      if (!firstPrompt && (msg.type === "user" || msg.role === "user")) {
+      const isUser = msg.type === "user" || msg.role === "user"
+      const isAssistant = msg.type === "assistant" || msg.role === "assistant"
+      if (isUser || isAssistant) hasContent = true
+      if (!firstPrompt && isUser) {
         const content = msg.message?.content ?? msg.content
-        if (typeof content === "string" && !content.startsWith("<")) {
-          firstPrompt = content.slice(0, 200)
+        if (typeof content === "string" && !isNonPromptText(content)) {
+          firstPrompt = formatScheduledTaskPrompt(content) ?? content.slice(0, 200)
         } else if (Array.isArray(content)) {
-          const text = content
-            .filter((b: Record<string, unknown>) => b.type === "text" && !(b.text as string)?.startsWith("<"))
+          const texts = content
+            .filter((b: Record<string, unknown>) => b.type === "text" && !isNonPromptText((b.text as string) ?? ""))
             .map((b: Record<string, unknown>) => b.text as string)
-            .join(" ")
-          if (text) firstPrompt = text.slice(0, 200)
+          const joined = texts.join(" ")
+          if (joined) firstPrompt = formatScheduledTaskPrompt(joined) ?? joined.slice(0, 200)
         }
       }
     } catch {
       /* skip */
     }
-    if (cwd && firstPrompt) break
   }
 
   // Tail lines: find summary (result message is typically near the end)
@@ -1518,7 +1558,7 @@ function extractSessionMeta(headLines: string[], tailLines: string[]) {
     }
   }
 
-  return { cwd, firstPrompt, summary }
+  return { cwd, firstPrompt, summary, hasContent }
 }
 
 /**
@@ -1637,13 +1677,17 @@ export async function listAllAgentSessions(wsPath?: string) {
         try {
           const stat = fs.statSync(filePath)
           const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
-          const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+          const { cwd, firstPrompt, summary, hasContent } = extractSessionMeta(headLines, tailLines)
 
           const resolvedCwd = knownCwd ?? cwd
           if (!resolvedCwd) continue
 
-          // Skip aborted sessions (file-history-snapshot entries only)
-          if (!firstPrompt && !summary) continue
+          // Skip aborted sessions — those whose head lines contain only
+          // queue-operation / file-history-snapshot entries, with no real
+          // user or assistant message. Sessions with substantive content
+          // are kept even if neither firstPrompt nor summary could be
+          // extracted (e.g. routine runs that haven't completed yet).
+          if (!hasContent) continue
 
           results.push({
             sessionId: fileName.replace(".jsonl", ""),
@@ -1756,8 +1800,9 @@ function classifyAssistantBlocks(content: unknown): {
   return { emitBlocks, thinking, agentToolUse }
 }
 
-export async function getAgentSessionTranscript(sessionId: string, cwd?: string) {
-  const sessionFile = sessionJsonlPath(sessionId, cwd)
+export async function getAgentSessionTranscript(sessionId: string, filePath?: string) {
+  const sessionFile = filePath ?? (await findAgentSession(sessionId))?.filePath
+  if (!sessionFile) return []
 
   try {
     const content = fs.readFileSync(sessionFile, "utf-8")
@@ -1988,7 +2033,7 @@ export async function patchArtifactCode(sessionId: string, toolUseId: string, co
   const agentSession = await findAgentSession(sessionId)
   if (!agentSession) return false
 
-  const sessionFile = sessionJsonlPath(sessionId, agentSession.cwd)
+  const sessionFile = agentSession.filePath
   if (patchArtifactInFile(sessionFile, toolUseId, code)) return true
 
   // Fall back to subagent JSONLs

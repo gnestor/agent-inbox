@@ -24,6 +24,7 @@ const SESSION_ID = "test-transcript-123"
 // sessionJsonlPath encodes the cwd by replacing / with -
 const ENCODED_DIR = TEST_DIR.replace(/\//g, "-")
 const PROJECT_DIR = join(homedir(), ".claude", "projects", ENCODED_DIR)
+const JSONL_PATH = join(PROJECT_DIR, `${SESSION_ID}.jsonl`)
 
 // Build a realistic JSONL with streaming deltas (stop_reason:null), tool
 // results, and render_output. The Agent SDK writes each streaming delta as
@@ -66,7 +67,7 @@ describe("session transcript and artifact patching", () => {
   it("getAgentSessionTranscript emits streaming deltas with content and uses line index as sequence", async () => {
     const { getAgentSessionTranscript } = await import("../session-manager.js")
 
-    const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+    const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
 
     // All assistant entries with real content render — including streaming
     // deltas where stop_reason is null. Each delta has its own content blocks,
@@ -98,7 +99,7 @@ describe("session transcript and artifact patching", () => {
     fs.writeFileSync(join(PROJECT_DIR, `${SESSION_ID}.jsonl`), lines.join("\n") + "\n")
 
     const { getAgentSessionTranscript } = await import("../session-manager.js")
-    const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+    const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
 
     // Thinking is emitted as a standalone assistant message with fractional
     // sequence so it sorts between lines.
@@ -124,7 +125,7 @@ describe("session transcript and artifact patching", () => {
     const { getAgentSessionTranscript } = mod
 
     // Find the render_output sequence from the transcript
-    const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+    const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
     const renderMsg = messages.find((m: any) => {
       const content = m.message?.message?.content ?? m.message?.content ?? []
       return Array.isArray(content) && content.some((b: any) => b.name?.includes("render_output"))
@@ -155,7 +156,7 @@ describe("session transcript and artifact patching", () => {
     fs.writeFileSync(jsonlPath, lines.join("\n") + "\n")
 
     // Verify via transcript
-    const updated = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+    const updated = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
     const patchedMsg = updated.find((m: any) => m.sequence === seq) as any
     const updatedContent = patchedMsg?.message?.message?.content ?? patchedMsg?.message?.content
     const updatedBlock = updatedContent?.find((b: any) => b.name?.includes("render_output"))
@@ -165,7 +166,7 @@ describe("session transcript and artifact patching", () => {
   it("sequence is stable: partial messages don't shift render_output index", async () => {
     const { getAgentSessionTranscript } = await import("../session-manager.js")
 
-    const messages = await getAgentSessionTranscript(SESSION_ID, TEST_DIR)
+    const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
 
     // Line 3 is a partial (filtered), line 6 is a partial (filtered)
     // The render_output at line 7 should still have sequence=7 (line index)

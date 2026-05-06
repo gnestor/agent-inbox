@@ -202,7 +202,7 @@ sessionRoutes.get("/:id", async (c) => {
     // JSONL is the source of truth for session transcript; WS pushes live updates.
     const agentSession = await sessions.findAgentSession(sessionId)
     const transcript = agentSession
-      ? await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+      ? await sessions.getAgentSessionTranscript(sessionId, agentSession.filePath)
       : []
 
     const messages = withInitialUserPrompt(transcript, sessionId, session.prompt as string, session.started_at as string)
@@ -242,7 +242,7 @@ sessionRoutes.get("/:id", async (c) => {
   }
 
   // Read the transcript from the Agent SDK session (pass cwd so we find the right project)
-  const sdkTranscript = await sessions.getAgentSessionTranscript(sessionId, agentSession.cwd)
+  const sdkTranscript = await sessions.getAgentSessionTranscript(sessionId, agentSession.filePath)
   const prompt = agentSession.firstPrompt || ""
   const transcript = withInitialUserPrompt(sdkTranscript, sessionId, prompt, new Date(agentSession.lastModified).toISOString())
 
