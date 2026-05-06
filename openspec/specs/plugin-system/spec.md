@@ -126,6 +126,16 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 | Plugin interface types (`Plugin`, `PluginItem`, `FieldDef`, `BadgeConfig`, `FilterConfig`) | [src/types/plugin.ts](../../../src/types/plugin.ts) |
 | Loader test coverage | [server/lib/__tests__/plugin-loader.test.ts](../../../server/lib/__tests__/plugin-loader.test.ts) |
 | Plugin route tests | [server/routes/__tests__/plugins.test.ts](../../../server/routes/__tests__/plugins.test.ts) |
+| Workflow panel registry (loads `workflows/*` widget schemas + mutations) | [server/lib/panel-registry.ts](../../../server/lib/panel-registry.ts) |
+| `/api/panels` and `/api/panels/mutate/:action` routes | [server/routes/panels.ts](../../../server/routes/panels.ts) |
+| `<PanelWidget>` schema-driven widget renderer | [src/components/plugin/PanelWidget.tsx](../../../src/components/plugin/PanelWidget.tsx) |
+| `<PluginView>` plugin tab composition (list + detail panels) | [src/components/plugin/PluginView.tsx](../../../src/components/plugin/PluginView.tsx) |
+| `<PluginList>` generic plugin list panel | [src/components/plugin/PluginList.tsx](../../../src/components/plugin/PluginList.tsx) |
+| `<PluginDetail>` generic plugin detail panel | [src/components/plugin/PluginDetail.tsx](../../../src/components/plugin/PluginDetail.tsx) |
+| `<PluginFrame>` iframe host for plugin-supplied components | [src/components/plugin/PluginFrame.tsx](../../../src/components/plugin/PluginFrame.tsx) |
+| `<PropertiesPopover>` shared edit popover for plugin item fields | [src/components/plugin/PropertiesPopover.tsx](../../../src/components/plugin/PropertiesPopover.tsx) |
+| Plugin data hooks (`usePlugins`, `usePluginItems`, `usePluginItem`, sub-items) | [src/hooks/use-plugins.ts](../../../src/hooks/use-plugins.ts) |
+| Plugin item mutation hook with optimistic patches | [src/hooks/use-plugin-mutations.ts](../../../src/hooks/use-plugin-mutations.ts) |
 
 ## History
 

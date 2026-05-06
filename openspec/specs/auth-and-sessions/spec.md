@@ -126,6 +126,7 @@ The workspace cookie is read here only for routing — its lifecycle is owned by
 | `AuthCallbackBody` Zod schema | [server/lib/schemas.ts](../../../server/lib/schemas.ts) |
 | Rate limiter wrapper | [server/lib/rate-limit.ts](../../../server/lib/rate-limit.ts) |
 | `users` and `auth_sessions` tables | [server/db/migrations/001_initial_schema.sql](../../../server/db/migrations/001_initial_schema.sql) |
+| Typed Hono context (`AppEnv` with `userEmail`, `googleAccessToken`) set by auth middleware | [server/types/hono-env.ts](../../../server/types/hono-env.ts) |
 
 ## History
 

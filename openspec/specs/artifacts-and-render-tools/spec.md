@@ -237,6 +237,11 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 | Lazy `rehype-highlight` loader with `useSyncExternalStore` re-render hook | [src/lib/lazy-rehype-highlight.ts](../../../src/lib/lazy-rehype-highlight.ts) |
 | Minimal HAST → HTML serialiser for lowlight output | [src/lib/hast-html.ts](../../../src/lib/hast-html.ts) |
 | Iframe theme variable list and base CSS (consumed by `build-artifact-html.ts`) | [src/lib/iframe-theme.ts](../../../src/lib/iframe-theme.ts) |
+| In-process MCP server registering the `render_output` tool | [server/lib/render-output-tool.ts](../../../server/lib/render-output-tool.ts) |
+| `<OutputRenderer>` transcript/panel renderer for `render_output` payloads | [src/components/session/OutputRenderer.tsx](../../../src/components/session/OutputRenderer.tsx) |
+| `<InboxResultPanel>` panel host for an output rendered to its own panel | [src/components/session/InboxResultPanel.tsx](../../../src/components/session/InboxResultPanel.tsx) |
+| `<CodeEditorPanel>` live artifact code editor (writes back to JSONL) | [src/components/session/CodeEditorPanel.tsx](../../../src/components/session/CodeEditorPanel.tsx) |
+| Iframe auto-height + theme-variable forwarding hook | [src/hooks/use-iframe-auto-height.ts](../../../src/hooks/use-iframe-auto-height.ts) |
 
 ## History
 

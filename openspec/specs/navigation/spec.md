@@ -174,6 +174,14 @@ The mount effect runs `parseUrl(location.pathname)` synchronously *before* the I
 | `<PanelSlot>` slide animation driven by `usePanelTransition` + `useItemDirection` | [src/components/navigation/PanelSlot.tsx](../../../src/components/navigation/PanelSlot.tsx) |
 | Animation duration, easing, panel width, gap | [src/lib/navigation-constants.ts](../../../src/lib/navigation-constants.ts) |
 | Backward-compat hook wrapping the store | [src/hooks/use-navigation.ts](../../../src/hooks/use-navigation.ts) |
+| App shell (sidebar, routing, panel composition entry) | [src/App.tsx](../../../src/App.tsx) |
+| Vite entry / React root, persisted query client wiring | [src/main.tsx](../../../src/main.tsx) |
+| `<Panel>` panel container with mobile/width handling | [src/components/navigation/Panel.tsx](../../../src/components/navigation/Panel.tsx) |
+| `<PanelContent>` panel-type-to-renderer dispatch with editor overlay | [src/components/navigation/PanelContent.tsx](../../../src/components/navigation/PanelContent.tsx) |
+| `<Tab>` tab container coordinating its panel stack | [src/components/navigation/Tab.tsx](../../../src/components/navigation/Tab.tsx) |
+| `<SlotStack>` vertical scroll-snap tab switcher | [src/components/navigation/SlotStack.tsx](../../../src/components/navigation/SlotStack.tsx) |
+| Navigation barrel exports | [src/components/navigation/index.ts](../../../src/components/navigation/index.ts) |
+| Touch swipe hook (panel back-gesture) | [src/hooks/use-swipe.ts](../../../src/hooks/use-swipe.ts) |
 
 ## History
 

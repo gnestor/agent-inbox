@@ -132,6 +132,9 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 | Frontend hooks (use-emails, use-email-thread, use-email-actions, use-email-draft) | [plugins/gmail/app/hooks/](../../../plugins/gmail/app/hooks/) |
 | Live integration tests (excluded from `test:ci`) | [plugins/gmail/app/__tests__/email-sanitizer-live.test.ts](../../../plugins/gmail/app/__tests__/email-sanitizer-live.test.ts) |
 | Gmail API + sanitiser + draft + thread tests | [plugins/gmail/app/__tests__/](../../../plugins/gmail/app/__tests__/) |
+| Frontend Gmail-specific API client wrappers | [plugins/gmail/app/api.ts](../../../plugins/gmail/app/api.ts) |
+| Frontend Gmail wire types (`GmailMessage`, `GmailThread`, `GmailAttachment`) | [plugins/gmail/app/types.ts](../../../plugins/gmail/app/types.ts) |
+| Server-side structural types for the Gmail API subset consumed | [plugins/gmail/app/lib/gmail-api-types.ts](../../../plugins/gmail/app/lib/gmail-api-types.ts) |
 
 ## History
 

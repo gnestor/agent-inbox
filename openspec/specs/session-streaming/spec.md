@@ -195,6 +195,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 | Snapshot begin → (complete \| fail) protocol | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `beginSnapshotRecovery`, `completeSnapshotRecovery`, `failSnapshotRecovery` |
 | Bounded deferred events (cap = 500) | [`src/stores/session-store.ts:22`](../../../src/stores/session-store.ts#L22), [`:134-147`](../../../src/stores/session-store.ts#L134-L147) |
 | Per-session orchestration hook | [`src/hooks/use-session-transcript.ts`](../../../src/hooks/use-session-transcript.ts) |
+| WebSocket connection store (single source of truth for UI connectivity) | [`src/stores/ws-connection-store.ts`](../../../src/stores/ws-connection-store.ts) |
 
 ### Tests
 

@@ -70,6 +70,10 @@ The `/api/connections/connect/:integration` flow is generic — it reads `authUr
 | OAuth connect/callback routes that read this registry | [server/lib/credentials.ts](../../../server/lib/credentials.ts) |
 | Env-to-vault migration script (one-time seed) | [server/scripts/migrate-env-to-vault.ts](../../../server/scripts/migrate-env-to-vault.ts) |
 | Registry tests | [server/lib/__tests__/integrations.test.ts](../../../server/lib/__tests__/integrations.test.ts) |
+| Settings page (lists integrations, handles OAuth callback toast) | [src/components/settings/IntegrationsPage.tsx](../../../src/components/settings/IntegrationsPage.tsx) |
+| Per-integration card (connect/disconnect button) | [src/components/settings/IntegrationCard.tsx](../../../src/components/settings/IntegrationCard.tsx) |
+| Integration icon component (per-provider SVG mapping) | [src/components/settings/IntegrationIcon.tsx](../../../src/components/settings/IntegrationIcon.tsx) |
+| Frontend connections query + disconnect mutation hook | [src/hooks/use-connections.ts](../../../src/hooks/use-connections.ts) |
 
 ## History
 

@@ -165,6 +165,14 @@ Creating a session spawns an agent process and burns API tokens. The route appli
 | Transcript renderer (classifies JSONL → bubbles, tool groups, output accordions, AskUserQuestion forms) | [src/components/session/SessionTranscript.tsx](../../../src/components/session/SessionTranscript.tsx) |
 | Route + REST tests | [server/routes/__tests__/sessions.test.ts](../../../server/routes/__tests__/sessions.test.ts) |
 | Controller hook tests | [src/hooks/__tests__/use-session-view.test.tsx](../../../src/hooks/__tests__/use-session-view.test.tsx) |
+| `<SessionInput>` composer textarea + send/stop button | [src/components/session/SessionInput.tsx](../../../src/components/session/SessionInput.tsx) |
+| `<AskUserForm>` inline AskUserQuestion form rendered in transcript | [src/components/session/AskUserForm.tsx](../../../src/components/session/AskUserForm.tsx) |
+| `<SessionConnectionSurface>` toast surfacing of WS connection state | [src/components/session/SessionConnectionSurface.tsx](../../../src/components/session/SessionConnectionSurface.tsx) |
+| AskUserForm controller hook (selections, other-text, submit) | [src/hooks/use-ask-user-form.ts](../../../src/hooks/use-ask-user-form.ts) |
+| Transcript autoscroll / pin-to-bottom hook | [src/hooks/use-transcript-scroll.ts](../../../src/hooks/use-transcript-scroll.ts) |
+| Composer draft persistence (IndexedDB-backed) | [src/hooks/use-local-draft.ts](../../../src/hooks/use-local-draft.ts) |
+| Pure transcript-processing helpers (no React) | [src/lib/session-pipeline.ts](../../../src/lib/session-pipeline.ts) |
+| Pure session-slice reducer | [src/stores/session-reducer.ts](../../../src/stores/session-reducer.ts) |
 
 ## History
 

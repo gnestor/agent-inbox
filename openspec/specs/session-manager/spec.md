@@ -230,6 +230,13 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 | Artifact code patching (JSONL is source of truth) | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L1987-L2063) |
 | `AskUserQuestion` resolver registry | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L53-L73) |
 | System-prompt assembly composing `SESSION_INSTRUCTIONS` + source context | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L825-L828) |
+| `<SessionTab>` top-level Sessions tab composition | [src/components/session/SessionTab.tsx](../../../src/components/session/SessionTab.tsx) |
+| `<NewSessionPanel>` compose-and-start panel | [src/components/session/NewSessionPanel.tsx](../../../src/components/session/NewSessionPanel.tsx) |
+| `<SidebarRecentSessions>` recent-session sidebar group | [src/components/session/SidebarRecentSessions.tsx](../../../src/components/session/SidebarRecentSessions.tsx) |
+| `<AttachToSessionMenu>` dropdown to attach an item to a running session | [src/components/session/AttachToSessionMenu.tsx](../../../src/components/session/AttachToSessionMenu.tsx) |
+| `useSessions` list query + filters | [src/hooks/use-sessions.ts](../../../src/hooks/use-sessions.ts) |
+| `useAttachToSession` mutation | [src/hooks/use-session-mutation.ts](../../../src/hooks/use-session-mutation.ts) |
+| Session lifecycle mutations (resume, abort, archive, rename) | [src/hooks/use-session-mutations.ts](../../../src/hooks/use-session-mutations.ts) |
 
 ## History
 

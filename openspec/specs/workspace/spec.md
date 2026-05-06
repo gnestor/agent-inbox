@@ -147,6 +147,7 @@ Demoting or removing the last admin would orphan the workspace. Both `DELETE /:i
 | Active-workspace cookie read in auth middleware | [server/index.ts:280-283](../../../server/index.ts#L280-L283) |
 | Tables `workspaces`, `workspace_members` | [server/db/migrations/002_workspaces.sql](../../../server/db/migrations/002_workspaces.sql) |
 | Validation schemas | [server/lib/schemas.ts](../../../server/lib/schemas.ts) |
+| Workspace settings UI (rename, members, git info) | [src/components/workspace/WorkspaceSettings.tsx](../../../src/components/workspace/WorkspaceSettings.tsx) |
 
 ## History
 
