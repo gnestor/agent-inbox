@@ -66,9 +66,9 @@ The `usePreference` hook updates the React Query cache immediately and only logs
 | Concern | Location |
 |---|---|
 | `/api/preferences` routes (GET, PUT, batch PUT) | [server/routes/preferences.ts](../../../server/routes/preferences.ts) |
-| Route mount | [server/index.ts:341](../../../server/index.ts#L341) |
-| `SetPreferenceBody` Zod schema | [server/lib/schemas.ts](../../../server/lib/schemas.ts) |
-| `user_preferences` table DDL | [server/db/migrations/001_initial_schema.sql](../../../server/db/migrations/001_initial_schema.sql) |
+| Route mount | `server/index.ts:341` |
+| `SetPreferenceBody` Zod schema | `server/lib/schemas.ts` |
+| `user_preferences` table DDL | `server/db/migrations/001_initial_schema.sql` |
 | `usePreference` hook (optimistic writes) | [src/hooks/use-preferences.ts](../../../src/hooks/use-preferences.ts) |
 | Server tests | [server/lib/__tests__/preferences.test.ts](../../../server/lib/__tests__/preferences.test.ts) |
 | Hook tests | [src/hooks/__tests__/use-preferences.test.tsx](../../../src/hooks/__tests__/use-preferences.test.tsx) |

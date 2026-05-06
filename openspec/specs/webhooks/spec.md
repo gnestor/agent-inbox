@@ -49,8 +49,8 @@ The route logs and returns `{ ok: true }`. Per-plugin dispatch (`plugin.webhookH
 | Concern | Location |
 |---|---|
 | Webhook route + URL verification handler | [server/routes/webhooks.ts](../../../server/routes/webhooks.ts) |
-| Mount point | [server/index.ts:340](../../../server/index.ts#L340) |
-| CSRF exemption list (must include `/api/webhooks`) | [server/index.ts:250-253](../../../server/index.ts#L250-L253) |
+| Mount point | `server/index.ts:340` |
+| CSRF exemption list (must include `/api/webhooks`) | `server/index.ts:250-253` |
 
 ## History
 

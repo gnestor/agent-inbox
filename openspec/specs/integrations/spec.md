@@ -65,9 +65,9 @@ The `/api/connections/connect/:integration` flow is generic — it reads `authUr
 
 | Concern | Location |
 |---|---|
-| `IntegrationConfig` type and `INTEGRATIONS` array | [server/lib/integrations.ts](../../../server/lib/integrations.ts) |
-| Lookup helpers (`getIntegration`, `getOAuthIntegrations`, `buildEnvToIntegrationMap`) | [server/lib/integrations.ts:276-297](../../../server/lib/integrations.ts#L276-L297) |
-| OAuth connect/callback routes that read this registry | [server/lib/credentials.ts](../../../server/lib/credentials.ts) |
+| `IntegrationConfig` type and `INTEGRATIONS` array | `server/lib/integrations.ts` |
+| Lookup helpers (`getIntegration`, `getOAuthIntegrations`, `buildEnvToIntegrationMap`) | `server/lib/integrations.ts:276-297` |
+| OAuth connect/callback routes that read this registry | `server/lib/credentials.ts` |
 | Env-to-vault migration script (one-time seed) | [server/scripts/migrate-env-to-vault.ts](../../../server/scripts/migrate-env-to-vault.ts) |
 | Registry tests | [server/lib/__tests__/integrations.test.ts](../../../server/lib/__tests__/integrations.test.ts) |
 | Settings page (lists integrations, handles OAuth callback toast) | [src/components/settings/IntegrationsPage.tsx](../../../src/components/settings/IntegrationsPage.tsx) |

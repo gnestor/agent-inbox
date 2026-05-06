@@ -158,7 +158,7 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 | `/connections` REST routes | [server/routes/connections.ts](../../../server/routes/connections.ts) |
 | In-memory OAuth state map | [server/routes/connections.ts:24-35](../../../server/routes/connections.ts#L24-L35) |
 | Integration registry (auth type, scopes, token URLs) | [server/lib/integrations.ts](../../../server/lib/integrations.ts) |
-| Tables `user_credentials`, `workspace_credentials` | [server/db/migrations/001_initial_schema.sql:75-94](../../../server/db/migrations/001_initial_schema.sql#L75-L94) |
+| Tables `user_credentials`, `workspace_credentials` | `server/db/migrations/001_initial_schema.sql:75-94` |
 
 ## History
 

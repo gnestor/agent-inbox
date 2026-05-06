@@ -115,7 +115,7 @@ Workflow result panels (`<inbox-result>` XML emitted by the agent) need a determ
 | Concern | Location |
 |---|---|
 | Wire shapes (`UserProfile`, `Workspace`, `Session`, `Integration`, status unions, structured output types) | [src/types/index.ts](../../../src/types/index.ts) |
-| Plugin interface, `FieldDef`, `BadgeConfig`, `FilterConfig`, `PluginContext`, `Entity` | [src/types/plugin.ts](../../../src/types/plugin.ts) |
+| Plugin interface, `FieldDef`, `BadgeConfig`, `FilterConfig`, `PluginContext`, `Entity` | `src/types/plugin.ts` |
 | Widget schema (`WidgetDef`, `ProseWidget`, `KvTableWidget`, `DataTableWidget`, `ActionButtonsWidget`, ...) | [src/types/panels.ts](../../../src/types/panels.ts) |
 | Per-message session payload union | [src/types/session-message.ts](../../../src/types/session-message.ts) |
 | `useUserProvider`, `useUser`, `useWorkspaceId` with retry-on-network-error | [src/hooks/use-user.ts](../../../src/hooks/use-user.ts) |

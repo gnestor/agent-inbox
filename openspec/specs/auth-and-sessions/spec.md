@@ -121,11 +121,11 @@ The workspace cookie is read here only for routing — its lifecycle is owned by
 | ID-token verification, session create/get/delete | [server/lib/auth.ts](../../../server/lib/auth.ts) |
 | Auth routes (`/api/auth/client-id`, `/callback`, `/session`, `/logout`) | [server/routes/auth.ts](../../../server/routes/auth.ts) |
 | `SESSION_COOKIE = "inbox_session"` | [server/routes/auth.ts:15](../../../server/routes/auth.ts#L15) |
-| Auth middleware gating `/api/*` | [server/index.ts:268-291](../../../server/index.ts#L268-L291) |
+| Auth middleware gating `/api/*` | `server/index.ts:268-291` |
 | Origin/Referer CSRF middleware | [server/lib/csrf.ts](../../../server/lib/csrf.ts) |
 | `AuthCallbackBody` Zod schema | [server/lib/schemas.ts](../../../server/lib/schemas.ts) |
-| Rate limiter wrapper | [server/lib/rate-limit.ts](../../../server/lib/rate-limit.ts) |
-| `users` and `auth_sessions` tables | [server/db/migrations/001_initial_schema.sql](../../../server/db/migrations/001_initial_schema.sql) |
+| Rate limiter wrapper | `server/lib/rate-limit.ts` |
+| `users` and `auth_sessions` tables | `server/db/migrations/001_initial_schema.sql` |
 | Typed Hono context (`AppEnv` with `userEmail`, `googleAccessToken`) set by auth middleware | [server/types/hono-env.ts](../../../server/types/hono-env.ts) |
 
 ## History

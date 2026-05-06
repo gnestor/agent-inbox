@@ -174,13 +174,13 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 
 | Requirement | Implementation |
 |---|---|
-| Server exposes a single WebSocket endpoint | [`server/index.ts:30`](../../../server/index.ts#L30) — imports; [`:314-327`](../../../server/index.ts#L314-L327) — message dispatch |
-| Subscribe handshake supports per-session cursors | [`server/index.ts:314-325`](../../../server/index.ts#L314-L325); cursor handling delegates to [`server/lib/session-manager.ts`](../../../server/lib/session-manager.ts) `wsSubscribe` |
-| Wire format (sequenced events) | [`server/lib/session-manager.ts`](../../../server/lib/session-manager.ts) `broadcastToSession` |
-| Wire format (lifecycle events not buffered) | [`server/lib/session-manager.ts:588-592`](../../../server/lib/session-manager.ts#L588-L592) — buffer comment |
-| Broadcast buffer cap = 500 | [`server/lib/session-manager.ts:592`](../../../server/lib/session-manager.ts#L592) — `BROADCAST_BUFFER_CAPACITY` |
-| Buffer dropped on terminal status | [`server/lib/session-manager.ts`](../../../server/lib/session-manager.ts) — search for buffer-drop on status transition |
-| Keepalive (server pong) | [`server/index.ts:326-327`](../../../server/index.ts#L326-L327) |
+| Server exposes a single WebSocket endpoint | ``server/index.ts:30`` — imports; `server/index.ts:314-327` — message dispatch |
+| Subscribe handshake supports per-session cursors | `server/index.ts:314-325`; cursor handling delegates to ``server/lib/session-manager.ts`` `wsSubscribe` |
+| Wire format (sequenced events) | ``server/lib/session-manager.ts`` `broadcastToSession` |
+| Wire format (lifecycle events not buffered) | `server/lib/session-manager.ts:588-592` — buffer comment |
+| Broadcast buffer cap = 500 | ``server/lib/session-manager.ts:592`` — `BROADCAST_BUFFER_CAPACITY` |
+| Buffer dropped on terminal status | ``server/lib/session-manager.ts`` — search for buffer-drop on status transition |
+| Keepalive (server pong) | `server/index.ts:326-327` |
 
 ### Client
 

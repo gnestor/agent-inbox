@@ -144,9 +144,9 @@ Demoting or removing the last admin would orphan the workspace. Both `DELETE /:i
 | `WorkspaceContext` and `AppBindings` types, `requireAdmin` | [server/lib/workspace-context.ts](../../../server/lib/workspace-context.ts) |
 | Workspace REST routes | [server/routes/workspaces.ts](../../../server/routes/workspaces.ts) |
 | `WORKSPACE_COOKIE = "inbox_workspace"` | [server/routes/workspaces.ts:30](../../../server/routes/workspaces.ts#L30) |
-| Active-workspace cookie read in auth middleware | [server/index.ts:280-283](../../../server/index.ts#L280-L283) |
-| Tables `workspaces`, `workspace_members` | [server/db/migrations/002_workspaces.sql](../../../server/db/migrations/002_workspaces.sql) |
-| Validation schemas | [server/lib/schemas.ts](../../../server/lib/schemas.ts) |
+| Active-workspace cookie read in auth middleware | `server/index.ts:280-283` |
+| Tables `workspaces`, `workspace_members` | `server/db/migrations/002_workspaces.sql` |
+| Validation schemas | `server/lib/schemas.ts` |
 | Workspace settings UI (rename, members, git info) | [src/components/workspace/WorkspaceSettings.tsx](../../../src/components/workspace/WorkspaceSettings.tsx) |
 
 ## History

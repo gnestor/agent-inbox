@@ -210,7 +210,7 @@ To add a fixture, fetch the raw HTML body part via the Gmail API (format=full, b
 
 ### Cache invalidation
 
-The previous SQLite `api_cache` table was dropped (migration [`004_drop_api_cache.sql`](../../../server/db/migrations/004_drop_api_cache.sql)). Caching is now React Query client-side only — sanitizer changes take effect on the next refetch (no manual invalidation needed).
+The previous SQLite `api_cache` table was dropped (migration ``004_drop_api_cache.sql``). Caching is now React Query client-side only — sanitizer changes take effect on the next refetch (no manual invalidation needed).
 
 ## History
 

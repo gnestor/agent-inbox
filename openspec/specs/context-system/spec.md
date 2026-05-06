@@ -146,11 +146,11 @@ The DB query for `unprocessedSourcesForEntity` already limits to 100 sources. Th
 | Shared background-curation lifecycle (claim, TTL, onComplete) | [server/lib/curation-session.ts](../../../server/lib/curation-session.ts) |
 | 30-minute scheduler driver | [server/lib/context-backfill-scheduler.ts](../../../server/lib/context-backfill-scheduler.ts) |
 | Per-request `PluginContext` builder + Google token refresh | [server/lib/plugin-context.ts](../../../server/lib/plugin-context.ts) |
-| Workspace context bindings + `requireAdmin` | [server/lib/workspace-context.ts](../../../server/lib/workspace-context.ts) |
+| Workspace context bindings + `requireAdmin` | `server/lib/workspace-context.ts` |
 | Frontend curated-context panel | [src/components/session/ContextPanel.tsx](../../../src/components/session/ContextPanel.tsx) |
 | Gate test coverage | [server/lib/__tests__/entity-gate.test.ts](../../../server/lib/__tests__/entity-gate.test.ts) |
 | Attached-context inlining test (boundary with session-manager) | [server/lib/__tests__/attached-context.test.ts](../../../server/lib/__tests__/attached-context.test.ts) |
-| Migration that introduced `backfill_state` | [server/db/migrations/006_backfill_state.sql](../../../server/db/migrations/006_backfill_state.sql) |
+| Migration that introduced `backfill_state` | `server/db/migrations/006_backfill_state.sql` |
 | Bash drivers | [scripts/body-extract-loop.sh](../../../scripts/body-extract-loop.sh), [scripts/consolidate-entity.sh](../../../scripts/consolidate-entity.sh) |
 
 ## History

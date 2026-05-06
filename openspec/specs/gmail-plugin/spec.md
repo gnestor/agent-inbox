@@ -124,14 +124,17 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 | Concern | Location |
 |---|---|
 | Plugin manifest, query, getItem, mutate, filterOptions, routes, itemToContext | [plugins/gmail/plugin.ts](../../../plugins/gmail/plugin.ts) |
-| Gmail API client (search, getThread, modifyLabels, trash, send, draft, attachments, labels, signature) | [plugins/gmail/app/lib/gmail.ts](../../../plugins/gmail/app/lib/gmail.ts) |
-| HTML email sanitiser (called from `parseMessage` in gmail.ts) | [plugins/gmail/app/lib/email-sanitizer.ts](../../../plugins/gmail/app/lib/email-sanitizer.ts) |
+| Gmail API client (search, getThread, modifyLabels, trash, send, draft, attachments, labels, signature) | `plugins/gmail/app/lib/gmail.ts` |
+| HTML email sanitiser (called from `parseMessage` in gmail.ts) | `plugins/gmail/app/lib/email-sanitizer.ts` |
 | HTML → Markdown converter for context-system stubs | [plugins/gmail/app/lib/email-to-markdown.ts](../../../plugins/gmail/app/lib/email-to-markdown.ts) |
 | Frontend list component | [plugins/gmail/app/components/EmailListView.tsx](../../../plugins/gmail/app/components/EmailListView.tsx) |
 | Frontend detail component (custom thread renderer) | [plugins/gmail/app/components/EmailThread.tsx](../../../plugins/gmail/app/components/EmailThread.tsx) |
 | Frontend hooks (use-emails, use-email-thread, use-email-actions, use-email-draft) | [plugins/gmail/app/hooks/](../../../plugins/gmail/app/hooks/) |
-| Live integration tests (excluded from `test:ci`) | [plugins/gmail/app/__tests__/email-sanitizer-live.test.ts](../../../plugins/gmail/app/__tests__/email-sanitizer-live.test.ts) |
-| Gmail API + sanitiser + draft + thread tests | [plugins/gmail/app/__tests__/](../../../plugins/gmail/app/__tests__/) |
+| Live integration tests (excluded from `test:ci`, owned by `email-sanitizer`) | `plugins/gmail/app/__tests__/email-sanitizer-live.test.ts` |
+| Gmail API client tests | [plugins/gmail/app/__tests__/gmail.test.ts](../../../plugins/gmail/app/__tests__/gmail.test.ts) |
+| HTML → Markdown converter tests | [plugins/gmail/app/__tests__/email-to-markdown.test.ts](../../../plugins/gmail/app/__tests__/email-to-markdown.test.ts) |
+| Frontend hook tests | [plugins/gmail/app/__tests__/use-emails.test.tsx](../../../plugins/gmail/app/__tests__/use-emails.test.tsx), [plugins/gmail/app/__tests__/use-email-thread.test.tsx](../../../plugins/gmail/app/__tests__/use-email-thread.test.tsx), [plugins/gmail/app/__tests__/use-email-actions.test.tsx](../../../plugins/gmail/app/__tests__/use-email-actions.test.tsx) |
+| Shared test helper | [plugins/gmail/app/__tests__/fetch-thread.ts](../../../plugins/gmail/app/__tests__/fetch-thread.ts) |
 | Frontend Gmail-specific API client wrappers | [plugins/gmail/app/api.ts](../../../plugins/gmail/app/api.ts) |
 | Frontend Gmail wire types (`GmailMessage`, `GmailThread`, `GmailAttachment`) | [plugins/gmail/app/types.ts](../../../plugins/gmail/app/types.ts) |
 | Server-side structural types for the Gmail API subset consumed | [plugins/gmail/app/lib/gmail-api-types.ts](../../../plugins/gmail/app/lib/gmail-api-types.ts) |

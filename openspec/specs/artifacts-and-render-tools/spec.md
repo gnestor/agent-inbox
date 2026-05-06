@@ -236,7 +236,7 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 | Code-editor pub-sub for live artifact editing | [src/hooks/use-artifact-editor.ts](../../../src/hooks/use-artifact-editor.ts) |
 | Lazy `rehype-highlight` loader with `useSyncExternalStore` re-render hook | [src/lib/lazy-rehype-highlight.ts](../../../src/lib/lazy-rehype-highlight.ts) |
 | Minimal HAST → HTML serialiser for lowlight output | [src/lib/hast-html.ts](../../../src/lib/hast-html.ts) |
-| Iframe theme variable list and base CSS (consumed by `build-artifact-html.ts`) | [src/lib/iframe-theme.ts](../../../src/lib/iframe-theme.ts) |
+| Iframe theme variable list and base CSS (consumed by `build-artifact-html.ts`) | `src/lib/iframe-theme.ts` |
 | In-process MCP server registering the `render_output` tool | [server/lib/render-output-tool.ts](../../../server/lib/render-output-tool.ts) |
 | `<OutputRenderer>` transcript/panel renderer for `render_output` payloads | [src/components/session/OutputRenderer.tsx](../../../src/components/session/OutputRenderer.tsx) |
 | `<InboxResultPanel>` panel host for an output rendered to its own panel | [src/components/session/InboxResultPanel.tsx](../../../src/components/session/InboxResultPanel.tsx) |

@@ -138,8 +138,8 @@ Plugin items often nest values (`author.name`, `metadata.priority`). A dot-path 
 |---|---|
 | `<DataTable>` columns/rows/sort/filter/paginate | [src/components/shared/DataTable.tsx](../../../src/components/shared/DataTable.tsx) |
 | `<ListView>` compound (Root, Header, Search, Filters, Body) and `IntersectionObserver` infinite scroll | [src/components/shared/ListView.tsx](../../../src/components/shared/ListView.tsx) |
-| `<ListItem>` rendering, custom memo comparator, badge styling | [src/components/shared/ListItem.tsx](../../../src/components/shared/ListItem.tsx) |
-| Field-schema helpers (`getTitleField`, `getBadgeFields`, `extractFieldValue`, ...) | [src/lib/field-schema.ts](../../../src/lib/field-schema.ts) |
+| `<ListItem>` rendering, custom memo comparator, badge styling | `src/components/shared/ListItem.tsx` |
+| Field-schema helpers (`getTitleField`, `getBadgeFields`, `extractFieldValue`, ...) | `src/lib/field-schema.ts` |
 
 ## History
 

@@ -83,7 +83,7 @@ The most disruptive failure mode was an agent halting on "I don't have a Notion 
 | Concern | Location |
 |---|---|
 | The instruction string itself | [server/lib/session-instructions.ts](../../../server/lib/session-instructions.ts) |
-| The session manager that prepends it to every system prompt | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L32) |
+| The session manager that prepends it to every system prompt | `server/lib/session-manager.ts` |
 
 ## History
 

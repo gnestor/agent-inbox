@@ -70,7 +70,7 @@ The function takes `Array<{ type, message }>` (matching the JSONL row shape) and
 | Concern | Location |
 |---|---|
 | `TITLE_SYSTEM_PROMPT`, `buildTitlePrompt`, `parseTitleResponse`, `generateSessionTitle` | [server/lib/title-generator.ts](../../../server/lib/title-generator.ts) |
-| Caller — auto-naming hook with placeholder guard | [server/lib/session-manager.ts:740-757](../../../server/lib/session-manager.ts#L740-L757) |
+| Caller — auto-naming hook with placeholder guard | `server/lib/session-manager.ts:740-757` |
 | Pure-function tests | [server/lib/__tests__/title-generator.test.ts](../../../server/lib/__tests__/title-generator.test.ts) |
 | Model identifier | [server/lib/title-generator.ts:85](../../../server/lib/title-generator.ts#L85) |
 
