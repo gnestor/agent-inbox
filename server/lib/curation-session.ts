@@ -25,6 +25,27 @@ export function getCurationCwd(workspacePath: string): string {
 /** A pending lock is abandoned if not cleared within this window. */
 const STALE_LOCK_MS = 60 * 60 * 1000
 
+/**
+ * Delete all `entity-curation:*:pending` rows whose `last_run_at` exceeds
+ * the stale-lock threshold. The dispatch path also clears stale locks on
+ * re-dispatch attempts, but locks for entities nobody re-tries (e.g. one
+ * that finished extraction and never had a follow-up source) sit forever.
+ * Run this periodically to keep the queue from getting stuck behind orphan
+ * locks left by crashed/aborted sessions.
+ *
+ * Returns the number of rows deleted.
+ */
+export async function cleanupStaleCurationLocks(): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_LOCK_MS).toISOString()
+  const result = await execute(
+    `DELETE FROM backfill_state
+     WHERE plugin_id LIKE 'entity-curation:%:pending'
+       AND last_run_at < $1`,
+    [cutoff],
+  )
+  return result.rowCount ?? 0
+}
+
 type RunResult =
   | { sessionId: string }
   | { skipped: string }

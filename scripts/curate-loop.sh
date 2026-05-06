@@ -29,10 +29,14 @@ while true; do
     'http://localhost:3002/api/backfill/curate-entity/next' \
     -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
   log "$result"
+  # Drain-rate polling. Cheap (one DB query + curl per poll, no Claude
+  # tokens) and minimizes the gap between session completion and next
+  # dispatch. Loosen to 5/30/120/60 once the backlog is drained if the
+  # log chatter is annoying.
   case "$result" in
-    *sessionId*)             sleep 15 ;;
-    *no\ unprocessed*)       sleep 300 ;;
-    *holds\ lock*)           sleep 60 ;;
+    *sessionId*)             sleep 1 ;;
+    *no\ unprocessed*)       sleep 120 ;;
+    *holds\ lock*)           sleep 5 ;;
     *)                       sleep 60 ;;
   esac
 done

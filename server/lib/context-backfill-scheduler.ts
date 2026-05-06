@@ -14,7 +14,7 @@ import { createLogger } from "./logger.js"
 import { getPlugins } from "./plugin-loader.js"
 import { runBackfill } from "../routes/backfill.js"
 import { queryOne, execute } from "../db/pool.js"
-import { runBackgroundCurationSession } from "./curation-session.js"
+import { runBackgroundCurationSession, cleanupStaleCurationLocks } from "./curation-session.js"
 
 const log = createLogger("context-backfill")
 
@@ -350,8 +350,11 @@ ${fileList}
 - Do NOT dispatch background subagents`
 }
 
+/** Sweep interval for orphaned curation locks. */
+const STALE_LOCK_SWEEP_MS = 10 * 60 * 1000 // 10 minutes
+
 /**
- * Start the scheduled backfill interval.
+ * Start the scheduled backfill interval and the stale-lock sweeper.
  */
 export function scheduleContextBackfill(
   workspacePath: string,
@@ -365,4 +368,17 @@ export function scheduleContextBackfill(
     })
   }, INTERVAL_MS)
   timer.unref()
+
+  // Periodically clear orphaned `entity-curation:*:pending` rows so a
+  // crashed/aborted session can't pin its entity forever. The dispatch
+  // path also handles staleness on re-attempt, but entities nobody
+  // re-tries would otherwise sit forever.
+  const lockSweep = setInterval(() => {
+    cleanupStaleCurationLocks()
+      .then((cleared) => {
+        if (cleared > 0) log.info("Cleared stale curation locks", { count: cleared })
+      })
+      .catch((err) => log.error("Stale lock sweep failed", { error: (err as Error).message }))
+  }, STALE_LOCK_SWEEP_MS)
+  lockSweep.unref()
 }
