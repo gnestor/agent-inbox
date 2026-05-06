@@ -22,8 +22,15 @@ export function getCurationCwd(workspacePath: string): string {
   return join(workspacePath, "context")
 }
 
-/** A pending lock is abandoned if not cleared within this window. */
-const STALE_LOCK_MS = 60 * 60 * 1000
+/**
+ * A pending lock is abandoned if not cleared within this window. Aggressive
+ * because tsx-watch frequently restarts the server (autonomous edits to
+ * workspace-filters.ts from curation sessions, plugin file changes), killing
+ * in-flight SDK sessions without firing their `onComplete` callback. Single-
+ * source curation sessions normally complete in 30-90s; 5 min is well beyond
+ * normal but quickly recovers from process kills.
+ */
+const STALE_LOCK_MS = 5 * 60 * 1000
 
 /**
  * Delete all `entity-curation:*:pending` rows whose `last_run_at` exceeds

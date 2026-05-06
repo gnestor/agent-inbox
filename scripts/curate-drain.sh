@@ -31,15 +31,24 @@ log() { echo "$(date +%FT%T) [drain] $*"; }
 # Fetch top-K distinct unprocessed entities ordered the same way the
 # curate-entity/next picker would (domain → company → person → project →
 # product → folder → other; then by source count desc).
+#
+# Excludes entities currently held by a pending lock so workers don't
+# waste cycles bouncing off active sessions or orphan locks waiting for
+# the stale-lock sweeper to clear them.
 fetch_top_entities() {
   local k="$1"
   psql "$DATABASE_URL" -tA -F$'\t' -c "
-    SELECT entity_type, entity_value
-    FROM source_entities
-    WHERE workspace_id = '$WORKSPACE_ID' AND processed_for_entity = 0
-    GROUP BY entity_type, entity_value
+    SELECT se.entity_type, se.entity_value
+    FROM source_entities se
+    WHERE se.workspace_id = '$WORKSPACE_ID' AND se.processed_for_entity = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM backfill_state bs
+        WHERE bs.plugin_id = 'entity-curation:' || se.entity_type || ':' || se.entity_value || ':pending'
+          AND bs.workspace_id = '$WORKSPACE_ID'
+      )
+    GROUP BY se.entity_type, se.entity_value
     ORDER BY
-      CASE entity_type
+      CASE se.entity_type
         WHEN 'domain' THEN 0
         WHEN 'company' THEN 1
         WHEN 'person' THEN 2
