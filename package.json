@@ -11,6 +11,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ci": "tsc -b && vitest run",
+    "docs:coverage": "tsx scripts/check-docs-coverage.ts",
     "format": "prettier --write \"**/*.{ts,tsx,json,css}\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\" --ignore-path .gitignore",
     "build": "tsc -b && vite build",

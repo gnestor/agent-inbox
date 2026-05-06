@@ -52,18 +52,22 @@ data/             # SQLite database (gitignored)
 
 After implementing any feature, fix, or refactor, complete this sequence in order before considering the task done:
 
-1. **Write tests** — every change needs tests. Write them before or alongside the implementation:
+1. **Read/update the owning spec** — identify the owning domain in [`docs/documentation-coverage.md`](docs/documentation-coverage.md). If behavior, architecture, data contracts, UI flow, or verification expectations change, update the spec before implementation. Specs must keep separate `Context`, `Spec`, and `History` sections.
+
+2. **Write tests** — every change needs tests. Write them before or alongside the implementation:
    - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts`
    - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx`
    - Do not skip this step even for refactors that preserve the same interface.
 
-2. **Run tests** — `npm run test:ci` must pass (tsc + vitest). Fix failures before proceeding.
+3. **Run tests** — `npm run test:ci` must pass (tsc + vitest). Fix failures before proceeding.
 
-3. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
+4. **Run docs coverage** — `npm run docs:coverage` must pass. If a file was added or moved, update [`docs/documentation-coverage.md`](docs/documentation-coverage.md).
 
-4. **Update docs** — if the change affects architecture, caching, or key patterns, update the relevant file in `docs/`.
+5. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
 
-5. **Commit** — stage only files for this task, then commit:
+6. **Browser verification** — for any visible UI change, verify the changed flow in the browser and check for console errors. Use targeted Playwright e2e when the change crosses component/hook/API boundaries.
+
+7. **Commit** — stage only files for this task, then commit:
    ```
    feat: short description
 
@@ -180,8 +184,19 @@ Never use `text-base` or `text-lg` in panel UI — keep everything compact with 
 
 ## Documentation
 
+Start with [`docs/architecture.md`](docs/architecture.md). It indexes the domain specs and defines project-wide principles: spec-first changes, unidirectional dataflow, derived state over duplicated state, effects at the edges, explicit contracts, domain ownership, and fast checks first.
+
+Governance and verification:
+
+- [`docs/engineering-governance.md`](docs/engineering-governance.md) — spec-first workflow, code organization rules, agent change safety, review standard.
+- [`docs/documentation-coverage.md`](docs/documentation-coverage.md) — ownership map for every tracked file; enforced by `npm run docs:coverage`.
+- [`docs/ci-and-verification.md`](docs/ci-and-verification.md) — local checklist, CI tiers, e2e policy, browser verification policy.
+
 Subsystem deep-dives in [`docs/`](docs/):
 
+- [`docs/api.md`](docs/api.md) — Hono API boundary, API client, database schema, migrations.
+- [`docs/workspace.md`](docs/workspace.md) — workspace selection, scanning, settings, and workspace-scoped filesystem rules.
+- [`docs/ui-components.md`](docs/ui-components.md) — shared UI component conventions.
 - [`docs/context-system.md`](docs/context-system.md) — workspace knowledge base: raw backfill, body extraction (Ollama), entity extraction, entity curation (Claude). The full pipeline that produces `{workspace}/context/*.md`. Read this before touching anything in `server/lib/entity-*.ts`, `server/lib/body-extractor.ts`, `server/lib/curation-session.ts`, or `server/routes/backfill.ts`.
 - [`docs/plugin-system.md`](docs/plugin-system.md) — plugin interface, loading, REST routes, components, sidebar. Has a Context System Hooks section covering `itemToContext` / `extractEntities` / `backfillDir`.
 - [`docs/integrations.md`](docs/integrations.md) — credentials, OAuth, env vars.
