@@ -18,6 +18,7 @@ import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { WsStreamProvider } from "@/hooks/use-ws-stream"
 
 const IntegrationsPage = lazy(() =>
   import("@/components/settings/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })),
@@ -150,17 +151,19 @@ function TabContainer() {
 
 function AuthenticatedApp() {
   return (
-    <NavigationProvider>
-      <SidebarProvider>
-        <LiquidGlassFilter />
-        <AppSidebar />
-        <SidebarInset className="max-h-svh">
-          <div className="flex flex-1 h-full">
-            <TabContainer />
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </NavigationProvider>
+    <WsStreamProvider>
+      <NavigationProvider>
+        <SidebarProvider>
+          <LiquidGlassFilter />
+          <AppSidebar />
+          <SidebarInset className="max-h-svh">
+            <div className="flex flex-1 h-full">
+              <TabContainer />
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
+      </NavigationProvider>
+    </WsStreamProvider>
   )
 }
 

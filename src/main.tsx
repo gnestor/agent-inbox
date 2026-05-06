@@ -6,7 +6,6 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
 import { get, set, del } from "idb-keyval"
 import { queryClient } from "@/lib/queryClient"
-import { WsStreamProvider } from "@/hooks/use-ws-stream"
 import { App } from "./App"
 import "./index.css"
 
@@ -67,9 +66,7 @@ createRoot(document.getElementById("root")!).render(
             },
           }}
         >
-          <WsStreamProvider>
-            <App />
-          </WsStreamProvider>
+          <App />
         </PersistQueryClientProvider>
       </ThemeProvider>
     </BrowserRouter>
