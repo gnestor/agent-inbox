@@ -8,14 +8,12 @@ This file is the entry point for the living-spec system at `openspec/specs/`. Ev
 - **`openspec/specs/<domain>/spec.md`** — one folder per domain. Each spec has fixed sections: `Purpose`, `Context`, `Requirements`, `Technical Notes`, `History`.
 - **`openspec/changes/<change-name>/`** *(future, not yet populated)* — staging area for in-flight proposals. Approved changes merge into the relevant `specs/<domain>/spec.md` and the change folder is archived.
 
-The standalone `docs/` folder remains the project's general engineering documentation (architecture overview, governance, CI tiers, coverage map). Specs in `openspec/specs/` are narrower and stricter — they are contracts; the `docs/` files are guides.
+Project-wide working conventions (run/test/commit, React patterns, completion checklist) live in [`../CLAUDE.md`](../CLAUDE.md). Specs are contracts; CLAUDE.md is how-we-work.
 
 ## Principles
 
-These mirror and tighten the principles already declared in [`docs/architecture.md`](../docs/architecture.md). Every spec in this tree is written assuming them.
-
 1. **Spec first.** Behavior, architecture, data contracts, UI flow, and verification expectations are written into the spec before the code changes that affect them.
-2. **Code reality, not historical docs.** When writing a new spec for an existing subsystem, read the code first. Older `docs/` notes are a source of leads, not truth — the spec must match what runs.
+2. **Code reality, not stale memory.** When writing a new spec for an existing subsystem, read the code first. The spec must match what runs.
 3. **Sections are fixed, not free-form.** `Purpose / Context / Requirements / Technical Notes / History`. Requirements are headed scenarios in **WHEN / THEN / AND / WHY** form. The heading text *is* the reference key — there are no `REQ-N` IDs.
 4. **Why over what.** `Context` and `**Why:**` lines exist to record load-bearing reasons. A spec that only restates what the code does adds zero value; a spec that records *why* a particular shape was chosen prevents the next agent from re-litigating it.
 5. **One owning domain per file.** Every source file has exactly one owning spec. Shared utilities are owned by app shell, UI, API, or verification specs. Multi-owner files are a smell — split them.
@@ -59,7 +57,6 @@ Specs not yet written (planned, in roughly the order they will be added):
 - `api-client` — typed API client, error handling, query keys
 - `user-and-types` — top-level user types, shared frontend type definitions
 
-Each planned spec replaces or supersedes the corresponding `docs/*.md` (where one exists) as the contract — the `docs/` file may stay as a guide but the spec is what governs.
 
 ## Spec template
 
@@ -96,7 +93,7 @@ Bullet list of load-bearing decisions, prior incidents, and migrations that shap
 
 ## Authoring rules
 
-- **Read the code first.** Pull the actual file paths and line numbers into the Technical Notes table from `git ls-files` and direct reads, not from the older `docs/` content.
+- **Read the code first.** Pull the actual file paths and line numbers into the Technical Notes table from `git ls-files` and direct reads.
 - **Keep scenarios observable.** WHEN/THEN should describe inputs and outputs at a layer the spec's owning domain controls — not inner implementation details.
 - **Annotate the load-bearing decisions with `WHY`.** A scenario without WHY is fine when the behavior is mechanical (e.g. "returns rowCount"); a scenario with surprising behavior or a defensive check needs WHY or a future agent will revert it.
 - **No REQ-N IDs.** Heading text is the reference key. If a requirement needs to be cross-referenced, link to the heading anchor.
@@ -105,12 +102,7 @@ Bullet list of load-bearing decisions, prior incidents, and migrations that shap
 
 ## Verification
 
-`npm run docs:coverage` runs two checks:
-
-1. The legacy `docs/documentation-coverage.md` ownership map — every tracked file must be claimed by some doc. This is the build-failing check.
-2. The OpenSpec walker — globs `openspec/specs/**/spec.md`, parses Technical Notes link targets, and reports orphans (source files no spec references) and multi-owner files (split-domain smell). During the spec sweep these are warnings; once every domain has a spec the orphan check graduates to a hard failure.
-
-Stale references — a Technical Notes link pointing at a path that no longer exists — always fail the build. Update the spec in the same commit that moves or deletes the code.
+`npm run docs:coverage` runs the OpenSpec walker: globs `openspec/specs/**/spec.md`, parses Technical Notes link targets, and reports orphans (source files no spec references), multi-owner files (split-domain smell), and stale references (links to paths that no longer exist). With `STRICT_ORPHANS=1` (set in the pre-commit hook), all three are hard failures. Update the owning spec in the same commit that moves or deletes the code.
 
 ## Change lifecycle
 

@@ -52,7 +52,7 @@ data/             # SQLite database (gitignored)
 
 After implementing any feature, fix, or refactor, complete this sequence in order before considering the task done:
 
-1. **Read/update the owning spec** — identify the owning domain in [`docs/documentation-coverage.md`](docs/documentation-coverage.md). If behavior, architecture, data contracts, UI flow, or verification expectations change, update the spec before implementation. Specs must keep separate `Context`, `Spec`, and `History` sections.
+1. **Read/update the owning spec** — identify the owning domain in [`openspec/specs/`](openspec/specs/). The Technical Notes table of each spec is the ownership map (enforced by `npm run docs:coverage`). If behavior, architecture, data contracts, UI flow, or verification expectations change, update the spec before implementation. Specs must keep separate `Purpose`, `Context`, `Spec`, `Technical Notes`, and `History` sections.
 
 2. **Write tests** — every change needs tests. Write them before or alongside the implementation:
    - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts`
@@ -61,7 +61,7 @@ After implementing any feature, fix, or refactor, complete this sequence in orde
 
 3. **Run tests** — `npm run test:ci` must pass (tsc + vitest). Fix failures before proceeding.
 
-4. **Run docs coverage** — `npm run docs:coverage` must pass. If a file was added or moved, update [`docs/documentation-coverage.md`](docs/documentation-coverage.md).
+4. **Run docs coverage** — `npm run docs:coverage` must pass. If a file was added or moved, update the owning spec's Technical Notes table.
 
 5. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
 
@@ -167,7 +167,7 @@ ln -sf "$(git rev-parse --show-toplevel)/packages/frontend" node_modules/@hammie
 - Import `cn()` from `@hammies/frontend/lib/utils`
 - No local `src/components/ui/` — use shared package
 - Server routes return JSON, errors use Hono's HTTPException
-- Session streaming uses a multiplexed WebSocket at `/api/ws` (one per browser tab, watches many sessions). Subscribe payload carries an optional per-session `fromSequence` cursor; the server replays from an in-memory buffer or sends `cursor_miss` to fall back to a REST snapshot. See [`docs/session-architecture.md`](docs/session-architecture.md).
+- Session streaming uses a multiplexed WebSocket at `/api/ws` (one per browser tab, watches many sessions). Subscribe payload carries an optional per-session `fromSequence` cursor; the server replays from an in-memory buffer or sends `cursor_miss` to fall back to a REST snapshot. See [`openspec/specs/session-streaming/spec.md`](openspec/specs/session-streaming/spec.md).
 
 ### Text sizes
 
@@ -184,22 +184,6 @@ Never use `text-base` or `text-lg` in panel UI — keep everything compact with 
 
 ## Documentation
 
-Start with [`docs/architecture.md`](docs/architecture.md). It indexes the domain specs and defines project-wide principles: spec-first changes, unidirectional dataflow, derived state over duplicated state, effects at the edges, explicit contracts, domain ownership, and fast checks first.
+Domain contracts live in [`openspec/specs/`](openspec/specs/) — one spec per domain, each with `Purpose`, `Context`, `Spec`, `Technical Notes`, and `History` sections. Start with [`openspec/architecture.md`](openspec/architecture.md) for the index and authoring conventions. Coverage is enforced by `npm run docs:coverage`.
 
-Governance and verification:
-
-- [`docs/engineering-governance.md`](docs/engineering-governance.md) — spec-first workflow, code organization rules, agent change safety, review standard.
-- [`docs/documentation-coverage.md`](docs/documentation-coverage.md) — ownership map for every tracked file; enforced by `npm run docs:coverage`.
-- [`docs/ci-and-verification.md`](docs/ci-and-verification.md) — local checklist, CI tiers, e2e policy, browser verification policy.
-
-Subsystem deep-dives in [`docs/`](docs/):
-
-- [`docs/api.md`](docs/api.md) — Hono API boundary, API client, database schema, migrations.
-- [`docs/workspace.md`](docs/workspace.md) — workspace selection, scanning, settings, and workspace-scoped filesystem rules.
-- [`docs/ui-components.md`](docs/ui-components.md) — shared UI component conventions.
-- [`docs/context-system.md`](docs/context-system.md) — workspace knowledge base: raw backfill, body extraction (Ollama), entity extraction, entity curation (Claude). The full pipeline that produces `{workspace}/context/*.md`. Read this before touching anything in `server/lib/entity-*.ts`, `server/lib/body-extractor.ts`, `server/lib/curation-session.ts`, or `server/routes/backfill.ts`.
-- [`docs/plugin-system.md`](docs/plugin-system.md) — plugin interface, loading, REST routes, components, sidebar. Has a Context System Hooks section covering `itemToContext` / `extractEntities` / `backfillDir`.
-- [`docs/integrations.md`](docs/integrations.md) — credentials, OAuth, env vars.
-- [`docs/session-architecture.md`](docs/session-architecture.md) — Agent SDK lifecycle, JSONL storage, streaming.
-- [`docs/caching-architecture.md`](docs/caching-architecture.md) — React Query + persistence + server-side `api_cache`.
-- [`docs/email-cleaner.md`](docs/email-cleaner.md), [`docs/rich-text-editor.md`](docs/rich-text-editor.md), [`docs/theming.md`](docs/theming.md), [`docs/user-preferences.md`](docs/user-preferences.md), [`docs/virtual-scrolling.md`](docs/virtual-scrolling.md), [`docs/spatial-grid-navigation.md`](docs/spatial-grid-navigation.md), [`docs/rendering-performance.md`](docs/rendering-performance.md), [`docs/custom-xml-and-rich-output.md`](docs/custom-xml-and-rich-output.md), [`docs/e2e-test-plan.md`](docs/e2e-test-plan.md).
+This file (CLAUDE.md) covers project-wide working conventions: how to run, test, commit, and verify. The specs cover what each domain does and why.
