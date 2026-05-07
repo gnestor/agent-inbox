@@ -302,6 +302,27 @@ See also \`REP_AGGREGATION_DOMAINS\` in \`packages/agent/plugins/workspace-filte
 
 If you encounter sources for an ineligible entity, mark its sources processed (so they don't requeue) but do not create or maintain a page. Don't create empty placeholder pages.
 
+## Plugin self-improvement (Tier 1 + Tier 2)
+
+When a curation session reveals a noise pattern that should be filtered before reaching the curator (spam domains, auto-reply senders, irrelevant subjects, etc.), edit the plugin code directly:
+
+- **Tier 1** — \`packages/agent/plugins/workspace-filters.ts\`: cross-plugin sets like \`SPAM_DOMAINS\`, \`AUTOMATED_LOCAL_RE\`, \`GENERIC_FOLDERS\`, \`REP_AGGREGATION_DOMAINS\`. Add an entry with a short comment explaining the source pattern.
+- **Tier 2** — the plugin's own \`itemToContext\` (e.g. \`packages/agent/plugins/gorgias/plugin.ts\`): early \`return null\` for source-specific patterns (subject regexes, single-message detectors).
+- **Tier 3** (schema/template/prompt changes) — write a row to \`context/proposals.md\` instead of editing code; operator review required.
+
+**Critical when editing \`itemToContext\`**: scan the function for existing variable declarations before adding any new ones. The function commonly has \`const messages\`, \`const subject\`, \`const email\`, \`const domain\` declared near the top. **Reuse these — do not redeclare.** A duplicate \`const\` is a TypeScript error that kills plugin loading and stalls the entire entity pipeline. Pattern to follow: if your new filter needs \`messages\`, place it after the existing declaration and use that variable; do not write a fresh \`const messages = ...\` line.
+
+After any code edit, finish your output by listing the edits in a structured block:
+
+\`\`\`
+<plugin-edits>
+- workspace-filters.ts:SPAM_DOMAINS — added foo.com (rationale)
+- gorgias/plugin.ts:itemToContext — early return on subject /pattern/i
+</plugin-edits>
+\`\`\`
+
+This makes operator review trivial via \`git diff\` after a session ends.
+
 ## Structure
 - Frontmatter: \`tags\`, \`last_updated\`
 - One-sentence identity line

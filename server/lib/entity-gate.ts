@@ -30,6 +30,11 @@ const OPAQUE_ID_PATTERNS: RegExp[] = [
   /^\d{6,}$/, // pure-numeric (5+ digits caught by isGenericFolder; 6+ catches more)
   /^[a-z]+:\/\//i, // raw URL
   /^#\d+$/, // ticket numbers like "#12345"
+  // Gmail-generated message-IDs that gmail's reply-threading parser misreads
+  // as email addresses. Local part is 30+ chars of base64-ish [a-zA-Z0-9_+]
+  // ending at @mail.gmail.com. Real human Gmail addresses have local parts
+  // <30 chars; these long ones are always parser artifacts.
+  /^[a-zA-Z0-9_+]{30,}@(?:mail\.)?gmail\.com$/i,
 ]
 
 const PERSONAL_EMAIL_DOMAINS = new Set([
@@ -140,6 +145,15 @@ export function gateEntity(
   // Single-character / very short values
   if (value.length < 2) {
     return { skip: true, reason: "value too short" }
+  }
+
+  // Person values that are non-email + single token (one word, no whitespace).
+  // These are typically Gorgias `customerName` first-only fragments ("wes",
+  // "doug", "kristin") or chat-handle-style truncations. Real curatable
+  // people have either an email address OR a multi-word name. Single tokens
+  // produce thin pages with no resolvable identity.
+  if (entityType === "person" && !value.includes("@") && !/\s/.test(value)) {
+    return { skip: true, reason: `single-token person name (${value})` }
   }
 
   return { skip: false }
