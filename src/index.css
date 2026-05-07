@@ -13,6 +13,14 @@ body {
   padding-top: env(safe-area-inset-top);
 }
 
+/* On mobile the active panel is full-bleed bg-card, so match the body bg
+   (visible in the safe-area strip and behind the sidebar sheet) to it. */
+@media (max-width: 767px) {
+  body {
+    background-color: var(--card);
+  }
+}
+
 :root {
   --primary: oklch(0.54 0.27 259.29 / 0.7);
   --secondary: oklch(1 0 0 / 0.05);
