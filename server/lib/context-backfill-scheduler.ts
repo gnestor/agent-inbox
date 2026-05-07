@@ -10,11 +10,15 @@
 
 import { resolve, join } from "path"
 import * as fs from "fs"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import { createLogger } from "./logger.js"
 import { getPlugins } from "./plugin-loader.js"
 import { runBackfill } from "../routes/backfill.js"
 import { queryOne, execute } from "../db/pool.js"
 import { runBackgroundCurationSession, cleanupStaleCurationLocks } from "./curation-session.js"
+
+const execFileAsync = promisify(execFile)
 
 const log = createLogger("context-backfill")
 
@@ -355,7 +359,8 @@ When A → B, also link B → A.
 5. Use the **brand/business name** as the page slug, not the domain (e.g. \`celeste-store.md\` not \`celestestore-be.md\`). The slug-from-domain default is only for unknown/anonymous entities; rename when the entity is identified.
 6. Only add information not already present — do not rewrite existing content. (The schema-drift audit in step 4 is the only exception, and it adds rather than rewrites.)
 7. Append each change to \`LOG.md\`: \`| YYYY-MM-DD | created/updated | filename.md | one-line summary |\`. Note schema-audit-only changes as \`updated (schema drift)\` so the source of the change is visible.
-8. Run \`qmd update && qmd embed\`.
+
+(The \`qmd\` index is refreshed by a server-side scheduler — sessions do not need to run \`qmd update\` or \`qmd embed\`.)
 
 ## Source-specific guidance for ${source}
 
@@ -373,6 +378,9 @@ ${fileList}
 
 /** Sweep interval for orphaned curation locks. */
 const STALE_LOCK_SWEEP_MS = 10 * 60 * 1000 // 10 minutes
+
+/** Interval for refreshing the qmd index (BM25 + vector embeddings). */
+const QMD_REFRESH_MS = 30 * 60 * 1000 // 30 minutes
 
 /**
  * Start the scheduled backfill interval and the stale-lock sweeper.
@@ -402,4 +410,42 @@ export function scheduleContextBackfill(
       .catch((err) => log.error("Stale lock sweep failed", { error: (err as Error).message }))
   }, STALE_LOCK_SWEEP_MS)
   lockSweep.unref()
+
+  // Periodically refresh the qmd index so curated pages and source stubs
+  // are searchable from agent sessions. Without this, downstream skills
+  // like context-manager / process-ticket / process-message see stale
+  // (or empty) qmd results — exactly what surfaced after the drain run
+  // when the curator's prompt-based `qmd update && qmd embed` instruction
+  // turned out to be unreliable.
+  const qmdRefresh = setInterval(() => {
+    refreshQmd().catch((err) => log.error("qmd refresh failed", { error: (err as Error).message }))
+  }, QMD_REFRESH_MS)
+  qmdRefresh.unref()
+  // Kick off an initial refresh ~30s after startup so the index is fresh
+  // without slowing boot.
+  setTimeout(() => {
+    refreshQmd().catch((err) => log.error("initial qmd refresh failed", { error: (err as Error).message }))
+  }, 30_000).unref()
+}
+
+/**
+ * Run `qmd update && qmd embed` for the workspace's collection. New files
+ * appear in BM25 search after `update`; vector search needs `embed` too.
+ */
+async function refreshQmd(): Promise<void> {
+  try {
+    const { stdout: updateOut } = await execFileAsync("qmd", ["update"], { encoding: "utf8" })
+    const summary = updateOut.split("\n").find((l) => l.includes("Indexed:")) ?? ""
+    if (summary) log.info("qmd update", { summary: summary.trim() })
+  } catch (err) {
+    log.error("qmd update failed", { error: (err as Error).message })
+    return
+  }
+  try {
+    // Embed runs incrementally — only files with new hashes get vectorized.
+    await execFileAsync("qmd", ["embed"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
+    log.info("qmd embed complete")
+  } catch (err) {
+    log.error("qmd embed failed", { error: (err as Error).message })
+  }
 }
