@@ -182,8 +182,10 @@ Use these consistently across all UI:
 
 Never use `text-base` or `text-lg` in panel UI — keep everything compact with `text-sm`/`text-xs`.
 
-## Documentation
+## Spec-driven development
 
-Domain contracts live in [`openspec/specs/`](openspec/specs/) — one spec per domain, each with `Purpose`, `Context`, `Spec`, `Technical Notes`, and `History` sections. Start with [`openspec/architecture.md`](openspec/architecture.md) for the index and authoring conventions. Coverage is enforced by `npm run docs:coverage`.
+Domain contracts live in [`openspec/specs/`](openspec/specs/) — start with [`openspec/architecture.md`](openspec/architecture.md) for the inbox-specific domain map. Coverage is enforced by `npm run docs:coverage`.
 
-This file (CLAUDE.md) covers project-wide working conventions: how to run, test, commit, and verify. The specs cover what each domain does and why.
+The everyday workflow, ownership rules, and spec template are documented once at [../../OPENSPEC.md](../../OPENSPEC.md). Read it before adding or modifying a domain spec.
+
+This file (CLAUDE.md) covers project-wide working conventions: how to run, test, commit, and verify.

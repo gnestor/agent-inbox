@@ -1,4 +1,4 @@
 #!/bin/sh
 # OpenSpec coverage check — fail fast if any spec references a missing path.
 # Set STRICT_ORPHANS=1 in the environment to also fail on uncovered source files.
-STRICT_ORPHANS=1 node scripts/check-docs-coverage.mjs || exit 1
+STRICT_ORPHANS=1 node ../../scripts/check-docs-coverage.mjs || exit 1
