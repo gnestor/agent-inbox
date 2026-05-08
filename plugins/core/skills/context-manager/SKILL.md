@@ -59,6 +59,20 @@ If qmd returns low-confidence matches, also try exact match:
 grep -ri "<domain or email>" context/*.md -l
 ```
 
+### Query rewrite — strip TLDs from domains (BM25 only)
+
+qmd's BM25 tokenizer has a measured failure mode: multi-token queries are AND-ish, and the bare `.com`/`.co`/etc. token never matches any indexed doc. So `qmd search "adelinaamare.com"` returns ZERO hits even though the entity page literally contains that string, while `qmd search "adelinaamare"` returns it at score 95%.
+
+**Before any `qmd search` (BM25) call, strip the TLD off any domain in the query.** Replace `\b([a-z0-9-]+)\.([a-z]{2,})\b` (case-insensitive) with the first capture group:
+
+```
+"Adelina Amare (adelinaamare.com)"  →  "Adelina Amare (adelinaamare)"
+"Backcountry.com"                    →  "Backcountry"
+"foo.co"                             →  "foo"
+```
+
+Validated against a 607-query benchmark (`packages/optimizer/src/optimizer/retrieval_bench.py`): MRR +9.8pp (0.485 → 0.583), Recall +3.9pp (0.213 → 0.252) vs. identity. The rewrite is unnecessary for `qmd vsearch` / `qmd query` (vector + hybrid handle domains via embeddings) but applying it anyway is safe.
+
 ### Fetching from original data sources
 
 When qmd results reference raw source files but you need fresher or more complete data, fetch from the original source:
@@ -129,7 +143,7 @@ $NOTION notion-to-md --page-id <page-id>
 $NOTION create-database-page --database-id <db-id> --title "Title" --content "<markdown>"
 
 # qmd (knowledge index — covers all of context/)
-qmd search "<keyword>" -c hammies-context    # BM25 keyword search (fast, exact terms)
+qmd search "<keyword>" -c hammies-context    # BM25 keyword search (fast, exact terms — strip TLDs first, see Query rewrite above)
 qmd vsearch "<query>" -c hammies-context     # vector similarity search
 qmd query "<question>" -c hammies-context    # full hybrid: expansion + BM25 + vector + reranking (best quality)
 qmd update                                   # re-index after adding files
