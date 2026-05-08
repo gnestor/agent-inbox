@@ -182,6 +182,33 @@ describe("session store — recovery lifecycle", () => {
     expect(store.beginSnapshot("s9", "snapshot-failed")).toBe(true)
   })
 
+  it("server-supplied latestSequence advances the cursor past sparse message sequences", () => {
+    // Regression: the JSONL transcript can have sparse `sequence` values
+    // (skipped system/summary lines, thinking-block fractional offsets,
+    // subagent renumbering) so messageIds[last] lags behind the live
+    // broadcaster's counter, which starts at jsonlLines.length on resume.
+    // Without this fix every WS event after resume classified as "recover"
+    // and triggered a snapshot-fetch storm.
+    const store = useSessionStore.getState()
+    store.beginSnapshot("s-sparse", "bootstrap")
+    store.applySnapshot("s-sparse", {
+      session: makeSession("s-sparse"),
+      // messages with sparse sequences — last visible is 5
+      messages: [makeMsg(0, "user"), makeMsg(2, "assistant"), makeMsg(5, "assistant")],
+      // server says jsonl is 10 lines long → next live event will be seq 10
+      latestSequence: 9,
+    })
+    // Live event arrives at seq 10 — must classify as "apply", not "recover"
+    store.ingestEvent("s-sparse", {
+      sequence: 10,
+      message: { type: "assistant", content: [] },
+    })
+    const slice = useSessionStore.getState().sessions["s-sparse"]!
+    expect(slice.recovery.pendingReplay).toBe(false)
+    expect(slice.recovery.latestSequence).toBe(10)
+    expect(slice.messageIds).toContain(10)
+  })
+
   it("deferredEvents is bounded at MAX_DEFERRED_EVENTS; oldest drops on overflow", () => {
     const store = useSessionStore.getState()
     // No bootstrap — all message events get deferred.

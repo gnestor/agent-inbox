@@ -50,6 +50,13 @@ export interface SessionSlice extends BaseSessionSlice {
 export interface SnapshotPayload {
   session: Session
   messages: SessionMessage[]
+  /** Recovery cursor from the server. Equals the count of JSONL lines minus
+   *  one — the live broadcaster's `sequence` counter starts at line-count on
+   *  resume, so this aligns the coordinator's `latestSequence` with the next
+   *  WS event's `sequence`. Required to avoid a snapshot/recover loop when
+   *  transcript message sequences are sparse (system/summary lines skipped,
+   *  thinking-block fractional offsets, subagent renumbering). */
+  latestSequence?: number
 }
 
 interface SessionStoreState {
@@ -190,10 +197,15 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     const prevSlice = s0.sessions[sessionId]
     const baseNext = reduceSnapshot(prevSlice, snapshot)
 
-    // Highest sequence in the snapshot.
-    const snapshotHigh = baseNext.messageIds.length > 0
+    // Highest sequence covered by the snapshot. Prefer the server-supplied
+    // `latestSequence` cursor — message sequences can be sparse (skipped JSONL
+    // lines, thinking fractionals, subagent renumbering) so trusting
+    // `messageIds[last]` would leave us perpetually behind the live
+    // broadcaster's counter and trigger recover-loops on every event.
+    const messageHigh = baseNext.messageIds.length > 0
       ? baseNext.messageIds[baseNext.messageIds.length - 1]!
       : 0
+    const snapshotHigh = Math.max(messageHigh, snapshot.latestSequence ?? 0)
     coord.completeSnapshotRecovery(snapshotHigh)
 
     // Flush any deferred events through reduceEvent. Events whose sequence is

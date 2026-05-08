@@ -215,6 +215,8 @@ sessionRoutes.get("/:id", async (c) => {
       sessions.updateSessionStatus(session.id, "complete").catch((err) => log.warn("Failed to update stale session status", { sessionId: session.id, error: String(err) }))
     }
 
+    const wsPathForSeq = c.get("workspace")?.path || sessions.getWorkspacePath()
+    const lineCount = sessions.getSessionJsonlLineCount(session.id, wsPathForSeq)
     return c.json({
       session: {
         id: session.id,
@@ -227,10 +229,17 @@ sessionRoutes.get("/:id", async (c) => {
         linkedSourceType: session.linked_source_type || null,
         linkedSourceId: session.linked_source_id || null,
         triggerSource: session.trigger_source,
-        project: sessions.projectLabel(c.get("workspace")?.path || sessions.getWorkspacePath()),
+        project: sessions.projectLabel(wsPathForSeq),
         hasActiveProcess: sessions.isSessionRunning(session.id),
       },
       messages,
+      // Recovery cursor — equals `jsonlLines.length - 1`, which the live
+      // broadcaster's counter aligns to (it starts at `jsonlLines.length` on
+      // resume). The client uses this so coordinator.latestSequence matches the
+      // server's next-broadcast sequence even when the transcript's `sequence`
+      // values are sparse (system/summary lines skipped, thinking-block
+      // fractional offsets, subagent renumbering).
+      latestSequence: Math.max(0, lineCount - 1),
     })
   }
 
@@ -246,6 +255,10 @@ sessionRoutes.get("/:id", async (c) => {
   const prompt = agentSession.firstPrompt || ""
   const transcript = withInitialUserPrompt(sdkTranscript, sessionId, prompt, new Date(agentSession.lastModified).toISOString())
 
+  const fallbackLineCount = sessions.getSessionJsonlLineCount(
+    agentSession.sessionId,
+    agentSession.cwd,
+  )
   return c.json({
     session: {
       id: agentSession.sessionId,
@@ -260,6 +273,7 @@ sessionRoutes.get("/:id", async (c) => {
       triggerSource: "manual",
     },
     messages: transcript,
+    latestSequence: Math.max(0, fallbackLineCount - 1),
   })
 })
 

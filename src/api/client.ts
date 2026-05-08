@@ -66,6 +66,7 @@ export async function getSession(sessionId: string) {
   return request<{
     session: import("@/types").Session
     messages: import("@/types").SessionMessage[]
+    latestSequence?: number
   }>(`/sessions/${sessionId}`)
 }
 

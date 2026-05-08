@@ -13,6 +13,7 @@ const mockListSessionRecords = vi.fn()
 const mockGetSessionRecord = vi.fn()
 const mockFindAgentSession = vi.fn()
 const mockGetAgentSessionTranscript = vi.fn()
+const mockGetSessionJsonlLineCount = vi.fn((..._args: unknown[]) => 0)
 const mockIsSessionRunning = vi.fn()
 const mockUpdateSessionStatus = vi.fn()
 const mockUpdateSessionSummary = vi.fn()
@@ -40,6 +41,7 @@ vi.mock("../../lib/session-manager.js", () => ({
   getSessionRecord: (...args: unknown[]) => mockGetSessionRecord(...args),
   findAgentSession: (...args: unknown[]) => mockFindAgentSession(...args),
   getAgentSessionTranscript: (...args: unknown[]) => mockGetAgentSessionTranscript(...args),
+  getSessionJsonlLineCount: (...args: unknown[]) => mockGetSessionJsonlLineCount(...args),
   isSessionRunning: (...args: unknown[]) => mockIsSessionRunning(...args),
   updateSessionStatus: (...args: unknown[]) => mockUpdateSessionStatus(...args),
   updateSessionSummary: (...args: unknown[]) => mockUpdateSessionSummary(...args),

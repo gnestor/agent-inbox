@@ -796,6 +796,22 @@ export function collectPendingAttachments(
   return pending
 }
 
+/** Number of JSONL lines for a session, or 0 if the file is unreadable.
+ *  Used as the recovery-cursor source of truth: the live broadcast counter
+ *  starts at this value on resume, so `latestSequence = lines - 1` is what
+ *  the snapshot endpoint must report so the next live event satisfies
+ *  `sequence === latestSequence + 1` on the client recovery coordinator. */
+export function getSessionJsonlLineCount(sessionId: string, cwd?: string): number {
+  try {
+    const filePath = sessionJsonlPath(sessionId, cwd)
+    const content = fs.readFileSync(filePath, "utf-8")
+    if (content.length === 0) return 0
+    return content.trim().split("\n").length
+  } catch {
+    return 0
+  }
+}
+
 /** Read a session's JSONL as a line array. Returns [] if the file is
  *  unreadable (missing, permission denied, etc.). */
 function readSessionJsonlLines(filePath: string): string[] {

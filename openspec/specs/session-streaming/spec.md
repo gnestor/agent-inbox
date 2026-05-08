@@ -18,7 +18,9 @@ The Agent SDK already writes every event to a per-session JSONL file at `~/.clau
 The combination of StrictMode double-invocation, multi-tab usage, mid-stream gaps, and reconnect storms produced cycles of subtle bugs (snapshot-in-flight tokens leaking, events deferred forever, sequences applied out of order). Pulling the classification logic into a pure state machine (`session-recovery.ts`) — separate from the Zustand store, separate from React, separately testable — was the only structure that survived a chaos test. The store and reducers are pure functions over the slice; the coordinator is the only thing that decides whether to apply, defer, ignore, or recover.
 
 ### Sequence numbers
-Sequences are dense, monotonic, and assigned by the server. They correspond 1:1 to lines in the JSONL file (line index = sequence). This means a snapshot built from JSONL gives the client a `latestSequence` it can use as the next subscribe cursor without any reconciliation logic.
+Sequences are monotonic and assigned by the server. The live broadcaster's counter is the source of truth: it starts at `0` for new sessions and at `jsonlLines.length` on resume, so the next event's `sequence` always equals `prior + 1`.
+
+Per-message `sequence` values inside the REST snapshot's `messages` array can be **sparse** — non-display JSONL lines (`system`, `summary`) are filtered out, thinking blocks use fractional offsets (`lineIdx + (ti+1) * 0.001`) so the UI can render them on their own lines, and subagent merging may renumber. The snapshot response therefore carries an explicit `latestSequence` field — equal to `jsonlLines.length - 1` — that the client uses as the recovery cursor. Trusting `messageIds[last]` instead would leave the coordinator's `latestSequence` below what the broadcaster will emit and trigger a snapshot/recover loop on every live event.
 
 ## Requirements
 
@@ -59,7 +61,13 @@ Sequences are dense, monotonic, and assigned by the server. They correspond 1:1 
 
 #### Scenario: Sequenced message events carry sequence + message
 - **WHEN** the agent yields a transcript message
-- **THEN** the server MUST broadcast `{ type: "session_event", sessionId, data: { sequence, message } }` where `sequence` is dense and monotonically increasing per session.
+- **THEN** the server MUST broadcast `{ type: "session_event", sessionId, data: { sequence, message } }` where `sequence` is monotonically increasing per session and equal to the prior broadcast's sequence + 1.
+
+#### Scenario: REST snapshot carries an explicit latestSequence cursor
+- **WHEN** the client fetches `GET /api/sessions/:id`
+- **THEN** the response MUST include a `latestSequence: number` field equal to `max(0, jsonlLines.length - 1)` for that session.
+- **AND** the client MUST use this value (taking the max with `messageIds[last]`) as the coordinator's `latestSequence`, not the highest per-message `sequence` in the `messages` array.
+- **WHY** Per-message sequences in the snapshot are sparse — non-display JSONL lines are filtered, thinking blocks use fractional offsets, subagents are renumbered. Without the explicit cursor, the coordinator's `latestSequence` lags the live broadcaster's counter and every post-resume event classifies as `recover`, producing an infinite snapshot-fetch loop.
 
 #### Scenario: Lifecycle events have no sequence
 - **WHEN** the server broadcasts a lifecycle transition (`session_complete`, `session_error`, `ask_user_question`, `presence`)
@@ -177,6 +185,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 | Server exposes a single WebSocket endpoint | ``server/index.ts:30`` — imports; `server/index.ts:314-327` — message dispatch |
 | Subscribe handshake supports per-session cursors | `server/index.ts:314-325`; cursor handling delegates to ``server/lib/session-manager.ts`` `wsSubscribe` |
 | Wire format (sequenced events) | ``server/lib/session-manager.ts`` `broadcastToSession` |
+| REST snapshot carries latestSequence cursor | ``server/lib/session-manager.ts`` `getSessionJsonlLineCount`; ``server/routes/sessions.ts`` GET `/:id` |
 | Wire format (lifecycle events not buffered) | `server/lib/session-manager.ts:588-592` — buffer comment |
 | Broadcast buffer cap = 500 | ``server/lib/session-manager.ts:592`` — `BROADCAST_BUFFER_CAPACITY` |
 | Buffer dropped on terminal status | ``server/lib/session-manager.ts`` — search for buffer-drop on status transition |
@@ -195,6 +204,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 | Snapshot begin → (complete \| fail) protocol | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `beginSnapshotRecovery`, `completeSnapshotRecovery`, `failSnapshotRecovery` |
 | Bounded deferred events (cap = 500) | [`src/stores/session-store.ts:22`](../../../src/stores/session-store.ts#L22), [`:134-147`](../../../src/stores/session-store.ts#L134-L147) |
 | Per-session orchestration hook | [`src/hooks/use-session-transcript.ts`](../../../src/hooks/use-session-transcript.ts) |
+| applySnapshot uses server-supplied latestSequence cursor | [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `applySnapshot` `snapshotHigh` computation |
 | WebSocket connection store (single source of truth for UI connectivity) | [`src/stores/ws-connection-store.ts`](../../../src/stores/ws-connection-store.ts) |
 
 ### Tests
@@ -213,4 +223,5 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 
 | Date | Commit | Change |
 |------|--------|--------|
+| 2026-05-08 | _pending_ | Add explicit `latestSequence` cursor to the REST snapshot. Per-message `sequence` values can be sparse (filtered JSONL lines, thinking fractionals, subagent renumbering) so trusting `messageIds[last]` left the client coordinator behind the live broadcaster's counter, causing every post-resume event to classify as `recover` and producing an infinite snapshot-fetch loop. Server now reports `jsonlLines.length - 1`; client takes `max(messageIds[last], latestSequence)` in `applySnapshot`. |
 | 2026-05-05 | _pending_ | Initial OpenSpec port — narrowed scope from `docs/session-architecture.md` to streaming protocol + recovery contract only. Other concerns (session lifecycle, optimistic prompts, transcript rendering) deferred to their own specs. Constants verified against code: `BROADCAST_BUFFER_CAPACITY=500`, `PING_INTERVAL_MS=20_000`, `ALIVE_TIMEOUT_MS=45_000`, `MAX_DEFERRED_EVENTS=500`. No behavior change. |
