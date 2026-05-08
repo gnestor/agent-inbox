@@ -10,7 +10,7 @@ Authenticate users with Google Sign-In, persist a server-side session in Postgre
 The browser does the full Google Sign-In dance (GIS button, popup, consent) and posts the resulting **ID token** to `/api/auth/callback`. The server verifies the token by calling `oauth2.googleapis.com/tokeninfo` — no client secret, no redirect URI bookkeeping, no PKCE state to manage on the server. Google's hosted endpoint validates the JWT signature and freshness for us; we only check the `aud` claim against `GOOGLE_CLIENT_ID`.
 
 ### Why opaque cookie tokens, not signed JWTs
-The session token is 32 random bytes, hex-encoded, stored in `auth_sessions(token PRIMARY KEY)`. This means logout is instant (DELETE) and there is no signing key to rotate. The trade-off is one Postgres `SELECT` per authenticated request — acceptable because every request already touches the DB for workspace resolution.
+The session token is 32 random bytes, hex-encoded, stored in `auth_sessions(token PRIMARY KEY)`. This means logout is instant (DELETE) and there is no signing key to rotate. The trade-off is one Postgres `SELECT` per authenticated request — acceptable because every request already touches the DB for [workspace](../workspace/spec.md) resolution.
 
 ### Two layers of CSRF defense
 - **SameSite=Lax** on the session cookie (set by `setCookie` in the callback route).

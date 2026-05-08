@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide a per-user key/value store for client-side UI preferences (panel layouts, toggle states, theme choice, sidebar collapse). Values are JSON-encoded scalars or objects; keys are opaque strings owned by their consuming feature. Every preference is scoped to the authenticated user — no global defaults table, no per-workspace override.
+Provide a per-user key/value store for client-side UI preferences (panel layouts, toggle states, theme choice, sidebar collapse). Values are JSON-encoded scalars or objects; keys are opaque strings owned by their consuming feature. Every preference is scoped to the authenticated user — no global defaults table, no per-[workspace](../workspace/spec.md) override.
 
 ## Context
 

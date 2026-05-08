@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide the inbox's visual surface: Tailwind v4 entry stylesheet, OKLCH design tokens, dark/light variants, scrollbar conventions, PWA manifest, and integration brand-icon assets. The frontend package (`@hammies/frontend`) supplies the base shadcn theme; this package's `src/index.css` is the consumer-side override layer plus PWA wiring.
+Provide the inbox's visual surface: Tailwind v4 entry stylesheet, OKLCH design tokens, dark/light variants, scrollbar conventions, PWA manifest, and [integration](../integrations/spec.md) brand-icon assets. The frontend package (`@hammies/frontend`) supplies the base shadcn theme; this package's `src/index.css` is the consumer-side override layer plus PWA wiring.
 
 ## Context
 

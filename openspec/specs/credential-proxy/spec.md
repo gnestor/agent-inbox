@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A localhost MITM HTTPS proxy that lets agent subprocesses make authenticated calls to third-party APIs (Notion, GitHub, Slack, Google, Shopify, Klaviyo, Meta, etc.) without ever seeing user credentials. The proxy authenticates the agent by a session token carried in `Proxy-Authorization`, looks up the matching credential from the vault, and rewrites the request — Bearer header, custom header, Basic auth, or query param — based on a per-integration policy. Agent subprocesses opt in by inheriting `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, and a `NODE_OPTIONS --import` preload that wires `undici`'s global dispatcher.
+A localhost MITM HTTPS proxy that lets agent subprocesses make authenticated calls to third-party APIs (Notion, GitHub, Slack, Google, Shopify, Klaviyo, Meta, etc.) without ever seeing user credentials. The proxy authenticates the agent by a session token carried in `Proxy-Authorization`, looks up the matching credential from the vault, and rewrites the request — Bearer header, custom header, Basic auth, or query param — based on a per-[integration](../integrations/spec.md) policy. Agent subprocesses opt in by inheriting `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, and a `NODE_OPTIONS --import` preload that wires `undici`'s global dispatcher.
 
 ## Context
 

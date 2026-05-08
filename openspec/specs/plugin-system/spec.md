@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Discovery, loading, registry, and HTTP/component plumbing for inbox plugins. A plugin is a TypeScript/JS module exporting a `Plugin` (or `Plugin[]`) default — a `query`/`mutate`/`itemToContext`/`extractEntities`-shaped object plus optional `fieldSchema`, `detailSchema`, and `components/` directory. The loader merges built-in plugins (`packages/inbox/plugins/*`) with workspace plugins (`{workspace}/plugins/*/plugin.ts` and the legacy `{workspace}/inbox-plugins/*.ts`), exposes them via `getPlugins(workspaceId)`, auto-mounts REST routes at `/api/:pluginId/*`, hot-reloads on file changes, and serves plugin React components as ES modules transformed by esbuild and embedded in sandboxed iframes.
+Discovery, loading, registry, and HTTP/component plumbing for inbox plugins. A plugin is a TypeScript/JS module exporting a `Plugin` (or `Plugin[]`) default — a `query`/`mutate`/`itemToContext`/`extractEntities`-shaped object plus optional `fieldSchema`, `detailSchema`, and `components/` directory. The loader merges built-in plugins (`packages/inbox/plugins/*`) with [workspace](../workspace/spec.md) plugins (`{workspace}/plugins/*/plugin.ts` and the legacy `{workspace}/inbox-plugins/*.ts`), exposes them via `getPlugins(workspaceId)`, auto-mounts REST routes at `/api/:pluginId/*`, hot-reloads on file changes, and serves plugin React components as ES modules transformed by esbuild and embedded in sandboxed iframes.
 
 ## Context
 

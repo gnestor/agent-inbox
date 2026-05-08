@@ -2,12 +2,12 @@
 
 ## Purpose
 
-A single behavioural-instruction string (`SESSION_INSTRUCTIONS`) appended to the system prompt of every inbox-driven agent session. This is the inbox app's CLAUDE.md equivalent — it teaches the agent how to behave inside the inbox UI: trust the credential proxy, fetch full source data before responding, emit one `render_output` per artifact, update by re-titling, choose the right output format, and ask questions through `AskUserQuestion` instead of plain text.
+A single behavioural-instruction string (`SESSION_INSTRUCTIONS`) appended to the system prompt of every inbox-driven agent session. This is the inbox app's CLAUDE.md equivalent — it teaches the agent how to behave inside the inbox UI: trust the [credential proxy](../credential-proxy/spec.md), fetch full source data before responding, emit one `render_output` per artifact, update by re-titling, choose the right output format, and ask questions through `AskUserQuestion` instead of plain text.
 
 ## Context
 
 ### Why a static string, not a templated builder
-The instructions are app-wide, not session-specific. Per-session content (file manifest, source context) is concatenated alongside this string by the session manager (`[SESSION_INSTRUCTIONS, context].filter(Boolean).join("\n\n")`). Keeping this slice as a `const` in its own module makes it diffable in PRs, easy to A/B test, and impossible to accidentally parameterise into a multi-shape mess.
+The instructions are app-wide, not session-specific. Per-session content (file manifest, source context) is concatenated alongside this string by the [session manager](../session-manager/spec.md) (`[SESSION_INSTRUCTIONS, context].filter(Boolean).join("\n\n")`). Keeping this slice as a `const` in its own module makes it diffable in PRs, easy to A/B test, and impossible to accidentally parameterise into a multi-shape mess.
 
 ### Why these specific six instructions
 Each rule maps to a class of failure observed in production:

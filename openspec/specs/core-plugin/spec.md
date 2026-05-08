@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The built-in `core` plugin — a skills-only plugin (`hasSkills: true`, no `query`, no `fieldSchema`) that bundles three foundational Claude skills into every workspace: `plugin-creator` (creates new workspace plugins), `render-output` (output-rendering guidance for `create_file`/`present_files` and `render_output`), and `context-manager` (manages the workspace context index). Because the plugin has no `fieldSchema`, it doesn't appear as a sidebar tab — its only contribution is the `skills/` directory the Claude Agent SDK auto-discovers when sessions launch.
+The built-in `core` plugin — a skills-only plugin (`hasSkills: true`, no `query`, no `fieldSchema`) that bundles three foundational Claude skills into every [workspace](../workspace/spec.md): `plugin-creator` (creates new workspace plugins), `render-output` (output-rendering guidance for `create_file`/`present_files` and `render_output`), and `context-manager` (manages the workspace context index). Because the plugin has no `fieldSchema`, it doesn't appear as a sidebar tab — its only contribution is the `skills/` directory the Claude Agent SDK auto-discovers when sessions launch.
 
 ## Context
 
@@ -20,10 +20,10 @@ Skills-only plugins should not appear as data tabs. The `GET /api/plugins` route
 Bundling them as separate skill files lets the SDK activate each only when its description matches the user's request — narrowing the agent's instruction context to what's relevant.
 
 ### Why `render-output` is preferred over inline markdown
-The skill explicitly directs the agent to choose `create_file` + `present_files` for React artifacts (interactive UIs, dashboards, forms) and `render_output` for structured data. This pairs with the `session-instructions` rule "one `render_output` per artifact" and the `artifacts-and-render-tools` panel-per-output UI: the skill teaches HOW, the session instructions teach WHEN.
+The skill explicitly directs the agent to choose `create_file` + `present_files` for React artifacts (interactive UIs, dashboards, forms) and `render_output` for structured data. This pairs with the `session-instructions` rule "one `render_output` per artifact" and the `artifacts-and-render-tools` panel-per-output UI: the skill teaches HOW, the [session instructions](../session-instructions/spec.md) teach WHEN.
 
 ### Why `plugin-creator` references existing Claude Code skills
-The first step in plugin creation is `ls skills/*/SKILL.md` — many integrations already have a Claude Code skill (Gorgias, Slack, etc.) with a working API client. Translating skill commands into `Plugin` methods reuses the auth + API patterns already debugged. This shortens the plugin-creation loop from "research the API" to "wrap the existing client".
+The first step in plugin creation is `ls skills/*/SKILL.md` — many [integrations](../integrations/spec.md) already have a Claude Code skill (Gorgias, Slack, etc.) with a working API client. Translating skill commands into `Plugin` methods reuses the auth + API patterns already debugged. This shortens the plugin-creation loop from "research the API" to "wrap the existing client".
 
 ### Why `hooks/hooks.json` is empty
 Claude plugins can register hooks; core has no hook bindings yet but ships the manifest stub so future hook additions don't require a structural change to the plugin. The empty `hooks: {}` is a deliberate placeholder.

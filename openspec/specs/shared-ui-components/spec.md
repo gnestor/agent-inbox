@@ -10,7 +10,7 @@ Inbox-local presentational primitives that wrap or extend `@hammies/frontend`'s 
 The inbox has ~15 small presentational components that don't belong in `@hammies/frontend` (too inbox-specific) and don't belong in any feature folder (used by 3+ features). Putting them under `src/components/shared/` and giving them one spec keeps the per-feature specs short — feature specs can reference `<PanelHeader>` or `<ErrorBoundary>` without redefining their contracts.
 
 ### Why we don't promote everything to `@hammies/frontend`
-The frontend package is the cross-app shadcn surface. Components here either depend on inbox-specific state (e.g. `PanelHeader` calls `useDragTab` from the navigation domain) or operate on inbox types (e.g. `PropertyEditor` resolves field options against the API client). Promoting them would either pull inbox concerns up or force a generic abstraction that loses fidelity.
+The frontend package is the cross-app shadcn surface. Components here either depend on inbox-specific state (e.g. `PanelHeader` calls `useDragTab` from the [navigation](../navigation/spec.md) domain) or operate on inbox types (e.g. `PropertyEditor` resolves field options against the API client). Promoting them would either pull inbox concerns up or force a generic abstraction that loses fidelity.
 
 ### Why error boundaries take `resetKeys`
 React error boundaries don't auto-reset — once caught, the fallback persists until `setState` is called. The inbox places boundaries at three levels (root, tab, plugin); when the user navigates to a different tab, the boundary should clear so the new tab renders fresh. `resetKeys` makes that declarative: pass the active tab id, and `componentDidUpdate` clears the error when it changes.
@@ -22,7 +22,7 @@ HTML outputs, React artifacts, plugin components, and email bodies all render in
 `staleTime: 5min` keeps cached queries from refetching on every nav (avoiding the loading flash); `gcTime: 24h` matches the React Query persister's `maxAge` so the persisted cache is never trusted longer than the in-memory cache. Other defaults (retry, refetchOnWindowFocus) are tuned to be quiet.
 
 ### What is NOT in scope
-- Rich text editor → `rich-text-editor` spec.
+- [Rich text editor](../rich-text-editor/spec.md) → `rich-text-editor` spec.
 - DataTable / ListView (the heavy list layouts) → `data-table-list-views` spec.
 - Per-feature views (email reader, session view) → their own specs.
 - Navigation primitives (`<PanelSlot>`, `<Tab>`, `<NavigationProvider>`) — wired in `navigation` spec; the chrome they render lives there too.

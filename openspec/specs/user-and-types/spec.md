@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Frontend type bedrock and the user/workspace context. `src/types/index.ts` defines the wire shapes the API client emits (`UserProfile`, `Workspace`, `Session`, `Integration`, ...); `src/types/plugin.ts` defines the `Plugin` interface and `FieldDef` schema; `src/types/panels.ts` defines the `WidgetDef` schema for workflow result panels; `src/hooks/use-user.ts` is the single React entry point for "who am I, what workspace, what role" with retry-on-network-error semantics.
+Frontend type bedrock and the user/workspace context. `src/types/index.ts` defines the wire shapes the API client emits (`UserProfile`, `Workspace`, `Session`, `Integration`, ...); `src/types/plugin.ts` defines the `Plugin` interface and `FieldDef` schema; `src/types/panels.ts` defines the `WidgetDef` schema for workflow result panels; `src/hooks/use-user.ts` is the single React entry point for "who am I, what [workspace](../workspace/spec.md), what role" with retry-on-network-error semantics.
 
 ## Context
 

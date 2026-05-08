@@ -13,7 +13,7 @@ The agent reads/writes files with normal POSIX tools (Read/Write/Bash). Storing 
 Agent-written files (artifacts, generated reports) shouldn't collide with user-uploaded inputs of the same name. The split also lets the upload route bind to `input/` while the agent's `/mnt/user-data/outputs/<name>` convention maps to `output/` — symmetric and predictable. The download lookup checks both folders so the API consumer doesn't need to know which side wrote a given filename.
 
 ### Why session IDs are validated, not just `path.join`'d
-A `sessionId` of `../../etc` would `join` to outside the workspace root. Restricting to `[a-zA-Z0-9_-]+` rejects every `..`, `/`, and shell metacharacter at the boundary — defence in depth on top of `join`'s already-safe semantics. The Claude SDK happens to use UUIDs, but we don't depend on that format.
+A `sessionId` of `../../etc` would `join` to outside the [workspace](../workspace/spec.md) root. Restricting to `[a-zA-Z0-9_-]+` rejects every `..`, `/`, and shell metacharacter at the boundary — defence in depth on top of `join`'s already-safe semantics. The Claude SDK happens to use UUIDs, but we don't depend on that format.
 
 ### Why filenames are sanitised, not rejected
 Browsers upload arbitrary filenames including spaces, parens, emoji, and worse. Rejecting would force a UI for renaming; sanitising (`[^a-zA-Z0-9._\- ]` → `_`) preserves the user's intent for the readable parts and silently neutralises the rest. The agent sees the sanitised name in the manifest and uses that exactly when reading the file.

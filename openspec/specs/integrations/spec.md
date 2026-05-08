@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A static registry describing every third-party integration the inbox knows how to authenticate with: id, display name, icon, scope (per-user vs per-workspace), auth type (`oauth2` or `api_key`), env vars it depends on, and OAuth endpoint metadata. The vault, OAuth callback, env-to-vault migration, and settings UI all read this single file. Adding an integration is a one-record edit; nothing else.
+A static registry describing every third-party integration the inbox knows how to authenticate with: id, display name, icon, scope (per-user vs per-[workspace](../workspace/spec.md)), auth type (`oauth2` or `api_key`), env vars it depends on, and OAuth endpoint metadata. The vault, OAuth callback, env-to-vault migration, and settings UI all read this single file. Adding an integration is a one-record edit; nothing else.
 
 ## Context
 

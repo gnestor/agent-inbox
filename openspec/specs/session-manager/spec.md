@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The lifecycle owner for every Claude Agent SDK session: spawning (`startSession`), resuming (`resumeSessionQuery`), aborting, attaching context mid-session, indexing JSONL files, classifying transcript blocks, and patching artifact code. Builds the agent's environment (excluding sensitive vars, optionally routing through the credential proxy), discovers plugin paths, registers MCP servers (`render_output`, `artifact`, `AskUserQuestion`), and persists session rows in the `sessions` table. Also owns the multiplexed WebSocket client registry, presence tracking, and the sequenced broadcast buffer that lets reconnecting clients catch up via cursor-based replay.
+The lifecycle owner for every Claude Agent SDK session: spawning (`startSession`), resuming (`resumeSessionQuery`), aborting, attaching context mid-session, indexing JSONL files, classifying transcript blocks, and patching artifact code. Builds the agent's environment (excluding sensitive vars, optionally routing through the [credential proxy](../credential-proxy/spec.md)), discovers plugin paths, registers MCP servers (`render_output`, `artifact`, `AskUserQuestion`), and persists session rows in the `sessions` table. Also owns the multiplexed WebSocket client registry, presence tracking, and the sequenced broadcast buffer that lets reconnecting clients catch up via cursor-based replay.
 
 ## Context
 
@@ -30,7 +30,7 @@ When the agent calls `AskUserQuestion`, the `canUseTool` hook returns a Promise 
 ### Why `attached_context` system entries get inlined into the next prompt
 The user can attach an email/Notion task to an already-running session. We append a `{ type: "system", subtype: "attached_context", ... }` line to the JSONL immediately, but the Agent SDK's resume flow only forwards user/assistant messages — so the agent would never see the attachment. `collectPendingAttachments` walks the JSONL backwards from the end, gathers attachments since the last user/assistant turn, and `inlineAttachments` prepends them to the next user prompt as `<attached_context>` XML blocks.
 
-### Why workspace path → projects-dir uses simple `/` → `-` replacement
+### Why [workspace](../workspace/spec.md) path → projects-dir uses simple `/` → `-` replacement
 The Agent SDK encodes a workspace's CWD into the directory name under `~/.claude/projects/`. Replicating its convention (`encodeWorkspacePath`) means we can find the JSONL files it writes without parsing or callbacks. The encoding is lossy on paths containing literal `-`, but real workspace paths don't, and accepting the collision is cheaper than running a path → dir lookup table.
 
 ### Why `lastTouchTime` debounces `updated_at` writes (5 s)

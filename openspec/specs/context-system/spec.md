@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The pipeline that turns raw plugin items (emails, tasks, tickets, channels) into a curated workspace knowledge base under `${workspacePath}/context/*.md`. Four stages: (1) raw backfill writes one stub per item via `plugin.itemToContext`; (2) seed-entity extraction pulls structured entities from the stub via `plugin.extractEntities` (or a fallback frontmatter scan); (3) body extraction calls a local Ollama model on item bodies for the named people/companies/products that don't appear in headers; (4) entity curation dispatches one Claude session per entity to fold its unprocessed sources into a curated `.md` page. A 30-minute scheduler drives stage 1; a bash loop polling `/api/backfill/curate-entity/next` drives stage 4.
+The pipeline that turns raw plugin items (emails, tasks, tickets, channels) into a curated [workspace](../workspace/spec.md) knowledge base under `${workspacePath}/context/*.md`. Four stages: (1) raw backfill writes one stub per item via `plugin.itemToContext`; (2) seed-entity extraction pulls structured entities from the stub via `plugin.extractEntities` (or a fallback frontmatter scan); (3) body extraction calls a local Ollama model on item bodies for the named people/companies/products that don't appear in headers; (4) entity curation dispatches one Claude session per entity to fold its unprocessed sources into a curated `.md` page. A 30-minute scheduler drives stage 1; a bash loop polling `/api/backfill/curate-entity/next` drives stage 4.
 
 ## Context
 

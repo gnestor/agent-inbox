@@ -6,8 +6,8 @@ The built-in `gmail` plugin (`plugins/gmail/`) — a full `Plugin` shape with `q
 
 ## Context
 
-### Why Gmail is a built-in, not a workspace plugin
-Gmail is the canonical inbox source — every workspace uses it, and the integration is non-trivial (OAuth refresh, label fetch, sanitiser, attachment proxy, signature cache). Shipping it as a built-in means new workspaces work immediately; an `agent`-workspace override exists for itemToContext customisation but doesn't reimplement the API layer.
+### Why Gmail is a built-in, not a [workspace](../workspace/spec.md) plugin
+Gmail is the canonical inbox source — every workspace uses it, and the [integration](../integrations/spec.md) is non-trivial (OAuth refresh, label fetch, sanitiser, attachment proxy, signature cache). Shipping it as a built-in means new workspaces work immediately; an `agent`-workspace override exists for itemToContext customisation but doesn't reimplement the API layer.
 
 ### Why thread fetches go through a 5-minute `api_cache` TTL
 A single thread can be 200k+ characters (accumulated reply history). Round-tripping the Gmail API on every render of the SessionView's email-attachment context would be slow and costly. The 5-minute TTL is short enough that label/read-state changes propagate quickly but long enough that opening the same thread twice in a session is free — see also the email-sanitizer spec, which writes sanitised HTML into the same cache key (`gmail:thread:<id>`).

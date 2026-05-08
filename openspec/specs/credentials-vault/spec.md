@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Encrypt and persist third-party API credentials (OAuth tokens, refresh tokens, API keys) in Postgres, scoped per-user and per-workspace, with a single resolution order that downstream code can rely on. The vault is also the destination for two ingestion paths: interactive OAuth flows (`/api/connections/connect/...`) and one-time auto-seeding from a workspace's `.env` file.
+Encrypt and persist third-party API credentials (OAuth tokens, refresh tokens, API keys) in Postgres, scoped per-user and per-[workspace](../workspace/spec.md), with a single resolution order that downstream code can rely on. The vault is also the destination for two ingestion paths: interactive OAuth flows (`/api/connections/connect/...`) and one-time auto-seeding from a workspace's `.env` file.
 
 ## Context
 
 ### Two scopes, one resolution order
 Credentials live in two tables:
-- `user_credentials(user_email, integration)` — per-user, used for personal integrations (Gmail, Slack user token).
+- `user_credentials(user_email, integration)` — per-user, used for personal [integrations](../integrations/spec.md) (Gmail, Slack user token).
 - `workspace_credentials(workspace, integration)` — per-workspace, used when every member of a workspace shares the same credential (e.g. a Notion bot token).
 
 Resolution order is fixed: **user-scoped beats workspace-scoped.** A user with their own Gmail token uses it; a user without falls back to the workspace's. Reverse priority would be a security regression — a workspace token shadowing a user's personal grant.

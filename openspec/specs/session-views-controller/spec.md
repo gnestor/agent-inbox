@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The HTTP-and-React surface that exposes `session-manager` to the user: REST routes under `/api/sessions/*` (CRUD, attach, abort, archive, answer, artifact patch, file upload/download), the `SessionListView` ListView wrapper, and the `SessionView` detail panel. The detail panel is split between `useSessionController` (data + streaming + actions) and `useSessionView` (UI state: title editing, navigation, file attachments). The transcript itself is rendered by `SessionTranscript`, which classifies JSONL entries into message bubbles, tool-call groups, AskUserQuestion forms, and output accordions.
+The HTTP-and-React surface that exposes `session-manager` to the user: REST routes under `/api/sessions/*` (CRUD, attach, abort, archive, answer, artifact patch, file upload/download), the `SessionListView` ListView wrapper, and the `SessionView` detail panel. The detail panel is split between `useSessionController` (data + streaming + actions) and `useSessionView` (UI state: title editing, [navigation](../navigation/spec.md), file attachments). The transcript itself is rendered by `SessionTranscript`, which classifies JSONL entries into message bubbles, tool-call groups, AskUserQuestion forms, and output accordions.
 
 ## Context
 
