@@ -71,19 +71,71 @@ const MAX_CONTENT_CHARS = 8000
 
 const SYSTEM_PROMPT = `You extract entities from business source documents for a relationship-indexing system. Output strict JSON only — no prose, no markdown fences.`
 
+// GEPA-optimized instructions (see packages/optimizer/artifacts/body_extract_optimized.json).
+// Shadow run on 50-example holdout: judge score 75.97 → 83.56 (+7.59pp), all four
+// rubric criteria improved by 6+pp with no regressions. Merge gate passed.
 const USER_PROMPT_TEMPLATE = (content: string) => `Extract distinct entities mentioned in the document below.
 
 Entity types to capture:
-- "person": named individuals (first + last name, or email address). Skip roles like "customer", "the team", "shipper".
-- "company": organizations, vendors, retailers, platforms (not generic words like "the factory").
-- "product": specific product names or SKUs.
-- "project": named initiatives, POs (e.g. "PO-43"), campaigns.
+- "person": named individuals (first + last name, or email address). Skip
+  roles like "customer", "the team", "shipper", or first names only (e.g., "Sarah").
+- "company": organizations, vendors, retailers, platforms, service providers
+  (not generic words like "the factory"). Include business domains/websites
+  when they appear as distinct identifiers (e.g., "jeffsheltonarchitect.com").
+- "product": specific product names or SKUs with concrete identity. Exclude
+  generic product descriptions (e.g., "Hammies shorts" is too generic; only
+  extract if a specific product line or variant is named).
+- "project": named initiatives, POs (e.g., "PO-43"), campaigns, or photo shoots
+  with concrete names (e.g., "Smock shoot"). Do NOT include order numbers
+  (e.g., "Order#2734") as projects unless they represent named initiatives
+  or campaigns—order numbers are transactions, not projects.
 
 Rules:
-- Only include entities that have a concrete, specific identity visible in the text.
-- Skip the workspace owner "Grant Nestor" (and any grant@hammies.com address).
-- Skip ubiquitous platforms already obvious from context (Shopify, Gmail, etc) unless the text is specifically about them.
-- Names should be returned in their natural form (e.g. "Caroline Tuerk", "Wuxi Hende Textile Co Ltd").
+- Only include entities with a concrete, specific identity visible in the text.
+- Skip the workspace owner "Grant Nestor" and any grant@hammies.com or
+  grant@hammiesshorts.com address. Do not include other Hammies-affiliated
+  email addresses unless the person has an independent identity (e.g., separate
+  company affiliation).
+- Skip ubiquitous platforms already obvious from context (Shopify, Gmail,
+  Notion, Google Docs, Shortwave, etc.) unless the text is specifically about
+  them or they appear as part of a distinct business identity.
+- Do not extract venue names (e.g., "El Jardin", "El Zapato") as companies
+  unless they are explicitly presented as business entities with owners/contacts.
+- Apply strict noise filtering: exclude key participants who are primarily
+  service contacts or customers in routine business correspondence. Include
+  only entities that represent independent business relationships or third-party
+  stakeholders with distinct relevance to the document's core purpose. Prioritize
+  business partners, vendors, and collaborators over transactional customers
+  or routine service providers.
+- Exclude generic company references that are primarily context (e.g.,
+  "Hammies Short" when mentioned only as Grant Nestor's employer in a customer
+  service email thread).
+- Do not extract brands/products that a person represents or sells as separate
+  company entities unless they are central to the document's purpose. For
+  example, if someone lists multiple brands in their signature, extract only
+  the one(s) that are the focus of the conversation plus their primary company
+  affiliation, not every brand in the portfolio.
+- Names returned in their natural form (e.g., "Caroline Tuerk", "Wuxi Hende").
+- Prefer full names (first + last) over partial names; only extract single
+  first names if they are the only identifier available for a key participant.
+- Normalize company name capitalization and formatting to standard business
+  conventions (e.g., "Retail Reworks" not "RETAIL REWORKS").
+- When extracting companies from email domains or brand names, attempt to
+  infer and use the full, formal company name rather than abbreviations
+  (e.g., "smplbrnd.com" → "SMPL Brand"; "screamingmimis.com" → "Screaming
+  Mimis"). If the formal name cannot be reliably inferred, use the most
+  reasonable expansion of the domain abbreviation.
+- When a product appears as a collaboration or partnership (e.g.,
+  "Vacation(R) x Hammies"), extract both the product name AND the independent
+  company partner (e.g., "Vacation Inc"). Do not treat the entire collaboration
+  string as a single product entity.
+- Customer names appearing in routine customer service contexts (e.g., ticket
+  subjects, customer fields in support tickets) should generally be excluded
+  unless they represent a business entity or stakeholder with independent
+  relevance.
+- Do not extract individuals mentioned only in passing or in cited/forwarded
+  messages unless they are active participants in the core conversation or
+  represent key business relationships.
 
 Output format (JSON only):
 {"entities": [{"type": "person", "value": "Caroline Tuerk"}, {"type": "company", "value": "Wuxi Hende"}]}
