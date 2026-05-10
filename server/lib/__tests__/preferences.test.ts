@@ -55,7 +55,7 @@ vi.mock("../../db/pool.js", () => ({
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 
 vi.mock("../../lib/auth.js", () => ({ getSession: vi.fn() }))
-vi.mock("../../routes/auth.js", () => ({ SESSION_COOKIE: "inbox_session" }))
+vi.mock("../../routes/auth.js", () => ({ SESSION_COOKIE: "hammies_session" }))
 
 const { getSession } = await import("../../lib/auth.js")
 const { preferencesRoutes } = await import("../../routes/preferences.js")
@@ -76,7 +76,7 @@ app.route("/preferences", preferencesRoutes)
 function req(path: string, options: RequestInit = {}, email: string | null = "alice@example.com") {
   setupUser(email)
   const headers = new Headers(options.headers as HeadersInit)
-  if (email) headers.set("Cookie", `inbox_session=${TEST_TOKEN}`)
+  if (email) headers.set("Cookie", `hammies_session=${TEST_TOKEN}`)
   return app.request(path, { ...options, headers })
 }
 

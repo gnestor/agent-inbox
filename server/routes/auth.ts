@@ -1,18 +1,19 @@
 import { Hono } from "hono"
-import { getCookie, setCookie, deleteCookie } from "hono/cookie"
-import { getClientId, verifyIdToken, getSession, deleteSession } from "../lib/auth.js"
+import { getCookie } from "hono/cookie"
+import { sessionCookie, SESSION_COOKIE } from "@hammies/auth/server"
+import { getClientId, verifyIdToken, getSession } from "../lib/auth.js"
 import { getUserWorkspaces, resolveActiveWorkspace } from "../lib/workspace-scanner.js"
 import { WORKSPACE_COOKIE } from "./workspaces.js"
 import { AuthCallbackBody } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
 import { rateLimit } from "../lib/rate-limit.js"
 
+export { SESSION_COOKIE }
+
 /** Extract first user-facing message from a Zod validation error */
 function zodErrorMessage(err: ZodError): string {
   return err.issues[0]?.message ?? "Invalid request body"
 }
-
-export const SESSION_COOKIE = "inbox_session"
 
 export const authRoutes = new Hono()
 
@@ -30,13 +31,7 @@ authRoutes.post("/callback", rateLimit({ windowMs: 60_000, max: 10, label: "auth
   const { credential } = body
 
   const { sessionToken, user } = await verifyIdToken(credential)
-  setCookie(c, SESSION_COOKIE, sessionToken, {
-    path: "/",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "Lax",
-    maxAge: 60 * 60 * 24 * 7,
-  })
+  c.header("Set-Cookie", sessionCookie(sessionToken, c.req.header("host")))
   return c.json(user)
 })
 
@@ -61,10 +56,6 @@ authRoutes.get("/session", async (c) => {
 })
 
 authRoutes.post("/logout", async (c) => {
-  const token = getCookie(c, SESSION_COOKIE)
-  if (token) {
-    await deleteSession(token)
-    deleteCookie(c, SESSION_COOKIE, { path: "/" })
-  }
+  c.header("Set-Cookie", sessionCookie(null, c.req.header("host")))
   return c.json({ ok: true })
 })

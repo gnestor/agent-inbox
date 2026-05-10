@@ -1,5 +1,12 @@
-import { randomBytes } from "crypto"
-import { execute, queryOne } from "../db/pool.js"
+import {
+  signSession,
+  verifySession,
+  verifyGoogleIdToken,
+  SESSION_COOKIE as HAMMIES_SESSION_COOKIE,
+} from "@hammies/auth/server"
+import { execute } from "../db/pool.js"
+
+export const SESSION_COOKIE = HAMMIES_SESSION_COOKIE
 
 export function getClientId(): string {
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -7,66 +14,48 @@ export function getClientId(): string {
   return clientId
 }
 
+export interface SessionUser {
+  name: string
+  email: string
+  picture?: string
+}
+
+/** Verify a Google id_token, upsert the user row, and mint a JWT session token. */
 export async function verifyIdToken(credential: string): Promise<{
   sessionToken: string
-  user: { name: string; email: string; picture?: string }
+  user: SessionUser
 }> {
-  const clientId = getClientId()
-
-  const res = await fetch(
-    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`,
-  )
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`ID token verification failed: ${text}`)
-  }
-
-  const payload = await res.json()
-
-  if (payload.aud !== clientId) {
-    throw new Error("ID token audience mismatch")
-  }
-
-  const user = {
+  const payload = await verifyGoogleIdToken(credential)
+  const user: SessionUser = {
     name: payload.name || payload.email,
     email: payload.email,
     picture: payload.picture,
   }
-
-  const sessionToken = randomBytes(32).toString("hex")
   const now = new Date().toISOString()
-
   await execute(
     `INSERT INTO users (email, name, picture, created_at, last_login_at)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT(email) DO UPDATE SET name = EXCLUDED.name, picture = EXCLUDED.picture, last_login_at = EXCLUDED.last_login_at`,
     [user.email, user.name, user.picture || null, now, now],
   )
-
-  await execute(
-    `INSERT INTO auth_sessions (token, user_name, user_email, user_picture, created_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [sessionToken, user.name, user.email, user.picture || null, now],
-  )
-
+  const sessionToken = await signSession({
+    sub: payload.sub,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+  })
   return { sessionToken, user }
 }
 
-export async function getSession(
-  token: string,
-): Promise<{ user: { name: string; email: string; picture?: string } } | undefined> {
-  const row = await queryOne<{
-    user_name: string
-    user_email: string
-    user_picture: string | null
-  }>(`SELECT user_name, user_email, user_picture FROM auth_sessions WHERE token = $1`, [token])
-
-  if (!row) return undefined
-  return {
-    user: { name: row.user_name, email: row.user_email, picture: row.user_picture || undefined },
+/** Verify a JWT session cookie and return the user it identifies. */
+export async function getSession(token: string): Promise<{ user: SessionUser } | undefined> {
+  try {
+    const s = await verifySession(token)
+    return { user: { name: s.name || s.email, email: s.email, picture: s.picture } }
+  } catch {
+    return undefined
   }
 }
 
-export async function deleteSession(token: string) {
-  await execute(`DELETE FROM auth_sessions WHERE token = $1`, [token])
-}
+/** No-op: JWT sessions are stateless. Cookie deletion handles logout. */
+export async function deleteSession(_token: string): Promise<void> {}

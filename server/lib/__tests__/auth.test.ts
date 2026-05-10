@@ -1,59 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// In-memory stores to simulate DB tables
-const users = new Map<string, any>()
-const sessions = new Map<string, any>()
+const users = new Map<string, { email: string; name: string; picture: string | null }>()
 
 vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
-  queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("auth_sessions") && sql.includes("token")) {
-      const token = params![0] as string
-      return sessions.get(token)
-    }
-    return undefined
-  }),
+  queryOne: vi.fn(async () => undefined),
   execute: vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes("INSERT INTO users")) {
       const email = params![0] as string
-      const name = params![1] as string
-      const picture = params![2]
-      const created_at = params![3] as string
-      const last_login_at = params![4] as string
-      users.set(email, { email, name, picture, created_at, last_login_at })
-      return { rowCount: 1 }
+      users.set(email, {
+        email,
+        name: params![1] as string,
+        picture: (params![2] as string | null) ?? null,
+      })
     }
-    if (sql.includes("INSERT INTO auth_sessions")) {
-      const token = params![0] as string
-      const user_name = params![1] as string
-      const user_email = params![2] as string
-      const user_picture = params![3]
-      sessions.set(token, { user_name, user_email, user_picture })
-      return { rowCount: 1 }
-    }
-    if (sql.includes("DELETE FROM auth_sessions")) {
-      const token = params![0] as string
-      sessions.delete(token)
-      return { rowCount: 1 }
-    }
-    return { rowCount: 0 }
+    return { rowCount: 1 }
   }),
 }))
 
-const mockFetch = vi.fn()
-global.fetch = mockFetch
+const mockVerifyGoogleIdToken = vi.fn()
+const mockSignSession = vi.fn(async (_p: unknown) => "signed.jwt.token")
+const mockVerifySession = vi.fn()
+vi.mock("@hammies/auth/server", () => ({
+  SESSION_COOKIE: "hammies_session",
+  verifyGoogleIdToken: (cred: string) => mockVerifyGoogleIdToken(cred),
+  signSession: (p: unknown) => mockSignSession(p),
+  verifySession: (t: string) => mockVerifySession(t),
+}))
 
-function okJson(data: unknown) {
-  return Promise.resolve({ ok: true, json: () => Promise.resolve(data) })
-}
-
-const { getClientId, verifyIdToken, getSession, deleteSession } = await import("../auth.js")
+const { getClientId, verifyIdToken, getSession, deleteSession, SESSION_COOKIE } = await import(
+  "../auth.js"
+)
 
 describe("auth", () => {
   beforeEach(() => {
     users.clear()
-    sessions.clear()
-    mockFetch.mockReset()
+    mockVerifyGoogleIdToken.mockReset()
+    mockSignSession.mockReset().mockResolvedValue("signed.jwt.token")
+    mockVerifySession.mockReset()
   })
 
   describe("getClientId", () => {
@@ -68,106 +52,87 @@ describe("auth", () => {
     })
   })
 
-  describe("verifyIdToken", () => {
-    beforeEach(() => {
-      process.env.GOOGLE_CLIENT_ID = "test-client-id"
+  describe("SESSION_COOKIE", () => {
+    it("re-exports the shared hammies cookie name", () => {
+      expect(SESSION_COOKIE).toBe("hammies_session")
     })
+  })
 
-    it("verifies token, creates user and session", async () => {
-      mockFetch.mockReturnValueOnce(
-        okJson({
-          aud: "test-client-id",
-          email: "alice@test.com",
-          name: "Alice",
-          picture: "https://pic.test/alice.jpg",
-        }),
-      )
+  describe("verifyIdToken", () => {
+    it("verifies token, upserts user, mints JWT session token", async () => {
+      mockVerifyGoogleIdToken.mockResolvedValueOnce({
+        sub: "google-sub-1",
+        email: "alice@test.com",
+        name: "Alice",
+        picture: "https://pic.test/alice.jpg",
+      })
 
       const result = await verifyIdToken("valid-credential")
 
-      expect(result.sessionToken).toHaveLength(64) // 32 bytes hex
+      expect(mockVerifyGoogleIdToken).toHaveBeenCalledWith("valid-credential")
+      expect(result.sessionToken).toBe("signed.jwt.token")
       expect(result.user).toEqual({
         name: "Alice",
         email: "alice@test.com",
         picture: "https://pic.test/alice.jpg",
       })
-
-      // Verify user was created in store
-      const user = users.get("alice@test.com")
-      expect(user.name).toBe("Alice")
-
-      // Verify session was created
-      const session = sessions.get(result.sessionToken)
-      expect(session.user_email).toBe("alice@test.com")
+      expect(users.get("alice@test.com")?.name).toBe("Alice")
+      expect(mockSignSession).toHaveBeenCalledWith({
+        sub: "google-sub-1",
+        email: "alice@test.com",
+        name: "Alice",
+        picture: "https://pic.test/alice.jpg",
+      })
     })
 
-    it("throws on audience mismatch", async () => {
-      mockFetch.mockReturnValueOnce(
-        okJson({ aud: "wrong-client-id", email: "alice@test.com", name: "Alice" }),
-      )
-
-      await expect(verifyIdToken("bad-token")).rejects.toThrow("ID token audience mismatch")
+    it("propagates verification failure from Google", async () => {
+      mockVerifyGoogleIdToken.mockRejectedValueOnce(new Error("Google credential missing email"))
+      await expect(verifyIdToken("bad")).rejects.toThrow("Google credential missing email")
     })
 
-    it("throws when Google API rejects token", async () => {
-      mockFetch.mockReturnValueOnce(
-        Promise.resolve({ ok: false, text: () => Promise.resolve("Invalid token") }),
-      )
-
-      await expect(verifyIdToken("invalid")).rejects.toThrow("ID token verification failed")
-    })
-
-    it("updates existing user on re-login", async () => {
-      // First login
-      mockFetch.mockReturnValueOnce(
-        okJson({ aud: "test-client-id", email: "alice@test.com", name: "Alice" }),
-      )
-      await verifyIdToken("cred1")
-
-      // Second login with updated name
-      mockFetch.mockReturnValueOnce(
-        okJson({ aud: "test-client-id", email: "alice@test.com", name: "Alice Updated" }),
-      )
-      await verifyIdToken("cred2")
-
-      // ON CONFLICT DO UPDATE overwrites the name
+    it("upserts the user on re-login (ON CONFLICT DO UPDATE)", async () => {
+      mockVerifyGoogleIdToken.mockResolvedValueOnce({
+        sub: "s1",
+        email: "alice@test.com",
+        name: "Alice",
+      })
+      await verifyIdToken("c1")
+      mockVerifyGoogleIdToken.mockResolvedValueOnce({
+        sub: "s1",
+        email: "alice@test.com",
+        name: "Alice Updated",
+      })
+      await verifyIdToken("c2")
       expect(users.size).toBe(1)
-      expect(users.get("alice@test.com").name).toBe("Alice Updated")
+      expect(users.get("alice@test.com")?.name).toBe("Alice Updated")
     })
   })
 
   describe("getSession", () => {
-    it("returns user data for valid session token", async () => {
-      process.env.GOOGLE_CLIENT_ID = "test-client-id"
-      mockFetch.mockReturnValueOnce(
-        okJson({ aud: "test-client-id", email: "bob@test.com", name: "Bob" }),
-      )
-
-      const { sessionToken } = await verifyIdToken("cred")
-      const session = await getSession(sessionToken)
-
+    it("returns the user when JWT verification succeeds", async () => {
+      mockVerifySession.mockResolvedValueOnce({
+        sub: "s1",
+        email: "bob@test.com",
+        name: "Bob",
+        picture: undefined,
+        iat: 0,
+        exp: 0,
+      })
+      const session = await getSession("a.jwt.token")
       expect(session).toBeDefined()
-      expect(session!.user.name).toBe("Bob")
       expect(session!.user.email).toBe("bob@test.com")
+      expect(session!.user.name).toBe("Bob")
     })
 
-    it("returns undefined for invalid token", async () => {
-      expect(await getSession("nonexistent-token")).toBeUndefined()
+    it("returns undefined when JWT verification throws", async () => {
+      mockVerifySession.mockRejectedValueOnce(new Error("invalid"))
+      expect(await getSession("garbage")).toBeUndefined()
     })
   })
 
   describe("deleteSession", () => {
-    it("removes session from DB", async () => {
-      process.env.GOOGLE_CLIENT_ID = "test-client-id"
-      mockFetch.mockReturnValueOnce(
-        okJson({ aud: "test-client-id", email: "bob@test.com", name: "Bob" }),
-      )
-
-      const { sessionToken } = await verifyIdToken("cred")
-      expect(await getSession(sessionToken)).toBeDefined()
-
-      await deleteSession(sessionToken)
-      expect(await getSession(sessionToken)).toBeUndefined()
+    it("is a no-op (JWT sessions are stateless)", async () => {
+      await expect(deleteSession("any")).resolves.toBeUndefined()
     })
   })
 })

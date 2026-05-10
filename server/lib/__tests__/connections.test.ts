@@ -98,7 +98,7 @@ function createTestApp() {
 function makeRequest(app: Hono, path: string, options: RequestInit = {}) {
   return app.request(path, {
     headers: {
-      Cookie: "inbox_session=test-token",
+      Cookie: "hammies_session=test-token",
       ...options.headers,
     },
     ...options,

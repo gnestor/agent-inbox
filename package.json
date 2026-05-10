@@ -28,6 +28,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@babel/standalone": "^7.29.2",
+    "@hammies/auth": "file:../auth",
     "@hammies/db": "file:../db",
     "@hammies/frontend": "file:../frontend",
     "@hono/node-server": "^1.8.0",

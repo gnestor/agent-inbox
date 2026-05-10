@@ -119,7 +119,7 @@ async function getValidState(app: Hono, integration: string): Promise<string> {
   const res = await app.request(
     `http://localhost/api/connections/connect/${integration}?origin=http://localhost:5175`,
     {
-      headers: { Cookie: "inbox_session=test-token" },
+      headers: { Cookie: "hammies_session=test-token" },
       redirect: "manual",
     }
   )
