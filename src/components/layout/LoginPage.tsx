@@ -66,8 +66,6 @@ export function LoginPage() {
         auto_select: true,
       })
 
-      window.google!.accounts.id.prompt()
-
       if (buttonRef.current) {
         window.google!.accounts.id.renderButton(buttonRef.current, {
           theme: "outline",
