@@ -1,70 +1,50 @@
-import pg from "pg"
 import { readFileSync } from "fs"
-import { resolve } from "path"
+import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
-import { dirname } from "path"
+import { getPool as _getPool, query as _query, queryOne as _queryOne, execute as _execute, withTransaction as _withTransaction } from "@hammies/db"
+import type pg from "pg"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-let pool: pg.Pool | null = null
+function pool(): pg.Pool {
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
+    )
+  }
+  return _getPool({ connectionString })
+}
 
 export function getPool(): pg.Pool {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL
-    if (!connectionString) {
-      throw new Error(
-        "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
-      )
-    }
-    pool = new pg.Pool({
-      connectionString,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    })
-  }
-  return pool
+  return pool()
 }
 
 export async function query<T extends pg.QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T[]> {
-  const result = await getPool().query<T>(sql, params)
-  return result.rows
+  return _query<T>(pool(), sql, params)
 }
 
 export async function queryOne<T extends pg.QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T | undefined> {
-  const rows = await query<T>(sql, params)
-  return rows[0]
+  return _queryOne<T>(pool(), sql, params)
 }
 
 export async function execute(
   sql: string,
   params?: unknown[],
 ): Promise<{ rowCount: number }> {
-  const result = await getPool().query(sql, params)
-  return { rowCount: result.rowCount ?? 0 }
+  return _execute(pool(), sql, params)
 }
 
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await getPool().connect()
-  try {
-    await client.query("BEGIN")
-    const result = await fn(client)
-    await client.query("COMMIT")
-    return result
-  } catch (e) {
-    await client.query("ROLLBACK")
-    throw e
-  } finally {
-    client.release()
-  }
+  return _withTransaction(pool(), fn)
 }
 
 export async function initializeDatabase(): Promise<void> {
@@ -78,17 +58,14 @@ export async function initializeDatabase(): Promise<void> {
     "007_source_entities.sql",
     "008_body_extraction_log.sql",
   ]
+  const p = pool()
   for (const file of migrations) {
     const sql = readFileSync(resolve(__dirname, "migrations", file), "utf-8")
-    await getPool().query(sql)
+    await p.query(sql)
   }
-
   console.log("Database initialized (PostgreSQL)")
 }
 
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end()
-    pool = null
-  }
+  await pool().end()
 }
