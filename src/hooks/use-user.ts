@@ -77,6 +77,12 @@ export function useUserProvider() {
     refresh()
   }, [refresh])
 
+  useEffect(() => {
+    const handle = () => refresh()
+    window.addEventListener("session-expired", handle)
+    return () => window.removeEventListener("session-expired", handle)
+  }, [refresh])
+
   const isAdmin = activeWorkspace?.role === "admin"
 
   return { user, loading, logout, refresh, activeWorkspace, workspaces, switchWorkspace, isAdmin }

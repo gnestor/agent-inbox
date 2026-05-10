@@ -106,9 +106,13 @@ Workflow result panels (`<inbox-result>` XML emitted by the agent) need a determ
 - **THEN** `useWorkspaceId()` returns `activeWorkspace?.id ?? ""`.
 - **WHY:** an empty string is a valid React Query key segment (constant identity); `undefined` would cause keys like `["sessions", undefined]` which collide unpredictably.
 
-#### Scenario: `logout()` clears all client state
-- **WHEN** the user signs out
-- **THEN** `apiLogout()` is called and `user`, `workspaces`, `activeWorkspace` are reset to null/empty arrays.
+#### Scenario: `session-expired` event triggers re-login
+- **WHEN** any API call returns 401 (see `api-client` spec)
+- **THEN** `window` dispatches a `"session-expired"` custom event; `useUserProvider` listens and calls `refresh()`, which re-checks `/api/auth/session` and sets `user: null` if the JWT is gone.
+- **AND** `AppContent` unmounts the authenticated app and renders `<LoginPage />`.
+- **WHY:** sessions can expire mid-use (e.g. after a server-side auth migration); mutations fail with 401 while stale GET cache makes the app look healthy. The event mechanism propagates the expiry to the auth gate without per-hook 401 handling.
+
+
 
 ## Technical Notes
 
@@ -126,4 +130,5 @@ Workflow result panels (`<inbox-result>` XML emitted by the agent) need a determ
 - `TriggerSource` widened from a closed union to `... | (string & {})` after plugins started emitting their own trigger labels for analytics.
 - `PluginItem` shape was originally `<TItem extends Record<string, unknown>>` generic; collapsed to plain `Record<string, unknown>` after the generic plumbing made every consuming component generic too without any type-safety win (schema-driven UI reads by name).
 - `WidgetDef` extracted to `panels.ts` after `inbox-panels.json` consumers grew enough that having them in `index.ts` made the shared types file scroll for screens.
+- `session-expired` window event added so 401 responses from expired JWTs (e.g. after auth migration) redirect to the sign-in page instead of showing error toasts on every mutation.
 - `useWorkspaceId()` returns `""` instead of `undefined` after a query-key collision: two different unauthenticated states keyed `["sessions", undefined]` got merged in the React Query cache.

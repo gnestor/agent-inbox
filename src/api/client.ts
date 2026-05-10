@@ -6,6 +6,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   })
   if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent("session-expired"))
+    }
     const text = await res.text()
     throw new Error(`API ${res.status}: ${text}`)
   }

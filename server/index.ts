@@ -41,8 +41,11 @@ import { loadPanels } from "./lib/panel-registry.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Load inbox .env (OAuth config for sign-in)
-config({ path: resolve(__dirname, "../.env") })
+// Load workspace-root .env first (shared secrets like JWT_SECRET), then
+// inbox-local .env (overrides + inbox-specific config like GOOGLE_CLIENT_ID,
+// VAULT_SECRET).
+config({ path: resolve(__dirname, "../../../.env") })
+config({ path: resolve(__dirname, "../.env"), override: true })
 
 // Validate VAULT_SECRET
 if (!process.env.VAULT_SECRET || process.env.VAULT_SECRET.length < 64) {

@@ -10,7 +10,10 @@ A single typed wrapper over `fetch()` that every React hook uses to talk to the 
 Every endpoint shares the same shape: send/receive JSON, fail on non-2xx, surface the status and body in the error message. Encoding this once means React Query's `onError` can match by string prefix or just surface `err.message`, and component code never branches on raw `Response` objects.
 
 ### Why no auth header here
-Authentication is a same-origin cookie (`inbox_session`). `fetch()` sends it automatically; the client has nothing to add. `credentials: "same-origin"` is the default for same-origin requests, so we don't set it explicitly.
+Authentication is a same-origin cookie (`hammies_session`). `fetch()` sends it automatically; the client has nothing to add. `credentials: "same-origin"` is the default for same-origin requests, so we don't set it explicitly.
+
+### 401 → session-expired event
+When the server returns 401, `request()` dispatches `window.dispatchEvent(new CustomEvent("session-expired"))` before throwing. `useUserProvider` listens for this event and calls `refresh()`, which re-checks `/api/auth/session` and sets `user: null` if the JWT is gone — causing `AppContent` to unmount the app and show `<LoginPage />`. This ensures that a session expiry (e.g. after a JWT cookie change) surfaces as a re-login prompt rather than cryptic error toasts.
 
 ### Why explicit return types via `import("@/types")`
 The client is the wire-format boundary. Using `import()` types instead of top-of-file imports keeps the types lazy and prevents accidental runtime imports of types-only modules — important because `@/types` re-exports from many domain folders.
@@ -28,10 +31,11 @@ The client is the wire-format boundary. Using `import()` types instead of top-of
 - **THEN** the body is parsed as JSON and typed as `T`.
 - **AND** `Content-Type: application/json` is set unless the caller overrides headers.
 
-#### Scenario: Non-2xx responses throw with status and body
+#### Scenario: Non-2xx responses throw with status and body; 401 triggers re-login
 - **WHEN** the response status is not OK
 - **THEN** the helper reads the body as text and throws `new Error(\`API ${status}: ${text}\`)`.
-- **WHY:** every React Query consumer can pattern-match on `err.message` for status codes (`API 401: ...`, `API 403: ...`) without re-parsing.
+- **AND** if the status is 401, `window.dispatchEvent(new CustomEvent("session-expired"))` fires before the throw.
+- **WHY:** error consumers can still pattern-match on `err.message`; the event lets `useUserProvider` redirect to the sign-in page without any per-hook 401 handling.
 
 #### Scenario: Multipart upload bypasses the helper
 - **WHEN** `uploadSessionFile` posts a `FormData`
