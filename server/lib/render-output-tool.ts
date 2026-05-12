@@ -1,5 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
+import { transform } from "esbuild"
+import { unwrapReactData } from "../../src/lib/artifact-transform.js"
 
 /**
  * Builds an in-process MCP server that registers the `render_output` tool.
@@ -85,8 +87,8 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
     },
     async (args) => {
       if (args.type === "react") {
-        const code = typeof args.data === "string" ? args.data : args.data?.code
-        if (!code || typeof code !== "string") {
+        const { code } = unwrapReactData(args.data)
+        if (!code) {
           return {
             content: [
               {
@@ -97,12 +99,43 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
             isError: true,
           }
         }
+        // Validate JSX syntax before acknowledging success — surface errors to the agent so it can fix them.
+        try {
+          await transform(code, { loader: "jsx", target: "es2020" })
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e)
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: React code has a JSX syntax error:\n\n${msg}\n\nFix the syntax and call render_output again with the same title to update.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        // Check for a renderable component: must have export default, a named function/const
+        // that matches an export, or be a bare arrow function (auto-wrapped client-side).
+        // A bare object literal or non-component code will fail silently — reject early.
+        const hasExportDefault = /export\s+default\b/.test(code)
+        const isBareArrow = /^\s*\(\s*\)\s*=>/.test(code.replace(/^import\s[^\n]*/gm, "").trim())
+        const hasTopLevelReturn = /^return[\s(]/m.test(code)
+        if (!hasExportDefault && !isBareArrow && !hasTopLevelReturn) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: React code must export a component. Add "export default function App() { ... }" or "export default App" so the renderer can mount it. A bare arrow function like "() => <div>...</div>" is also accepted.`,
+              },
+            ],
+            isError: true,
+          }
+        }
       }
       let detail: string
       switch (args.type) {
         case "react": {
-          const code = typeof args.data === "string" ? args.data : args.data?.code
-          detail = `react component (${code.length} chars)`
+          detail = `react component (${unwrapReactData(args.data).code?.length ?? 0} chars)`
           break
         }
         case "table":

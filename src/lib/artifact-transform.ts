@@ -56,6 +56,29 @@ const ARTIFACT_COMPONENTS = new Set([
   "RadioGroup", "RadioGroupItem", "Spinner",
 ])
 
+/**
+ * Normalize the `data` argument from a render_output call into `{ code, title }`.
+ * Handles three shapes the agent may send:
+ *   - `{ code: "...", title?: "..." }`   (correct)
+ *   - `"<jsx string>"`                   (bare code string)
+ *   - `'{"code":"...","title":"..."}'`   (stringified JSON — LLM mistake)
+ */
+export function unwrapReactData(data: unknown): { code: string | undefined; title: string | undefined } {
+  let d = data
+  if (typeof d === "string") {
+    try {
+      const parsed = JSON.parse(d)
+      if (parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).code === "string") d = parsed
+    } catch { /* treat as raw code string */ }
+  }
+  if (typeof d === "string") return { code: d, title: undefined }
+  if (d && typeof d === "object") {
+    const o = d as Record<string, unknown>
+    return { code: typeof o.code === "string" ? o.code : undefined, title: typeof o.title === "string" ? o.title : undefined }
+  }
+  return { code: undefined, title: undefined }
+}
+
 export async function transformArtifactCode(source: string): Promise<TransformResult> {
   if (!source) return { code: "", exportedName: null }
 
@@ -157,21 +180,21 @@ export async function transformArtifactCode(source: string): Promise<TransformRe
   // Fix common LLM mistake: regex with literal newline (/\n/g split across lines)
   code = code.replace(/\/\n\/([gimsuy]*)/g, "/\\n/$1")
 
-  // Auto-wrap bare top-level `return` in a default-exported App component.
-  // Only matches unindented `return` (column 0) to avoid matching returns inside functions.
-  if (!exportedName && code.split("\n").some((l) => /^return[\s(]/.test(l))) {
-    // Split imports from body — imports must stay at top level
-    const importLines: string[] = []
-    const bodyLines: string[] = []
-    for (const line of code.split("\n")) {
-      if (/^import\s/.test(line.trimStart())) {
-        importLines.push(line)
-      } else {
-        bodyLines.push(line)
-      }
+  if (!exportedName) {
+    const codeLines = code.split("\n")
+    const importLines = codeLines.filter((l) => /^import\s/.test(l.trimStart()))
+    const bodyLines = codeLines.filter((l) => !/^import\s/.test(l.trimStart()))
+    const body = bodyLines.join("\n").trim()
+
+    if (codeLines.some((l) => /^return[\s(]/.test(l))) {
+      // Bare top-level `return` — wrap in App function
+      code = importLines.join("\n") + "\n\nexport default function App() {\n" + bodyLines.join("\n") + "\n}\n"
+      exportedName = "App"
+    } else if (/^\(\s*\)\s*=>/.test(body)) {
+      // Bare arrow function expression: `() => { ... }` — assign and export
+      code = importLines.join("\n") + "\n\nconst App = " + body + "\nexport default App\n"
+      exportedName = "App"
     }
-    code = importLines.join("\n") + "\n\nexport default function App() {\n" + bodyLines.join("\n") + "\n}\n"
-    exportedName = "App"
   }
 
   // Transform JSX → React.createElement (sourceType: "module" to support import/export)

@@ -64,7 +64,7 @@ export function parseUrl(pathname: string): ParsedUrl {
   if (parts[0] === "recent") {
     if (parts[1] === "sessions" && parts[2]) {
       const sessionId = decodeURIComponent(parts[2])
-      return { tabId: `recent:${sessionId}`, sourceTab: "sessions", selectedId: sessionId }
+      return { tabId: `recent:${sessionId}`, sourceTab: "sessions", sessionId }
     }
     if (parts[1] && parts[2]) {
       const selectedId = decodeURIComponent(parts[2])

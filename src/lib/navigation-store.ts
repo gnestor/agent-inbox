@@ -68,12 +68,6 @@ export function createRecentTabState(parsed: {
       type: "session",
       props: { sessionId: parsed.sessionId, linkedItemId: parsed.selectedId },
     })
-  } else if (parsed.sourceTab === "sessions" && parsed.selectedId) {
-    panels.push({
-      id: `detail:${parsed.selectedId}`,
-      type: "detail",
-      props: { itemId: parsed.selectedId },
-    })
   }
   return {
     panelScrollOffset: 0,
@@ -212,12 +206,13 @@ export const useNavigationStore = create<NavigationStore>()((set) => ({
 
   openRecent: (sessionId, sourceTab, selectedId, sidebarIndex) => set((s) => {
     const tabId: TabId = `recent:${sessionId}`
-    const tab = s.tabs[tabId] ? { ...s.tabs[tabId] } : createRecentTabState({
-      tabId,
-      sourceTab,
-      selectedId,
-      sessionId,
-    })
+    const existing = s.tabs[tabId]
+    const hasSessionPanel = existing?.panels.some(
+      (p) => p.type === "session" && p.props.sessionId === sessionId,
+    )
+    const tab = existing && hasSessionPanel
+      ? { ...existing }
+      : createRecentTabState({ tabId, sourceTab, selectedId, sessionId })
 
     const oldTab = s.activeTab.startsWith("recent:") ? s.tabs[s.activeTab] : undefined
     const oldIdx = oldTab?.sidebarIndex ?? -1

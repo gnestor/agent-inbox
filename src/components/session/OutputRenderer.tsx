@@ -9,6 +9,7 @@ import { useTheme } from "@hammies/frontend"
 import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@/lib/iframe-theme"
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
+import { unwrapReactData } from "@/lib/artifact-transform"
 
 // --- Spec types ---
 
@@ -100,9 +101,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
     case "conversation":
       return <ConversationOutput data={spec.data} />
     case "react": {
-      // Model may send data as a string (just code) or { code, title }
-      const reactData = typeof spec.data === "string" ? { code: spec.data } : spec.data
-      // Fallback: if the agent passed data without a code field, render as JSON
+      const reactData = unwrapReactData(spec.data)
       if (!reactData.code) {
         return <JsonOutput data={spec.data} />
       }
