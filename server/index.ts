@@ -416,3 +416,13 @@ async function shutdown() {
 }
 process.on("SIGTERM", shutdown)
 process.on("SIGINT", shutdown)
+
+// Keep the server alive through transient network blips (e.g. Tailscale
+// reconnect drops idle Postgres connections). Without these guards, an async
+// pg error in any route would crash the process and force a manual restart.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason)
+})
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err)
+})
