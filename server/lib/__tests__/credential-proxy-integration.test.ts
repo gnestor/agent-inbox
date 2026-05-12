@@ -160,9 +160,9 @@ describe("createCredentialProxy", () => {
     expect(env.GITHUB_TOKEN).toBeUndefined()
     expect(env.INBOX_SESSION_TOKEN).toBeUndefined()
 
-    // Only these three keys should exist
+    // Only these keys should exist
     expect(Object.keys(env).sort()).toEqual(
-      ["HTTPS_PROXY", "NODE_EXTRA_CA_CERTS", "NODE_OPTIONS"].sort()
+      ["HTTPS_PROXY", "NO_PROXY", "NODE_EXTRA_CA_CERTS", "NODE_OPTIONS"].sort()
     )
     await proxy.close()
   })

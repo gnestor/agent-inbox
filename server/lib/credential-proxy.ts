@@ -286,6 +286,13 @@ export async function createCredentialProxy(
         getProxyEnv: (sessionToken: string) => ({
           HTTPS_PROXY: `http://${sessionToken}@127.0.0.1:${addr.port}`,
           NODE_EXTRA_CA_CERTS: caCertPath,
+          // Bypass the proxy for Anthropic API + telemetry hosts. The credential
+          // proxy only adds value for intercepted integration hosts (notion, github,
+          // etc); for api.anthropic.com it just transparent-tunnels — and the Bun-
+          // compiled native binary in @anthropic-ai/claude-agent-sdk ≥0.2.138 fails
+          // that tunnel with a spurious "ConnectionRefused" / "FailedToOpenSocket".
+          // Direct connect lets the binary reach the API normally (auth via keychain).
+          NO_PROXY: ".anthropic.com,statsig.anthropic.com,api.githubcopilot.com,http-intake.logs.us5.datadoghq.com",
           // Preload sets up undici's global dispatcher so all fetch() calls in
           // agent subprocesses are routed through the credential proxy without
           // any skill-level configuration. Append to preserve any existing options.

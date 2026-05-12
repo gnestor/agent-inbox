@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A localhost MITM HTTPS proxy that lets agent subprocesses make authenticated calls to third-party APIs (Notion, GitHub, Slack, Google, Shopify, Klaviyo, Meta, etc.) without ever seeing user credentials. The proxy authenticates the agent by a session token carried in `Proxy-Authorization`, looks up the matching credential from the vault, and rewrites the request — Bearer header, custom header, Basic auth, or query param — based on a per-[integration](../integrations/spec.md) policy. Agent subprocesses opt in by inheriting `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, and a `NODE_OPTIONS --import` preload that wires `undici`'s global dispatcher.
+A localhost MITM HTTPS proxy that lets agent subprocesses make authenticated calls to third-party APIs (Notion, GitHub, Slack, Google, Shopify, Klaviyo, Meta, etc.) without ever seeing user credentials. The proxy authenticates the agent by a session token carried in `Proxy-Authorization`, looks up the matching credential from the vault, and rewrites the request — Bearer header, custom header, Basic auth, or query param — based on a per-[integration](../integrations/spec.md) policy. Agent subprocesses opt in by inheriting `HTTPS_PROXY`, `NO_PROXY` (bypass list for hosts the proxy doesn't intercept), `NODE_EXTRA_CA_CERTS`, and a `NODE_OPTIONS --import` preload that wires `undici`'s global dispatcher.
 
 ## Context
 
@@ -140,10 +140,15 @@ The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0
 
 ### `getProxyEnv` contract
 
-#### Scenario: Three env vars are returned per session token
+#### Scenario: Four env vars are returned per session token
 - **WHEN** the caller passes a `sessionToken`
-- **THEN** `getProxyEnv(token)` returns `{ HTTPS_PROXY: "http://${token}@127.0.0.1:${port}", NODE_EXTRA_CA_CERTS: caCertPath, NODE_OPTIONS: "<existing>... --import \"${PRELOAD_SCRIPT}\"" }`.
+- **THEN** `getProxyEnv(token)` returns `{ HTTPS_PROXY: "http://${token}@127.0.0.1:${port}", NO_PROXY: "<bypass list>", NODE_EXTRA_CA_CERTS: caCertPath, NODE_OPTIONS: "<existing>... --import \"${PRELOAD_SCRIPT}\"" }`.
 - **AND** any existing `process.env.NODE_OPTIONS` is preserved (prepended) so caller-set options aren't dropped.
+
+#### Scenario: `NO_PROXY` bypasses Anthropic API and telemetry hosts
+- **WHEN** `getProxyEnv(token)` is called
+- **THEN** `NO_PROXY` includes `.anthropic.com` (and other non-intercepted infra hosts the agent binary reaches) so traffic to the Claude API skips the proxy entirely.
+- **WHY:** The Bun-compiled native binary shipped in `@anthropic-ai/claude-agent-sdk` ≥0.2.138 mis-handles the local CONNECT tunnel for HTTPS targets, failing with a spurious `Unable to connect to API (ConnectionRefused / FailedToOpenSocket)`. The proxy adds no value for `api.anthropic.com` (it's not on the intercept allowlist — just a transparent pipe), so bypassing it lets the binary connect directly using its keychain-stored OAuth.
 
 ### Agent preload (`agent-proxy-preload.mjs`)
 
@@ -177,3 +182,4 @@ The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0
 - Per-host cert LRU cap added after a long-running agent generated 4,000+ certs for unique Shopify shop subdomains over a weekend, leaking ~150 MB.
 - The `agent-proxy-preload.mjs` route was preceded by a per-skill `setGlobalDispatcher` snippet copied into every skill — a maintenance hazard. Centralising via `NODE_OPTIONS=--import` means skills are credential-config-free.
 - Session token extraction originally only supported `Bearer`; switched to also accept `Basic <user:>` after `undici`/curl/python all naturally encoded userinfo as Basic when given `HTTPS_PROXY=http://token@host`.
+- `NO_PROXY` added (2026-05-11) bypassing `.anthropic.com` and other non-intercepted infra hosts. `@anthropic-ai/claude-agent-sdk` ≥0.2.138 swapped its Node-based CLI for a Bun-compiled native binary whose HTTP client mis-handles the local CONNECT tunnel for HTTPS targets — surfacing as `Unable to connect to API (ConnectionRefused / FailedToOpenSocket)` even though curl through the same proxy URL succeeds. Since `api.anthropic.com` was only ever transparent-tunneled (not on the intercept allowlist), bypassing the proxy entirely is the right answer.
