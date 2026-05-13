@@ -53,29 +53,7 @@ async function requireToken(ctx?: PluginContext): Promise<string> {
   return token
 }
 
-type ComposeParams = { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string }
-
-// Signature is cached per user email to avoid re-fetching on every send/draft
-const signatureCache = new Map<string, { value: string; ts: number }>()
-const SIGNATURE_TTL = 60 * 60 * 1000 // 1h
-
-async function getSignatureCached(accessToken: string, userEmail: string): Promise<string> {
-  const cached = signatureCache.get(userEmail)
-  if (cached && Date.now() - cached.ts < SIGNATURE_TTL) return cached.value
-  const sig = await gmail.getSignature(accessToken)
-  signatureCache.set(userEmail, { value: sig, ts: Date.now() })
-  return sig
-}
-
-async function composeWithSignature(
-  accessToken: string,
-  userEmail: string,
-  params: ComposeParams,
-  fn: typeof gmail.sendMessage,
-) {
-  const signature = await getSignatureCached(accessToken, userEmail)
-  return fn(accessToken, params.to, params.subject, params.body, params.threadId, params.inReplyTo, signature)
-}
+type ComposeParams = { to: string; subject: string; body: string; threadId?: string; inReplyTo?: string; references?: string }
 
 const MIME_MAP: Record<string, string> = {
   pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
@@ -199,13 +177,13 @@ export const gmailPlugin: Plugin = {
         break
       }
       case "send": {
-        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as ComposeParams
-        await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
+        const { to, subject, body, threadId, inReplyTo, references } = (payload ?? {}) as ComposeParams
+        await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, references)
         break
       }
       case "save-draft": {
-        const { to, subject, body, threadId, inReplyTo } = (payload ?? {}) as ComposeParams
-        await composeWithSignature(accessToken, ctx!.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
+        const { to, subject, body, threadId, inReplyTo, references } = (payload ?? {}) as ComposeParams
+        await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, references)
         break
       }
       default:
@@ -243,13 +221,6 @@ export const gmailPlugin: Plugin = {
       })
     })
 
-    app.get("/signature", async (c) => {
-      const ctx = await getContext(c)
-      const accessToken = await requireToken(ctx)
-      const signature = await getSignatureCached(accessToken, ctx.userEmail)
-      return c.json({ signature })
-    })
-
     app.get("/labels", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
@@ -260,8 +231,8 @@ export const gmailPlugin: Plugin = {
     app.post("/send", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const result = await composeWithSignature(accessToken, ctx.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.sendMessage)
+      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json()
+      const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
 
@@ -269,8 +240,8 @@ export const gmailPlugin: Plugin = {
     app.post("/drafts", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo } = await c.req.json()
-      const result = await composeWithSignature(accessToken, ctx.userEmail, { to, subject, body, threadId, inReplyTo }, gmail.createDraft)
+      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json()
+      const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
 

@@ -9,7 +9,6 @@ import type {
   GmailApiThreadListResponse,
   GmailApiMessageListResponse,
   GmailApiLabel,
-  GmailApiSendAs,
 } from "./gmail-api-types.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -180,8 +179,11 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
     snippet: decodeHtmlEntities(message.snippet || ""),
     from: getHeader(message, "from"),
     to: getHeader(message, "to"),
+    cc: getHeader(message, "cc") || undefined,
     subject: getHeader(message, "subject"),
     date: getHeader(message, "date"),
+    messageId: getHeader(message, "message-id") || undefined,
+    references: getHeader(message, "references") || undefined,
     body: cleanedBody,
     bodyFormat,
     isUnread: (message.labelIds || []).includes("UNREAD"),
@@ -365,12 +367,6 @@ export async function modifyThreadLabels(
   })
 }
 
-export async function getSignature(accessToken: string): Promise<string> {
-  const data = await gmailRequest(accessToken, "/settings/sendAs")
-  const primary = ((data.sendAs || []) as GmailApiSendAs[]).find((s) => s.isPrimary)
-  return primary?.signature || ""
-}
-
 /** Convert a markdown string to basic HTML suitable for email. */
 function markdownToHtml(md: string): string {
   // Escape HTML entities
@@ -425,37 +421,51 @@ function markdownToHtml(md: string): string {
   return html
 }
 
+/** RFC 2047 encode a header value if it contains non-ASCII characters. */
+function encodeHeaderValue(value: string): string {
+  if (/^[\x20-\x7E]*$/.test(value)) return value
+  return `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`
+}
+
+/** Fold base64 content at 76 chars per line as required by MIME. */
+function foldBase64(b64: string): string {
+  return b64.match(/.{1,76}/g)?.join("\r\n") ?? b64
+}
+
 function buildRawEmail(
   to: string,
   subject: string,
   body: string,
-  signature: string,
   inReplyTo?: string,
+  references?: string,
 ): string {
-  // Always send as multipart HTML so markdown renders correctly
   const htmlContent = markdownToHtml(body)
-  const htmlBody = signature
-    ? `${htmlContent}<br><div class="gmail_signature">${signature}</div>`
-    : htmlContent
   const boundary = `boundary_${Date.now()}`
   const headers: string[] = [
+    `MIME-Version: 1.0`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeHeaderValue(subject)}`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ]
   if (inReplyTo) {
     headers.push(`In-Reply-To: ${inReplyTo}`)
-    headers.push(`References: ${inReplyTo}`)
+    // Build the full References chain: prior references + the message we're replying to
+    const refs = references ? `${references} ${inReplyTo}` : inReplyTo
+    headers.push(`References: ${refs}`)
   }
+  const textB64 = foldBase64(Buffer.from(body, "utf-8").toString("base64"))
+  const htmlB64 = foldBase64(Buffer.from(htmlContent, "utf-8").toString("base64"))
   const parts = [
     `--${boundary}`,
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    body,
+    `Content-Type: text/plain; charset=utf-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    textB64,
     `--${boundary}`,
-    "Content-Type: text/html; charset=utf-8",
-    "",
-    htmlBody,
+    `Content-Type: text/html; charset=utf-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    htmlB64,
     `--${boundary}--`,
   ]
   return [...headers, "", ...parts].join("\r\n")
@@ -476,9 +486,9 @@ export async function sendMessage(
   body: string,
   threadId?: string,
   inReplyTo?: string,
-  signature?: string,
+  references?: string,
 ) {
-  const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
+  const rawMessage = buildRawEmail(to, subject, body, inReplyTo, references)
   const message: { raw: string; threadId?: string } = { raw: encodeRaw(rawMessage) }
   if (threadId) message.threadId = threadId
 
@@ -501,9 +511,9 @@ export async function createDraft(
   body: string,
   threadId?: string,
   inReplyTo?: string,
-  signature?: string,
+  references?: string,
 ) {
-  const rawMessage = buildRawEmail(to, subject, body, signature || "", inReplyTo)
+  const rawMessage = buildRawEmail(to, subject, body, inReplyTo, references)
   const draft: { message: { raw: string; threadId?: string } } = {
     message: { raw: encodeRaw(rawMessage) },
   }

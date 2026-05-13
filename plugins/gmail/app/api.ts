@@ -32,13 +32,13 @@ export async function getEmailLabels() {
 }
 
 export async function sendEmail(body: {
-  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string
+  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string; references?: string
 }) {
   return request<{ id: string }>(`/gmail/send`, { method: "POST", body: JSON.stringify(body) })
 }
 
 export async function createDraft(body: {
-  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string
+  to: string; subject: string; body: string; threadId?: string; inReplyTo?: string; references?: string
 }) {
   return request<{ id: string }>(`/gmail/drafts`, { method: "POST", body: JSON.stringify(body) })
 }

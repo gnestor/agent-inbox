@@ -43,8 +43,12 @@ export function useEmailDraft(threadId: string, thread: GmailThread | undefined)
     })
     const to = [...allRecipients].join(", ")
 
+    // Use RFC 2822 Message-ID for In-Reply-To so non-Gmail clients thread correctly.
+    // Build the References chain: prior references + the message we're replying to.
+    const inReplyTo = last.messageId || last.id
+    const references = [last.references, last.messageId].filter(Boolean).join(" ") || undefined
     // Don't prepend "Re:" — Gmail handles this automatically for threaded replies
-    return { to, subject: thread.subject, inReplyTo: last.id }
+    return { to, subject: thread.subject, inReplyTo, references }
   }
 
   const sendMutation = useMutation({
