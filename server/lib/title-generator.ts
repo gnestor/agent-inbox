@@ -82,7 +82,7 @@ export async function generateSessionTitle(
     const client = new Anthropic() // uses ANTHROPIC_API_KEY from env
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: process.env.TITLE_MODEL ?? "claude-haiku-4-5-20251001",
       max_tokens: 100,
       system: TITLE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: transcript }],

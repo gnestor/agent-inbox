@@ -4,6 +4,7 @@ import { execFileSync } from "child_process"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
+import { loadHttpsConfig } from "@hammies/frontend/vite/server"
 
 /** Build identifier injected into the client as __APP_VERSION__.
  *  Used as the React Query persist buster — cache is discarded whenever
@@ -50,14 +51,8 @@ function serveArtifactAssets() {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-
-  const https = env.VITE_HTTPS_KEY && env.VITE_HTTPS_CERT
-    ? {
-        key: fs.readFileSync(env.VITE_HTTPS_KEY),
-        cert: fs.readFileSync(env.VITE_HTTPS_CERT)
-      }
-    : undefined
+  const rootEnv = loadEnv(mode, path.resolve(__dirname, "../.."), "")
+  const env = { ...rootEnv, ...loadEnv(mode, process.cwd(), "") }
 
   return {
   define: {
@@ -92,7 +87,7 @@ export default defineConfig(({ mode }) => {
     strictPort: true,
     host: true,
     allowedHosts: true,
-    https,
+    https: loadHttpsConfig(env),
     proxy: {
       "/api": {
         target: "http://localhost:3002",

@@ -1,8 +1,6 @@
 import { useMemo } from "react"
 import TurndownService from "turndown"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
+import { Markdown } from "@hammies/frontend/components/Markdown"
 import { MessageSquare, ExternalLink, CheckCircle, RotateCcw, Archive, Trash2, type LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useIframeAutoHeight } from "@/hooks/use-iframe-auto-height"
@@ -19,7 +17,7 @@ import { getItemTitle } from "@/lib/plugin-utils"
 import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 import { EmailThread } from "@plugins/gmail/app/components/EmailThread"
 import { PluginFrame } from "@/components/plugin/PluginFrame"
-import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { ErrorBoundary } from "@hammies/frontend/components/ErrorBoundary"
 import { PropertiesPopover } from "@/components/plugin/PropertiesPopover"
 import { usePluginMutations } from "@/hooks/use-plugin-mutations"
 import type { PluginManifest } from "@/api/client"
@@ -62,7 +60,6 @@ function formatSlackText(text: string): string {
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
 // Strip style/script tags so CSS doesn't render as visible text
 turndown.remove(["style", "script", "head"])
-const REMARK_PLUGINS = [remarkGfm]
 
 const EMOJI_MAP: Record<string, string> = {
   slightly_smiling_face: "🙂", smile: "😊", grinning: "😀", joy: "😂",
@@ -158,11 +155,9 @@ function MessageRow({ item }: { item: PluginItem }) {
             </div>
           )}
           {markdown ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-              <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>
-                {markdown}
-              </Markdown>
-            </div>
+            <Markdown className="prose prose-sm dark:prose-invert max-w-none text-sm">
+              {markdown}
+            </Markdown>
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
               {formatSlackText(text)}
@@ -207,9 +202,9 @@ function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
       {bodyFormat === "html" || body.startsWith("<") ? (
         <HtmlMessageBody html={body} />
       ) : bodyFormat === "markdown" ? (
-        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-          <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>{body}</Markdown>
-        </div>
+        <Markdown className="prose prose-sm dark:prose-invert max-w-none text-sm">
+          {body}
+        </Markdown>
       ) : (
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
       )}
@@ -538,9 +533,9 @@ export function PluginDetail({
       />
       <div className="flex-1 overflow-y-auto p-4">
         {bodyContent && bodyFormat === "markdown" ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypeHighlight()}>{bodyContent}</Markdown>
-          </div>
+          <Markdown className="prose prose-sm dark:prose-invert max-w-none">
+            {bodyContent}
+          </Markdown>
         ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (
           <HtmlMessageBody html={bodyContent} />
         ) : (

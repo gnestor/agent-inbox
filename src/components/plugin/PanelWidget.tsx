@@ -1,5 +1,4 @@
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { Markdown } from "@hammies/frontend/components/Markdown"
 import type { WidgetDef } from "@/types/panels"
 
 function getNestedValue(obj: Record<string, unknown>, dotPath: string): unknown {
@@ -41,9 +40,9 @@ function ProseWidget({
   const content = getNestedValue(data, field)
   if (!content) return null
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(content)}</ReactMarkdown>
-    </div>
+    <Markdown className="prose prose-sm dark:prose-invert max-w-none">
+      {String(content)}
+    </Markdown>
   )
 }
 

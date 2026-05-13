@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, startTransition } from "react"
 import { getSession } from "@/api/client"
 import { useWsStream } from "@/hooks/use-ws-stream"
 import {
@@ -37,7 +37,7 @@ export function useSessionTranscript(
 
     const unsubEvents = subscribe(
       sessionId,
-      (event) => { useSessionStore.getState().ingestEvent(sessionId, event) },
+      (event) => { startTransition(() => useSessionStore.getState().ingestEvent(sessionId, event)) },
       {
         // Cursor: send the highest applied sequence so the server can replay
         // events we missed during any WS gap. Returns undefined on initial

@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
+import { Markdown } from "@hammies/frontend/components/Markdown"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
 import { DataTable } from "@/components/shared/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
@@ -130,11 +128,9 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
 
 function MarkdownOutput({ data }: { data: string }) {
   return (
-    <div className="p-4 prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()}>
-        {data}
-      </ReactMarkdown>
-    </div>
+    <Markdown className="p-4 prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
+      {data}
+    </Markdown>
   )
 }
 

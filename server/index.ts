@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
 import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
-import { cors } from "hono/cors"
+import { parseAllowedOrigins, createCorsMiddleware } from "@hammies/auth/server"
 import { logger } from "hono/logger"
 import { createLogger, runWithRequestContext } from "./lib/logger.js"
 import { randomUUID } from "crypto"
@@ -41,7 +41,7 @@ import { loadPanels } from "./lib/panel-registry.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Load workspace-root .env first (shared secrets like JWT_SECRET), then
+// Load workspace-root .env first (shared secrets like AUTH_SECRET), then
 // inbox-local .env (overrides + inbox-specific config like GOOGLE_CLIENT_ID,
 // VAULT_SECRET).
 config({ path: resolve(__dirname, "../../../.env") })
@@ -226,19 +226,12 @@ type AppBindings = {
 }
 
 // Allowed origins for CORS and CSRF checks
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS?.split(",") ?? ["http://localhost:5175"])
-  .map((s) => s.trim())
-  .filter(Boolean)
+const ALLOWED_ORIGINS = parseAllowedOrigins("http://localhost:5175")
 
 // Create app
 const app = new Hono<AppBindings>()
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app })
-app.use("*", cors({
-  origin: (origin) => (origin && ALLOWED_ORIGINS.includes(origin) ? origin : null),
-  credentials: true,
-  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-  allowHeaders: ["Content-Type", "X-Request-Id"],
-}))
+app.use("*", createCorsMiddleware(ALLOWED_ORIGINS))
 app.use("*", logger())
 
 // Request correlation — every log call inside a handler gets requestId auto-injected

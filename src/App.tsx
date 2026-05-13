@@ -17,7 +17,7 @@ import { SessionConnectionSurface } from "@/components/session/SessionConnection
 import { Tab } from "@/components/navigation/Tab"
 import { Panel } from "@/components/navigation/Panel"
 import { PluginView } from "@/components/plugin/PluginView"
-import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { ErrorBoundary } from "@hammies/frontend/components/ErrorBoundary"
 import { WsStreamProvider } from "@/hooks/use-ws-stream"
 
 const IntegrationsPage = lazy(() =>

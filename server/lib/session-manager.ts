@@ -7,6 +7,7 @@ const log = createLogger("session")
 
 const INITIAL_SUMMARY_LENGTH = 80
 const AGENT_SDK_BETAS: ["context-1m-2025-08-07"] = ["context-1m-2025-08-07"]
+const DEFAULT_SESSION_MODEL = process.env.SESSION_MODEL ?? undefined
 import { query, queryOne, execute, withTransaction } from "../db/pool.js"
 
 /** Shape of a row in the `sessions` table. */
@@ -911,7 +912,7 @@ export async function startSession(
         artifact: buildArtifactMcpServer(),
       },
       betas: AGENT_SDK_BETAS,
-      ...(options?.model ? { model: options.model } : {}),
+      ...(options?.model ?? DEFAULT_SESSION_MODEL ? { model: options?.model ?? DEFAULT_SESSION_MODEL } : {}),
     },
   })
   let sequence = 0
@@ -1101,7 +1102,8 @@ export async function resumeSessionQuery(
           render_output: buildRenderOutputMcpServer(),
           artifact: buildArtifactMcpServer(),
         },
-        betas: AGENT_SDK_BETAS
+        betas: AGENT_SDK_BETAS,
+        ...(DEFAULT_SESSION_MODEL ? { model: DEFAULT_SESSION_MODEL } : {}),
       },
     })
   } catch (err) {

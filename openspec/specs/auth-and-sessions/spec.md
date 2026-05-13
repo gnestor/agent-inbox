@@ -10,7 +10,7 @@ Authenticate users with Google Sign-In, mint a stateless JWT session cookie, and
 The browser does the full Google Sign-In dance (GIS button, popup, consent) and posts the resulting **ID token** to `/api/auth/callback`. The server verifies the token via `google-auth-library`'s `OAuth2Client.verifyIdToken` (in `@hammies/auth/server`) — no client secret, no redirect URI bookkeeping, no PKCE state to manage on the server. The library validates the JWT signature and freshness against Google's JWKS; we only check the `aud` claim against `GOOGLE_CLIENT_ID`.
 
 ### Why JWT cookies, shared across the monorepo
-The session cookie is a JOSE-signed JWT (HS256, 14-day expiry) minted by `@hammies/auth/server`'s `signSession`. The cookie name `hammies_session` and the signing secret (`HAMMIES_AUTH_SECRET`) are shared with the `vision` and `design` apps so a single sign-in cookie scoped to `.tail21f7c3.ts.net` provides SSO across all subdomains. Logout clears the cookie — there is no server-side session row to revoke, but the 14-day expiry caps blast radius.
+The session cookie is a JOSE-signed JWT (HS256, 14-day expiry) minted by `@hammies/auth/server`'s `signSession`. The cookie name `hammies_session` and the signing secret (`AUTH_SECRET`) are shared with the `vision` and `design` apps so a single sign-in cookie scoped to `.tail21f7c3.ts.net` provides SSO across all subdomains. Logout clears the cookie — there is no server-side session row to revoke, but the 14-day expiry caps blast radius.
 
 The previous opaque-token scheme persisted sessions in `auth_sessions(token PRIMARY KEY)`. That table is no longer written or read; it remains in the database for rollback safety and may be dropped in a follow-up migration.
 

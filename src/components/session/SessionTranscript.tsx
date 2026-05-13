@@ -11,9 +11,7 @@ import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
 import { getPanelSchemas, getSessionFileUrl } from "@/api/client"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import { useRehypeHighlight } from "@/lib/lazy-rehype-highlight"
+import { Markdown, type Components } from "@hammies/frontend/components/Markdown"
 import { cn } from "@hammies/frontend/lib/utils"
 import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
@@ -61,7 +59,7 @@ function unwrapTag(children: ReactNode, tag: string): ReactNode {
   )
 }
 
-const markdownComponents: import("react-markdown").Components = {
+const markdownComponents: Components = {
   h1: ({ children, node: _n, ...props }) => <h1 {...props}>{unwrapTag(children, "strong")}</h1>,
   h2: ({ children, node: _n, ...props }) => <h2 {...props}>{unwrapTag(children, "strong")}</h2>,
   h3: ({ children, node: _n, ...props }) => <h3 {...props}>{unwrapTag(children, "strong")}</h3>,
@@ -299,11 +297,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
     case "system_result":
       return (
         <TranscriptAccordionEntry label="Result" color="text-foreground" defaultOpen>
-          <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
-              {cm.text}
-            </ReactMarkdown>
-          </div>
+          <Markdown className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto" components={markdownComponents}>
+            {cm.text}
+          </Markdown>
         </TranscriptAccordionEntry>
       )
 
@@ -317,11 +313,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
     case "user_skill":
       return (
         <TranscriptAccordionEntry label={<ToolCallLabel name="Skill" summary={cm.skillBlock!.name} />} color="text-muted-foreground" bold={false}>
-          <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>
-              {cm.skillBlock!.content}
-            </ReactMarkdown>
-          </div>
+          <Markdown className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto" components={markdownComponents}>
+            {cm.skillBlock!.content}
+          </Markdown>
         </TranscriptAccordionEntry>
       )
 
@@ -358,9 +352,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
         <MessageBubble label={authorLabel} align="right">
           <div className="space-y-1.5">
             {cleanText && (
-              <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{cleanText.replace(/\\\n/g, "\n")}</ReactMarkdown>
-              </div>
+              <Markdown className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto" components={markdownComponents}>
+                {cleanText.replace(/\\\n/g, "\n")}
+              </Markdown>
             )}
             {fileAttachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5 justify-end">
@@ -474,7 +468,6 @@ function SubagentAccordion({ label, sessionId, children, visibility, onOpenPanel
 }) {
   const [open, setOpen] = useState(false)
   const { pushPanel } = useNavigation()
-  const rehypePlugins = useRehypeHighlight()
 
   function handleExpand() {
     if (!sessionId) return
@@ -502,9 +495,9 @@ function SubagentAccordion({ label, sessionId, children, visibility, onOpenPanel
           {children.map((child) => {
             if (child.displayType === "user_message" && child.text) {
               return (
-                <div key={child.source.sequence} className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>{child.text}</ReactMarkdown>
-                </div>
+                <Markdown key={child.source.sequence} className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground" components={markdownComponents}>
+                  {child.text}
+                </Markdown>
               )
             }
             if (child.displayType === "assistant_text_only" || child.displayType === "assistant_blocks") {
@@ -565,9 +558,9 @@ function MessageBubble({ label, align, transparent, children }: { label: string;
 function MarkdownEntry({ text, label = "Claude" }: { text: string; label?: string }) {
   return (
     <MessageBubble label={label} align="left" transparent>
-      <div className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={useRehypeHighlight()} components={markdownComponents}>{text}</ReactMarkdown>
-      </div>
+      <Markdown className="prose prose-sm max-w-none dark:prose-invert overflow-x-auto" components={markdownComponents}>
+        {text}
+      </Markdown>
     </MessageBubble>
   )
 }
@@ -698,7 +691,6 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
 }) {
   const lookups = useLookups()
   const panelSchemas = usePanelSchemas()
-  const rehypePlugins = useRehypeHighlight()
 
   if (block.type === "text") {
     if (!block.text || !visibility.messages) return null
@@ -798,9 +790,9 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
     if (!block.thinking || !visibility.thinking) return null
     return (
       <TranscriptAccordionEntry label={<span className="font-medium uppercase">Think</span>} color="text-muted-foreground" bold={false} defaultOpen>
-        <div className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={markdownComponents}>{block.thinking}</ReactMarkdown>
-        </div>
+        <Markdown className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground" components={markdownComponents}>
+          {block.thinking}
+        </Markdown>
       </TranscriptAccordionEntry>
     )
   }
