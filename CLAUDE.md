@@ -65,7 +65,7 @@ After implementing any feature, fix, or refactor, complete this sequence in orde
 
 5. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
 
-6. **Browser verification** — for any visible UI change, verify the changed flow in the browser and check for console errors. Use targeted Playwright e2e when the change crosses component/hook/API boundaries.
+6. **Browser verification** — for any visible UI change, use `playwright-cli` with the persistent `hammies` profile (see workspace root [CLAUDE.md](../../CLAUDE.md) → Completion Checklist) to verify the changed flow and check for console errors. Playwright e2e tests (`npm run test:e2e`) are optional supplemental coverage — useful for complex cross-boundary flows, but the browser skill is the primary verification method.
 
 7. **Commit** — stage only files for this task, then commit:
    ```
