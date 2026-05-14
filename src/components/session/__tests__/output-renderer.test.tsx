@@ -24,6 +24,13 @@ vi.mock("@/api/client", () => ({
 vi.mock("@/lib/artifact-transform", () => ({
   transformArtifactCode: vi.fn(async (code: string) => ({ code, exportedName: "App" })),
   escapeForScript: (code: string) => code,
+  unwrapReactData: (data: unknown) => {
+    if (data && typeof data === "object") {
+      const o = data as Record<string, unknown>
+      return { code: typeof o.code === "string" ? o.code : undefined, title: undefined }
+    }
+    return { code: typeof data === "string" ? data : undefined, title: undefined }
+  },
 }))
 
 describe("OutputRenderer", () => {
