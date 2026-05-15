@@ -234,7 +234,7 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 | Iframe HTML document, CSP, import map, theme sync, postMessage bridge, height/error/wheel handlers | [src/lib/build-artifact-html.ts](../../../src/lib/build-artifact-html.ts) |
 | `<ArtifactFrame>` host: transform query, `srcDoc` cache, height cache, postMessage handling, error overlay | [src/components/session/ArtifactFrame.tsx](../../../src/components/session/ArtifactFrame.tsx) |
 | Code-editor pub-sub for live artifact editing | [src/hooks/use-artifact-editor.ts](../../../src/hooks/use-artifact-editor.ts) |
-| Lazy `rehype-highlight` loader with `useSyncExternalStore` re-render hook | [src/lib/lazy-rehype-highlight.ts](../../../src/lib/lazy-rehype-highlight.ts) |
+| Lazy `rehype-highlight` loader with `useSyncExternalStore` re-render hook | `src/lib/lazy-rehype-highlight.ts` (removed; highlighting now handled inline) |
 | Minimal HAST → HTML serialiser for lowlight output | [src/lib/hast-html.ts](../../../src/lib/hast-html.ts) |
 | Iframe theme variable list and base CSS (consumed by `build-artifact-html.ts`) | `src/lib/iframe-theme.ts` |
 | In-process MCP server registering the `render_output` tool | [server/lib/render-output-tool.ts](../../../server/lib/render-output-tool.ts) |

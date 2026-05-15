@@ -1993,16 +1993,18 @@ export async function getAgentSessionTranscript(sessionId: string, filePath?: st
 
       // Insert each batch at its Agent tool_use position.
       // Process in reverse so earlier insertions don't shift later indices.
+      // Assign fractional sequences between the parent's lineIdx and the next
+      // main message — keeping all subagent sequences < lineCount so they never
+      // collide with the live WS broadcast counter (which starts at lineCount).
       for (let bi = subagentBatches.length - 1; bi >= 0; bi--) {
         const { toolUseId, msgs } = subagentBatches[bi]!
         if (msgs.length === 0) continue
         const insertIdx = toolUseInsertIdx.get(toolUseId) ?? messages.length
+        const parentSeq = (messages[insertIdx - 1]?.sequence as number) ?? 0
+        for (let si = 0; si < msgs.length; si++) {
+          msgs[si]!.sequence = parentSeq + (si + 1) / (msgs.length + 1)
+        }
         messages.splice(insertIdx, 0, ...msgs)
-      }
-
-      // Re-number sequences
-      for (let i = 0; i < messages.length; i++) {
-        messages[i]!.sequence = i
       }
     }
 

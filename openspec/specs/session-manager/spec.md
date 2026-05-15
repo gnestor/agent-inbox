@@ -200,6 +200,7 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 #### Scenario: `getAgentSessionTranscript` returns parsed JSONL messages
 - **WHEN** the transcript view loads
 - **THEN** the helper reads every line, JSON-parses it, and returns the array — assistant `message.content` blocks remain in their SDK shape.
+- **AND** subagent JSONL files (from the `subagents/` sibling directory) are merged in after the Agent tool_use block that spawned them, using fractional sequences `parentLineIdx + (si+1)/(n+1)` so all subagent sequences remain in `(parentLineIdx, parentLineIdx+1)` — never reaching `lineCount`. This keeps the WS broadcast counter (which starts at `lineCount` on resume) safely above every snapshot sequence, preventing the duplicate-drop that would otherwise unreconcile pending optimistic prompts.
 
 #### Scenario: `classifyAssistantBlocks(content)` separates text/tool_use/thinking
 - **WHEN** the renderer needs to know which UI affordance to use per block
@@ -247,3 +248,4 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 - `attached_context` inlining replaced an attempt to use the SDK's `system` injection (the SDK only honours `system` at session start, not on resume) — appending to JSONL + inlining on next prompt was the only path.
 - `patchArtifactCode` originally lived in the artifact route and rewrote a `react_query`-cached copy of the code; the source-of-truth audit migrated it to JSONL after multiple "edited code reverts on reload" reports.
 - `BROADCAST_BUFFER_CAPACITY` was 100 originally; raised to 500 after long debugging sessions hit `cursor_miss` from a tab-switch + lock-screen sequence.
+- Subagent message sequences were originally assigned by re-numbering the entire merged array (`sequence = i`); this caused WS broadcast events (starting at `lineCount`) to collide with snapshot sequences above `lineCount - 1`, silently dropping the synthetic user message on resume and leaving the optimistic prompt permanently unreconciled (appearing at the end of the transcript). Fixed by using fractional sequences in `(parentLineIdx, parentLineIdx+1)` — mirroring the thinking-block pattern.
