@@ -267,11 +267,13 @@ describe("Gmail API functions", () => {
 
       const body = JSON.parse(opts.body)
       expect(body.raw).toBeDefined()
-      // Decode and verify
+      // Decode outer envelope — body parts are base64-encoded within the MIME structure
       const decoded = Buffer.from(body.raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
       expect(decoded).toContain("To: bob@test.com")
       expect(decoded).toContain("Subject: Hi")
-      expect(decoded).toContain("Body text")
+      expect(decoded).toContain("Content-Type: multipart/alternative")
+      // Plain text body is base64-encoded as a MIME part
+      expect(decoded).toContain(Buffer.from("Body text").toString("base64").slice(0, 8))
     })
 
     it("includes In-Reply-To and References headers", async () => {
