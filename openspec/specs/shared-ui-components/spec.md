@@ -135,7 +135,7 @@ HTML outputs, React artifacts, plugin components, and email bodies all render in
 | Concern | Location |
 |---|---|
 | Panel header chrome and mobile sidebar/back buttons | [src/components/shared/PanelHeader.tsx](../../../src/components/shared/PanelHeader.tsx) |
-| Error boundary with resetKeys | [src/components/shared/ErrorBoundary.tsx](../../../src/components/shared/ErrorBoundary.tsx) |
+| Error boundary with resetKeys | shared from `@hammies/frontend/components/ErrorBoundary` |
 | Empty state, panel/list skeletons | [src/components/shared/EmptyState.tsx](../../../src/components/shared/EmptyState.tsx), [src/components/shared/PanelSkeleton.tsx](../../../src/components/shared/PanelSkeleton.tsx), [src/components/shared/ListSkeleton.tsx](../../../src/components/shared/ListSkeleton.tsx) |
 | Property editors (select, combobox, date) | [src/components/shared/PropertyEditor.tsx](../../../src/components/shared/PropertyEditor.tsx) |
 | Filter combobox / popover / badge toggle | [src/components/shared/FilterCombobox.tsx](../../../src/components/shared/FilterCombobox.tsx), [src/components/shared/FilterPopover.tsx](../../../src/components/shared/FilterPopover.tsx), [src/components/shared/BadgeToggleMenu.tsx](../../../src/components/shared/BadgeToggleMenu.tsx) |
