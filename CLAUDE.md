@@ -161,6 +161,10 @@ ln -sf "$(git rev-parse --show-toplevel)/packages/frontend" node_modules/@hammie
 - Browser E2E tests (`npm run test:e2e`) — needs Vite client
 - Run these from the main `packages/inbox/` directory instead.
 
+## Routing (intentional exception to monorepo convention)
+
+The workspace standard for routing is `createBrowserRouter` (React Router 7). Inbox does **not** follow this — it uses a Zustand + IndexedDB tab-navigation store (`src/lib/navigation-store.ts` + `src/components/navigation/NavigationProvider.tsx`). This is deliberate: the multi-panel tab UI multiplexes per-tab state (scroll position, filters, sidebar index, panel stacks) that doesn't fit a URL-only model. Not a candidate for unification.
+
 ## Conventions
 
 - Import UI components from `@hammies/frontend/components/ui`
