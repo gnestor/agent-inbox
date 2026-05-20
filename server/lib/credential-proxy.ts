@@ -4,7 +4,7 @@ import { Socket } from "node:net"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { generateCA, generateCertForHost, writeCACertFile } from "./credential-proxy-ca.js"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("credential-proxy")
 

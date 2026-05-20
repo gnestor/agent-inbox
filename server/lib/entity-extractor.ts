@@ -11,7 +11,7 @@
 
 import { readFile } from "fs/promises"
 import { join } from "path"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { execute, query as dbQuery } from "../db/pool.js"
 import type { Plugin, PluginItem, Entity } from "../../src/types/plugin.js"
 

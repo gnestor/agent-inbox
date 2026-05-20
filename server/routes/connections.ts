@@ -14,7 +14,7 @@ import { getCredentials } from "../lib/credentials.js"
 import { randomBytes } from "crypto"
 import type { AppBindings } from "../lib/workspace-context.js"
 import { rateLimit, getClientIp } from "../lib/rate-limit.js"
-import { createLogger } from "../lib/logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("routes:connections")
 

@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Plugin } from "../../src/types/plugin.js"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("plugins")
 

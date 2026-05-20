@@ -5,7 +5,7 @@
  * horizontally scaled, swap this for a shared-store implementation (Redis).
  */
 import type { Context, MiddlewareHandler } from "hono"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("rate-limit")
 

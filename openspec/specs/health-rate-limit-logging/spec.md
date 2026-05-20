@@ -93,10 +93,9 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 | Health checks: DB ping, vault shape, plugin count, workspaces | [server/lib/health.ts](../../../server/lib/health.ts) |
 | `/api/health` route, mounted before auth middleware | [server/index.ts:259-265](../../../server/index.ts#L259-L265) |
 | In-memory rate limiter + middleware factory | [server/lib/rate-limit.ts](../../../server/lib/rate-limit.ts) |
-| Structured logger + `AsyncLocalStorage` request context | [server/lib/logger.ts](../../../server/lib/logger.ts) |
+| Structured logger + `AsyncLocalStorage` request context | shared from `@hammies/frontend/lib/serverLogger` |
 | Health tests | [server/lib/__tests__/health.test.ts](../../../server/lib/__tests__/health.test.ts) |
 | Rate-limit tests | [server/lib/__tests__/rate-limit.test.ts](../../../server/lib/__tests__/rate-limit.test.ts) |
-| Logger tests | [server/lib/__tests__/logger.test.ts](../../../server/lib/__tests__/logger.test.ts) |
 
 ## History
 

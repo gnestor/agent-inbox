@@ -1,7 +1,7 @@
 import { basename } from "path"
 import { execFileSync } from "child_process"
 import { query, queryOne, execute } from "../db/pool.js"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("workspace")
 

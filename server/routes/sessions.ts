@@ -16,7 +16,7 @@ import {
 
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
-import { createLogger } from "../lib/logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { rateLimit, getClientIp } from "../lib/rate-limit.js"
 
 const log = createLogger("routes:sessions")

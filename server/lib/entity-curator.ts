@@ -16,7 +16,7 @@ import { readFile } from "fs/promises"
 import { join, resolve } from "path"
 import { execFile } from "child_process"
 import { promisify } from "util"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const execFileAsync = promisify(execFile)
 import {

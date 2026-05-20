@@ -13,7 +13,7 @@
  */
 
 import { readFile } from "fs/promises"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { canonicalize } from "./entity-extractor.js"
 import type { Entity } from "../../src/types/plugin.js"
 

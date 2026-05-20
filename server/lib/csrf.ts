@@ -9,7 +9,7 @@
  * so checking it reliably prevents CSRF.
  */
 import type { MiddlewareHandler } from "hono"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("csrf")
 

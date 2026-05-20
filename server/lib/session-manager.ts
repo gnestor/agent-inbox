@@ -1,7 +1,7 @@
 import { resolve, join, dirname } from "path"
 import * as fs from "fs"
 import { homedir } from "os"
-import { createLogger } from "./logger.js"
+import { createLogger } from "@hammies/frontend/lib/serverLogger"
 
 const log = createLogger("session")
 
