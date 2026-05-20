@@ -7,7 +7,7 @@ Unified web app for managing emails (Gmail), Notion tasks, and Claude Code agent
 - **Frontend**: React 19 + Vite 7 + TypeScript — UI components from `@hammies/frontend`
 - **Server**: Hono + `@hono/node-server` on port 3002
 - **Database**: PostgreSQL via `pg` connection pool (configured via `DATABASE_URL` env var)
-- **Sessions**: `@anthropic-ai/claude-agent-sdk` — sessions stored in `~/.claude/projects/`, interchangeable with Claude Code CLI
+- **Sessions**: `@anthropic-ai/claude-agent-sdk` — sessions stored in `~/.claude/projects/` (Claude Code) or `~/.codex/projects/` (Codex), interchangeable with either CLI
 
 ## Running
 
@@ -188,4 +188,4 @@ Domain contracts live in [`openspec/specs/`](openspec/specs/) — start with [`o
 
 The everyday workflow, ownership rules, and spec template are documented once at [../../OPENSPEC.md](../../OPENSPEC.md). Read it before adding or modifying a domain spec.
 
-This file (CLAUDE.md) covers project-wide working conventions: how to run, test, commit, and verify.
+This file covers project-wide working conventions: how to run, test, commit, and verify.
