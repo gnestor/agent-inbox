@@ -368,12 +368,16 @@ export async function modifyThreadLabels(
 }
 
 /** Convert a markdown string to basic HTML suitable for email. */
-function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string): string {
   // Escape HTML entities
   let html = md
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+  // Strip CommonMark backslash escapes (\<punct>) before structural parsing so
+  // sequences like `1\.` still render as ordered lists — agents tend to escape
+  // list markers in prose, but we want rich list rendering in email drafts.
+  html = html.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g, "$1")
   // Code blocks (must come before inline code)
   html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`)
   // Inline code
@@ -418,6 +422,9 @@ function markdownToHtml(md: string): string {
     // Paragraph: convert remaining single newlines to <br>
     return `<p>${block.replace(/\n/g, "<br>")}</p>`
   }).join("\n")
+  // Merge adjacent <ol>/<ul> blocks separated only by whitespace so list items
+  // written with blank lines between them render as a single numbered/bulleted list.
+  html = html.replace(/<\/(ol|ul)>\s*<\1>/g, "")
   return html
 }
 
