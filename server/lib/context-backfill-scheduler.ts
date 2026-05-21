@@ -327,10 +327,39 @@ After any code edit, finish your output by listing the edits in a structured blo
 
 This makes operator review trivial via \`git diff\` after a session ends.
 
+## Naming and tagging discipline
+
+1. **First tag is a canonical entity type.** Always one of: \`person\` | \`company\` | \`department\` | \`product\` | \`purchase-order\` | \`event\` | \`project\` | \`session\` | \`reference\` | \`workflow\` | \`archive\`. Never \`domain\`, \`vendor\`, \`wholesale-customer\`, \`stockist\`, \`retailer\`, \`brand\`, \`creator\`, \`folder\` in tag position 0 — those are subtypes that follow the entity type.
+2. **Resolve \`domain\`-tagged pages on first touch.** \`domain\` is a transitional extractor artifact, not a steady-state type. If you open a page whose first tag is \`domain\`: identify the brand from source bodies (signature lines, sender display name, visible H1), rewrite the first tag to \`company\` plus the right subtype, and rename the file to the brand slug. If no brand can be identified, the page likely fails the eligibility rule — delete it and mark sources processed.
+3. **Slug = brand name, not domain.** Before falling back to \`acme-com.md\`, read at least one source body for the visible brand name. Only use the domain slug for truly anonymous entities.
+4. **No template placeholders.** Never write \`<sub-type>\`, \`<topical-1>\`, \`<function/department>\` into actual frontmatter. If you can't determine a tag, omit it.
+5. **No fabricated table rows.** Contacts tables only get rows for real people you can name and link to a source. Don't pad rows with \`—\` placeholders to fill out the schema.
+6. **No self-links.** The page you are writing must not appear in its own Relationships, Related, or Sources list.
+7. **No empty source subsections.** Omit \`### Gmail\` (or any subheading) if you have no items to list under it.
+
+## Section discipline
+
+- The first section under the H1 identity line is \`## Role\` — 3-5 bullets of non-obvious facts, each ≤ 30 words. Not "Key Responsibilities".
+- \`## Details\` is reserved for structured attribute data: PO numbers, account IDs, addresses, fabric specs, tables of fields. If you only have prose, put it in Role.
+- Timeline entries are one line each: \`YYYY-MM-DD: <≤12-word summary> — [source](path)\`. Move narrative to the linked source.
+- Sources subsection order: **Notion → Shopify → Drive → Gmail → Gorgias → Sessions → Other.**
+
+## Wholesale customer requirements (restated)
+
+Every page tagged \`company, customer, wholesale\` MUST include in \`## Sources\`:
+- Shopify customer URL (\`https://admin.shopify.com/store/<store>/customers/<id>\`)
+- Shopify orders URL (\`?customer_id=<id>\`)
+- Notion Stockists DB record link — OR an explicit \`Stockists DB: not yet listed\` line in \`## Details\`.
+
+## Prospect discipline
+
+\`prospect\` is a status, not a justification. A \`prospect\` page only exists when Hammies later engaged the relationship (placed/received an order, signed an agreement, scheduled a kept meeting). Pure one-way inbound pitches we ignored, politely declined, or let die do **not** earn a page — even when several senders from the same domain wrote in. Apply the eligibility rule and mark sources processed.
+
 ## Structure
-- Frontmatter: \`tags\`, \`last_updated\`
+- Frontmatter: \`tags\` (first tag is canonical entity type), \`last_updated\`
 - One-sentence identity line
-- \`## Details\` — key attributes
+- \`## Role\` — 3-5 non-obvious bullets, ≤30 words each
+- \`## Details\` — structured attribute data (only if applicable)
 - \`## Timeline\` — dated milestones, each linking to the source file that recorded it
 - \`## Sources\` — raw source files that contributed
 - \`## Related\` — other curated pages with one-line relationships
