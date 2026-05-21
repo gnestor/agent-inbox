@@ -22,7 +22,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 DATABASE_URL=$(grep -h DATABASE_URL .env | cut -d= -f2-)
-TOKEN=$(psql "$DATABASE_URL" -t -c "SELECT token FROM auth_sessions LIMIT 1" | xargs)
+TOKEN=$(node --env-file=../../.env --env-file=.env "$(dirname "$0")/mint-token.mjs")
 PARALLEL="${PARALLEL:-3}"
 WORKSPACE_ID="${WORKSPACE_ID:-agent}"
 
@@ -76,7 +76,7 @@ dispatch_entity() {
   local result
   result=$(curl -s -m 600 -X POST \
     "http://localhost:3002/api/backfill/curate-entity?type=${etype}&value=${enc_value}" \
-    -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
+    -b "hammies_session=$TOKEN" -H 'Origin: http://localhost:5175')
   echo "$(date +%FT%T) [worker-$id] ${etype}:${evalue} -> $result"
 }
 

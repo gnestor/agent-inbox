@@ -24,7 +24,7 @@ SKIP=${SKIP:-0}
 PAUSE_FILE=${PAUSE_FILE:-/tmp/${PLUGIN_ID}-rerender.pause}
 
 DATABASE_URL=$(grep -h DATABASE_URL .env | cut -d= -f2-)
-TOKEN=$(psql "$DATABASE_URL" -t -c "SELECT token FROM auth_sessions LIMIT 1" | xargs)
+TOKEN=$(node --env-file=../../.env --env-file=.env "$(dirname "$0")/mint-token.mjs")
 
 log() { echo "$(date +%FT%T) [$PLUGIN_ID] $*"; }
 
@@ -38,7 +38,7 @@ while true; do
 
   result=$(curl -s -m 600 -X POST \
     "http://localhost:3002/api/backfill/$PLUGIN_ID/re-render?limit=$BATCH&skip=$SKIP" \
-    -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
+    -b "hammies_session=$TOKEN" -H 'Origin: http://localhost:5175')
   log "skip=$SKIP result=$result"
 
   total=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))" 2>/dev/null || echo 0)

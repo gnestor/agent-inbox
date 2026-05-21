@@ -14,7 +14,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 DATABASE_URL=$(grep -h DATABASE_URL .env | cut -d= -f2-)
-TOKEN=$(psql "$DATABASE_URL" -t -c "SELECT token FROM auth_sessions LIMIT 1" | xargs)
+TOKEN=$(node --env-file=../../.env --env-file=.env "$(dirname "$0")/mint-token.mjs")
 
 log() { echo "$(date +%FT%T) $*"; }
 
@@ -31,7 +31,7 @@ while true; do
   for source in "${SOURCES[@]}"; do
     result=$(curl -s -m 1200 -X POST \
       "http://localhost:3002/api/backfill/extract-bodies?source=$source&limit=$LIMIT" \
-      -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
+      -b "hammies_session=$TOKEN" -H 'Origin: http://localhost:5175')
     log "[$source] $result"
     # Track whether any source had work; only back off when all are idle.
     case "$result" in

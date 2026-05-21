@@ -15,7 +15,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 DATABASE_URL=$(grep -h DATABASE_URL .env | cut -d= -f2-)
-TOKEN=$(psql "$DATABASE_URL" -t -c "SELECT token FROM auth_sessions LIMIT 1" | xargs)
+TOKEN=$(node --env-file=../../.env --env-file=.env "$(dirname "$0")/mint-token.mjs")
 
 log() { echo "$(date +%FT%T) $*"; }
 
@@ -27,7 +27,7 @@ while true; do
 
   result=$(curl -s -m 600 -X POST \
     'http://localhost:3002/api/backfill/curate-entity/next' \
-    -b "inbox_session=$TOKEN" -H 'Origin: http://localhost:5175')
+    -b "hammies_session=$TOKEN" -H 'Origin: http://localhost:5175')
   log "$result"
   # Drain-rate polling. Cheap (one DB query + curl per poll, no Claude
   # tokens) and minimizes the gap between session completion and next

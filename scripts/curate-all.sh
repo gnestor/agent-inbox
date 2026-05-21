@@ -18,12 +18,11 @@ HOST="${HOST:-http://localhost:3002}"
 SOURCES="${SOURCES:-gmail gorgias sessions slack google-drive notion-tasks notion-calendar}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-30}"
 
-# Fetch auth token from the auth_sessions table
-if [ -z "$INBOX_SESSION_TOKEN" ]; then
-  INBOX_SESSION_TOKEN=$(psql "${DATABASE_URL:-postgresql://inbox:vsn123@localhost:5432/inbox}" \
-    -t -A -c "SELECT token FROM auth_sessions LIMIT 1")
+# Mint a service JWT for auth (legacy auth_sessions table replaced by stateless JWTs)
+if [ -z "${INBOX_SESSION_TOKEN:-}" ]; then
+  INBOX_SESSION_TOKEN=$(node --env-file=../../.env --env-file=.env "$(dirname "$0")/mint-token.mjs")
   if [ -z "$INBOX_SESSION_TOKEN" ]; then
-    echo "ERROR: no auth session found. Log into the app first." >&2
+    echo "ERROR: failed to mint session token." >&2
     exit 1
   fi
 fi
@@ -39,7 +38,7 @@ for source in $SOURCES; do
   (
     while true; do
       result=$(curl -s -X POST "${HOST}/api/backfill/curate?source=${source}" \
-        -b "inbox_session=${INBOX_SESSION_TOKEN}")
+        -b "hammies_session=${INBOX_SESSION_TOKEN}")
       timestamp=$(date "+%H:%M:%S")
       echo "[$timestamp] [$source] $result"
       sleep "$SLEEP_SECONDS"
