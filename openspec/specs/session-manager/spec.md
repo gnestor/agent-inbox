@@ -139,6 +139,12 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 - **WHEN** the agent issues `AskUserQuestion`
 - **THEN** the session's DB status is updated to `awaiting_user_input` and the status flips back to `running` once the user answers.
 
+#### Scenario: Iterator crashes mid-question → status becomes `needs_attention`, question stays answerable
+- **WHEN** the agent iterator throws while a `pendingQuestions[sessionId]` resolver is registered (process exit, SDK error, upstream timeout)
+- **THEN** the catch handler transitions the row to `needs_attention` (yellow) instead of `errored` (red), re-broadcasts the last `AskUserQuestion` so subscribed clients keep the inline form, and clears the in-memory resolver.
+- **AND** `wsSubscribe` re-broadcasts the question for both `awaiting_user_input` and `needs_attention` so a reconnecting browser sees the form even after a full server restart.
+- **AND** when the user submits an answer, `provideAskUserAnswer` returns false (no resolver), and `/sessions/:id/answer` falls back to `resumeSessionQuery` with the answers formatted as a user prompt, transitioning `needs_attention → running`.
+
 ### Multiplexed WebSocket clients
 
 #### Scenario: `addWsClient` / `removeWsClient` track per-tab subscriptions
@@ -166,8 +172,8 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 - **AND** otherwise returns the events with `sequence > fromSequence`.
 
 #### Scenario: `clearBroadcastBuffer(id)` drops the buffer when the session terminates
-- **WHEN** a session reaches `complete` or `errored`
-- **THEN** the per-session buffer is cleared so completed sessions don't hold memory.
+- **WHEN** a session reaches `complete`, `errored`, `needs_attention`, or `archived`
+- **THEN** the per-session buffer is cleared so sessions whose agent process has exited don't hold memory.
 
 ### Presence
 

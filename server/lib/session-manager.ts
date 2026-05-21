@@ -118,6 +118,30 @@ export function provideAskUserAnswer(sessionId: string, answers: Record<string, 
   return true
 }
 
+// If the iterator died while parked inside an AskUserQuestion canUseTool, the
+// answer is still meaningful — route into needs_attention (yellow) and replay
+// the question so reconnecting clients can reply. /sessions/:id/answer falls
+// back to resumeSessionQuery when no in-memory resolver exists.
+async function finalizeOnIteratorError(
+  sessionId: string,
+  message: string,
+  opts?: { skipDbRecord?: boolean },
+): Promise<void> {
+  const stuckOnQuestion = pendingQuestions.has(sessionId)
+  const nextStatus = stuckOnQuestion ? "needs_attention" : "errored"
+  if (!opts?.skipDbRecord) {
+    await updateSessionStatus(sessionId, nextStatus, message)
+  }
+  if (stuckOnQuestion) {
+    const questions = await getLastAskUserQuestions(sessionId)
+    if (questions) {
+      broadcastToSession(sessionId, { type: "ask_user_question", questions })
+    }
+  } else {
+    broadcastToSession(sessionId, { type: "session_error", error: message })
+  }
+}
+
 // Build a canUseTool callback that intercepts AskUserQuestion and waits for user answers.
 // getSessionId is a thunk because in startSession the ID isn't known until the init message.
 function makeCanUseTool(getSessionId: () => string | null) {
@@ -360,10 +384,13 @@ async function touchSession(sessionId: string) {
 }
 
 export async function updateSessionStatus(sessionId: string, status: string, summary?: string) {
-  // Valid status transitions: only update if current status allows this transition
+  // Valid status transitions: only update if current status allows this transition.
+  // `needs_attention` = agent process exited while an AskUserQuestion was pending.
+  // It is durably resumable — the user's answer triggers a fresh resume.
   const VALID_FROM: Record<string, string[]> = {
-    running: ["complete", "errored", "awaiting_user_input", "archived"],
-    awaiting_user_input: ["running", "complete", "errored"],
+    running: ["complete", "errored", "awaiting_user_input", "needs_attention", "archived"],
+    awaiting_user_input: ["running", "complete", "errored", "needs_attention", "archived"],
+    needs_attention: ["running", "complete", "errored", "archived"],
     complete: ["running", "archived"],
     errored: ["running", "archived"],
     archived: [],
@@ -400,7 +427,7 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   // Drop the broadcast buffer for sessions that have left the running state —
   // no further sequenced events will land, and we don't want to leak memory
   // across long-lived server processes.
-  if (rowCount > 0 && (status === "complete" || status === "errored" || status === "archived")) {
+  if (rowCount > 0 && (status === "complete" || status === "errored" || status === "needs_attention" || status === "archived")) {
     clearBroadcastBuffer(sessionId)
   }
 }
@@ -757,7 +784,10 @@ export async function wsSubscribe(clientId: string, sessions: readonly WsSubscri
       client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
     } else if (session?.status === "errored") {
       client.send({ type: "session_event", sessionId, data: { type: "session_error", status: "errored" } })
-    } else if (session?.status === "awaiting_user_input") {
+    } else if (session?.status === "awaiting_user_input" || session?.status === "needs_attention") {
+      // awaiting_user_input = live agent parked on a question.
+      // needs_attention    = agent process exited mid-question; answer triggers a fresh resume.
+      // Both render the same inline form, so we replay the question identically.
       const questions = await getLastAskUserQuestions(sessionId)
       if (questions) {
         client.send({ type: "session_event", sessionId, data: { type: "ask_user_question", questions } })
@@ -1034,13 +1064,7 @@ export async function startSession(
       if (sessionId) {
         // Don't override "complete" if we already received a result
         if (!gotResult) {
-          if (!options?.skipDbRecord) {
-            await updateSessionStatus(sessionId, "errored", message)
-          }
-          broadcastToSession(sessionId, {
-            type: "session_error",
-            error: message,
-          })
+          await finalizeOnIteratorError(sessionId, message, options)
         }
         runningQueries.delete(sessionId)
         pendingQuestions.delete(sessionId)
@@ -1217,11 +1241,7 @@ export async function resumeSessionQuery(
       const message = err instanceof Error ? err.message : String(err)
       log.error("Session resume error", { sessionId, error: message })
       if (!gotResult) {
-        await updateSessionStatus(sessionId, "errored", message)
-        broadcastToSession(sessionId, {
-          type: "session_error",
-          error: message,
-        })
+        await finalizeOnIteratorError(sessionId, message)
       }
       releaseRunningQuery(sessionId, abortController)
       drainQueuedPrompt(sessionId)
