@@ -94,7 +94,7 @@ export async function createSession(body: {
 }
 
 export async function resumeSession(sessionId: string, prompt: string) {
-  return request<{ ok: boolean }>(`/sessions/${sessionId}/resume`, {
+  return request<{ ok: boolean; queued?: boolean }>(`/sessions/${sessionId}/resume`, {
     method: "POST",
     body: JSON.stringify({ prompt }),
   })

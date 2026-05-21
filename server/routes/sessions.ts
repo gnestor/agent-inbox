@@ -349,10 +349,9 @@ sessionRoutes.post("/:id/resume", async (c) => {
   const userSessionToken = getCookie(c, SESSION_COOKIE)
   const user = c.get("user") as UserProfile | undefined
   const result = await sessions.resumeSessionQuery(sessionId, prompt, userSessionToken, user)
-  if (!result.started) {
-    return c.json({ error: "Session is already running" }, 409)
-  }
-  return c.json({ ok: true })
+  // result.started=false with queued=true means the prompt was accepted and
+  // will be sent after the current turn finishes (or when the user clicks stop).
+  return c.json({ ok: true, queued: result.queued === true })
 })
 
 sessionRoutes.post("/:id/attach", async (c) => {

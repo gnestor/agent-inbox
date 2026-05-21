@@ -53,6 +53,54 @@ const runningQueries = new Map<string, AbortController>()
 // Pending AskUserQuestion answers: sessionId → resolver function
 const pendingQuestions = new Map<string, (answers: Record<string, string>) => void>()
 
+// Prompts submitted while a session was already running. Drained FIFO when
+// the current iterator finishes (success or error). One queued prompt at a
+// time is sent on the next resume; additional entries wait their turn.
+type QueuedPrompt = {
+  prompt: string
+  userSessionToken?: string
+  userProfile?: { name: string; email: string; picture?: string }
+}
+const queuedPrompts = new Map<string, QueuedPrompt[]>()
+
+function enqueuePrompt(sessionId: string, entry: QueuedPrompt): void {
+  const existing = queuedPrompts.get(sessionId)
+  if (existing) existing.push(entry)
+  else queuedPrompts.set(sessionId, [entry])
+}
+
+// Release the runningQueries entry only if it still belongs to this iterator —
+// drainQueuedPrompt may have already started a new query (different controller)
+// after a stop button or external abort, and we must not clobber it.
+function releaseRunningQuery(sessionId: string, controller: AbortController): void {
+  if (runningQueries.get(sessionId) === controller) {
+    runningQueries.delete(sessionId)
+    pendingQuestions.delete(sessionId)
+  }
+}
+
+function drainQueuedPrompt(sessionId: string): void {
+  const queue = queuedPrompts.get(sessionId)
+  if (!queue || queue.length === 0) {
+    queuedPrompts.delete(sessionId)
+    return
+  }
+  const next = queue.shift()!
+  if (queue.length === 0) queuedPrompts.delete(sessionId)
+  // Run on a microtask so the current iterator's cleanup completes before
+  // the next resume reads runningQueries.
+  queueMicrotask(() => {
+    resumeSessionQuery(sessionId, next.prompt, next.userSessionToken, next.userProfile).catch(
+      (err) => {
+        log.error("Failed to drain queued prompt", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      },
+    )
+  })
+}
+
 // Session statuses where the agent is actively working — either iterating
 // (`running`) or paused waiting for user input (`awaiting_user_input`).
 const SESSION_ACTIVE_STATUSES = ["running", "awaiting_user_input"] as const
@@ -368,6 +416,8 @@ export async function archiveSession(sessionId: string): Promise<boolean> {
     runningQueries.delete(sessionId)
     pendingQuestions.delete(sessionId)
   }
+  // Archive is terminal — discard anything queued, don't auto-resume into it.
+  queuedPrompts.delete(sessionId)
 
   await updateSessionStatus(sessionId, "archived")
   return true
@@ -1018,15 +1068,16 @@ export async function resumeSessionQuery(
   prompt: string,
   userSessionToken?: string,
   userProfile?: { name: string; email: string; picture?: string },
-): Promise<{ started: boolean }> {
+): Promise<{ started: boolean; queued?: boolean }> {
   // Reconcile against DB: if the in-memory entry exists but the session is no
   // longer in an active status, the prior iterator failed silently or hung —
-  // abort it and replace rather than rejecting forever with 409. Only fetch
-  // the record on collision, so the happy path doesn't pay an extra DB query.
+  // abort it and replace rather than rejecting forever. Only fetch the record
+  // on collision, so the happy path doesn't pay an extra DB query.
   let sessionRecord = runningQueries.has(sessionId) ? await getSessionRecord(sessionId) : null
   if (runningQueries.has(sessionId)) {
     if (isActiveStatus(sessionRecord?.status)) {
-      return { started: false }
+      enqueuePrompt(sessionId, { prompt, userSessionToken, userProfile })
+      return { started: false, queued: true }
     }
     log.warn("Clearing stale runningQueries entry", { sessionId, dbStatus: sessionRecord?.status })
     runningQueries.get(sessionId)?.abort()
@@ -1109,8 +1160,7 @@ export async function resumeSessionQuery(
   } catch (err) {
     // Iterator IIFE owns its own cleanup; this catch handles the window before
     // it starts so the runningQueries entry can't leak past the failed setup.
-    runningQueries.delete(sessionId)
-    pendingQuestions.delete(sessionId)
+    releaseRunningQuery(sessionId, abortController)
     const message = err instanceof Error ? err.message : String(err)
     log.error("Session resume setup failed", { sessionId, error: message })
     try {
@@ -1122,6 +1172,7 @@ export async function resumeSessionQuery(
       })
     }
     broadcastToSession(sessionId, { type: "session_error", error: message })
+    drainQueuedPrompt(sessionId)
     throw err
   }
 
@@ -1160,8 +1211,8 @@ export async function resumeSessionQuery(
       await updateSessionStatus(sessionId, "complete")
       broadcastToSession(sessionId, { type: "session_complete", status: "complete" })
       autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
-      runningQueries.delete(sessionId)
-      pendingQuestions.delete(sessionId)
+      releaseRunningQuery(sessionId, abortController)
+      drainQueuedPrompt(sessionId)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       log.error("Session resume error", { sessionId, error: message })
@@ -1172,8 +1223,8 @@ export async function resumeSessionQuery(
           error: message,
         })
       }
-      runningQueries.delete(sessionId)
-      pendingQuestions.delete(sessionId)
+      releaseRunningQuery(sessionId, abortController)
+      drainQueuedPrompt(sessionId)
     }
   })()
 
@@ -1231,6 +1282,9 @@ export async function abortRunningSession(sessionId: string): Promise<boolean> {
     runningQueries.delete(sessionId)
     pendingQuestions.delete(sessionId)
     await updateSessionStatus(sessionId, "complete")
+    // Stop interrupts the current turn but flushes anything the user queued
+    // during it — same UX as Claude Desktop's stop button.
+    drainQueuedPrompt(sessionId)
     return true
   }
   return false

@@ -105,9 +105,16 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 - **WHEN** the user types a follow-up
 - **THEN** the SDK is invoked with `resume: sessionId`, the same env/MCP/plugin setup as `startSession`, and the prompt is augmented by `inlineAttachments` if any pending `attached_context` entries are present in the JSONL.
 
+#### Scenario: A prompt submitted while the iterator is already running is queued
+- **WHEN** `resumeSessionQuery` is called and `runningQueries.has(sessionId)` is true and the DB status is still active
+- **THEN** the prompt is pushed onto `queuedPrompts[sessionId]` (FIFO) and the function returns `{ started: false, queued: true }`.
+- **AND** when the current iterator's cleanup runs (success, error, or `abortRunningSession`), `drainQueuedPrompt` pops the next entry and re-enters `resumeSessionQuery` on a microtask.
+- **AND** archive discards the queue rather than draining — archived sessions don't auto-resume.
+
 #### Scenario: `abortRunningSession` triggers the registered `AbortController`
 - **WHEN** the user clicks Stop
 - **THEN** `runningQueries.get(sessionId)?.abort()` runs and `isSessionRunning(sessionId)` returns false on the next call.
+- **AND** any queued prompts are flushed (drained immediately) — the stop button doubles as "send my queued message now", matching Claude Desktop's UX.
 
 #### Scenario: `attachSourceToSession` appends `attached_context` to the JSONL
 - **WHEN** the user attaches an email to a running session

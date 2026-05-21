@@ -199,7 +199,7 @@ describe("resumeSessionQuery stale-entry recovery", () => {
     expect(result.started).toBe(true)
   })
 
-  it("returns started=false when DB confirms session truly is running", async () => {
+  it("queues a second prompt while a session is actively running", async () => {
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
         [Symbol.asyncIterator]: async function* () {
@@ -211,7 +211,7 @@ describe("resumeSessionQuery stale-entry recovery", () => {
     }))
 
     // First call: sessionRecord lookup → undefined.
-    // Second call: stale-entry check sees status "running" → return started=false.
+    // Second call: stale-entry check sees status "running" → queue and return started=false.
     mockQueryOne
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce({ status: "running" })
@@ -223,5 +223,54 @@ describe("resumeSessionQuery stale-entry recovery", () => {
 
     const second = await resumeSessionQuery("sess-active-1", "second", undefined, undefined)
     expect(second.started).toBe(false)
+    expect(second.queued).toBe(true)
+  })
+
+  it("drains a queued prompt after the running iterator completes", async () => {
+    // First query hangs once started, but we can release it by aborting.
+    // Second query (the queued one) should be set up after the first cleans up.
+    const queryCalls: string[] = []
+    const firstHandle: { resolve: (() => void) | null } = { resolve: null }
+    const queryMock = vi.fn(() => {
+      const callIndex = queryCalls.length
+      queryCalls.push(`call-${callIndex}`)
+      return {
+        [Symbol.asyncIterator]: async function* () {
+          if (callIndex === 0) {
+            await new Promise<void>((r) => { firstHandle.resolve = r })
+          }
+        },
+      }
+    })
+    vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
+      query: queryMock,
+      tool: vi.fn(),
+      createSdkMcpServer: vi.fn(),
+    }))
+
+    // queryOne sequence: first call's sessionRecord lookup, second call's
+    // active-running check, drained call's sessionRecord lookup.
+    mockQueryOne
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ status: "running" })
+      .mockResolvedValue(undefined)
+
+    const { resumeSessionQuery, abortRunningSession } = await import("../session-manager.js")
+
+    const first = await resumeSessionQuery("sess-drain-1", "first", undefined, undefined)
+    expect(first.started).toBe(true)
+
+    const second = await resumeSessionQuery("sess-drain-1", "queued", undefined, undefined)
+    expect(second.queued).toBe(true)
+    expect(queryCalls.length).toBe(1) // queued, not started
+
+    // Releasing the first iterator lets cleanup run and drain the queue.
+    await abortRunningSession("sess-drain-1")
+    firstHandle.resolve?.()
+
+    // Wait for microtask + setup to complete.
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(queryCalls.length).toBe(2)
   })
 })

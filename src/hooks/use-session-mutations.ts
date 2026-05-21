@@ -66,9 +66,12 @@ export function useSessionMutations({ sessionId, onResume, onArchive }: UseSessi
     onMutate: () => {
       setSessionListStatus(qc, sessionId, "running")
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       onResume?.()
       qc.invalidateQueries({ queryKey: ["sessions"] })
+      if (result?.queued) {
+        toast.info("Message queued — will send after current turn finishes")
+      }
     },
     onError: (err: Error) => {
       log.error("Failed to resume session", { sessionId, error: err.message })
