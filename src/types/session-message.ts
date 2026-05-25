@@ -39,6 +39,7 @@ export type SessionMessagePayload =
   | SystemInitMessage
   | SystemResultMessage
   | SystemAttachedContextMessage
+  | SystemCompactBoundaryMessage
   | UserMessage
   | AssistantMessage
   | PlanMessage
@@ -64,6 +65,16 @@ export interface SystemAttachedContextMessage extends SystemBase {
   subtype: "attached_context"
   title: string
   content?: string
+}
+
+export interface SystemCompactBoundaryMessage extends SystemBase {
+  subtype: "compact_boundary"
+  content: string
+  compactMetadata?: {
+    trigger?: "auto" | "manual" | string
+    preTokens?: number
+    preCompactDiscoveredTools?: string[]
+  }
 }
 
 // --- User messages ---
@@ -104,7 +115,7 @@ export interface ToolResultMessage {
 // Type guards
 // ---------------------------------------------------------------------------
 
-export type SystemMessage = SystemInitMessage | SystemResultMessage | SystemAttachedContextMessage
+export type SystemMessage = SystemInitMessage | SystemResultMessage | SystemAttachedContextMessage | SystemCompactBoundaryMessage
 
 export function isSystemMessage(msg: SessionMessagePayload): msg is SystemMessage {
   return msg.type === "system"

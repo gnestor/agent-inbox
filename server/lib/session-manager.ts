@@ -1982,26 +1982,43 @@ export async function getAgentSessionTranscript(sessionId: string, filePath?: st
     // -----------------------------------------------------------------------
     const subagentsDir = join(dirname(sessionFile), sessionId, "subagents")
     if (fs.existsSync(subagentsDir)) {
-      // Collect Agent tool_use IDs from the main session in order
-      const agentToolUseIds: string[] = []
-      for (const m of messages) {
-        const content: any[] | undefined =
-          (m.message as any)?.message?.content ?? (m.message as any)?.content
+      // Map each subagent's agentId to its parent Agent tool_use id, and
+      // record where to splice each batch in the main timeline. Each `Agent`
+      // tool call writes a sidecar JSONL named `agent-<agentId>.jsonl`; the
+      // matching `toolUseResult.agentId` tells us which tool_use it belongs to.
+      // Pairing by sorted filename instead would misalign the batches, and
+      // the reverse splice below would then interleave later batches into the
+      // middle of earlier ones — fragmenting each subagent into many groups.
+      const agentIdToToolUseId = new Map<string, string>()
+      const toolUseInsertIdx = new Map<string, number>()
+      for (let mi = 0; mi < messages.length; mi++) {
+        const raw = messages[mi]!.message as any
+        const content: any[] | undefined = raw?.message?.content ?? raw?.content
         if (!Array.isArray(content)) continue
         for (const block of content) {
           if (block?.type === "tool_use" && block.name === "Agent" && block.id) {
-            agentToolUseIds.push(block.id)
+            toolUseInsertIdx.set(block.id, mi + 1)
+          }
+          if (block?.type === "tool_result" && typeof block.tool_use_id === "string") {
+            const aid = raw?.toolUseResult?.agentId
+            if (typeof aid === "string") agentIdToToolUseId.set(aid, block.tool_use_id)
           }
         }
       }
 
-      const subFiles = fs.readdirSync(subagentsDir).filter((f: string) => f.endsWith(".jsonl")).sort()
+      // Exclude `agent-acompact-*.jsonl` — those are SDK auto-compaction resume
+      // artifacts, not Task subagents. They have no `.meta.json` companion and
+      // including them shifts the index-based alignment with `Agent` tool_use
+      // ids below. Compactions are rendered separately from the main session's
+      // `system/compact_boundary` markers.
+      const subFiles = fs.readdirSync(subagentsDir)
+        .filter((f: string) => f.endsWith(".jsonl") && !f.startsWith("agent-acompact-"))
+        .sort()
 
       // Process each subagent and collect its parsed messages
       const subagentBatches: Array<{ toolUseId: string; msgs: Array<Record<string, unknown>> }> = []
 
-      for (let si = 0; si < subFiles.length; si++) {
-        const subFile = subFiles[si]!
+      for (const subFile of subFiles) {
         const subPath = join(subagentsDir, subFile)
         const subContent = fs.readFileSync(subPath, "utf-8")
         const subLines = subContent.trim().split("\n")
@@ -2047,36 +2064,43 @@ export async function getAgentSessionTranscript(sessionId: string, filePath?: st
           })
         }
 
-        // Match subagent to its Agent tool_use by order
-        const toolUseId = si < agentToolUseIds.length ? agentToolUseIds[si]! : ""
+        const toolUseId = agentIdToToolUseId.get(agentId) ?? ""
         subagentBatches.push({ toolUseId, msgs: batch })
       }
 
-      // Build toolUseId → message index map in one pass
-      const toolUseInsertIdx = new Map<string, number>()
-      for (let mi = 0; mi < messages.length; mi++) {
-        const content: any[] | undefined =
-          (messages[mi]!.message as any)?.message?.content ?? (messages[mi]!.message as any)?.content
-        if (!Array.isArray(content)) continue
-        for (const block of content) {
-          if (block?.type === "tool_use" && block.name === "Agent" && block.id) {
-            toolUseInsertIdx.set(block.id, mi + 1)
-          }
-        }
-      }
+      // Sort batches by insertion position descending. We splice into the
+      // live array, so we must process highest-position-first; otherwise an
+      // earlier splice shifts later positions and a subsequent splice lands
+      // inside the previously inserted batch — which fragments both batches
+      // into many interleaved subagent_groups on the client.
+      const sortedBatches = subagentBatches
+        .map((b, originalIdx) => ({ ...b, originalIdx, insertIdx: toolUseInsertIdx.get(b.toolUseId) ?? messages.length }))
+        .sort((a, b) => b.insertIdx - a.insertIdx || a.originalIdx - b.originalIdx)
 
-      // Insert each batch at its Agent tool_use position.
-      // Process in reverse so earlier insertions don't shift later indices.
+      // Count batches per insertIdx so each gets a non-overlapping sub-range of
+      // the fractional sequence space. Two Agent tool calls emitted in the
+      // same assistant turn share an insertIdx; without sub-ranges, their
+      // sequences interleave on sort and the client fragments each subagent
+      // across the other.
+      const batchesPerInsertIdx = new Map<number, number>()
+      for (const b of sortedBatches) {
+        batchesPerInsertIdx.set(b.insertIdx, (batchesPerInsertIdx.get(b.insertIdx) ?? 0) + 1)
+      }
+      const slotCursor = new Map<number, number>()
+
       // Assign fractional sequences between the parent's lineIdx and the next
       // main message — keeping all subagent sequences < lineCount so they never
       // collide with the live WS broadcast counter (which starts at lineCount).
-      for (let bi = subagentBatches.length - 1; bi >= 0; bi--) {
-        const { toolUseId, msgs } = subagentBatches[bi]!
+      for (const { msgs, insertIdx } of sortedBatches) {
         if (msgs.length === 0) continue
-        const insertIdx = toolUseInsertIdx.get(toolUseId) ?? messages.length
         const parentSeq = (messages[insertIdx - 1]?.sequence as number) ?? 0
+        const slotCount = batchesPerInsertIdx.get(insertIdx)!
+        const slotIdx = slotCursor.get(insertIdx) ?? 0
+        slotCursor.set(insertIdx, slotIdx + 1)
+        const slotWidth = 1 / (slotCount + 1)
+        const slotStart = parentSeq + (slotIdx + 1) * slotWidth
         for (let si = 0; si < msgs.length; si++) {
-          msgs[si]!.sequence = parentSeq + (si + 1) / (msgs.length + 1)
+          msgs[si]!.sequence = slotStart + ((si + 1) / (msgs.length + 1)) * slotWidth
         }
         messages.splice(insertIdx, 0, ...msgs)
       }

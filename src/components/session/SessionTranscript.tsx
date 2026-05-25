@@ -13,6 +13,7 @@ import { getPanelSchemas, getSessionFileUrl } from "@/api/client"
 import { PanelWidget } from "@/components/plugin/PanelWidget"
 import { Markdown, type Components } from "@hammies/frontend/components/Markdown"
 import { cn } from "@hammies/frontend/lib/utils"
+import { formatCount } from "@hammies/frontend/lib/formatters"
 import { useNavigation } from "@/hooks/use-navigation"
 import { OutputRenderer } from "./OutputRenderer"
 import type { OutputSpec } from "./OutputRenderer"
@@ -336,6 +337,9 @@ const TranscriptEntry = memo(function TranscriptEntry({
       )
     }
 
+    case "compaction":
+      return <CompactionAccordion info={cm.compaction!} />
+
     case "user_message": {
       if (!cm.text && cm.ideRefs.length === 0) return null
       const isCurrentUser = !cm.isSubagent && (!cm.authorEmail || cm.authorEmail === currentUserEmail)
@@ -519,6 +523,33 @@ function SubagentAccordion({ label, sessionId, children, visibility, onOpenPanel
         </div>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Compaction accordion — `COMPACT <trigger · tokens>` collapsed, expands to
+// the SDK's continuation summary.
+// ---------------------------------------------------------------------------
+
+function CompactionAccordion({ info }: { info: NonNullable<ClassifiedMessage["compaction"]> }) {
+  const tokens = info.preTokens ? `${formatCount(info.preTokens)} tokens` : null
+  const description = [info.trigger, tokens].filter(Boolean).join(" · ")
+  const label = (
+    <>
+      <span className="font-medium uppercase">Compact</span>
+      {description && <> {description}</>}
+    </>
+  )
+  return (
+    <TranscriptAccordionEntry label={label} color="text-muted-foreground" bold={false}>
+      {info.summary ? (
+        <Markdown className="prose prose-xs max-w-none dark:prose-invert text-muted-foreground overflow-x-auto text-xs [&_code]:text-muted-foreground" components={markdownComponents}>
+          {info.summary}
+        </Markdown>
+      ) : (
+        <span className="text-xs text-muted-foreground italic">No summary captured.</span>
+      )}
+    </TranscriptAccordionEntry>
   )
 }
 

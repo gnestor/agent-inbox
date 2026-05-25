@@ -68,6 +68,7 @@ export type MessageDisplayType =
   | "assistant_blocks"
   | "assistant_text_only"
   | "subagent_group"
+  | "compaction"
   | "plan"
   | "tool_result"
   | "hidden"
@@ -95,6 +96,14 @@ export interface ClassifiedMessage {
   authorName?: string
   /** For subagent_group: child messages from the same subagent */
   children?: ClassifiedMessage[]
+  /** For compaction: trigger (auto/manual) and pre-compact token count */
+  compaction?: {
+    trigger: string
+    preTokens?: number
+    /** Full continuation summary text from the user message that immediately
+     *  follows the compact_boundary, if present. */
+    summary?: string
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +424,14 @@ export function classifyMessage(message: SessionMessage): ClassifiedMessage {
     if (msg.subtype === "init") return { ...base, displayType: "system_init" }
     if (msg.subtype === "result") return { ...base, displayType: "system_result", text: msg.result || "Session completed" }
     if (msg.subtype === "attached_context") return { ...base, displayType: "system_attached", text: msg.title }
+    if (msg.subtype === "compact_boundary") {
+      const meta = msg.compactMetadata
+      return {
+        ...base,
+        displayType: "compaction",
+        compaction: { trigger: meta?.trigger || "auto", preTokens: meta?.preTokens },
+      }
+    }
     return { ...base, displayType: "hidden" }
   }
 
@@ -517,6 +534,7 @@ export function isVisible(cm: ClassifiedMessage, visibility: TranscriptVisibilit
     case "user_artifact_action":
     case "user_skill":
     case "subagent_group":
+    case "compaction":
       return true
 
     case "user_message":
@@ -575,10 +593,38 @@ function groupSubagentMessages(messages: ClassifiedMessage[]): ClassifiedMessage
   return result
 }
 
+/** The SDK injects this user message right after a compact_boundary system
+ *  marker. It carries the full summary that the model "sees" as its next user
+ *  turn — we fold it into the compaction accordion instead of rendering it
+ *  twice. */
+const COMPACTION_SUMMARY_PREFIX = "This session is being continued from a previous conversation"
+
+/** Fold the user-message summary that immediately follows a compact_boundary
+ *  into the preceding compaction entry, then drop it from the timeline. */
+function foldCompactionSummaries(messages: ClassifiedMessage[]): ClassifiedMessage[] {
+  const result: ClassifiedMessage[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const cm = messages[i]!
+    if (
+      cm.displayType === "compaction" &&
+      i + 1 < messages.length &&
+      messages[i + 1]!.displayType === "user_message" &&
+      messages[i + 1]!.text.startsWith(COMPACTION_SUMMARY_PREFIX)
+    ) {
+      const summary = messages[i + 1]!.text
+      result.push({ ...cm, compaction: { ...cm.compaction!, summary } })
+      i++ // skip the summary user message
+      continue
+    }
+    result.push(cm)
+  }
+  return result
+}
+
 /** Process raw messages into classified messages + lookups. Pure function. */
 export function processTranscript(messages: SessionMessage[]): ProcessedTranscript {
   const lookups = buildLookups(messages)
-  const classified = groupSubagentMessages(messages.map(classifyMessage))
+  const classified = groupSubagentMessages(foldCompactionSummaries(messages.map(classifyMessage)))
   return { lookups, classified }
 }
 
