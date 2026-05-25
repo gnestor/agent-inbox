@@ -6,7 +6,9 @@ import { useNavigation } from "@/hooks/use-navigation"
 import { setEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 import { getSession, updateArtifactCode } from "@/api/client"
 import { findCodeByToolUseId } from "@/lib/session-pipeline"
-import { MonacoEditor } from "@hammies/frontend/components/MonacoEditor"
+import { MonacoEditor, type Monaco } from "@hammies/frontend/components/MonacoEditor"
+import { setupMonacoEditor, ONE_DARK, ONE_LIGHT } from "@hammies/frontend/components/monaco-one-themes"
+import { useResolvedDark } from "@hammies/frontend/hooks"
 import type { PanelState } from "@/types/navigation"
 
 interface CodeEditorPanelProps {
@@ -15,11 +17,17 @@ interface CodeEditorPanelProps {
 
 export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
   const { sessionId, sequence, toolUseId, initialCode, artifactPanelId } = panel.props
+  const isDark = useResolvedDark()
   const { removePanel, replacePanel, getPanels } = useNavigation()
   const qc = useQueryClient()
   const key = artifactEditorKey(sessionId, sequence)
   const [userEdit, setUserEdit] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editorReady, setEditorReady] = useState(false)
+
+  const beforeMount = useCallback((monaco: Monaco) => {
+    setupMonacoEditor(monaco).then(() => setEditorReady(true))
+  }, [])
 
   const { data: sessionData } = useQuery({
     queryKey: ["session", sessionId],
@@ -30,9 +38,8 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
     [sessionData?.messages, toolUseId],
   )
 
-  // Derived editor value: user's in-progress edits win, otherwise use the
-  // latest JSONL code, otherwise the persisted panel prop (shown briefly
-  // while the session query resolves on reload).
+  // User's in-progress edits win, otherwise the latest JSONL code, otherwise
+  // the persisted panel prop (shown briefly while the session query resolves).
   const code = userEdit ?? freshCode ?? initialCode
 
   const handleChange = useCallback(
@@ -99,11 +106,14 @@ export function CodeEditorPanel({ panel }: CodeEditorPanelProps) {
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 bg-card">
         <MonacoEditor
           value={code}
           onChange={handleChange}
-          language="jsx"
+          language="javascript"
+          path={`artifact-${sessionId}-${sequence}.jsx`}
+          beforeMount={beforeMount}
+          theme={editorReady ? (isDark ? ONE_DARK : ONE_LIGHT) : "vs"}
           height="100%"
         />
       </div>

@@ -32,6 +32,8 @@ COMPONENT PATTERNS — follow these exactly:
 
 CRITICAL: Your root element must NOT have bg-background, bg-card, text-foreground, or padding (p-*). The app already provides background, text color, and padding. Start your component with bare layout (e.g. <div className="flex flex-col gap-4">).
 
+UNICODE IN JSX: Use literal Unicode characters in JSX text (—, ≤, ≥, ', ", →, ×, etc.), NOT \\u escape sequences. JSX text between tags is rendered verbatim — \\u2014 will display as the 6 characters "\\u2014" instead of "—". Escapes only decode inside JS string/template literals (e.g. {'\\u2014'} works, but <span>\\u2014</span> does not).
+
 DESIGN RULES — follow these patterns to match the app:
 - Colors: text-muted-foreground (secondary text), hover:bg-secondary (hover states), bg-primary text-primary-foreground (selected/active), bg-accent text-accent-foreground (highlights/links). Use bg-card only on Card components, never on wrapper divs.
 - Chart colors: text-chart-1 through text-chart-5 (or bg-chart-*) for data visualization — 5 distinct hues

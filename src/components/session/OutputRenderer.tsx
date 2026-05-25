@@ -3,7 +3,7 @@ import { Markdown } from "@hammies/frontend/components/Markdown"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
 import { DataTable } from "@/components/shared/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
-import { useTheme } from "@hammies/frontend"
+import { useResolvedDark } from "@hammies/frontend/hooks"
 import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@/lib/iframe-theme"
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
@@ -138,20 +138,6 @@ function MarkdownOutput({ data }: { data: string }) {
 
 const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
 
-/** Resolved dark/light state — reacts to both manual theme changes and OS-level
- *  dark mode switches when the user preference is "system". */
-function useResolvedDark(): boolean {
-  const { theme } = useTheme()
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"))
-  useEffect(() => {
-    const observer = new MutationObserver(() => setIsDark(document.documentElement.classList.contains("dark")))
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
-    return () => observer.disconnect()
-  }, [])
-  // Re-sync immediately when theme preference changes
-  useEffect(() => { setIsDark(document.documentElement.classList.contains("dark")) }, [theme])
-  return isDark
-}
 
 /** Snapshot current computed theme vars into a <style> block for cross-origin iframes.
  *  Recomputes when the resolved theme changes (manual toggle or OS dark mode). */
