@@ -209,6 +209,57 @@ describe("session store — recovery lifecycle", () => {
     expect(slice.messageIds).toContain(10)
   })
 
+  it("ingestEventBatch coalesces N events into one store notification", () => {
+    const store = useSessionStore.getState()
+    store.beginSnapshot("s-batch", "bootstrap")
+    store.applySnapshot("s-batch", {
+      session: makeSession("s-batch"),
+      messages: [],
+      latestSequence: 0,
+    })
+
+    let notifyCount = 0
+    const unsub = useSessionStore.subscribe(() => { notifyCount++ })
+
+    // 500 consecutive events — the exact pattern that floods React under
+    // broadcast-buffer replay. Without batching this would fire 500 sets;
+    // with batching it should fire one.
+    const events = Array.from({ length: 500 }, (_, i) => ({
+      sequence: i + 1,
+      message: { type: "assistant", content: [] },
+    }))
+    useSessionStore.getState().ingestEventBatch("s-batch", events)
+
+    unsub()
+    expect(notifyCount).toBe(1)
+    const slice = useSessionStore.getState().sessions["s-batch"]!
+    expect(slice.messageIds).toHaveLength(500)
+    expect(slice.recovery.latestSequence).toBe(500)
+  })
+
+  it("ingestEventBatch with all-ignore events does not allocate a new slice", () => {
+    const store = useSessionStore.getState()
+    store.beginSnapshot("s-dup", "bootstrap")
+    store.applySnapshot("s-dup", {
+      session: makeSession("s-dup"),
+      messages: [makeMsg(1, "user")],
+      latestSequence: 1,
+    })
+    const sliceBefore = useSessionStore.getState().sessions["s-dup"]!
+
+    // Re-ingest sequence 1 (already applied) ten times — every event is "ignore".
+    const events = Array.from({ length: 10 }, () => ({
+      sequence: 1,
+      message: { type: "user", content: "dup" },
+    }))
+    useSessionStore.getState().ingestEventBatch("s-dup", events)
+
+    const sliceAfter = useSessionStore.getState().sessions["s-dup"]!
+    // Recovery state may have new highestObserved bump, but no message data changed.
+    expect(sliceAfter.messageIds).toEqual(sliceBefore.messageIds)
+    expect(sliceAfter.messageById).toEqual(sliceBefore.messageById)
+  })
+
   it("deferredEvents is bounded at MAX_DEFERRED_EVENTS; oldest drops on overflow", () => {
     const store = useSessionStore.getState()
     // No bootstrap — all message events get deferred.

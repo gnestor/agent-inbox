@@ -156,6 +156,18 @@ The recovery coordinator (`session-recovery.ts`) is a pure state machine. The st
 - **THEN** the oldest deferred event MUST be dropped AND `pendingReplay` MUST be set so the gap effect refetches a clean snapshot.
 - **WHY** Defense-in-depth for persistent-gap pathologies — better to drop and resync than to accumulate forever.
 
+### Inbound events are coalesced per animation frame
+
+#### Scenario: Bursts of events commit as one store transition
+- **WHEN** the WS receives multiple `session_event` messages within a single animation-frame window (e.g. broadcast-buffer replay on subscribe, or rapid live emission)
+- **THEN** the client MUST buffer the events and call `useSessionStore.ingestEventBatch(sessionId, events)` once per frame instead of `ingestEvent` per message.
+- **AND** the store MUST commit exactly one `set()` per batch — subscribers re-render once, not N times.
+- **WHY:** A flood of N back-to-back `set()` calls — typical of server replay on a large session — pins the main thread, allocates N new slice objects, and trips React's Maximum-update-depth guard before the browser yields. Batching collapses the burst into one render.
+
+#### Scenario: All-ignore batches skip the slice mutation
+- **WHEN** every event in a batch classifies as `ignore` (already-applied sequences)
+- **THEN** the store MUST NOT allocate a new slice object; it MUST mirror only the coordinator's recovery state via `syncRecoveryState`, which short-circuits when nothing changed.
+
 ### Snapshot recovery has a circuit breaker
 
 #### Scenario: Coordinator gives up after N unsatisfied snapshots in a row
@@ -218,6 +230,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 | Snapshot-loop circuit breaker (`MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS`) | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `isCircuitOpen` + `resolveReplayNeed`; [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `applySnapshot` flush skip |
 | Bounded deferred events (cap = 500) | [`src/stores/session-store.ts:22`](../../../src/stores/session-store.ts#L22), [`:134-147`](../../../src/stores/session-store.ts#L134-L147) |
 | Per-session orchestration hook | [`src/hooks/use-session-transcript.ts`](../../../src/hooks/use-session-transcript.ts) |
+| Event-batching queue (rAF drain) | [`src/hooks/use-session-transcript.ts`](../../../src/hooks/use-session-transcript.ts) — subscribe-callback queue + `drain`; [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `ingestEventBatch` |
 | applySnapshot uses server-supplied latestSequence cursor | [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `applySnapshot` `snapshotHigh` computation |
 | WebSocket connection store (single source of truth for UI connectivity) | [`src/stores/ws-connection-store.ts`](../../../src/stores/ws-connection-store.ts) |
 
@@ -237,6 +250,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 
 | Date | Commit | Change |
 |------|--------|--------|
+| 2026-05-24 | _pending_ | Coalesce WS event bursts into one store transition. Heartbeat telemetry caught a render storm on a long-transcript session: opening it via `/recent/sessions/…` triggered broadcast-buffer replay (hundreds of events in one tick), each `ingestEvent` produced a separate `set()`, React saw the same fiber re-queue too many times and threw "Maximum update depth exceeded" (2013 long-tasks-per-5s, heap climbing past 800 MB). Added `ingestEventBatch` to the store and a `requestAnimationFrame` drain in `use-session-transcript`; bursts now commit as a single re-render. |
 | 2026-05-24 | _pending_ | Add snapshot-loop circuit breaker. Crash telemetry (heartbeat.jsonl) showed sustained 130+ long-tasks-per-5s and heap climbing past 1.1 GB on a specific session — root cause: snapshot endpoint couldn't reach broadcaster-emitted sequences, so deferred events kept re-arming `pendingReplay` after every `completeSnapshotRecovery`, the React gap effect kept firing snapshots, and each iteration allocated new slice objects until the renderer crashed. Coordinator now opens a breaker after 3 consecutive unsatisfied snapshots; `applySnapshot` skips the deferred-event flush when the breaker is open. |
 | 2026-05-08 | _pending_ | Add explicit `latestSequence` cursor to the REST snapshot. Per-message `sequence` values can be sparse (filtered JSONL lines, thinking fractionals, subagent renumbering) so trusting `messageIds[last]` left the client coordinator behind the live broadcaster's counter, causing every post-resume event to classify as `recover` and producing an infinite snapshot-fetch loop. Server now reports `jsonlLines.length - 1`; client takes `max(messageIds[last], latestSequence)` in `applySnapshot`. |
 | 2026-05-05 | _pending_ | Initial OpenSpec port — narrowed scope from `docs/session-architecture.md` to streaming protocol + recovery contract only. Other concerns (session lifecycle, optimistic prompts, transcript rendering) deferred to their own specs. Constants verified against code: `BROADCAST_BUFFER_CAPACITY=500`, `PING_INTERVAL_MS=20_000`, `ALIVE_TIMEOUT_MS=45_000`, `MAX_DEFERRED_EVENTS=500`. No behavior change. |

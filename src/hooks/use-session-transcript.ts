@@ -7,6 +7,7 @@ import {
 } from "@/stores/session-store"
 import type { SessionRecoveryReason } from "@/stores/session-recovery"
 import { createLogger } from "@/lib/logger"
+import type { ServerEvent } from "@/stores/session-reducer"
 
 const log = createLogger("session-transcript")
 
@@ -35,9 +36,31 @@ export function useSessionTranscript(
   useEffect(() => {
     if (!sessionId) return
 
+    // Buffer events and drain on the next animation frame. Coalesces bursts
+    // (broadcast-buffer replay on subscribe, or rapid server emission) into
+    // one store mutation instead of N — without this, opening a transcript
+    // with hundreds of buffered events floods React with re-renders fast
+    // enough to trip its Maximum-update-depth guard and pin the main thread.
+    let queue: ServerEvent[] = []
+    let rafHandle: number | null = null
+    const drain = () => {
+      rafHandle = null
+      if (queue.length === 0) return
+      const batch = queue
+      queue = []
+      startTransition(() => useSessionStore.getState().ingestEventBatch(sessionId, batch))
+    }
+
     const unsubEvents = subscribe(
       sessionId,
-      (event) => { startTransition(() => useSessionStore.getState().ingestEvent(sessionId, event)) },
+      (event) => {
+        queue.push(event)
+        if (rafHandle === null) {
+          rafHandle = typeof requestAnimationFrame === "function"
+            ? requestAnimationFrame(drain)
+            : (setTimeout(drain, 0) as unknown as number)
+        }
+      },
       {
         // Cursor: send the highest applied sequence so the server can replay
         // events we missed during any WS gap. Returns undefined on initial
@@ -69,6 +92,14 @@ export function useSessionTranscript(
     return () => {
       unsubEvents()
       unsubConnect()
+      if (rafHandle !== null) {
+        if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafHandle)
+        else clearTimeout(rafHandle)
+        rafHandle = null
+      }
+      // Drop any queued events — the session slice goes away on unmount,
+      // and a stale store mutation would just re-create it.
+      queue = []
     }
   }, [sessionId, subscribe, onConnect])
 

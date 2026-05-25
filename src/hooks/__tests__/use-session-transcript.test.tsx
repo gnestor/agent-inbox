@@ -122,7 +122,10 @@ describe("useSessionTranscript", () => {
       message: { type: "assistant", content: [{ type: "text", text: "ok" }] },
     })
 
-    expect(useSessionStore.getState().sessions["s1"]?.messageIds).toEqual([0, 1])
+    // Ingest is batched on requestAnimationFrame — wait for the next frame.
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions["s1"]?.messageIds).toEqual([0, 1])
+    })
   })
 
   it("REGRESSION: StrictMode double-mount mid-fetch does not leak inFlight", async () => {
@@ -183,7 +186,9 @@ describe("useSessionTranscript", () => {
       message: { type: "assistant", content: [{ type: "text", text: "ok" }] },
     })
 
-    expect(useSessionStore.getState().sessions["s1"]?.messageIds).toEqual([0, 1])
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions["s1"]?.messageIds).toEqual([0, 1])
+    })
     expect(useSessionStore.getState().sessions["s1"]?.deferredEvents).toHaveLength(0)
   })
 

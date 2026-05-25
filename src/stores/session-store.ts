@@ -68,6 +68,10 @@ interface SessionStoreState {
 
   /** Ingest a WS event, routing it through the coordinator. */
   ingestEvent(sessionId: string, event: ServerEvent): void
+  /** Ingest a batch of WS events as a single store transition. Used to coalesce
+   *  bursts (e.g. broadcast-buffer replay on subscribe) into one `set()` so
+   *  subscribers re-render once instead of N times. */
+  ingestEventBatch(sessionId: string, events: readonly ServerEvent[]): void
   /** Apply a REST snapshot. Fails gracefully if no coordinator exists for the session yet. */
   applySnapshot(sessionId: string, snapshot: SnapshotPayload): void
   /** Attempt to begin a snapshot. Returns true if the caller should actually fetch. */
@@ -123,71 +127,58 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   _coordinators: {},
 
   ingestEvent: (sessionId, event) => {
+    // Single-event ingest is just a one-element batch. Folding through the
+    // batch path keeps the routing rules in one place.
+    get().ingestEventBatch(sessionId, [event])
+  },
+
+  ingestEventBatch: (sessionId, events) => {
+    if (events.length === 0) return
     const [s0, coord] = ensureCoordinator(get(), sessionId)
-    // If this is a message event the coordinator decides routing. Lifecycle
-    // events (status, ask_user_question, presence) are not sequenced and
-    // always apply directly.
-    if (isMessageEvent(event)) {
-      const classification = coord.classifyEvent(event.sequence)
-      if (classification === "ignore") {
-        // Still persist the updated coordinator state snapshot into the slice
-        // so selectors see the newly-observed sequence.
-        syncRecoveryState(s0, sessionId, coord, set)
-        return
-      }
 
-      if (classification === "defer" || classification === "recover") {
-        // Buffer the event. It will be replayed by applySnapshot's flush.
-        // Hard cap: if we've exceeded MAX_DEFERRED_EVENTS, drop the oldest.
-        // classifyEvent has already set pendingReplay, so the gap effect will
-        // still fetch a fresh snapshot even when older events are dropped.
-        const slice = ensureSlice(s0, sessionId)
-        const nextDeferred = slice.deferredEvents.length >= MAX_DEFERRED_EVENTS
-          ? [...slice.deferredEvents.slice(-(MAX_DEFERRED_EVENTS - 1)), event]
-          : [...slice.deferredEvents, event]
-        set({
-          ...s0,
-          sessions: {
-            ...s0.sessions,
-            [sessionId]: {
-              ...slice,
-              deferredEvents: nextDeferred,
-              recovery: coord.getState(),
-            },
-          },
-        })
-        return
-      }
+    // Walk every event, accumulating into a single workingSlice. The
+    // coordinator's classifyEvent/markEventBatchApplied calls mutate its
+    // internal state during the walk, so the order matters; the final
+    // recovery snapshot is taken at the end via coord.getState().
+    const initialSlice = ensureSlice(s0, sessionId)
+    let slice = initialSlice
+    let mutated = false
 
-      // classification === "apply"
-      const slice = ensureSlice(s0, sessionId)
-      const nextSlice = reduceEvent(slice, event)
-      coord.markEventBatchApplied([event])
-      set({
-        ...s0,
-        sessions: {
-          ...s0.sessions,
-          [sessionId]: {
-            ...nextSlice,
-            recovery: coord.getState(),
-            deferredEvents: slice.deferredEvents,
-          },
-        },
-      })
+    for (const event of events) {
+      if (isMessageEvent(event)) {
+        const classification = coord.classifyEvent(event.sequence)
+        if (classification === "ignore") continue
+        if (classification === "defer" || classification === "recover") {
+          const nextDeferred = slice.deferredEvents.length >= MAX_DEFERRED_EVENTS
+            ? [...slice.deferredEvents.slice(-(MAX_DEFERRED_EVENTS - 1)), event]
+            : [...slice.deferredEvents, event]
+          slice = { ...slice, deferredEvents: nextDeferred }
+          mutated = true
+          continue
+        }
+        slice = { ...reduceEvent(slice, event), recovery: slice.recovery, deferredEvents: slice.deferredEvents }
+        coord.markEventBatchApplied([event])
+        mutated = true
+        continue
+      }
+      slice = { ...reduceEvent(slice, event), recovery: slice.recovery, deferredEvents: slice.deferredEvents }
+      mutated = true
+    }
+
+    // No reducer ran — the only thing that could have changed is the
+    // coordinator's observed-sequence (from ignored events). Mirror just
+    // the recovery field via syncRecoveryState, which short-circuits when
+    // the recovery state is unchanged.
+    if (!mutated) {
+      syncRecoveryState(get(), sessionId, coord, set)
       return
     }
 
-    // Lifecycle event — always apply.
-    const slice = ensureSlice(s0, sessionId)
     set({
       ...s0,
       sessions: {
         ...s0.sessions,
-        [sessionId]: {
-          ...reduceEvent(slice, event),
-          recovery: coord.getState(),
-          deferredEvents: slice.deferredEvents,
-        },
+        [sessionId]: { ...slice, recovery: coord.getState() },
       },
     })
   },
