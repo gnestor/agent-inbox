@@ -86,6 +86,28 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 - **WHEN** a logger is created with `createLogger("foo").child({ sessionId })`
 - **THEN** every subsequent call from the child logger includes `sessionId` without the caller passing it.
 
+### Crash telemetry
+
+#### Scenario: Heartbeat captures pre-crash app state
+- **WHEN** the inbox client loads
+- **THEN** `initCrashTelemetry()` starts a 5-second interval that captures `{ ts, route, heapMB, heapLimitMB, heapPct, domNodes, iframes, panels, activeTab, longTasksSinceLastBeat, appVersion }`, writes it to `localStorage` under `inbox:lastHeartbeat`, and posts it to `/api/telemetry/heartbeat`.
+- **WHY:** Sentry-style error trackers can't catch renderer-OOM (Aw, Snap!) crashes because the JS context dies before any handler runs. A periodic snapshot persisted to `localStorage` survives the death and is read on the next boot.
+
+#### Scenario: Clean unload prevents false crash reports
+- **WHEN** the page is closed normally (`pagehide` or `beforeunload`)
+- **THEN** `inbox:cleanUnload` is written with the current timestamp.
+- **AND** on next boot, if `cleanUnload >= lastHeartbeat.ts`, no crash is reported.
+
+#### Scenario: Missing clean-unload mark surfaces as a crash
+- **WHEN** the inbox client boots and a previous `lastHeartbeat` exists without a matching `cleanUnload`
+- **THEN** the heartbeat is posted to `/api/telemetry/crash` with `{ type: "crash", detectedAt, secondsSinceLastBeat, lastHeartbeat }` and logged to the console.
+
+#### Scenario: Telemetry endpoints are unauthenticated and best-effort
+- **WHEN** the client posts to `/api/telemetry/heartbeat` or `/crash`
+- **THEN** the server appends a JSON line to `data/telemetry/{heartbeat,crash}.jsonl` and always returns 204.
+- **AND** the routes are mounted before the global auth middleware so post-crash tabs without session cookies can still report.
+- **AND** payloads are capped at 16 KB.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -94,6 +116,8 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 | `/api/health` route, mounted before auth middleware | [server/index.ts:259-265](../../../server/index.ts#L259-L265) |
 | In-memory rate limiter + middleware factory | [server/lib/rate-limit.ts](../../../server/lib/rate-limit.ts) |
 | Structured logger + `AsyncLocalStorage` request context | shared from `@hammies/frontend/lib/serverLogger` |
+| Crash telemetry client (heartbeat + clean-unload + crash detection) | [src/lib/crash-telemetry.ts](../../../src/lib/crash-telemetry.ts) |
+| Telemetry endpoints (JSONL appenders) | [server/routes/telemetry.ts](../../../server/routes/telemetry.ts) |
 | Health tests | [server/lib/__tests__/health.test.ts](../../../server/lib/__tests__/health.test.ts) |
 | Rate-limit tests | [server/lib/__tests__/rate-limit.test.ts](../../../server/lib/__tests__/rate-limit.test.ts) |
 
@@ -103,3 +127,4 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 - `VAULT_SECRET` shape check added after a deploy where the variable was set to a truncated value and credential decrypts silently failed.
 - Logger switched to `AsyncLocalStorage` after an incident where logs from the same request couldn't be correlated across the auth boundary.
 - Rate-limit reaper made `unref()`-safe so the interval doesn't keep tests alive.
+- Crash telemetry added after a recurring `Aw, Snap! (SBOX_FATAL_MEMORY_EXCEEDED)` crash in inbox where in-tab error trackers had no visibility. Heartbeat snapshots pinpointed a render-loop in `session-recovery` (snapshot endpoint couldn't catch the broadcaster, deferred events kept re-arming `pendingReplay`).

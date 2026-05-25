@@ -25,6 +25,7 @@ import { pluginRoutes, mountPluginRoutes } from "./routes/plugins.js"
 import { backfillRoutes } from "./routes/backfill.js"
 import { panelRoutes } from "./routes/panels.js"
 import { connectionRoutes } from "./routes/connections.js"
+import { telemetryRoutes } from "./routes/telemetry.js"
 import { initializeDatabase, closePool } from "./db/pool.js"
 import { loadCredentials, setDefaultWorkspaceId, getCredentials } from "./lib/credentials.js"
 import { setWorkspacePath, setCredentialProxy, indexAllAgentSessions, recoverStaleSessions, watchProjectsDir, addWsClient, removeWsClient, wsSubscribe, wsUnsubscribe, registerWorkspacePath } from "./lib/session-manager.js"
@@ -251,6 +252,10 @@ app.use("/api/*", csrfProtection({
 
 // Auth routes (unprotected)
 app.route("/api/auth", authRoutes)
+
+// Telemetry endpoints (unprotected) — heartbeats + crash reports may come
+// from partially-loaded or post-crash tabs without a valid session.
+app.route("/api/telemetry", telemetryRoutes)
 
 app.get("/api/health", async (c) => {
   const checks = await runHealthChecks(workspacePaths)

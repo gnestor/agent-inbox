@@ -6,8 +6,13 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
 import { get, set, del } from "idb-keyval"
 import { queryClient } from "@/lib/queryClient"
+import { initCrashTelemetry } from "@/lib/crash-telemetry"
 import { App } from "./App"
 import "./index.css"
+
+// Start heartbeat + crash-detection telemetry as early as possible so we
+// capture pre-crash state even if app boot fails. Safe to call before render.
+initCrashTelemetry()
 
 // Register service worker for PWA standalone mode
 if ("serviceWorker" in navigator) {
