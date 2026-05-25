@@ -50,7 +50,23 @@ export interface SessionRecoveryCoordinator {
   /** Force a return to bootstrap state — the server told us our cursor is no
    *  longer replayable. The gap effect will then run a fresh snapshot. */
   invalidateBootstrap(): void
+  /** True iff the coordinator's circuit breaker has tripped — the caller
+   *  should drop any deferred events buffered for this session, since
+   *  snapshot recovery is not converging. Auto-clears on the next successful
+   *  apply or after `invalidateBootstrap`. */
+  isCircuitOpen(): boolean
 }
+
+/**
+ * If a snapshot completes without closing the gap (highestObservedSequence
+ * still ahead of latestSequence) this many times in a row, we declare the
+ * snapshot endpoint unable to satisfy the broadcaster — likely the
+ * broadcaster is emitting sequence numbers ahead of what the snapshot source
+ * stores. We give up the chase so the React layer doesn't re-fire snapshots
+ * forever, blowing the heap. The breaker auto-resets on the next event we
+ * actually apply (`markEventBatchApplied`) or on `invalidateBootstrap`.
+ */
+export const MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS = 3
 
 export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
   let state: SessionRecoveryState = {
@@ -61,6 +77,12 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
     inFlight: null,
   }
 
+  // Circuit-breaker counter: incremented on each completeSnapshotRecovery
+  // that doesn't close the observed-ahead gap; reset by markEventBatchApplied
+  // or invalidateBootstrap. When >= MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS we
+  // stop setting pendingReplay so the React effect doesn't re-fire.
+  let unsatisfiedSnapshotCount = 0
+
   const snapshot = (): SessionRecoveryState => ({ ...state })
 
   const observeSequence = (sequence: number) => {
@@ -69,13 +91,35 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
     }
   }
 
+  const circuitOpen = () => unsatisfiedSnapshotCount >= MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS
+
   const resolveReplayNeed = () => {
     // We only have snapshot recovery. A follow-up is needed iff the highest
     // observed sequence exceeds what we've now applied — i.e. events arrived
-    // during the snapshot that the snapshot didn't cover. `pendingReplay` is
-    // cleared unconditionally; the gap signal is `highestObserved > latest`.
+    // during the snapshot that the snapshot didn't cover.
     const observedAhead = state.highestObservedSequence > state.latestSequence
-    state = { ...state, pendingReplay: false }
+    if (observedAhead) {
+      unsatisfiedSnapshotCount++
+      if (circuitOpen()) {
+        // Pin highestObserved to latest so the React effect doesn't re-fire.
+        // A future event with a satisfiable sequence re-triggers the chase
+        // from a fresh counter. Guard the allocation: this path is exactly
+        // the no-op churn the breaker exists to stop.
+        if (state.pendingReplay || state.highestObservedSequence !== state.latestSequence) {
+          state = {
+            ...state,
+            highestObservedSequence: state.latestSequence,
+            pendingReplay: false,
+          }
+        }
+        return false
+      }
+    } else {
+      unsatisfiedSnapshotCount = 0
+    }
+    if (state.pendingReplay) {
+      state = { ...state, pendingReplay: false }
+    }
     return observedAhead
   }
 
@@ -116,6 +160,8 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
         latestSequence: newLatest,
         highestObservedSequence: Math.max(state.highestObservedSequence, newLatest),
       }
+      // Any successful apply means we're making real progress; clear the breaker.
+      unsatisfiedSnapshotCount = 0
       return advanced
     },
 
@@ -156,6 +202,13 @@ export function createSessionRecoveryCoordinator(): SessionRecoveryCoordinator {
       // gap effect runs a snapshot. Preserve observed sequence and current
       // latest so dedup still works against in-flight events.
       state = { ...state, bootstrapped: false, pendingReplay: true, inFlight: null }
+      // Fresh recovery attempt — reset the breaker so cursor_miss after a
+      // long-quiet session doesn't immediately fall into the giving-up path.
+      unsatisfiedSnapshotCount = 0
+    },
+
+    isCircuitOpen() {
+      return circuitOpen()
     },
   }
 }

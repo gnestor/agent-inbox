@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { createSessionRecoveryCoordinator } from "../session-recovery"
+import { createSessionRecoveryCoordinator, MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS } from "../session-recovery"
 
 describe("session-recovery coordinator", () => {
   it("defers events until bootstrap is complete", () => {
@@ -105,5 +105,82 @@ describe("session-recovery coordinator", () => {
     c2.beginSnapshotRecovery("bootstrap")
     c2.completeSnapshotRecovery(0)
     expect(c2.classifyEvent(7)).toBe("apply")
+  })
+
+  describe("circuit breaker", () => {
+    it("opens after MAX consecutive snapshots that fail to close the gap", () => {
+      const c = createSessionRecoveryCoordinator()
+      // Bootstrap with a low ceiling — broadcaster is way ahead.
+      // Bootstrap with a non-zero baseline so the gap check (which skips
+      // when latestSequence === 0) actually triggers on subsequent events.
+      c.beginSnapshotRecovery("bootstrap")
+      c.completeSnapshotRecovery(1000)
+
+      // Simulate the broadcaster repeatedly emitting sequence 1500 while the
+      // snapshot endpoint can only return up to 1000. Each round:
+      //  1. event arrives → classify "recover", pendingReplay = true
+      //  2. snapshot fires, returns 1000 — observedAhead still true
+      for (let i = 0; i < MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS; i++) {
+        c.classifyEvent(1500)
+        expect(c.getState().pendingReplay).toBe(true)
+        c.beginSnapshotRecovery("sequence-gap")
+        c.completeSnapshotRecovery(1000)
+      }
+
+      // Breaker should now be open and pendingReplay cleared — the React
+      // effect would otherwise keep firing snapshots forever.
+      expect(c.isCircuitOpen()).toBe(true)
+      expect(c.getState().pendingReplay).toBe(false)
+      // highestObservedSequence pinned to latest so a fresh classify of 1500
+      // doesn't re-arm pendingReplay (it's no longer "ahead").
+      expect(c.getState().highestObservedSequence).toBe(c.getState().latestSequence)
+    })
+
+    it("resets after a successful apply", () => {
+      const c = createSessionRecoveryCoordinator()
+      c.beginSnapshotRecovery("bootstrap")
+      c.completeSnapshotRecovery(1000)
+
+      // Trip the breaker.
+      for (let i = 0; i < MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS; i++) {
+        c.classifyEvent(1500)
+        c.beginSnapshotRecovery("sequence-gap")
+        c.completeSnapshotRecovery(1000)
+      }
+      expect(c.isCircuitOpen()).toBe(true)
+
+      // Real progress — applying an event resets the breaker.
+      expect(c.classifyEvent(1001)).toBe("apply")
+      c.markEventBatchApplied([{ sequence: 1001 }])
+      expect(c.isCircuitOpen()).toBe(false)
+    })
+
+    it("resets on invalidateBootstrap (cursor_miss recovery path)", () => {
+      const c = createSessionRecoveryCoordinator()
+      c.beginSnapshotRecovery("bootstrap")
+      c.completeSnapshotRecovery(1000)
+      for (let i = 0; i < MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS; i++) {
+        c.classifyEvent(1500)
+        c.beginSnapshotRecovery("sequence-gap")
+        c.completeSnapshotRecovery(1000)
+      }
+      expect(c.isCircuitOpen()).toBe(true)
+      c.invalidateBootstrap()
+      expect(c.isCircuitOpen()).toBe(false)
+    })
+
+    it("does NOT open when snapshot rounds successfully close the gap", () => {
+      const c = createSessionRecoveryCoordinator()
+      c.beginSnapshotRecovery("bootstrap")
+      c.completeSnapshotRecovery(10)
+      // Normal gap-recovery: each snapshot catches up.
+      for (let i = 0; i < MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS + 2; i++) {
+        const seq = 11 + i
+        c.classifyEvent(seq)
+        c.beginSnapshotRecovery("sequence-gap")
+        c.completeSnapshotRecovery(seq)
+      }
+      expect(c.isCircuitOpen()).toBe(false)
+    })
   })
 })

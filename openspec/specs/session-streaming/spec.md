@@ -156,6 +156,19 @@ The recovery coordinator (`session-recovery.ts`) is a pure state machine. The st
 - **THEN** the oldest deferred event MUST be dropped AND `pendingReplay` MUST be set so the gap effect refetches a clean snapshot.
 - **WHY** Defense-in-depth for persistent-gap pathologies — better to drop and resync than to accumulate forever.
 
+### Snapshot recovery has a circuit breaker
+
+#### Scenario: Coordinator gives up after N unsatisfied snapshots in a row
+- **WHEN** `completeSnapshotRecovery` returns with `highestObservedSequence > latestSequence` `MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS = 3` times in a row (no intervening successful `markEventBatchApplied`)
+- **THEN** the coordinator MUST pin `highestObservedSequence` to `latestSequence` AND clear `pendingReplay`, so the React effect stops re-firing snapshots.
+- **AND** `isCircuitOpen()` MUST return `true` until the next successful apply or `invalidateBootstrap`.
+- **WHY** When the snapshot source (REST endpoint reading JSONL/DB) cannot catch up to the broadcaster (in-memory queue emitting ahead of persisted state), deferred events keep re-arming `pendingReplay`, the gap effect keeps firing snapshots, and the store keeps allocating fresh slice objects — heap explodes and the renderer dies with `SBOX_FATAL_MEMORY_EXCEEDED`. Better to leave the client at a slightly stale snapshot than to crash.
+
+#### Scenario: Open breaker drops deferred events during applySnapshot
+- **WHEN** `applySnapshot` runs with `coord.isCircuitOpen() === true`
+- **THEN** the deferred-event flush loop MUST be skipped and `workingSlice.deferredEvents` MUST be set to `[]`.
+- **WHY** Re-classifying deferred events whose sequence the snapshot still cannot satisfy would set `pendingReplay` again and restart the loop.
+
 ### Reliability invariants
 
 These MUST hold at every store transition. They are enforced by the seeded chaos test (5 seeds × 1000 random actions).
@@ -202,6 +215,7 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 | cursor_miss handling | [`src/hooks/use-ws-stream.tsx:206`](../../../src/hooks/use-ws-stream.tsx#L206) — frame dispatch; [`src/stores/session-recovery.ts:154`](../../../src/stores/session-recovery.ts#L154) — invalidateBootstrap |
 | Recovery classification (ignore/defer/recover/apply) | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `classifyEvent` |
 | Snapshot begin → (complete \| fail) protocol | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `beginSnapshotRecovery`, `completeSnapshotRecovery`, `failSnapshotRecovery` |
+| Snapshot-loop circuit breaker (`MAX_CONSECUTIVE_UNSATISFIED_SNAPSHOTS`) | [`src/stores/session-recovery.ts`](../../../src/stores/session-recovery.ts) — `isCircuitOpen` + `resolveReplayNeed`; [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `applySnapshot` flush skip |
 | Bounded deferred events (cap = 500) | [`src/stores/session-store.ts:22`](../../../src/stores/session-store.ts#L22), [`:134-147`](../../../src/stores/session-store.ts#L134-L147) |
 | Per-session orchestration hook | [`src/hooks/use-session-transcript.ts`](../../../src/hooks/use-session-transcript.ts) |
 | applySnapshot uses server-supplied latestSequence cursor | [`src/stores/session-store.ts`](../../../src/stores/session-store.ts) — `applySnapshot` `snapshotHigh` computation |
@@ -223,5 +237,6 @@ These MUST hold at every store transition. They are enforced by the seeded chaos
 
 | Date | Commit | Change |
 |------|--------|--------|
+| 2026-05-24 | _pending_ | Add snapshot-loop circuit breaker. Crash telemetry (heartbeat.jsonl) showed sustained 130+ long-tasks-per-5s and heap climbing past 1.1 GB on a specific session — root cause: snapshot endpoint couldn't reach broadcaster-emitted sequences, so deferred events kept re-arming `pendingReplay` after every `completeSnapshotRecovery`, the React gap effect kept firing snapshots, and each iteration allocated new slice objects until the renderer crashed. Coordinator now opens a breaker after 3 consecutive unsatisfied snapshots; `applySnapshot` skips the deferred-event flush when the breaker is open. |
 | 2026-05-08 | _pending_ | Add explicit `latestSequence` cursor to the REST snapshot. Per-message `sequence` values can be sparse (filtered JSONL lines, thinking fractionals, subagent renumbering) so trusting `messageIds[last]` left the client coordinator behind the live broadcaster's counter, causing every post-resume event to classify as `recover` and producing an infinite snapshot-fetch loop. Server now reports `jsonlLines.length - 1`; client takes `max(messageIds[last], latestSequence)` in `applySnapshot`. |
 | 2026-05-05 | _pending_ | Initial OpenSpec port — narrowed scope from `docs/session-architecture.md` to streaming protocol + recovery contract only. Other concerns (session lifecycle, optimistic prompts, transcript rendering) deferred to their own specs. Constants verified against code: `BROADCAST_BUFFER_CAPACITY=500`, `PING_INTERVAL_MS=20_000`, `ALIVE_TIMEOUT_MS=45_000`, `MAX_DEFERRED_EVENTS=500`. No behavior change. |

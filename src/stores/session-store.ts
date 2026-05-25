@@ -217,7 +217,14 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       recovery: coord.getState(),
       deferredEvents: [],
     }
+    // If the coordinator's circuit broke (snapshot recovery isn't converging),
+    // drop all deferred events. Re-classifying them would just re-arm
+    // pendingReplay and re-trigger the effect, blowing the heap. The user
+    // will get whatever the snapshot covers; future events with satisfiable
+    // sequences re-engage the chase from a fresh breaker count.
+    const circuitOpen = coord.isCircuitOpen()
     for (const ev of deferred) {
+      if (circuitOpen) break
       if (isMessageEvent(ev)) {
         const classification = coord.classifyEvent(ev.sequence)
         if (classification === "apply") {
