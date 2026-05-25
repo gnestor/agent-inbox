@@ -561,17 +561,27 @@ export async function curateEntity(
     return { skipped: `below min-source threshold (${sources.length} < ${minThreshold} for ${entityType})` }
   }
 
+  const contextDir = resolve(workspacePath, "context")
+  const candidatePath = await findCandidatePage(contextDir, entityType, entityValue)
+
   // Engagement gate: an entity whose unprocessed sources show NO Hammies
   // outbound — pure cold-pitch / inbound-only — fails the eligibility rule
   // (≥1 inbound + ≥1 outbound + affirmative outcome). The curation prompt
   // says to no-op on these but the curator hasn't been reliable. Skipping
-  // upfront avoids the LLM session entirely. Only applies to person/domain
-  // (the entity types where engagement is well-defined).
-  if (entityType === "person" || entityType === "domain" || entityType === "company") {
+  // upfront avoids the LLM session entirely. Only applies to person/domain/
+  // company (the entity types where engagement is well-defined).
+  //
+  // Bypass when a curated page already exists — the gate is meant to prevent
+  // CREATING pages for cold-pitch entities, not to block UPDATES (new timeline
+  // entries, etc.) to entities we've already affirmed via prior curation.
+  if (
+    !candidatePath &&
+    (entityType === "person" || entityType === "domain" || entityType === "company")
+  ) {
     const engaged = await hasHammiesEngagement(workspacePath, sources)
     if (!engaged) {
       await markProcessed(wsId, entityType, entityValue, sources)
-      log.info("Entity gated (no Hammies engagement)", {
+      log.info("Entity gated (no Hammies engagement, no existing page)", {
         entity: `${entityType}:${entityValue}`,
         sources: sources.length,
       })
@@ -579,8 +589,6 @@ export async function curateEntity(
     }
   }
 
-  const contextDir = resolve(workspacePath, "context")
-  const candidatePath = await findCandidatePage(contextDir, entityType, entityValue)
   let candidateContent: string | null = null
   if (candidatePath) {
     try {
