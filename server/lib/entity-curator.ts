@@ -159,11 +159,24 @@ async function findCandidatePage(
 ): Promise<string | null> {
   const slug = entityToSlug(entityType, entityValue)
 
-  const slugPath = join(contextDir, `${slug}.md`)
-  try {
-    await readFile(slugPath, "utf8")
-    return `${slug}.md`
-  } catch { /* not found */ }
+  // Try canonical slug first
+  const candidateSlugs = [slug]
+
+  // For domain entities, also try the TLD-stripped form because most
+  // brand-named pages use the bare brand name (gusto.md, free-people.md)
+  // rather than the dotted-domain form (gusto-com.md, free-people-com.md).
+  if (entityType === "domain") {
+    const tldStripped = entityValue.toLowerCase().replace(/\.[a-z]{2,}(?:\.[a-z]{2,})?$/i, "")
+    const brandSlug = tldStripped.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    if (brandSlug && brandSlug !== slug) candidateSlugs.push(brandSlug)
+  }
+
+  for (const s of candidateSlugs) {
+    try {
+      await readFile(join(contextDir, `${s}.md`), "utf8")
+      return `${s}.md`
+    } catch { /* not found */ }
+  }
 
   // For person-emails, the ripgrep+qmd fallbacks produce false positives on
   // pages whose title shares the local-part (e.g. sarah@hammies.com →
