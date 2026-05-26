@@ -189,15 +189,32 @@ function extractUserText(msg: SessionMessage | undefined): string | null {
   // Check both.
   const payload = msg.message as { content?: unknown; message?: { content?: unknown } }
   const content = payload?.content ?? payload?.message?.content
-  if (typeof content === "string") return content.trim() || null
-  if (Array.isArray(content)) {
-    const text = content
+  let raw: string | null = null
+  if (typeof content === "string") {
+    raw = content
+  } else if (Array.isArray(content)) {
+    raw = content
       .filter((b): b is { type: "text"; text: string } => !!b && typeof b === "object" && (b as { type?: unknown }).type === "text")
       .map((b) => b.text)
       .join("")
-    return text.trim() || null
   }
-  return null
+  return raw === null ? null : unwrapSlashCommand(raw) || null
+}
+
+/** Slash commands enter the JSONL wrapped as `<command-name>/X</command-name>\n<command-args>Y</command-args>`,
+ *  but the optimistic pendingPrompt still holds the raw `/X Y` the user
+ *  typed. Unwrap the envelope back to `/X Y` for the reconciliation match —
+ *  otherwise the pending bubble keeps rendering at the bottom of the
+ *  transcript after the real user message has already shown up in its
+ *  correct slot. No-op for ordinary prose. */
+function unwrapSlashCommand(text: string): string {
+  const trimmed = text.trim()
+  const nameMatch = trimmed.match(/<command-name>([\s\S]*?)<\/command-name>/)
+  if (!nameMatch) return trimmed
+  const name = nameMatch[1]!.trim()
+  const argsMatch = trimmed.match(/<command-args>([\s\S]*?)<\/command-args>/)
+  const args = argsMatch?.[1]?.trim() ?? ""
+  return args ? `${name} ${args}` : name
 }
 
 function reconcilePendingPrompts(

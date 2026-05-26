@@ -195,6 +195,22 @@ describe("reduceEvent (message events)", () => {
     })
     expect(next.pendingPrompts).toHaveLength(1)
   })
+
+  it("clears optimistic prompts when the echo is a wrapped slash command", () => {
+    const slice: SessionSlice = {
+      ...base,
+      pendingPrompts: [{ localId: "a", prompt: "/simplify and commit", createdAt: "t1" }],
+    }
+    const next = reduceEvent(slice, {
+      sequence: 1,
+      message: {
+        type: "user",
+        content:
+          "<command-message>simplify</command-message>\n<command-name>/simplify</command-name>\n<command-args>and commit</command-args>",
+      },
+    })
+    expect(next.pendingPrompts).toHaveLength(0)
+  })
 })
 
 describe("reduceEvent (lifecycle events)", () => {
