@@ -152,24 +152,34 @@ async function findParentCompanyPage(
  *  2. ripgrep literal match
  *  3. qmd query (local Qwen expansion, no Claude)
  */
+/**
+ * Derive the ordered list of candidate filename slugs to try when looking up
+ * an entity's curated page. Pure / testable.
+ *
+ * For domain entities, returns both the dotted-domain form (`gusto-com.md`)
+ * and the TLD-stripped brand form (`gusto.md`) — the latter matches the
+ * naming convention enforced by SCHEMAS.md (brand name preferred over domain).
+ */
+export function candidatePageSlugs(entityType: string, entityValue: string): string[] {
+  const slug = entityToSlug(entityType, entityValue)
+  const slugs = [slug]
+
+  if (entityType === "domain") {
+    const tldStripped = entityValue.toLowerCase().replace(/\.[a-z]{2,}(?:\.[a-z]{2,})?$/i, "")
+    const brandSlug = tldStripped.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    if (brandSlug && brandSlug !== slug) slugs.push(brandSlug)
+  }
+
+  return slugs
+}
+
 async function findCandidatePage(
   contextDir: string,
   entityType: string,
   entityValue: string,
 ): Promise<string | null> {
   const slug = entityToSlug(entityType, entityValue)
-
-  // Try canonical slug first
-  const candidateSlugs = [slug]
-
-  // For domain entities, also try the TLD-stripped form because most
-  // brand-named pages use the bare brand name (gusto.md, free-people.md)
-  // rather than the dotted-domain form (gusto-com.md, free-people-com.md).
-  if (entityType === "domain") {
-    const tldStripped = entityValue.toLowerCase().replace(/\.[a-z]{2,}(?:\.[a-z]{2,})?$/i, "")
-    const brandSlug = tldStripped.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-    if (brandSlug && brandSlug !== slug) candidateSlugs.push(brandSlug)
-  }
+  const candidateSlugs = candidatePageSlugs(entityType, entityValue)
 
   for (const s of candidateSlugs) {
     try {
@@ -666,14 +676,19 @@ export async function curateEntity(
 export async function curateNextEntity(
   workspacePath: string,
   workspaceId?: string,
+  options: { skipRollup?: boolean } = {},
 ): Promise<CurateResult> {
   const wsId = workspaceId || "agent"
   // Roll up person entities whose domain has its own entity into the domain
   // before picking. Avoids paying for a session that the prompt would tell
-  // to no-op anyway.
-  const rolled = await rollupPersonsToDomains(wsId)
-  if (rolled > 0) {
-    log.info("Rolled up person entities into matching domain entities", { rolled, workspaceId: wsId })
+  // to no-op anyway. Skip on idle ticks (no new sources since last extract)
+  // so we don't burn an UPDATE-with-correlated-EXISTS over 80k+ rows every
+  // minute for no reason.
+  if (!options.skipRollup) {
+    const rolled = await rollupPersonsToDomains(wsId)
+    if (rolled > 0) {
+      log.info("Rolled up person entities into matching domain entities", { rolled, workspaceId: wsId })
+    }
   }
   const top = await topUnprocessedEntities(wsId, 1)
   if (top.length === 0) return { skipped: "no unprocessed entities" }

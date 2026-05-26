@@ -158,86 +158,8 @@ backfillRoutes.post("/extract-entities", async (c) => {
 
   const wsId = getWorkspaceId(c) || "agent"
   const sourceFilter = c.req.query("source")
-  const plugins = getPlugins(wsId).filter((p) => p.itemToContext)
-  const targets = sourceFilter ? plugins.filter((p) => p.id === sourceFilter) : plugins
-
-  const { readdir, readFile } = await import("fs/promises")
-  const { canonicalize } = await import("../lib/entity-extractor.js")
-
-  const results: Record<string, { scanned: number; entities: number }> = {}
-  const EMAIL_RE = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g
-  const now = new Date().toISOString()
-
-  for (const plugin of targets) {
-    const relDir = plugin.backfillDir ?? `context/${plugin.id}`
-    const absDir = join(workspacePath, relDir)
-    let files: string[]
-    try {
-      files = await readdir(absDir)
-    } catch {
-      results[plugin.id] = { scanned: 0, entities: 0 }
-      continue
-    }
-    let scanned = 0
-    let entityCount = 0
-    for (const file of files) {
-      if (!file.endsWith(".md")) continue
-      scanned++
-      const sourcePath = `${relDir}/${file}`
-      // Skip if we already have entities for this source
-      const existing = await queryOne<{ c: number }>(
-        `SELECT COUNT(*)::int AS c FROM source_entities WHERE source_path = $1 AND workspace_id = $2`,
-        [sourcePath, wsId],
-      )
-      if ((existing?.c ?? 0) > 0) continue
-
-      let content: string
-      try {
-        content = await readFile(join(absDir, file), "utf8")
-      } catch {
-        continue
-      }
-
-      const emails = new Set<string>()
-      for (const m of content.matchAll(EMAIL_RE)) emails.add(m[0].toLowerCase())
-
-      const folderPath: string[] = []
-      const fp = content.match(/^folder-path:\s*\[([^\]]*)\]/m)
-      if (fp) {
-        for (const part of fp[1]!.split(",")) {
-          const v = part.trim().replace(/^['"]|['"]$/g, "")
-          if (v) folderPath.push(v)
-        }
-      }
-
-      const seen = new Set<string>()
-      const rows: { type: string; value: string }[] = []
-      for (const email of emails) {
-        const v = canonicalize("person", email)
-        if (v && !seen.has(`person|${v}`)) { seen.add(`person|${v}`); rows.push({ type: "person", value: v }) }
-        const domain = email.split("@")[1]
-        if (domain) {
-          const dv = canonicalize("domain", domain)
-          if (dv && !seen.has(`domain|${dv}`)) { seen.add(`domain|${dv}`); rows.push({ type: "domain", value: dv }) }
-        }
-      }
-      for (const f of folderPath) {
-        const v = canonicalize("folder", f)
-        if (v && !seen.has(`folder|${v}`)) { seen.add(`folder|${v}`); rows.push({ type: "folder", value: v }) }
-      }
-
-      for (const r of rows) {
-        await execute(
-          `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
-           VALUES ($1, $2, $3, $4, $5, $6, 0)
-           ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
-          [sourcePath, plugin.id, wsId, r.type, r.value, now],
-        )
-        entityCount++
-      }
-    }
-    results[plugin.id] = { scanned, entities: entityCount }
-  }
+  const { runExtractEntities } = await import("../lib/entity-extractor.js")
+  const results = await runExtractEntities(workspacePath, wsId, getPlugins(wsId), { sourceFilter })
 
   return c.json({ results })
 })

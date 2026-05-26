@@ -9,7 +9,7 @@
  * group by, even for plugins that don't implement extraction yet.
  */
 
-import { readFile } from "fs/promises"
+import { readdir, readFile } from "fs/promises"
 import { join } from "path"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { execute, query as dbQuery } from "../db/pool.js"
@@ -45,41 +45,41 @@ export function canonicalize(type: string, value: string): string {
 }
 
 /**
- * Fallback: scan stub markdown for obvious entities in frontmatter + body.
- * Used when a plugin doesn't implement extractEntities.
+ * Pure parse of stub markdown into seed entities. Used by both the
+ * plugin-fallback path (when `plugin.extractEntities` isn't provided) and the
+ * bulk sweep in `runExtractEntities`.
+ *
+ * The plugin is responsible for filtering noise before a stub reaches disk —
+ * see gmail plugin's `itemToContext`. This parser is intentionally naive.
  */
-async function fallbackFromStub(stubPath: string): Promise<Entity[]> {
-  let content: string
-  try {
-    content = await readFile(stubPath, "utf8")
-  } catch {
-    return []
-  }
-
+export function parseStubEntities(content: string): Entity[] {
   const entities: Entity[] = []
 
-  // Extract emails (frontmatter + body). The plugin is responsible for filtering
-  // noise before a stub reaches disk — see gmail plugin's itemToContext.
   const emails = new Set<string>()
-  for (const match of content.matchAll(EMAIL_RE)) {
-    emails.add(match[0].toLowerCase())
-  }
+  for (const match of content.matchAll(EMAIL_RE)) emails.add(match[0].toLowerCase())
   for (const email of emails) {
     entities.push({ type: "person", value: email })
     const domain = email.split("@")[1]
     if (domain) entities.push({ type: "domain", value: domain })
   }
 
-  // Extract folder-path from frontmatter (Drive stubs)
   const folderPathMatch = content.match(/^folder-path:\s*\[([^\]]*)\]/m)
   if (folderPathMatch) {
-    const parts = folderPathMatch[1]!.split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
-    for (const part of parts) {
-      if (part) entities.push({ type: "folder", value: part })
+    for (const part of folderPathMatch[1]!.split(",")) {
+      const v = part.trim().replace(/^['"]|['"]$/g, "")
+      if (v) entities.push({ type: "folder", value: v })
     }
   }
 
   return entities
+}
+
+async function fallbackFromStub(stubPath: string): Promise<Entity[]> {
+  try {
+    return parseStubEntities(await readFile(stubPath, "utf8"))
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -124,6 +124,85 @@ export async function extractEntitiesForItem(
   }
 
   return canonical.length
+}
+
+/**
+ * Bulk-extract seed entities from on-disk stubs. Skips stubs that already
+ * have rows in `source_entities`. Called by `POST /api/backfill/extract-entities`
+ * and by the server scheduler tick so the entity queue stays in sync with raw
+ * backfill writes.
+ */
+export async function runExtractEntities(
+  workspacePath: string,
+  workspaceId: string,
+  plugins: Plugin[],
+  options: { sourceFilter?: string } = {},
+): Promise<Record<string, { scanned: number; entities: number }>> {
+  const targets = (options.sourceFilter
+    ? plugins.filter((p) => p.id === options.sourceFilter)
+    : plugins
+  ).filter((p) => p.itemToContext)
+
+  const results: Record<string, { scanned: number; entities: number }> = {}
+  const now = new Date().toISOString()
+
+  for (const plugin of targets) {
+    const relDir = plugin.backfillDir ?? `context/${plugin.id}`
+    const absDir = join(workspacePath, relDir)
+    let files: string[]
+    try {
+      files = await readdir(absDir)
+    } catch {
+      results[plugin.id] = { scanned: 0, entities: 0 }
+      continue
+    }
+
+    const stubPaths = files.filter((f) => f.endsWith(".md")).map((f) => `${relDir}/${f}`)
+    if (stubPaths.length === 0) {
+      results[plugin.id] = { scanned: 0, entities: 0 }
+      continue
+    }
+
+    // One query per plugin instead of one per file. The unprocessed set is
+    // {all stubs} − {stubs already in source_entities}.
+    const existingRows = await dbQuery<{ source_path: string }>(
+      `SELECT DISTINCT source_path FROM source_entities
+       WHERE workspace_id = $1 AND source_path = ANY($2::text[])`,
+      [workspaceId, stubPaths],
+    )
+    const existing = new Set(existingRows.map((r) => r.source_path))
+
+    let entityCount = 0
+    for (const sourcePath of stubPaths) {
+      if (existing.has(sourcePath)) continue
+      const file = sourcePath.slice(relDir.length + 1)
+      let content: string
+      try {
+        content = await readFile(join(absDir, file), "utf8")
+      } catch {
+        continue
+      }
+
+      const seen = new Set<string>()
+      for (const e of parseStubEntities(content)) {
+        const value = canonicalize(e.type, e.value)
+        if (!value) continue
+        const key = `${e.type}|${value}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        await execute(
+          `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
+           VALUES ($1, $2, $3, $4, $5, $6, 0)
+           ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
+          [sourcePath, plugin.id, workspaceId, e.type, value, now],
+        )
+        entityCount++
+      }
+    }
+    results[plugin.id] = { scanned: stubPaths.length, entities: entityCount }
+  }
+
+  return results
 }
 
 /**

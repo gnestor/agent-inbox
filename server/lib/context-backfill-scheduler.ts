@@ -10,6 +10,7 @@
 
 import { resolve, join } from "path"
 import * as fs from "fs"
+import { stat } from "fs/promises"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
@@ -410,6 +411,17 @@ const STALE_LOCK_SWEEP_MS = 10 * 60 * 1000 // 10 minutes
 
 /** Interval for refreshing the qmd index (BM25 + vector embeddings). */
 const QMD_REFRESH_MS = 30 * 60 * 1000 // 30 minutes
+const EXTRACT_ENTITIES_MS = 5 * 60 * 1000 // 5 minutes
+const CURATE_LOOP_MS = 60 * 1000 // 1 minute
+const CURATE_PAUSE_FILE = "/tmp/curate.pause"
+
+/**
+ * Set by the extract-entities tick when it inserts new rows; consumed (and
+ * cleared) by the next curate tick to decide whether to run rollupPersonsTo-
+ * Domains. Keeps the per-tick UPDATE-against-80k-rows out of the steady-state
+ * hot path.
+ */
+let curateDirty = false
 
 /**
  * Start the scheduled backfill interval and the stale-lock sweeper.
@@ -455,6 +467,67 @@ export function scheduleContextBackfill(
   setTimeout(() => {
     refreshQmd().catch((err) => log.error("initial qmd refresh failed", { error: (err as Error).message }))
   }, 30_000).unref()
+
+  // Server-driven entity extraction + curate-loop. Replaces the shell loops
+  // (./scripts/{extract-entities,curate-loop}.sh) so curation survives shell
+  // exits and isn't tied to a single terminal session.
+  const wsId = workspaceId ?? "agent"
+  setInterval(() => {
+    runServerExtractEntities(workspacePath, wsId).catch((err) =>
+      log.error("Scheduled extract-entities failed", { error: (err as Error).message }),
+    )
+  }, EXTRACT_ENTITIES_MS).unref()
+  setTimeout(() => {
+    runServerExtractEntities(workspacePath, wsId).catch((err) =>
+      log.error("Initial extract-entities failed", { error: (err as Error).message }),
+    )
+  }, 60_000).unref()
+
+  setInterval(() => {
+    runServerCurateNext(workspacePath, wsId).catch((err) =>
+      log.error("Scheduled curate-next failed", { error: (err as Error).message }),
+    )
+  }, CURATE_LOOP_MS).unref()
+  setTimeout(() => {
+    runServerCurateNext(workspacePath, wsId).catch((err) =>
+      log.error("Initial curate-next failed", { error: (err as Error).message }),
+    )
+  }, 90_000).unref()
+}
+
+async function runServerExtractEntities(workspacePath: string, workspaceId: string): Promise<void> {
+  const { runExtractEntities } = await import("./entity-extractor.js")
+  const results = await runExtractEntities(workspacePath, workspaceId, getPlugins(workspaceId))
+  const added = Object.values(results).reduce((sum, r) => sum + r.entities, 0)
+  if (added > 0) {
+    curateDirty = true
+    log.info("Server extract-entities tick", { added, byPlugin: results })
+  }
+}
+
+async function isCuratePaused(): Promise<boolean> {
+  if (process.env.CURATE_LOOP_DISABLED === "1") return true
+  try {
+    await stat(CURATE_PAUSE_FILE)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function runServerCurateNext(workspacePath: string, workspaceId: string): Promise<void> {
+  if (await isCuratePaused()) return
+  const { curateNextEntity } = await import("./entity-curator.js")
+  const skipRollup = !curateDirty
+  curateDirty = false
+  const result = await curateNextEntity(workspacePath, workspaceId, { skipRollup })
+  if ("sessionId" in result) {
+    log.info("Server curate-next dispatched", {
+      sessionId: result.sessionId,
+      entity: result.entity,
+      sources: result.sources,
+    })
+  }
 }
 
 /**
