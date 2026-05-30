@@ -119,10 +119,12 @@ export const gmailPlugin: Plugin = {
   async query(filters, cursor, ctx) {
     const accessToken = await requireToken(ctx)
 
-    // Build Gmail search query from filters
+    // Build Gmail search query from filters.
+    // Only default to "in:inbox" when no other filter is active — flags like
+    // "is:starred" or label filters apply across all mail, not just the inbox.
     const parts: string[] = []
     if (filters.q) parts.push(filters.q)
-    else parts.push("in:inbox")
+    else if (!filters.flags && !filters.labels) parts.push("in:inbox")
     if (filters.flags) {
       for (const flag of filters.flags.split(",")) {
         parts.push(`is:${flag.trim()}`)
