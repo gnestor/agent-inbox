@@ -5,6 +5,7 @@ import { render, act } from "@testing-library/react"
 
 import {
   WsStreamProvider,
+  useWsStream,
   PING_INTERVAL_MS,
   ALIVE_TIMEOUT_MS,
 } from "../use-ws-stream"
@@ -74,7 +75,7 @@ function mount() {
 }
 
 describe("useWsStream keepalive", () => {
-  it("sends a ping at PING_INTERVAL_MS while open", async () => {
+  it("Scenario: Client pings on a fixed interval — sends a ping at PING_INTERVAL_MS while open", async () => {
     mount()
     const ws = FakeWebSocket.instances.at(-1)!
     act(() => ws.simulateOpen())
@@ -85,7 +86,7 @@ describe("useWsStream keepalive", () => {
     expect(pings).toHaveLength(1)
   })
 
-  it("force-closes the socket when no traffic arrives for ALIVE_TIMEOUT_MS", async () => {
+  it("Scenario: Client force-closes on silent connection — force-closes the socket when no traffic arrives for ALIVE_TIMEOUT_MS", async () => {
     mount()
     const ws = FakeWebSocket.instances.at(-1)!
     act(() => ws.simulateOpen())
@@ -111,7 +112,7 @@ describe("useWsStream keepalive", () => {
     expect(ws.closeCalls).toBe(0)
   })
 
-  it("pong frames are silently absorbed (no session_event dispatch path)", async () => {
+  it("Scenario: Server replies with pong — pong frames are silently absorbed (no session_event dispatch path)", async () => {
     mount()
     const ws = FakeWebSocket.instances.at(-1)!
     act(() => ws.simulateOpen())
@@ -122,5 +123,62 @@ describe("useWsStream keepalive", () => {
       ws.simulateMessage({ type: "pong" })
       ws.simulateMessage({ type: "session_event", sessionId: "s1", data: {} })
     })
+  })
+})
+
+describe("useWsStream reconnect", () => {
+  it("Scenario: Reconnect uses bounded exponential backoff — delays grow 1s, 2s, 4s and cap at 30s across successive closes", async () => {
+    mount()
+    // First socket opens, then closes → reconnect after 1s.
+    const ws0 = FakeWebSocket.instances.at(-1)!
+    act(() => ws0.simulateOpen())
+    act(() => ws0.close())
+    expect(FakeWebSocket.instances).toHaveLength(1) // no new socket yet
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(FakeWebSocket.instances).toHaveLength(2) // reconnected after 1s
+
+    // Second socket closes WITHOUT opening (retries counter keeps climbing) →
+    // next delay is 2s. Advancing only 1s must not reconnect.
+    const ws1 = FakeWebSocket.instances.at(-1)!
+    act(() => ws1.close())
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(FakeWebSocket.instances).toHaveLength(2) // 1s < 2s backoff → still waiting
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(FakeWebSocket.instances).toHaveLength(3) // total 2s elapsed → reconnect
+  })
+
+  it("Scenario: Resubscribe uses the latest applied sequence — re-subscribe frame on reconnect carries each session's getFromSequence cursor", async () => {
+    let seq = 0
+    function Consumer() {
+      const { subscribe } = useWsStream()
+      React.useEffect(() => {
+        return subscribe("s-cursor", () => {}, { getFromSequence: () => seq })
+      }, [subscribe])
+      return null
+    }
+    render(
+      <WsStreamProvider>
+        <Consumer />
+      </WsStreamProvider>,
+    )
+    const ws0 = FakeWebSocket.instances.at(-1)!
+    act(() => ws0.simulateOpen())
+    // Flush the 50ms subscribe batch from the initial subscribe call.
+    act(() => { vi.advanceTimersByTime(50) })
+
+    // Client has now applied through sequence 7.
+    seq = 7
+    // Connection drops and reconnects.
+    act(() => ws0.close())
+    act(() => { vi.advanceTimersByTime(1000) })
+    const ws1 = FakeWebSocket.instances.at(-1)!
+    act(() => ws1.simulateOpen())
+
+    // The resubscribe frame emitted on `connected` must carry fromSequence: 7.
+    const subscribeFrames = ws1.sent
+      .map((f) => JSON.parse(f))
+      .filter((m) => m.type === "subscribe")
+    const lastSub = subscribeFrames.at(-1)
+    expect(lastSub.sessions).toContainEqual({ id: "s-cursor", fromSequence: 7 })
   })
 })

@@ -144,7 +144,7 @@ describe("OAuth callback token exchange", () => {
     mockFetch.mockReset()
   })
 
-  it("exchanges code for token with Pinterest (Basic auth + form-encoded body)", async () => {
+  it("Scenario: OAuth callback validates state, exchanges code, stores token — exchanges code for token with Pinterest (Basic auth + form-encoded body)", async () => {
     const app = createTestApp()
     const state = await getValidState(app, "pinterest")
 
@@ -287,7 +287,7 @@ describe("OAuth callback token exchange", () => {
     expect(res.headers.get("Location")).toContain("No%20access%20token")
   })
 
-  it("returns 400 for expired/unknown state", async () => {
+  it("Scenario: OAuth callback rejects mismatched or expired state — returns 400 for expired/unknown state", async () => {
     const app = createTestApp()
     const res = await app.request(
       "http://localhost/api/connections/connect/google/callback?code=test-code&state=expired-state-token",
@@ -378,5 +378,28 @@ describe("OAuth callback token exchange", () => {
       "http://localhost/api/connections/connect/google/callback",
     )
     expect(res.status).toBe(400)
+  })
+
+  it("Scenario: Origin is captured at connect-time and reused at callback-time — exchange redirect_uri uses the stored origin, not the callback host", async () => {
+    const app = createTestApp()
+    // Connect captures origin=http://localhost:5175 (see getValidState)
+    const state = await getValidState(app, "google")
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: "tok" }),
+    })
+
+    // Callback arrives via a *different* host
+    await app.request(
+      `http://other-host.example.com/api/connections/connect/google/callback?code=c&state=${state}`,
+      { redirect: "manual" },
+    )
+
+    const [, opts] = mockFetch.mock.calls[0]!
+    const params = new URLSearchParams(opts.body)
+    expect(params.get("redirect_uri")).toBe(
+      "http://localhost:5175/api/connections/connect/google/callback",
+    )
   })
 })

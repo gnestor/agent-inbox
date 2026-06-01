@@ -38,7 +38,7 @@ describe("session presence tracking", () => {
     expect(users[0]!).toMatchObject({ email: "alice@test.com", name: "Alice" })
   })
 
-  it("addPresenceUser broadcasts presence event to WS clients (debounced)", async () => {
+  it("Scenario: Presence broadcasts debounce at 200 ms — addPresenceUser broadcasts presence event to WS clients (debounced)", async () => {
     const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
     const received: any[] = []
     addWsClient("c-2", (data) => received.push(data))
@@ -101,7 +101,7 @@ describe("resumeSessionQuery author attribution", () => {
     mockQuery.mockResolvedValue([])
   })
 
-  it("broadcasts user message with authorEmail/authorName when userProfile provided", async () => {
+  it("Scenario: `resumeSessionQuery(sessionId, prompt)` continues an existing session — broadcasts user message with authorEmail/authorName when userProfile provided", async () => {
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
         [Symbol.asyncIterator]: async function* () {},
@@ -199,7 +199,7 @@ describe("resumeSessionQuery stale-entry recovery", () => {
     expect(result.started).toBe(true)
   })
 
-  it("queues a second prompt while a session is actively running", async () => {
+  it("Scenario: A prompt submitted while the iterator is already running is queued — queues a second prompt while a session is actively running", async () => {
     vi.doMock("@anthropic-ai/claude-agent-sdk", () => ({
       query: vi.fn(() => ({
         [Symbol.asyncIterator]: async function* () {
@@ -226,7 +226,7 @@ describe("resumeSessionQuery stale-entry recovery", () => {
     expect(second.queued).toBe(true)
   })
 
-  it("drains a queued prompt after the running iterator completes", async () => {
+  it("Scenario: `abortRunningSession` triggers the registered `AbortController` — drains a queued prompt after the running iterator completes", async () => {
     // First query hangs once started, but we can release it by aborting.
     // Second query (the queued one) should be set up after the first cleans up.
     const queryCalls: string[] = []

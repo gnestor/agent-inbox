@@ -146,7 +146,7 @@ describe("getWorkspaceMembers", () => {
 // ─── addWorkspaceMember ────────────────────────────────────────────────
 
 describe("addWorkspaceMember", () => {
-  it("inserts a new member with default role", async () => {
+  it("Scenario: `addWorkspaceMember` is idempotent — inserts a new member with default role via ON CONFLICT DO NOTHING", async () => {
     mockExecute.mockResolvedValueOnce({ rowCount: 1 })
 
     const { addWorkspaceMember } = await importModule()
@@ -156,6 +156,7 @@ describe("addWorkspaceMember", () => {
       expect.stringContaining("INSERT INTO workspace_members"),
       ["ws-1", "alice@example.com", "member", expect.any(String)],
     )
+    expect(mockExecute.mock.calls[0]![0]).toContain("ON CONFLICT")
   })
 
   it("inserts a member with explicit admin role", async () => {
@@ -296,7 +297,7 @@ describe("updateWorkspaceName", () => {
 // ─── ensureWorkspaceAccess ─────────────────────────────────────────────
 
 describe("ensureWorkspaceAccess", () => {
-  it("returns existing role when user is already a member", async () => {
+  it("Scenario: Existing member returns their role — returns existing role when user is already a member", async () => {
     // getWorkspaceMemberRole will call queryOne
     mockQueryOne.mockResolvedValueOnce({ role: "member" })
 
@@ -306,7 +307,7 @@ describe("ensureWorkspaceAccess", () => {
     expect(result).toBe("member")
   })
 
-  it("auto-claims as admin when workspace has no members", async () => {
+  it("Scenario: First user auto-claims as admin — auto-claims as admin when workspace has no members", async () => {
     // getWorkspaceMemberRole → null
     mockQueryOne.mockResolvedValueOnce(undefined)
     // count query → 0 members
@@ -324,7 +325,7 @@ describe("ensureWorkspaceAccess", () => {
     )
   })
 
-  it("returns null when workspace has members and user is not one", async () => {
+  it("Scenario: Non-member of a claimed workspace gets null — returns null when workspace has members and user is not one", async () => {
     // getWorkspaceMemberRole → null
     mockQueryOne.mockResolvedValueOnce(undefined)
     // count query → 2 existing members
@@ -340,7 +341,7 @@ describe("ensureWorkspaceAccess", () => {
 // ─── registerWorkspaces ────────────────────────────────────────────────
 
 describe("registerWorkspaces", () => {
-  it("upserts workspaces and cleans stale entries", async () => {
+  it("Scenario: Boot upserts and reconciles — upserts workspaces and cleans stale entries", async () => {
     // For each path: one execute (upsert)
     mockExecute.mockResolvedValue({ rowCount: 1 })
     // Final query to return all workspaces
@@ -362,7 +363,7 @@ describe("registerWorkspaces", () => {
     expect(mockExecute.mock.calls[2]![0]).toContain("DELETE FROM workspaces")
   })
 
-  it("handles empty paths array", async () => {
+  it("Scenario: Empty registration list is a no-op for cleanup — handles empty paths array without DELETEs", async () => {
     mockQuery.mockResolvedValueOnce([])
 
     const { registerWorkspaces } = await importModule()
@@ -377,14 +378,14 @@ describe("registerWorkspaces", () => {
 // ─── deriveWorkspaceName ───────────────────────────────────────────────
 
 describe("deriveWorkspaceName", () => {
-  it("falls back to basename when git remote fails", async () => {
+  it("Scenario: `setWorkspacePath` persists the default and derives a workspace name — falls back to basename when git remote fails", async () => {
     const { deriveWorkspaceName } = await importModule()
     const result = deriveWorkspaceName("/home/user/projects/my-app")
 
     expect(result).toBe("my-app")
   })
 
-  it("extracts repo name from git remote URL when available", async () => {
+  it("Scenario: Display name comes from git remote, falls back to basename — extracts repo name from git remote URL when available", async () => {
     const { execFileSync } = await import("child_process")
     vi.mocked(execFileSync).mockReturnValueOnce("https://github.com/org/cool-repo.git\n")
 
@@ -398,7 +399,7 @@ describe("deriveWorkspaceName", () => {
 // ─── resolveActiveWorkspace ────────────────────────────────────────────
 
 describe("resolveActiveWorkspace", () => {
-  it("returns cookie workspace when user is a member", async () => {
+  it("Scenario: Cookie-based active workspace — returns cookie workspace when user is a member", async () => {
     const ws = { id: "ws-1", name: "Project", path: "/a", created_at: "2026-01-01", updated_at: "2026-01-01" }
 
     // claimUnclaimedWorkspaces → getAllWorkspaces
@@ -414,7 +415,7 @@ describe("resolveActiveWorkspace", () => {
     expect(result).toMatchObject({ id: "ws-1", role: "admin" })
   })
 
-  it("falls back to first user workspace when cookie workspace is invalid", async () => {
+  it("Scenario: Falls back to first user workspace — falls back to first user workspace when cookie workspace is invalid", async () => {
     const userWs = [{ id: "ws-2", name: "Fallback", path: "/b", role: "member", created_at: "2026-01-01", updated_at: "2026-01-01" }]
 
     // claimUnclaimedWorkspaces → getAllWorkspaces
@@ -430,7 +431,7 @@ describe("resolveActiveWorkspace", () => {
     expect(result).toMatchObject({ id: "ws-2", role: "member" })
   })
 
-  it("returns null when user has no workspaces", async () => {
+  it("Scenario: User with no memberships returns null — returns null when user has no workspaces", async () => {
     // claimUnclaimedWorkspaces → getAllWorkspaces
     mockQuery.mockResolvedValueOnce([])
     // getUserWorkspaces → empty

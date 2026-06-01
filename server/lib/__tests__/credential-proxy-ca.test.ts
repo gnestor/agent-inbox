@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
+import { X509Certificate } from "node:crypto"
+import { readFileSync } from "node:fs"
 import {
   generateCA,
   generateCertForHost,
+  writeCACertFile,
   _resetCaches,
   _getHostCertCacheSize,
   _getHostCertCacheKeys,
@@ -21,6 +24,13 @@ describe("credential-proxy-ca", () => {
     expect(ca.key).toContain("-----BEGIN")
   })
 
+  it("Scenario: CA is generated once per process and cached in memory — repeat calls return the same cached pair", async () => {
+    const first = await generateCA()
+    const second = await generateCA()
+    expect(second.cert).toBe(first.cert)
+    expect(second.key).toBe(first.key)
+  })
+
   it("generates a host certificate signed by the CA", async () => {
     ca = await generateCA()
     const hostCert = await generateCertForHost("api.notion.com", ca)
@@ -30,11 +40,26 @@ describe("credential-proxy-ca", () => {
     expect(hostCert.cert).not.toBe(ca.cert)
   })
 
-  it("caches host certificates for the same host", async () => {
+  it("Scenario: Per-host cert is generated on demand and LRU-cached — caches host certificates for the same host", async () => {
     ca = await generateCA()
     const cert1 = await generateCertForHost("api.notion.com", ca)
     const cert2 = await generateCertForHost("api.notion.com", ca)
     expect(cert1.cert).toBe(cert2.cert)
+  })
+
+  it("Scenario: Per-host certs include SAN for the host — cert has commonName and subjectAltName DNS for the host", async () => {
+    ca = await generateCA()
+    const hostCert = await generateCertForHost("api.notion.com", ca)
+    const x509 = new X509Certificate(hostCert.cert)
+    expect(x509.subject).toContain("api.notion.com")
+    expect(x509.subjectAltName).toContain("DNS:api.notion.com")
+  })
+
+  it("Scenario: CA cert is written to a temp file for `NODE_EXTRA_CA_CERTS` — writes ca.pem and returns its path", async () => {
+    const path = await writeCACertFile()
+    expect(path).toMatch(/ca\.pem$/)
+    expect(path).toContain("inbox-proxy-ca-")
+    expect(readFileSync(path, "utf8")).toContain("-----BEGIN CERTIFICATE-----")
   })
 
   it("generates different certificates for different hosts", async () => {

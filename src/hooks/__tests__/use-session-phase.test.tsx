@@ -142,7 +142,7 @@ describe("useSessionController (phase derivation)", () => {
     expect(result.current.phase.status).toBe("loading")
   })
 
-  it("returns streaming phase when bootstrapped and session is running", () => {
+  it("Scenario: `useSessionController` exposes a `phase` discriminated union — returns streaming phase when bootstrapped and session is running", () => {
     sliceMock = makeSlice({ session: makeSession({ status: "running" }) })
     const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
     expect(result.current.phase.status).toBe("streaming")
@@ -217,7 +217,7 @@ describe("useSessionController (phase derivation)", () => {
     expect(mutationsMockState.resume.mutate).toHaveBeenCalledWith("hello there")
   })
 
-  it("exposes combined real + optimistic messages via the pipeline", async () => {
+  it("Scenario: Controller filters classified messages by visibility — exposes combined real + optimistic messages via the pipeline", async () => {
     sliceMock = makeSlice({
       messageIds: [1],
       messageById: {

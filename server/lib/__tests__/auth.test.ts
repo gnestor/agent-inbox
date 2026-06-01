@@ -41,7 +41,7 @@ describe("auth", () => {
   })
 
   describe("getClientId", () => {
-    it("returns GOOGLE_CLIENT_ID from env", () => {
+    it("Scenario: Client fetches OAuth client ID — returns GOOGLE_CLIENT_ID from env", () => {
       process.env.GOOGLE_CLIENT_ID = "test-client-id"
       expect(getClientId()).toBe("test-client-id")
     })
@@ -59,7 +59,8 @@ describe("auth", () => {
   })
 
   describe("verifyIdToken", () => {
-    it("verifies token, upserts user, mints JWT session token", async () => {
+    // Covers: 'Scenario: Successful sign-in upserts user and mints JWT' (asserts users upsert + signSession payload below)
+    it("Scenario: Sign-in callback verifies the ID token — verifies token, upserts user, mints JWT session token", async () => {
       mockVerifyGoogleIdToken.mockResolvedValueOnce({
         sub: "google-sub-1",
         email: "alice@test.com",
@@ -109,7 +110,7 @@ describe("auth", () => {
   })
 
   describe("getSession", () => {
-    it("returns the user when JWT verification succeeds", async () => {
+    it("Scenario: `GET /api/auth/session` with a valid cookie — returns the user when JWT verification succeeds", async () => {
       mockVerifySession.mockResolvedValueOnce({
         sub: "s1",
         email: "bob@test.com",
@@ -124,7 +125,7 @@ describe("auth", () => {
       expect(session!.user.name).toBe("Bob")
     })
 
-    it("returns undefined when JWT verification throws", async () => {
+    it("Scenario: `GET /api/auth/session` with no or invalid cookie — returns undefined when JWT verification throws", async () => {
       mockVerifySession.mockRejectedValueOnce(new Error("invalid"))
       expect(await getSession("garbage")).toBeUndefined()
     })

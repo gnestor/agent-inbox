@@ -25,7 +25,7 @@ describe("provideAskUserAnswer", () => {
     expect(provideAskUserAnswer("nonexistent-session", { q: "a" })).toBe(false)
   })
 
-  it("resolves a pending question and returns true", async () => {
+  it("Scenario: `canUseTool` for `AskUserQuestion` resolves when the user replies — resolves a pending question and returns true", async () => {
     const { provideAskUserAnswer } = await import("../session-manager.js")
 
     const resolved: Record<string, string>[] = []

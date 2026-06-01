@@ -34,7 +34,7 @@ describe("sanitizePlainText", () => {
 
   // ── Quoted-line detection ──────────────────────────────────────────────────
 
-  it('stops at ">" quoted line', () => {
+  it('Scenario: Truncates at `>`-prefixed quote lines — stops at ">" quoted line', () => {
     expect(sanitizePlainText("My reply\n> Original text")).toBe("My reply")
   })
 
@@ -44,7 +44,7 @@ describe("sanitizePlainText", () => {
 
   // ── "On … wrote:" attribution ─────────────────────────────────────────────
 
-  it('stops at single-line "On … wrote:" attribution', () => {
+  it('Scenario: Truncates at "On ... wrote:" attribution — stops at single-line "On … wrote:" attribution', () => {
     const input =
       "Thanks!\n\nOn Mon, Apr 21, 2025 at 10:00 AM John Smith <john@example.com> wrote:\n> Original"
     expect(sanitizePlainText(input)).toBe("Thanks!")
@@ -64,7 +64,7 @@ describe("sanitizePlainText", () => {
 
   // ── Chinese attribution ────────────────────────────────────────────────────
 
-  it("stops at Chinese 写道： attribution", () => {
+  it('Scenario: Truncates at Chinese "wrote:" attribution — stops at Chinese 写道： attribution', () => {
     const input = "好的\n\n2025年9月5日 01:14，Kevin Mahany 写道：\n> message"
     expect(sanitizePlainText(input)).toBe("好的")
   })
@@ -76,7 +76,7 @@ describe("sanitizePlainText", () => {
 
   // ── Outlook attribution ────────────────────────────────────────────────────
 
-  it('stops at Outlook "From: … Sent:" header block', () => {
+  it('Scenario: Truncates at Outlook reply header block — stops at Outlook "From: … Sent:" header block', () => {
     const input =
       "My reply\n\nFrom: John Smith <john@example.com>\nSent: Monday, April 21, 2025 10:00 AM\nTo: Me"
     expect(sanitizePlainText(input)).toBe("My reply")
@@ -87,7 +87,7 @@ describe("sanitizePlainText", () => {
     expect(sanitizePlainText(input)).toBe("My reply")
   })
 
-  it("stops at Chinese Outlook 发件人： header (full-width colon)", () => {
+  it("Scenario: Truncates at Chinese Outlook header — stops at Chinese Outlook 发件人： header (full-width colon)", () => {
     const input = "回复内容\n\n发件人：John Smith\n发送时间：2025年9月5日"
     expect(sanitizePlainText(input)).toBe("回复内容")
   })
@@ -97,7 +97,7 @@ describe("sanitizePlainText", () => {
     expect(sanitizePlainText(input)).toBe("回复内容")
   })
 
-  it('stops at "-----Original Message-----" separator', () => {
+  it('Scenario: Truncates at Original/Forwarded message separator — stops at "-----Original Message-----" separator', () => {
     const input = "My reply\n\n-----Original Message-----\nFrom: john@example.com"
     expect(sanitizePlainText(input)).toBe("My reply")
   })
@@ -109,14 +109,14 @@ describe("sanitizePlainText", () => {
 
   // ── Security disclaimers ───────────────────────────────────────────────────
 
-  it('stops at "Caution: EXTERNAL" security disclaimer', () => {
+  it('Scenario: Truncates at injected security disclaimer — stops at "Caution: EXTERNAL" security disclaimer', () => {
     const input = "My reply\n\nCaution: EXTERNAL EMAIL - Do not click links"
     expect(sanitizePlainText(input)).toBe("My reply")
   })
 
   // ── App footers (skip, don't break) ───────────────────────────────────────
 
-  it('skips "Sent with X" line but continues processing subsequent lines', () => {
+  it('Scenario: Removes "Sent with/via X" footer without truncating — skips "Sent with X" line but continues processing subsequent lines', () => {
     const input = "My reply\nSent with Shortwave\nMore content"
     expect(sanitizePlainText(input)).toBe("My reply\nMore content")
   })
@@ -126,7 +126,7 @@ describe("sanitizePlainText", () => {
     expect(sanitizePlainText(input)).toBe("My reply\nMore content")
   })
 
-  it("skips standalone Shortwave line but continues", () => {
+  it("Scenario: Removes standalone client-name footers — skips standalone Shortwave line but continues", () => {
     const input = "My reply\nShortwave\nMore content"
     expect(sanitizePlainText(input)).toBe("My reply\nMore content")
   })
@@ -163,13 +163,13 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Structural fast-paths ──────────────────────────────────────────────────
 
-  it("removes shortwave-signature div and everything after", () => {
+  it("Scenario: Truncates Shortwave at signature div — removes shortwave-signature div and everything after", () => {
     const html =
       '<p>My reply</p><div class="shortwave-signature">Sent with Shortwave</div><p>Old message</p>'
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
-  it("removes gmail_quote div and everything after", () => {
+  it("Scenario: Truncates Gmail at quote/extra wrapper — removes gmail_quote div and everything after", () => {
     const html = '<p>My reply</p><div class="gmail_quote"><p>Old message</p></div>'
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
@@ -191,7 +191,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
-  it("keeps gmail_signature when keepSignature is true (last message)", () => {
+  it("Scenario: Preserves Gmail signature on the last message of a thread — keeps gmail_signature when keepSignature is true (last message)", () => {
     const html =
       '<p>My reply</p><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature"><div>John Doe<br>CEO</div></div>'
     const result = sanitizeHtmlEmail(html, { keepSignature: true })
@@ -200,7 +200,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(result).toContain("John Doe")
   })
 
-  it("removes Outlook divRplyFwdMsg and everything after", () => {
+  it("Scenario: Truncates Outlook Web at reply div — removes Outlook divRplyFwdMsg and everything after", () => {
     const html = '<p>My reply</p><div id="divRplyFwdMsg"><p>Old message</p></div>'
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
@@ -218,7 +218,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(sanitizeHtmlEmail(html)).toContain("All quoted")
   })
 
-  it("removes reply-timestamp-box div and everything after (GoHighLevel / Lead Connector)", () => {
+  it("Scenario: Truncates GoHighLevel / Lead Connector at reply-timestamp-box — removes reply-timestamp-box div and everything after (GoHighLevel / Lead Connector)", () => {
     const html =
       '<div>My reply</div>' +
       '<div class="reply-timestamp-box">On <span>Friday, Feb 20</span> wrote:</div>' +
@@ -229,7 +229,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(result).not.toContain("Old message")
   })
 
-  it('truncates at "On <span>Friday..." with tags between On and weekday (text-pattern fallback)', () => {
+  it('Scenario: Matches "On ... wrote:" with HTML tags interspersed — truncates at "On <span>Friday..." with tags between On and weekday (text-pattern fallback)', () => {
     const html =
       '<p>My reply</p>' +
       '<div>On <span>Monday, Feb 9, 2026 at 9:26 pm</span> <span>someone@example.com</span> wrote:</div>' +
@@ -246,7 +246,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
-  it("removes nested blockquotes (loop unwinds innermost first)", () => {
+  it("Scenario: Removes innermost blockquotes first — removes nested blockquotes (loop unwinds innermost first)", () => {
     const html = "<p>My reply</p><blockquote>Level 1<blockquote>Level 2</blockquote></blockquote>"
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
@@ -258,19 +258,19 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Signature cleanup ──────────────────────────────────────────────────────
 
-  it('removes "Sent with X" inline element', () => {
+  it('Scenario: Removes "Sent with/via X" elements and free text — removes "Sent with X" inline element', () => {
     const html = "<p>My reply</p><span>Sent with Shortwave</span>"
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
-  it("removes standalone app name elements (Shortwave)", () => {
+  it("Scenario: Removes standalone client-name elements — removes standalone app name elements (Shortwave)", () => {
     const html = '<p>My reply</p><span style="color:#4C8AFF">Shortwave</span>'
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
 
   // ── Background color removal ───────────────────────────────────────────────
 
-  it("strips background-color from inline styles", () => {
+  it("Scenario: Removes inline background-color and bgcolor — strips background-color from inline styles", () => {
     const html = '<td style="background-color: #1a73e8; padding: 10px;">text</td>'
     const result = sanitizeHtmlEmail(html)
     expect(result).not.toMatch(/background-color/i)
@@ -295,7 +295,7 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Trailing blank blocks ──────────────────────────────────────────────────
 
-  it("removes trailing blank <p> elements (Outlook nbsp padding)", () => {
+  it("Scenario: Removes trailing blank `<p>`/`<div>` elements — removes trailing blank <p> elements (Outlook nbsp padding)", () => {
     const html = "<p>My reply</p><p>&nbsp;</p><p>  </p>"
     expect(sanitizeHtmlEmail(html)).toBe("<p>My reply</p>")
   })
@@ -307,7 +307,7 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Text-pattern fallback ──────────────────────────────────────────────────
 
-  it('truncates at "On Mon … wrote:" text pattern (Apple Mail / Outlook fallback)', () => {
+  it('Scenario: Cuts at clean block boundary — truncates at "On Mon … wrote:" text pattern (Apple Mail / Outlook fallback)', () => {
     const html =
       "<p>My reply</p><p>On Mon Apr 21, 2025 at 10:00 AM John Smith wrote:</p><p>Old message</p>"
     const result = sanitizeHtmlEmail(html)
@@ -316,7 +316,7 @@ describe("sanitizeHtmlEmail", () => {
     expect(result).not.toContain("wrote:")
   })
 
-  it("truncates at bold From:/Date: header (Apple Mail / iOS Mail, no border-top div)", () => {
+  it("Scenario: Matches bold From/Sent or From/Date blocks — truncates at bold From:/Date: header (Apple Mail / iOS Mail, no border-top div)", () => {
     // Apple Mail sometimes omits the border-top wrapper; boldFrom/Date text pattern catches it.
     const html =
       "<p>My reply</p>" +
@@ -373,7 +373,7 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Outlook border-top separator div ──────────────────────────────────────
 
-  it("removes Outlook border-top separator div and everything after", () => {
+  it("Scenario: Truncates Outlook desktop / Apple Mail at border-top separator — removes Outlook border-top separator div and everything after", () => {
     const html =
       '<p>My reply</p>' +
       '<div style="border:none;border-top:solid #B5C4DF 1.0pt;padding:3.0pt 0in 0in 0in">' +
@@ -393,7 +393,7 @@ describe("sanitizeHtmlEmail", () => {
 
   // ── Earliest-match logic (regression for the "nested attribution shadows earlier match" bug) ──
 
-  it("takes the EARLIEST attribution pattern when multiple patterns are present", () => {
+  it("Scenario: Earliest match wins across patterns — takes the EARLIEST attribution pattern when multiple patterns are present", () => {
     // "On Mon..." appears first; Chinese 写道: appears later (nested in quoted content).
     // Should truncate at the earlier "On Mon..." marker, not the later one.
     const html =
@@ -448,7 +448,7 @@ describe("sanitizeHtmlEmail — real Gmail fixtures", () => {
     expect(result.length).toBeLessThan(raw.length * 0.05)
   })
 
-  it("19bb9ce27bf761f5: strips unclosed blockquote (Apple Mail / iOS)", () => {
+  it("Scenario: Truncates at unclosed blockquote — 19bb9ce27bf761f5: strips unclosed blockquote (Apple Mail / iOS)", () => {
     // Apple Mail reply — blockquote is opened but never closed; cleaner cuts at it.
     const raw = fixture("19bb9ce27bf761f5.html")
     const result = sanitizeHtmlEmail(raw)
@@ -505,7 +505,7 @@ describe("sanitizeHtmlEmail — real Gmail fixtures", () => {
     expect(result.length).toBeLessThan(raw.length * 0.4)
   })
 
-  it("19d0f3a12b81e7e6: strips embedded Gmail thread history", () => {
+  it("Scenario: Truncates Gmail embedded thread tables — 19d0f3a12b81e7e6: strips embedded Gmail thread history", () => {
     const raw = fixture("19d0f3a12b81e7e6.html")
     const result = sanitizeHtmlEmail(raw, { keepSignature: true })
 

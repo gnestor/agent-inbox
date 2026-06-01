@@ -44,6 +44,16 @@ vi.mock("../../db/pool.js", () => ({
       }
       return { rowCount: 1 }
     }
+    if (sql.includes("UPDATE sessions SET status = 'complete'") && sql.includes("status = 'archived'")) {
+      // unarchiveSession: SET status = 'complete', updated_at = $1 WHERE id = $2 AND status = 'archived'
+      const now = params![0] as string
+      const id = params![1] as string
+      const session = sessionsStore.get(id)
+      if (!session || session.status !== "archived") return { rowCount: 0 }
+      session.status = "complete"
+      session.updated_at = now
+      return { rowCount: 1 }
+    }
     if (sql.includes("UPDATE sessions SET status")) {
       // updateSessionStatus — simulate atomic CAS behavior
       const status = params![0] as string
@@ -143,7 +153,7 @@ describe("archiveSession", () => {
     expect(result).toBe(false)
   })
 
-  it("sets status to 'archived' for a non-running session", async () => {
+  it("Scenario: `archiveSession` / `unarchiveSession` flip status to/from `archived` — sets status to 'archived' for a non-running session", async () => {
     insertSession("sess-complete", "complete")
 
     const result = await archiveSession("sess-complete")
@@ -162,6 +172,15 @@ describe("archiveSession", () => {
 
     const row = await getSessionRecord("sess-running")
     expect(row!.status).toBe("archived")
+  })
+
+  it("unarchiveSession flips an archived row back to complete and returns false on no row", async () => {
+    const { unarchiveSession } = await import("../session-manager.js")
+    insertSession("sess-arch", "archived")
+    expect(await unarchiveSession("sess-arch")).toBe(true)
+    expect((await getSessionRecord("sess-arch"))!.status).toBe("complete")
+    // Both helpers return false when no row exists.
+    expect(await unarchiveSession("ghost")).toBe(false)
   })
 })
 

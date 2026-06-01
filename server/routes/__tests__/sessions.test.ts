@@ -62,10 +62,14 @@ vi.mock("../../lib/session-manager.js", () => ({
   broadcastToSession: (...args: unknown[]) => mockBroadcastToSession(...args),
 }))
 
+const mockGetSessionFilesDir = vi.fn()
+const mockSaveSessionFile = vi.fn()
+const mockGetSessionFilePath = vi.fn()
+
 vi.mock("../../lib/session-files.js", () => ({
-  getSessionFilesDir: vi.fn(),
-  saveSessionFile: vi.fn(),
-  getSessionFilePath: vi.fn(),
+  getSessionFilesDir: (...args: unknown[]) => mockGetSessionFilesDir(...args),
+  saveSessionFile: (...args: unknown[]) => mockSaveSessionFile(...args),
+  getSessionFilePath: (...args: unknown[]) => mockGetSessionFilePath(...args),
 }))
 
 // ---------------------------------------------------------------------------
@@ -126,7 +130,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("POST /sessions", () => {
-    it("creates a session with a valid prompt", async () => {
+    it("Scenario: `POST /api/sessions/` starts a session and returns `{ sessionId }` — creates a session with a valid prompt", async () => {
       mockStartSession.mockResolvedValue("sess-001")
       const res = await postJson(app, "/sessions", { prompt: "Hello world" })
       expect(res.status).toBe(200)
@@ -194,7 +198,7 @@ describe("session routes", () => {
       expect(data.sessions).toEqual([])
     })
 
-    it("returns sessions enriched with DB metadata", async () => {
+    it("Scenario: `GET /api/sessions/` lists sessions for the active workspace — returns sessions enriched with DB metadata", async () => {
       const now = new Date().toISOString()
       mockListAllAgentSessions.mockResolvedValue([
         {
@@ -262,7 +266,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("GET /sessions/:id", () => {
-    it("returns session from DB record with transcript", async () => {
+    it("Scenario: `GET /api/sessions/:id` returns session metadata + transcript with synthetic seq-0 — returns session from DB record with transcript", async () => {
       mockGetSessionRecord.mockResolvedValue({
         id: "s1",
         status: "complete",
@@ -349,7 +353,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("PATCH /sessions/:id", () => {
-    it("updates summary for a DB session", async () => {
+    it("Scenario: `PATCH /api/sessions/:id` renames or marks-manually-titled — updates summary for a DB session", async () => {
       mockGetSessionRecord.mockResolvedValue({ id: "s1", status: "complete" })
       mockUpdateSessionSummary.mockResolvedValue(undefined)
 
@@ -407,7 +411,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("POST /sessions/:id/answer", () => {
-    it("provides answer to pending question", async () => {
+    it("Scenario: `POST /api/sessions/:id/answer` resolves a pending `AskUserQuestion` — provides answer to pending question", async () => {
       mockProvideAskUserAnswer.mockReturnValue(true)
 
       const res = await postJson(app, "/sessions/s1/answer", {
@@ -465,7 +469,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("POST /sessions/:id/resume", () => {
-    it("resumes an existing DB session", async () => {
+    it("Scenario: `POST /api/sessions/:id/resume` continues a session with a new user turn — resumes an existing DB session", async () => {
       mockGetSessionRecord.mockResolvedValue({ id: "s1", status: "complete" })
       mockResumeSessionQuery.mockResolvedValue({ started: true })
 
@@ -521,7 +525,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("POST /sessions/:id/attach", () => {
-    it("attaches a source to an existing DB session", async () => {
+    it("Scenario: `POST /api/sessions/:id/attach` adds attached_context to the next user turn — attaches a source to an existing DB session", async () => {
       mockGetSessionRecord.mockResolvedValue({ id: "s1", status: "running" })
       mockAttachSourceToSession.mockResolvedValue(undefined)
 
@@ -612,7 +616,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("POST /sessions/:id/abort", () => {
-    it("aborts a running session", async () => {
+    it("Scenario: `POST /api/sessions/:id/abort` and archive/unarchive — aborts a running session", async () => {
       mockAbortRunningSession.mockResolvedValue(true)
 
       const res = await postJson(app, "/sessions/s1/abort", {})
@@ -701,7 +705,7 @@ describe("session routes", () => {
   // =========================================================================
 
   describe("PATCH /sessions/:id/artifact", () => {
-    it("patches artifact code successfully", async () => {
+    it("Scenario: `PATCH /api/sessions/:id/artifact` rewrites JSONL artifact code — patches artifact code successfully", async () => {
       mockPatchArtifactCode.mockResolvedValue(true)
 
       const res = await patchJson(app, "/sessions/s1/artifact", {
@@ -742,6 +746,67 @@ describe("session routes", () => {
         code: "test",
       })
       expect(res.status).toBe(400)
+    })
+  })
+
+  // =========================================================================
+  // POST /:id/files — upload, GET /:id/files/:filename — download
+  // =========================================================================
+
+  describe("POST /sessions/:id/files", () => {
+    it("Scenario: `POST /api/sessions/:id/files` uploads a file to `input/` — saves a multipart file and returns metadata", async () => {
+      mockSaveSessionFile.mockReturnValue({
+        name: "report.txt",
+        path: "/workspace/sessions/s1/input/report.txt",
+        size: 5,
+        mimeType: "text/plain",
+      })
+      const form = new FormData()
+      form.append("file", new Blob(["hello"], { type: "text/plain" }), "report.txt")
+      const res = await app.request("/sessions/s1/files", { method: "POST", body: form })
+      expect(res.status).toBe(200)
+      const data = await res.json()
+      expect(data).toEqual({
+        name: "report.txt",
+        path: "/workspace/sessions/s1/input/report.txt",
+        size: 5,
+        mimeType: "text/plain",
+      })
+      expect(mockSaveSessionFile).toHaveBeenCalledWith(
+        "/workspace",
+        "s1",
+        "report.txt",
+        expect.any(Buffer),
+        "text/plain",
+      )
+    })
+
+    it("returns 400 when no file field is present", async () => {
+      const res = await app.request("/sessions/s1/files", { method: "POST", body: new FormData() })
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe("GET /sessions/:id/files/:filename", () => {
+    it("Scenario: `GET /api/sessions/:id/files/:filename` downloads a file — streams the file resolved by getSessionFilePath (input then output)", async () => {
+      const os = await import("os")
+      const fs = await import("fs")
+      const path = await import("path")
+      const tmp = path.join(os.tmpdir(), `session-file-${Date.now()}.txt`)
+      fs.writeFileSync(tmp, "file-bytes")
+      mockGetSessionFilePath.mockReturnValue(tmp)
+      const res = await app.request("/sessions/s1/files/report.txt")
+      expect(res.status).toBe(200)
+      const text = await res.text()
+      expect(text).toBe("file-bytes")
+      expect(mockGetSessionFilePath).toHaveBeenCalledWith("/workspace", "s1", "report.txt")
+      fs.unlinkSync(tmp)
+    })
+
+    it("returns 404 when getSessionFilePath returns null", async () => {
+      mockGetSessionFilePath.mockReturnValue(null)
+      const res = await app.request("/sessions/s1/files/missing.txt")
+      expect(res.status).toBe(404)
     })
   })
 })

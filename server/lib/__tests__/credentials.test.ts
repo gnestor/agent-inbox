@@ -46,7 +46,7 @@ describe("credentials", () => {
   })
 
   describe("getAgentEnv", () => {
-    it("excludes ANTHROPIC_API_KEY", async () => {
+    it("Scenario: `getAgentEnv()` strips `ANTHROPIC_API_KEY` — excludes ANTHROPIC_API_KEY", async () => {
       // Manually load credentials by importing fresh and simulating state
       // We need to set up internal state, so we'll use a workaround:
       // Load from a real directory but the real test is exclusion logic

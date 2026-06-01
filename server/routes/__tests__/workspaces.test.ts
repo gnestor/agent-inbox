@@ -114,7 +114,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("GET /workspaces", () => {
-    it("returns workspaces list for current user", async () => {
+    it("Scenario: `GET /api/workspaces` — returns workspaces list for current user with activeWorkspaceId", async () => {
       const workspaces = [
         { id: "ws-1", name: "Workspace 1", role: "admin" },
         { id: "ws-2", name: "Workspace 2", role: "member" },
@@ -144,7 +144,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("PUT /workspaces/active", () => {
-    it("sets active workspace and returns workspace details", async () => {
+    it("Scenario: `PUT /api/workspaces/active` — sets active workspace and returns workspace details", async () => {
       mockGetWorkspaceById.mockResolvedValue({ id: "ws-2", name: "My Workspace", path: "/ws2" })
 
       const res = await putJson(app, "/workspaces/active", { workspaceId: "ws-2" })
@@ -161,6 +161,20 @@ describe("workspace routes", () => {
       expect(res.status).toBe(404)
       const data = await res.json()
       expect(data.error).toBe("Workspace not found")
+    })
+
+    it("Scenario: Active-workspace cookie lifetime — sets inbox_workspace httpOnly, SameSite=Lax, path=/, 1-year maxAge", async () => {
+      mockGetWorkspaceById.mockResolvedValue({ id: "ws-2", name: "My Workspace", path: "/ws2" })
+
+      const res = await putJson(app, "/workspaces/active", { workspaceId: "ws-2" })
+      expect(res.status).toBe(200)
+      const cookie = res.headers.get("set-cookie") ?? ""
+      expect(cookie).toContain("inbox_workspace=")
+      expect(cookie).toMatch(/HttpOnly/i)
+      expect(cookie).toMatch(/SameSite=Lax/i)
+      expect(cookie).toMatch(/Path=\//i)
+      // 1 year in seconds
+      expect(cookie).toMatch(/Max-Age=31536000/i)
     })
 
     it("returns 400 when workspaceId is missing", async () => {
@@ -181,7 +195,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("PUT /workspaces/:id", () => {
-    it("renames workspace successfully as admin", async () => {
+    it("Scenario: `PUT /api/workspaces/:id` (admin only) — renames workspace successfully as admin", async () => {
       mockUpdateWorkspaceName.mockResolvedValue(true)
 
       const res = await putJson(app, "/workspaces/ws-1", { name: "New Name" })
@@ -199,7 +213,7 @@ describe("workspace routes", () => {
       expect(mockUpdateWorkspaceName).toHaveBeenCalledWith("ws-1", "Trimmed")
     })
 
-    it("returns 403 for non-admin user", async () => {
+    it("Scenario: `requireAdmin` enforces role — returns 403 for non-admin user", async () => {
       const memberApp = createApp("member")
       const res = await putJson(memberApp, "/workspaces/ws-1", { name: "New" })
       expect(res.status).toBe(403)
@@ -230,7 +244,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("GET /workspaces/:id", () => {
-    it("returns workspace details with members", async () => {
+    it("Scenario: `GET /api/workspaces/:id` (admin only) — returns workspace details with members enriched from users", async () => {
       mockGetWorkspaceById.mockResolvedValue({ id: "ws-1", name: "Test WS", path: "/ws" })
       mockGetWorkspaceMembers.mockResolvedValue([
         { user_email: "admin@test.com", role: "admin", name: "Admin" },
@@ -265,7 +279,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("POST /workspaces/:id/members", () => {
-    it("adds a member successfully", async () => {
+    it("Scenario: `POST /api/workspaces/:id/members` (admin only) — adds a member successfully", async () => {
       mockGetWorkspaceById.mockResolvedValue({ id: "ws-1", name: "Test", path: "/ws" })
       mockQueryOne.mockResolvedValue({ email: "new@test.com" })
       mockAddWorkspaceMember.mockResolvedValue(undefined)
@@ -363,7 +377,7 @@ describe("workspace routes", () => {
       expect(res.status).toBe(400)
     })
 
-    it("returns 400 when demoting the last admin", async () => {
+    it("Scenario: Cannot demote the last admin — returns 400 when demoting the last admin", async () => {
       mockIsLastAdmin.mockResolvedValue(true)
 
       const res = await patchJson(app, "/workspaces/ws-1/members/admin@test.com", {
@@ -423,7 +437,7 @@ describe("workspace routes", () => {
       expect(mockRemoveWorkspaceMember).toHaveBeenCalledWith("ws-1", "user@test.com")
     })
 
-    it("returns 400 when trying to remove the last admin", async () => {
+    it("Scenario: Cannot remove the last admin — returns 400 when trying to remove the last admin", async () => {
       mockIsLastAdmin.mockResolvedValue(true)
 
       const res = await del(app, "/workspaces/ws-1/members/admin@test.com")
@@ -454,7 +468,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("GET /workspaces/:id/git", () => {
-    it("returns git info for workspace", async () => {
+    it("Scenario: `GET /api/workspaces/:id/git` (admin only) — returns git info for workspace", async () => {
       mockGetWorkspaceById.mockResolvedValue({ id: "ws-1", name: "Test", path: "/workspace" })
       mockGetWorkspaceGitInfo.mockReturnValue({ branch: "main", remote: "origin" })
 
@@ -484,7 +498,7 @@ describe("workspace routes", () => {
   // =========================================================================
 
   describe("GET /workspaces/:id/available-users", () => {
-    it("returns users not in the workspace", async () => {
+    it("Scenario: `GET /api/workspaces/:id/available-users` (admin only) — returns users not in the workspace", async () => {
       mockQuery.mockResolvedValue([
         { email: "avail@test.com", name: "Available User", picture: null },
       ])

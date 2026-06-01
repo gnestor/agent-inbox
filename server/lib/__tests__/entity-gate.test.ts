@@ -3,7 +3,7 @@ import { gateEntity } from "../entity-gate.js"
 
 describe("gateEntity", () => {
   describe("opaque IDs", () => {
-    it("skips Account # patterns", () => {
+    it("Scenario: Opaque IDs are rejected without a Claude call — skips Account # patterns", () => {
       const r = gateEntity("project", "Account #5015911")
       expect(r.skip).toBe(true)
     })
@@ -50,7 +50,7 @@ describe("gateEntity", () => {
   })
 
   describe("personal email domains", () => {
-    it("skips gmail.com domain entity", () => {
+    it("Scenario: Personal email-provider domains are rejected — skips gmail.com domain entity", () => {
       const r = gateEntity("domain", "gmail.com")
       expect(r.skip).toBe(true)
     })
@@ -83,7 +83,7 @@ describe("gateEntity", () => {
   })
 
   describe("self domains", () => {
-    it("skips hammies.com domain", () => {
+    it("Scenario: Self-references are rejected — skips hammies.com domain", () => {
       const r = gateEntity("domain", "hammies.com")
       expect(r.skip).toBe(true)
     })

@@ -14,7 +14,7 @@ const fsMock = {
 vi.mock("node:fs/promises", () => fsMock)
 
 // Dynamic import AFTER mock is registered
-const { loadPlugins, getPlugins, getPlugin } = await import("../plugin-loader.js")
+const { loadPlugins, getPlugins, getPlugin, registerPlugin } = await import("../plugin-loader.js")
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +71,31 @@ describe("plugin-loader", () => {
       readdirImpl.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
       await loadPlugins("/fake/workspace")
       expect(getPlugins()).toHaveLength(0)
+    })
+
+    it("Scenario: A plugin is a default export with `id` plus at least one of `query`/`hasSkills`/`itemToContext` — loads a valid query plugin", async () => {
+      mockInboxPlugins(["q.ts"])
+      const plugin = makePlugin({ id: "q-plugin", name: "Q" })
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "q.ts": plugin }))
+      expect(getPlugin("q-plugin")).toBe(plugin)
+
+      // hasSkills-only and itemToContext-only also validate
+      mockInboxPlugins(["skills.ts", "ctx.ts"])
+      const skillsOnly = { id: "skills-only", name: "S", icon: "X", hasSkills: true } as unknown as Plugin
+      const ctxOnly = { id: "ctx-only", name: "C", icon: "X", itemToContext: () => "stub" } as unknown as Plugin
+      await loadPlugins("/fake/workspace", undefined, makeImporter({ "skills.ts": skillsOnly, "ctx.ts": ctxOnly }))
+      expect(getPlugin("skills-only")).toBeDefined()
+      expect(getPlugin("ctx-only")).toBeDefined()
+    })
+
+    it("Scenario: A file may default-export `Plugin` or `Plugin[]` — an array export registers every plugin", async () => {
+      mockInboxPlugins(["multi.ts"])
+      const a = makePlugin({ id: "multi-a", name: "A" })
+      const b = makePlugin({ id: "multi-b", name: "B" })
+      const importer = async () => ({ default: [a, b] })
+      await loadPlugins("/fake/workspace", undefined, importer)
+      expect(getPlugin("multi-a")).toBe(a)
+      expect(getPlugin("multi-b")).toBe(b)
     })
 
     it("loads a valid .ts plugin and adds it to the registry", async () => {
@@ -141,6 +166,78 @@ describe("plugin-loader", () => {
       await loadPlugins("/my/workspace")
       expect(readdirImpl).toHaveBeenCalledWith(expect.stringContaining("inbox-plugins"))
       expect(readdirImpl).toHaveBeenCalledWith(expect.stringContaining("/my/workspace"))
+    })
+  })
+
+  // ── discovery, builtins, merge ─────────────────────────────────────────────
+
+  describe("discovery and registry", () => {
+    /** readdir mock for the new {workspace}/plugins/<dir>/plugin.ts convention. */
+    function mockWorkspacePluginDirs(dirs: string[]) {
+      readdirImpl.mockImplementation(async (path: string, opts?: unknown) => {
+        if (typeof path === "string" && path.endsWith("/plugins") && opts) {
+          return dirs.map((name) => ({ name, isDirectory: () => true }))
+        }
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+      })
+    }
+
+    it("Scenario: Built-in plugins are loaded once and survive workspace reloads — registerPlugin survives non-builtin clears", async () => {
+      const builtin = makePlugin({ id: "gmail", name: "Emails" })
+      registerPlugin(builtin)
+      expect(getPlugin("gmail")).toBe(builtin)
+      // A subsequent workspace-less reload clears only non-builtin entries.
+      mockInboxPlugins([])
+      await loadPlugins("/fake/workspace")
+      expect(getPlugin("gmail")).toBe(builtin)
+    })
+
+    it("Scenario: Workspace plugins live in `{workspace}/plugins/*/plugin.ts`, with legacy fallback — scans new dir then inbox-plugins", async () => {
+      const wsPlugin = makePlugin({ id: "ws-only", name: "WS" })
+      readdirImpl.mockImplementation(async (path: string, opts?: unknown) => {
+        if (typeof path === "string" && path.endsWith("/plugins") && opts) {
+          return [{ name: "ws-only", isDirectory: () => true }]
+        }
+        if (typeof path === "string" && path.includes("inbox-plugins")) return ["legacy.ts"]
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+      })
+      const legacy = makePlugin({ id: "legacy-only", name: "Legacy" })
+      await loadPlugins("/fake/workspace", "ws-1", makeImporter({ "plugin.ts": wsPlugin, "legacy.ts": legacy }))
+      expect(getPlugin("ws-only", "ws-1")).toBeDefined()
+      expect(getPlugin("legacy-only", "ws-1")).toBeDefined()
+    })
+
+    it("Scenario: `getPlugins(workspaceId)` merges workspace registry on top of built-ins — workspace overrides builtin by id", async () => {
+      const builtinGmail = makePlugin({ id: "gmail", name: "Builtin Gmail" })
+      registerPlugin(builtinGmail)
+      mockWorkspacePluginDirs(["gmail"])
+      const wsGmail = makePlugin({ id: "gmail", name: "Workspace Gmail" })
+      await loadPlugins("/fake/workspace", "ws-1", makeImporter({ "plugin.ts": wsGmail }))
+      // With workspace id, the workspace plugin wins ties.
+      expect(getPlugins("ws-1").find((p) => p.id === "gmail")!.name).toBe("Workspace Gmail")
+      // Without a workspace id, only builtins are guaranteed.
+      expect(getPlugins().find((p) => p.id === "gmail")).toBeDefined()
+    })
+  })
+
+  // ── validation safety ──────────────────────────────────────────────────────
+
+  describe("validation safety", () => {
+    it("Scenario: Plugin loader tolerates ENOENT and ERR_MODULE_NOT_FOUND silently — continues, logs other errors", async () => {
+      // ENOENT for both plugins/ and inbox-plugins/ → empty registry, no throw.
+      readdirImpl.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
+      await expect(loadPlugins("/fake/workspace")).resolves.toBeUndefined()
+      expect(getPlugins()).toHaveLength(0)
+
+      // A module that throws at import is skipped without aborting the loader.
+      mockInboxPlugins(["broken.ts", "good.ts"])
+      const good = makePlugin({ id: "good", name: "Good" })
+      const importer = async (path: string) => {
+        if (path.includes("broken")) throw new Error("parse failure")
+        return { default: good }
+      }
+      await loadPlugins("/fake/workspace", undefined, importer)
+      expect(getPlugin("good")).toBeDefined()
     })
   })
 

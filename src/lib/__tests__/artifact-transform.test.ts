@@ -39,7 +39,7 @@ function App() { return <div className={cn("a", "b")}>Hello</div> }`
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
   })
 
-  it("strips unknown package imports but preserves allowed ones", async () => {
+  it("Scenario: Allowlisted package imports survive; everything else is dropped — strips unknown package imports but preserves allowed ones", async () => {
     const source = `import axios from 'axios'
 import { something } from 'lodash'
 import { LineChart } from 'recharts'
@@ -51,7 +51,7 @@ function App() { return <div>Hello</div> }`
     expect(result.code).toContain("recharts")
   })
 
-  it("auto-injects React import when hooks are used without import", async () => {
+  it("Scenario: Missing React APIs are auto-imported — auto-injects React import when hooks are used without import", async () => {
     const source = `function App() {
   const [count, setCount] = useState(0)
   useEffect(() => {}, [])
@@ -81,7 +81,7 @@ function App() { const [x] = useState(0); return <div>{x}</div> }`
     expect(matches?.length).toBe(1)
   })
 
-  it("auto-injects component imports when used without import", async () => {
+  it("Scenario: Missing `@hammies/frontend` component imports are auto-injected — auto-injects component imports when used without import", async () => {
     const source = `function App() {
   return <Card><CardContent><Input placeholder="Name" /><Button>Submit</Button></CardContent></Card>
 }`
@@ -93,7 +93,7 @@ function App() { const [x] = useState(0); return <div>{x}</div> }`
     expect(result.code).toContain("Button")
   })
 
-  it("auto-injects cn import when used without import", async () => {
+  it("Scenario: `cn` is auto-imported from `@hammies/frontend/lib/utils` — auto-injects cn import when used without import", async () => {
     const source = `function App() { return <div className={cn("a", "b")}>Hi</div> }`
     const result = await transformArtifactCode(source)
     expect(result.code).toContain("from '@hammies/frontend/lib/utils'")
@@ -125,7 +125,7 @@ function App() { return <div>Hello</div> }`
     expect(result.code).not.toContain("styles.css")
   })
 
-  it("detects export default function", async () => {
+  it("Scenario: `export default` is detected for mounting — detects export default function", async () => {
     const source = `export default function EmailEditor() { return <div>Editor</div> }`
     const result = await transformArtifactCode(source)
     expect(result.exportedName).toBe("EmailEditor")
@@ -139,7 +139,7 @@ export default MyComponent;`
     expect(result.exportedName).toBe("MyComponent")
   })
 
-  it("transforms JSX to React.createElement", async () => {
+  it("Scenario: JSX → `React.createElement` via `@babel/standalone` — transforms JSX to React.createElement", async () => {
     const source = `function App() { return <div className="test"><span>Hello</span></div> }`
     const result = await transformArtifactCode(source)
     expect(result.code).toContain("createElement")
@@ -156,7 +156,7 @@ export default function App() { return <Button>Click</Button> }`
     expect(result.exportedName).toBe("App")
   })
 
-  it("fixes multiline regex literals (LLM bug)", async () => {
+  it("Scenario: Common LLM regex bug is patched — fixes multiline regex literals (LLM bug)", async () => {
     const source = `function App() {
   const text = "hello\\nworld".replace(/
 /g, '<br>')
@@ -245,7 +245,7 @@ export default App`
     expect(result.code).toContain("response")
   })
 
-  it("strips destructuring from undefined globals and auto-imports instead", async () => {
+  it("Scenario: Hallucinated destructuring from globals is stripped — strips destructuring from undefined globals and auto-imports instead", async () => {
     const source = `const { Card, CardHeader, CardTitle, CardContent, Badge, Table } = Components;
 function App() { return <Card><CardContent><Badge>x</Badge></CardContent></Card> }
 export default App`
@@ -261,7 +261,7 @@ export default App`
     expect(result.code).toContain("createElement")
   })
 
-  it("wraps bare top-level return in a default App component", async () => {
+  it("Scenario: Bare top-level `return` is wrapped in `App` — wraps bare top-level return in a default App component", async () => {
     const source = `const items = [{ name: 'A' }, { name: 'B' }];
 
 return (
@@ -277,7 +277,7 @@ return (
   })
 
 describe("escapeForScript", () => {
-  it("escapes </script> tags", async () => {
+  it("Scenario: `escapeForScript` neutralises `</script>` for inline embedding — escapes </script> tags", async () => {
     expect(escapeForScript('var x = "</script>";')).toBe('var x = "<\\/script>";')
   })
 

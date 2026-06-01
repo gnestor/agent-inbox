@@ -19,7 +19,7 @@ describe("attached-context inlining", () => {
     vi.resetModules()
   })
 
-  it("collects attached_context entries added after the last turn", async () => {
+  it("Scenario: `collectPendingAttachments` walks JSONL backward to the last conversational turn — collects attached_context entries added after the last turn", async () => {
     const lines = jsonl([
       { type: "user", message: { content: "hi", role: "user" } },
       { type: "assistant", message: { content: [{ type: "text", text: "hello" }], stop_reason: "end_turn" } },
@@ -50,7 +50,7 @@ describe("attached-context inlining", () => {
     expect(collectPendingAttachments([])).toEqual([])
   })
 
-  it("inlines attachments with delimiters before the user prompt", async () => {
+  it("Scenario: `inlineAttachments` prepends `<attached_context>` XML blocks to the prompt — inlines attachments with delimiters before the user prompt", async () => {
     const { inlineAttachments } = await import("../session-manager.js")
     const out = inlineAttachments(
       "See this response regarding the payroll.",

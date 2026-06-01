@@ -205,6 +205,51 @@ describe("importAgentSession", () => {
   })
 })
 
+// ─── createSessionRecord tests ────────────────────────────────────────────────
+
+describe("createSessionRecord", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    store = new Map()
+    lastExecuteSql = ""
+    lastExecuteParams = []
+  })
+
+  it("Scenario: `createSessionRecord` inserts a row in `sessions` with status `running` — inserts with status running and summary derived from prompt prefix", async () => {
+    const { createSessionRecord } = await import("../session-manager.js")
+    await createSessionRecord("new-sess-1", "Investigate the failing build pipeline and report root cause")
+
+    // INSERT carries a literal 'running' status.
+    expect(lastExecuteSql).toMatch(/INSERT INTO sessions/)
+    expect(lastExecuteSql).toMatch(/'running'/)
+    // params: [id, prompt, summary, started_at, updated_at, linkedSourceType, linkedSourceId, triggerSource, metadata]
+    expect(lastExecuteParams[0]).toBe("new-sess-1")
+    expect(lastExecuteParams[1]).toBe("Investigate the failing build pipeline and report root cause")
+    // summary derived from prompt.slice(0, 80) when no linkedItemTitle
+    expect(lastExecuteParams[2]).toBe("Investigate the failing build pipeline and report root cause")
+    // trigger_source defaults to "manual"
+    expect(lastExecuteParams[7]).toBe("manual")
+    // metadata null with no linkedItemTitle
+    expect(lastExecuteParams[8]).toBeNull()
+  })
+
+  it("derives summary from linkedItemTitle and carries it in metadata + trigger_source", async () => {
+    const { createSessionRecord } = await import("../session-manager.js")
+    await createSessionRecord("new-sess-2", "raw prompt body", {
+      linkedSourceType: "notion-tasks",
+      linkedSourceId: "task-77",
+      triggerSource: "notion",
+      linkedItemTitle: "Ship the Q1 report",
+    })
+
+    expect(lastExecuteParams[2]).toBe("Ship the Q1 report")
+    expect(lastExecuteParams[5]).toBe("notion-tasks")
+    expect(lastExecuteParams[6]).toBe("task-77")
+    expect(lastExecuteParams[7]).toBe("notion")
+    expect(JSON.parse(lastExecuteParams[8] as string)).toEqual({ linkedItemTitle: "Ship the Q1 report" })
+  })
+})
+
 // ─── updateSessionSummary tests ───────────────────────────────────────────────
 
 describe("updateSessionSummary", () => {

@@ -24,12 +24,14 @@ const schema: FieldDef[] = [
 ]
 
 describe("field-schema helpers", () => {
-  it("getTitleField returns field with listRole title", () => {
+  it("Scenario: `getTitleField` / `getSubtitleField` / `getTimestampField` honor explicit listRole first — title", () => {
     expect(getTitleField(schema)?.id).toBe("from")
   })
 
-  it("getSubtitleField returns field with listRole subtitle", () => {
+  it("Scenario: `getTitleField` / `getSubtitleField` / `getTimestampField` honor explicit listRole first — subtitle deduped from title", () => {
     expect(getSubtitleField(schema)?.id).toBe("subject")
+    // subtitle never returns the title field
+    expect(getSubtitleField(schema)?.id).not.toBe(getTitleField(schema)?.id)
   })
 
   it("getTimestampField returns field with listRole timestamp", () => {
@@ -57,10 +59,13 @@ describe("field-schema helpers", () => {
     expect(filters.map((f) => f.id)).toEqual(["status", "tags"])
   })
 
-  it("extractFieldValue handles dot paths", () => {
+  it("Scenario: `extractFieldValue` walks dot paths", () => {
     const item = { author: { name: "Alice" }, title: "Hello" }
     expect(extractFieldValue(item, "author.name")).toBe("Alice")
     expect(extractFieldValue(item, "title")).toBe("Hello")
     expect(extractFieldValue(item, "missing")).toBeUndefined()
+    // returns undefined at any null/non-object segment without throwing
+    expect(extractFieldValue({ author: null }, "author.name")).toBeUndefined()
+    expect(extractFieldValue({ author: "string" }, "author.name.deep")).toBeUndefined()
   })
 })

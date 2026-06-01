@@ -183,3 +183,87 @@ describe("session store chaos / fuzz", () => {
     })
   }
 })
+
+// Focused invariant tests — each pins one reliability invariant from the
+// session-streaming spec. The chaos fuzz above exercises all of them together
+// across 1000 random actions; these isolate each one as a named scenario.
+describe("session store reliability invariants", () => {
+  beforeEach(() => {
+    const s = useSessionStore.getState()
+    for (const id of Object.keys(s.sessions)) s.removeSession(id)
+  })
+
+  function makeMsg0() {
+    return {
+      id: 0,
+      sessionId: "x",
+      sequence: 0,
+      type: "user",
+      message: { type: "user", content: "hi" },
+      createdAt: "t",
+    } as any
+  }
+
+  function bootstrap(id: string, upTo: number) {
+    const store = useSessionStore.getState()
+    store.beginSnapshot(id, "bootstrap")
+    const messages = Array.from({ length: upTo + 1 }, (_, i) => ({
+      id: i,
+      sessionId: id,
+      sequence: i,
+      type: i === 0 ? "user" : "assistant",
+      message: i === 0 ? { type: "user", content: "hi" } : { type: "assistant", content: [] },
+      createdAt: "t",
+    })) as any
+    store.applySnapshot(id, { session: makeSession(id), messages })
+  }
+
+  it("Scenario: messageIds is sorted and unique — out-of-order ingest keeps messageIds strictly ascending with no duplicates", () => {
+    const store = useSessionStore.getState()
+    bootstrap("inv-1", 0)
+    // Ingest in non-monotonic order; recovery may defer some, but whatever
+    // lands in messageIds must stay sorted and unique.
+    for (const seq of [1, 2, 2, 3, 1]) {
+      store.ingestEvent("inv-1", { sequence: seq, message: { type: "assistant", content: [] } } as any)
+    }
+    const slice = useSessionStore.getState().sessions["inv-1"]!
+    for (let i = 1; i < slice.messageIds.length; i++) {
+      expect(slice.messageIds[i]).toBeGreaterThan(slice.messageIds[i - 1]!)
+    }
+    expect(new Set(slice.messageIds).size).toBe(slice.messageIds.length)
+  })
+
+  it("Scenario: messageById matches messageIds — the key set of messageById is exactly messageIds", () => {
+    const store = useSessionStore.getState()
+    bootstrap("inv-2", 0)
+    store.ingestEvent("inv-2", { sequence: 1, message: { type: "assistant", content: [] } } as any)
+    store.ingestEvent("inv-2", { sequence: 2, message: { type: "assistant", content: [] } } as any)
+    const slice = useSessionStore.getState().sessions["inv-2"]!
+    const keys = Object.keys(slice.messageById).map(Number).sort((a, b) => a - b)
+    expect(keys).toEqual([...slice.messageIds])
+  })
+
+  it("Scenario: latestSequence never decreases — applying lower-sequence events after a higher one cannot regress the cursor", () => {
+    const store = useSessionStore.getState()
+    bootstrap("inv-3", 0)
+    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as any)
+    store.ingestEvent("inv-3", { sequence: 2, message: { type: "assistant", content: [] } } as any)
+    const high = useSessionStore.getState().sessions["inv-3"]!.recovery.latestSequence
+    // Re-ingest an already-seen lower sequence — duplicate, must not regress.
+    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as any)
+    expect(useSessionStore.getState().sessions["inv-3"]!.recovery.latestSequence).toBeGreaterThanOrEqual(high)
+  })
+
+  it("Scenario: inFlight token follows protocol — inFlight is set on beginSnapshot and cleared on apply/fail, never double-set", () => {
+    const store = useSessionStore.getState()
+    // Bootstrap first so a slice exists to carry recovery state.
+    bootstrap("inv-4", 0)
+    // Open a fresh recovery round on the existing slice.
+    expect(store.beginSnapshot("inv-4", "sequence-gap")).toBe(true)
+    expect(useSessionStore.getState().sessions["inv-4"]!.recovery.inFlight).not.toBeNull()
+    // Second begin while one is in flight is rejected (no double-set).
+    expect(store.beginSnapshot("inv-4", "sequence-gap")).toBe(false)
+    store.applySnapshot("inv-4", { session: makeSession("inv-4"), messages: [makeMsg0()] })
+    expect(useSessionStore.getState().sessions["inv-4"]!.recovery.inFlight).toBeNull()
+  })
+})

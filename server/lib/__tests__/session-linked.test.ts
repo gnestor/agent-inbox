@@ -70,7 +70,7 @@ describe("attachSourceToSession", () => {
     )
   }
 
-  it("sets linked_source_id and linked_source_type when attaching a source", async () => {
+  it("Scenario: `attachSourceToSession` appends `attached_context` to the JSONL — sets linked_source_id and linked_source_type when attaching a source", async () => {
     const { attachSourceToSession } = await import("../session-manager.js")
     await attachSourceToSession("sess-1", { type: "gmail", id: "thread-123", title: "Test email", content: "" })
 

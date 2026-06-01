@@ -19,7 +19,7 @@ describe("csrfProtection", () => {
     exemptPaths: ["/oauth-callback/"],
   })
 
-  it("allows GET without Origin", async () => {
+  it("Scenario: Safe methods bypass CSRF — allows GET without Origin", async () => {
     const res = await app.request("http://localhost/x")
     expect(res.status).toBe(200)
   })
@@ -29,7 +29,7 @@ describe("csrfProtection", () => {
     expect(res.status).toBe(200)
   })
 
-  it("allows POST with matching Origin", async () => {
+  it("Scenario: State-changing request from an allowed origin passes — allows POST with matching Origin", async () => {
     const res = await app.request("http://localhost/x", {
       method: "POST",
       headers: { origin: "http://localhost:5175" },
@@ -37,7 +37,7 @@ describe("csrfProtection", () => {
     expect(res.status).toBe(200)
   })
 
-  it("blocks POST with foreign Origin (403)", async () => {
+  it("Scenario: State-changing request from a foreign origin is blocked — blocks POST with foreign Origin (403)", async () => {
     const res = await app.request("http://localhost/x", {
       method: "POST",
       headers: { origin: "https://evil.com" },
@@ -47,7 +47,7 @@ describe("csrfProtection", () => {
     expect(body.error).toBe("Forbidden origin")
   })
 
-  it("allows POST without Origin or Referer (proxied/same-origin)", async () => {
+  it("Scenario: Missing Origin/Referer is allowed with a debug log — allows POST without Origin or Referer (proxied/same-origin)", async () => {
     // Missing Origin is normal for proxied same-origin requests.
     // SameSite cookie is the primary CSRF defense in this case.
     const res = await app.request("http://localhost/x", { method: "POST" })
@@ -76,7 +76,7 @@ describe("csrfProtection", () => {
     expect(del.status).toBe(403)
   })
 
-  it("exempts configured paths", async () => {
+  it("Scenario: Exempt paths skip CSRF entirely — exempts configured paths", async () => {
     const res = await app.request("http://localhost/oauth-callback/google", {
       method: "POST",
       headers: { origin: "https://accounts.google.com" },

@@ -120,7 +120,7 @@ describe("connection routes", () => {
   })
 
   describe("GET /api/connections", () => {
-    it("returns all integrations with connection status", async () => {
+    it("Scenario: `GET /connections` reports connected status without leaking tokens — returns all integrations with connection status", async () => {
       const app = createTestApp()
       const res = await makeRequest(app, "http://localhost/api/connections")
       expect(res.status).toBe(200)
@@ -191,7 +191,7 @@ describe("connection routes", () => {
       expect(res.status).toBe(500)
     })
 
-    it("redirects to OAuth provider when configured", async () => {
+    it("Scenario: `GET /connections/connect/:integration` starts an OAuth flow — redirects to OAuth provider when configured", async () => {
       process.env.GOOGLE_CLIENT_ID = "test-google-client-id"
       process.env.GOOGLE_CLIENT_SECRET = "test-google-secret"
       const app = createTestApp()
@@ -246,7 +246,7 @@ describe("connection routes", () => {
   })
 
   describe("DELETE /api/connections/:integration", () => {
-    it("disconnects a user integration", async () => {
+    it("Scenario: `DELETE /connections/:integration` removes user credential only — disconnects a user integration", async () => {
       await storeUserCredential(testEmail, "google", { token: "test-token" })
 
       const app = createTestApp()

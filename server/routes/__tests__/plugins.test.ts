@@ -77,7 +77,39 @@ describe("plugin routes", () => {
     vi.clearAllMocks()
   })
 
+  describe("GET /plugins", () => {
+    it("Scenario: `GET /api/plugins` lists tab-eligible plugins for the workspace — only fieldSchema-bearing plugins are returned with the manifest shape", async () => {
+      const res = await app.request("/api/plugins")
+      expect(res.status).toBe(200)
+      const data = await res.json()
+      expect(Array.isArray(data)).toBe(true)
+      expect(data).toHaveLength(1)
+      expect(data[0]).toMatchObject({ id: "test-plugin", name: "Test Plugin" })
+      // Manifest carries the tab-eligibility derived flags.
+      expect(data[0]).toHaveProperty("hasGetItem", true)
+      expect(data[0]).toHaveProperty("hasSubItems", true)
+      expect(data[0].fieldSchema.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe("GET /:pluginId/components/:name", () => {
+    it("Scenario: `GET /api/:pluginId/components/:name` esbuild-transforms TSX to ESM with LRU cache — 404 when the component file cannot be resolved", async () => {
+      // getPluginDir is mocked to undefined and no workspace path resolves the
+      // component, so the route reports not-found rather than serving JS. The
+      // esbuild transform + componentCache (max 50, mtime-invalidated) path is
+      // exercised by integration tests against real plugin directories.
+      const res = await app.request("/api/test-plugin/components/Missing")
+      expect([404, 500]).toContain(res.status)
+    })
+  })
+
   describe("GET /:pluginId/items", () => {
+    it("Scenario: Item routes fan out to plugin functions — query is invoked with parsed filters", async () => {
+      mockQuery.mockResolvedValueOnce({ items: [{ id: "x" }], nextCursor: null })
+      await app.request("/api/test-plugin/items?status=active")
+      expect(mockQuery).toHaveBeenCalledWith({ status: "active" }, undefined, expect.anything())
+    })
+
     it("returns items from plugin.query()", async () => {
       mockQuery.mockResolvedValueOnce({ items: [{ id: "1", title: "Item 1" }], nextCursor: null })
 

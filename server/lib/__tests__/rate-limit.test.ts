@@ -25,7 +25,7 @@ describe("createRateLimitStore", () => {
     expect(blocked.retryAfterSec).toBeGreaterThan(0)
   })
 
-  it("resets after the window expires", () => {
+  it("Scenario: Buckets expire and are reaped — resets after the window expires", () => {
     const store = createRateLimitStore()
     const now = 1000
     store.hit("k", 60_000, 1, now)
@@ -70,7 +70,7 @@ describe("rateLimit middleware", () => {
     _getDefaultStore().clear()
   })
 
-  it("allows requests under the limit", async () => {
+  it("Scenario: Fixed-window counter per key — allows requests under the limit and reports limit/remaining headers", async () => {
     const app = new Hono()
     app.use("/test", rateLimit({ windowMs: 60_000, max: 3, label: "test-allow" }))
     app.get("/test", (c) => c.text("ok"))
@@ -83,7 +83,7 @@ describe("rateLimit middleware", () => {
     expect(res2.headers.get("X-RateLimit-Remaining")).toBe("1")
   })
 
-  it("returns 429 when limit exceeded", async () => {
+  it("Scenario: Over-limit requests are rejected with Retry-After — returns 429 when limit exceeded", async () => {
     const app = new Hono()
     app.use("/test", rateLimit({ windowMs: 60_000, max: 2, label: "test-block" }))
     app.get("/test", (c) => c.text("ok"))
@@ -119,7 +119,7 @@ describe("rateLimit middleware", () => {
 })
 
 describe("getClientIp", () => {
-  it("extracts first IP from x-forwarded-for", () => {
+  it("Scenario: Client IP comes from forwarding headers when present — extracts first IP from x-forwarded-for", () => {
     const c = { req: { header: (name: string) => name === "x-forwarded-for" ? "1.2.3.4, 5.6.7.8" : undefined } }
     expect(getClientIp(c as never)).toBe("1.2.3.4")
   })

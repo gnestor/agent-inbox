@@ -48,7 +48,7 @@ describe("useSessionView", () => {
     currentLocation = { pathname: "/recent/s1" }
   })
 
-  it("initial state has no editing active and exposes displayTitle", () => {
+  it("Scenario: `useSessionView` owns UI-only state — initial state has no editing active and exposes displayTitle", () => {
     const opts = makeOptions()
     const { result } = renderHook(() => useSessionView(opts))
 
@@ -97,7 +97,7 @@ describe("useSessionView", () => {
     expect(r4.result.current.displayTitle).toBe("Do stuff")
   })
 
-  it("handleBack calls removePanel with the panelId", () => {
+  it("Scenario: `useSessionView` removes its own panel on archive/back — handleBack calls removePanel with the panelId", () => {
     const opts = makeOptions({ panelId: "detail:xyz" })
     const { result } = renderHook(() => useSessionView(opts))
 
@@ -186,7 +186,7 @@ describe("useSessionView", () => {
     expect(result.current.isEditing).toBe(false)
   })
 
-  it("handleOpenPanel pushes an output panel", () => {
+  it("Scenario: `useSessionView` opens output panels via the navigation store — handleOpenPanel pushes an output panel", () => {
     const { result } = renderHook(() => useSessionView(makeOptions()))
     const spec = { type: "code", content: "x" } as any
     act(() => result.current.handleOpenPanel(spec, 42))

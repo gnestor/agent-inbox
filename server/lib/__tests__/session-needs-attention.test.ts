@@ -24,7 +24,7 @@ describe("needs_attention status transitions", () => {
     executeMock.mockResolvedValue({ rowCount: 1 })
   })
 
-  it("allows awaiting_user_input → needs_attention", async () => {
+  it("Scenario: Iterator crashes mid-question → status becomes `needs_attention`, question stays answerable — allows awaiting_user_input → needs_attention", async () => {
     const { updateSessionStatus } = await import("../session-manager.js")
     await updateSessionStatus("s1", "needs_attention", "iterator crashed")
     // The atomic CAS update is the first SQL call.
@@ -45,6 +45,17 @@ describe("needs_attention status transitions", () => {
     expect(params[0]).toBe("running")
     const validSources = params[4] as string[]
     expect(validSources).toContain("needs_attention")
+  })
+
+  it("Scenario: Status flips to `awaiting_user_input` while a question is pending — running → awaiting_user_input is an allowed transition", async () => {
+    const { updateSessionStatus } = await import("../session-manager.js")
+    await updateSessionStatus("s1", "awaiting_user_input")
+    const call = executeMock.mock.calls[0]! as unknown as [string, unknown[]]
+    const params = call[1]
+    expect(params[0]).toBe("awaiting_user_input")
+    const validSources = params[4] as string[]
+    // The agent parks on a question only from the running state.
+    expect(validSources).toContain("running")
   })
 
   it("does not store error message as summary for needs_attention (yellow surface)", async () => {

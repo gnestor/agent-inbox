@@ -66,7 +66,7 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("--color-border")
   })
 
-  it("includes import map for React, ReactDOM, and components", () => {
+  it("Scenario: Document includes import map, Tailwind CDN, theme @theme block — includes import map for React, ReactDOM, and components", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain('<script type="importmap">')
     expect(html).toContain('"react"')
@@ -75,7 +75,7 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("@hammies/frontend/lib/utils")
   })
 
-  it("includes CSP meta tag with no external CDN access", () => {
+  it("Scenario: CSP restricts code execution and network — includes CSP meta tag with no external CDN access", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("Content-Security-Policy")
     expect(html).toContain("default-src 'none'")
@@ -89,16 +89,17 @@ describe("buildArtifactHtml", () => {
     expect(html).not.toContain("function Card(")
   })
 
-  it("includes postMessage bridge helpers", () => {
+  it("Scenario: postMessage bridge implements `sendAction` / `saveState` / `restore` — includes postMessage bridge helpers", () => {
     const html = buildArtifactHtml("var x = 1;")
     expect(html).toContain("sendAction")
     expect(html).toContain("saveState")
     expect(html).toContain("__onStateRestored")
   })
 
-  it("uses exportedName for component mounting", () => {
+  it('Scenario: Mount uses `exportedName` if known, falls back to `App`, else shows "No component found" — uses exportedName for component mounting', () => {
     const html = buildArtifactHtml("function Dashboard() {}", "Test", "Dashboard")
     expect(html).toContain("Dashboard")
+    expect(html).toContain("No component found")
   })
 
   it("falls back to App when no exportedName", () => {
@@ -106,7 +107,7 @@ describe("buildArtifactHtml", () => {
     expect(html).toContain("App")
   })
 
-  it("syncs theme variables from parent document at runtime", () => {
+  it("Scenario: Theme vars sync from parent on load and on theme change — syncs theme variables from parent document at runtime", () => {
     const html = buildArtifactHtml("var x = 1;")
     // Theme vars are synced live from parent via script, not baked into HTML
     expect(html).toContain("syncThemeVars")
@@ -122,5 +123,41 @@ describe("buildArtifactHtml", () => {
     expect(html).not.toContain("data-code=")
     expect(html).not.toContain("atob(")
     expect(html).not.toContain("(0, eval)")
+  })
+
+  it("Scenario: Wheel events bubble to the parent only when the inner element cannot scroll — forwards wheel only for non-scrollable horizontal targets", () => {
+    // WHEN the user scrolls horizontally: if an ancestor has scrollWidth > clientWidth keep it;
+    // otherwise forward { type: "wheel", deltaX, deltaY } to the parent and preventDefault().
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("scrollWidth > el.clientWidth")
+    expect(html).toContain("type: 'wheel'")
+    expect(html).toContain("preventDefault")
+  })
+
+  it("Scenario: Errors are forwarded as overlay-able events — posts { type: 'error' } on throw and unhandledrejection", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("unhandledrejection")
+    expect(html).toContain("type: 'error'")
+  })
+
+  it("Scenario: Height reports after layout settles, with a 2 s fallback — double-rAF report plus setTimeout fallback", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("__reportHeight")
+    expect(html).toContain("requestAnimationFrame")
+    expect(html).toContain("scrollHeight")
+    // 2s fallback so the host never stays in skeleton forever
+    expect(html).toContain("2000")
+  })
+
+  it("Scenario: Wide tables get a horizontal scroll wrapper — wraps tables in table-scroll-wrap", () => {
+    const html = buildArtifactHtml("var x = 1;")
+    expect(html).toContain("table-scroll-wrap")
+  })
+
+  it("Scenario: Compile or runtime errors render as a destructive in-flow block — transformError renders an error box", () => {
+    // WHEN transformError is set the document shows the message in-flow (not a blank iframe).
+    const html = buildArtifactHtml(undefined, "Test", null, "SyntaxError: boom")
+    expect(html).toContain("error-box")
+    expect(html).toContain("SyntaxError: boom")
   })
 })

@@ -98,12 +98,30 @@ const {
   storeWorkspaceCredential,
   getWorkspaceCredential,
   listWorkspaceCredentials,
+  resolveCredential,
+  seedWorkspaceCredentials,
 } = await import("../vault.js")
 
 describe("vault", () => {
   beforeEach(() => {
     userCredentials.clear()
     workspaceCredentials.clear()
+  })
+
+  describe("VAULT_SECRET validation", () => {
+    it("Scenario: `VAULT_SECRET` validation at first use — throws naming the variable when unset or malformed", () => {
+      const original = process.env.VAULT_SECRET
+      try {
+        delete process.env.VAULT_SECRET
+        expect(() => encrypt("x")).toThrow(/VAULT_SECRET/)
+        process.env.VAULT_SECRET = "tooshort"
+        expect(() => encrypt("x")).toThrow(/VAULT_SECRET/)
+        process.env.VAULT_SECRET = "z".repeat(64)
+        expect(() => encrypt("x")).toThrow()
+      } finally {
+        process.env.VAULT_SECRET = original
+      }
+    })
   })
 
   describe("encrypt/decrypt", () => {
@@ -114,14 +132,14 @@ describe("vault", () => {
       expect(encrypted).toContain(":")
       expect(decrypt(encrypted)).toBe(plaintext)
     })
-    it("produces different ciphertexts for same plaintext (random IV)", () => {
+    it("Scenario: `encrypt()` produces fresh IV per call — produces different ciphertexts for same plaintext (random IV)", () => {
       const a = encrypt("same-token")
       const b = encrypt("same-token")
       expect(a).not.toBe(b)
       expect(decrypt(a)).toBe("same-token")
       expect(decrypt(b)).toBe("same-token")
     })
-    it("throws on tampered ciphertext", () => {
+    it("Scenario: `decrypt()` rejects tampered ciphertext — throws on tampered ciphertext", () => {
       const encrypted = encrypt("secret")
       const parts = encrypted.split(":")
       parts[2] = parts[2]!.slice(0, -2) + "ff"
@@ -133,17 +151,17 @@ describe("vault", () => {
     const testEmail = "test@hammies.com"
     const integration = "notion"
 
-    it("stores and retrieves a credential", async () => {
+    it("Scenario: `storeUserCredential` upserts encrypted token + optional refresh token — stores and retrieves a credential", async () => {
       await storeUserCredential(testEmail, integration, { token: "xoxb-test-token", scopes: "read,write" })
       const cred = await getUserCredential(testEmail, integration)
       expect(cred).not.toBeNull()
       expect(cred!.token).toBe("xoxb-test-token")
       expect(cred!.scopes).toBe("read,write")
     })
-    it("returns null for missing credential", async () => {
+    it("Scenario: `getUserCredential` returns plaintext token or null — returns null for missing credential", async () => {
       expect(await getUserCredential(testEmail, "nonexistent")).toBeNull()
     })
-    it("lists all credentials for a user", async () => {
+    it("Scenario: `listUserCredentials` returns metadata only — lists all credentials for a user", async () => {
       await storeUserCredential(testEmail, "notion", { token: "notion-tok" })
       await storeUserCredential(testEmail, "slack", { token: "slack-tok" })
       const list = await listUserCredentials(testEmail)
@@ -156,6 +174,10 @@ describe("vault", () => {
       await deleteUserCredential(testEmail, integration)
       expect(await getUserCredential(testEmail, integration)).toBeNull()
     })
+    it("Scenario: `deleteUserCredential` is idempotent — deleting a never-connected integration returns normally", async () => {
+      await expect(deleteUserCredential(testEmail, "never-connected")).resolves.toBeUndefined()
+      expect(await getUserCredential(testEmail, "never-connected")).toBeNull()
+    })
     it("upserts on duplicate (user_email, integration)", async () => {
       await storeUserCredential(testEmail, integration, { token: "old" })
       await storeUserCredential(testEmail, integration, { token: "new" })
@@ -167,12 +189,12 @@ describe("vault", () => {
   describe("workspace credential CRUD", () => {
     const workspace = "hammies-agent"
     const integration = "air"
-    it("stores and retrieves a workspace credential", async () => {
+    it("Scenario: `storeWorkspaceCredential` upserts a single encrypted token — stores and retrieves a workspace credential", async () => {
       await storeWorkspaceCredential(workspace, integration, "ws-secret-token")
       const token = await getWorkspaceCredential(workspace, integration)
       expect(token).toBe("ws-secret-token")
     })
-    it("returns null for missing workspace credential", async () => {
+    it("Scenario: `getWorkspaceCredential` returns the decrypted token or null — returns null for missing workspace credential", async () => {
       expect(await getWorkspaceCredential(workspace, "nonexistent")).toBeNull()
     })
     it("lists all workspace credentials", async () => {
@@ -181,6 +203,42 @@ describe("vault", () => {
       const list = await listWorkspaceCredentials(workspace)
       expect(list).toHaveLength(2)
       expect(list.map((c) => c.integration).sort()).toEqual(["air", "shopify"])
+    })
+  })
+
+  describe("resolveCredential", () => {
+    const email = "resolve@hammies.com"
+    const ws = "resolve-ws"
+
+    it("Scenario: User credential takes precedence — returns the user token even when a workspace credential exists", async () => {
+      await storeUserCredential(email, "notion", { token: "user-tok" })
+      await storeWorkspaceCredential(ws, "notion", "ws-tok")
+      expect(await resolveCredential(email, ws, "notion")).toBe("user-tok")
+    })
+
+    it("Scenario: Falls back to workspace credential — uses workspace token when the user has no row, null when neither exists", async () => {
+      await storeWorkspaceCredential(ws, "slack", "ws-slack")
+      expect(await resolveCredential(email, ws, "slack")).toBe("ws-slack")
+      expect(await resolveCredential(email, ws, "github")).toBeNull()
+    })
+  })
+
+  describe("seedWorkspaceCredentials", () => {
+    const ws = "seed-ws"
+
+    it("Scenario: First-run seed inserts only missing integrations — inserts new values and never overwrites existing rows", async () => {
+      await storeWorkspaceCredential(ws, "notion", "existing-notion")
+      await seedWorkspaceCredentials(
+        ws,
+        { NOTION_API_TOKEN: "env-notion", SHOPIFY_TOKEN: "env-shopify", EMPTY_KEY: "" },
+        { NOTION_API_TOKEN: "notion", SHOPIFY_TOKEN: "shopify", EMPTY_KEY: "empty" },
+      )
+      // Existing notion row untouched
+      expect(await getWorkspaceCredential(ws, "notion")).toBe("existing-notion")
+      // Missing shopify seeded from env
+      expect(await getWorkspaceCredential(ws, "shopify")).toBe("env-shopify")
+      // Empty env value not seeded
+      expect(await getWorkspaceCredential(ws, "empty")).toBeNull()
     })
   })
 })

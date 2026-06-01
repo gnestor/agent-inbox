@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { GmailApiMessage, GmailApiPart } from "../lib/gmail-api-types.js"
 
+const sanitizeHtmlEmailSpy = vi.fn((html: string) => html)
+const sanitizePlainTextSpy = vi.fn((text: string) => text)
 vi.mock("../lib/email-sanitizer.js", () => ({
-  sanitizeHtmlEmail: (html: string) => html,
-  sanitizePlainText: (text: string) => text,
+  sanitizeHtmlEmail: (html: string, opts?: unknown) => sanitizeHtmlEmailSpy(html, opts),
+  sanitizePlainText: (text: string) => sanitizePlainTextSpy(text),
 }))
 
 const mockFetch = vi.fn()
@@ -347,6 +349,60 @@ describe("Gmail API functions", () => {
       expect(result.id).toBe("msg1")
       expect(result.from).toBe("alice@example.com")
       expect(result.body).toBe("Hello plain text")
+    })
+  })
+
+  describe("parseMessage sanitizer integration", () => {
+    beforeEach(() => {
+      sanitizeHtmlEmailSpy.mockClear()
+      sanitizePlainTextSpy.mockClear()
+    })
+
+    it("Scenario: HTML body flow — passes HTML body through sanitizeHtmlEmail before htmlToMarkdown", async () => {
+      // WHEN parseMessage receives a Gmail API message with an HTML body
+      // THEN the body passes through sanitizeHtmlEmail (then htmlToMarkdown) before being returned.
+      const htmlMsg = makeMessage({
+        payload: {
+          headers: [{ name: "Subject", value: "HTML" }],
+          mimeType: "text/html",
+          body: { data: Buffer.from("<p>Hello HTML</p>").toString("base64url") },
+        },
+      })
+      mockFetch.mockReturnValueOnce(okJson(htmlMsg))
+
+      await getMessage("test-token", "msg1")
+      expect(sanitizeHtmlEmailSpy).toHaveBeenCalledWith("<p>Hello HTML</p>", expect.anything())
+      expect(sanitizePlainTextSpy).not.toHaveBeenCalled()
+    })
+
+    it("Scenario: Plain body flow — passes plain-text body through sanitizePlainText", async () => {
+      // WHEN parseMessage receives a plain-text body
+      // THEN the body passes through sanitizePlainText before being returned.
+      mockFetch.mockReturnValueOnce(okJson(makeMessage()))
+
+      await getMessage("test-token", "msg1")
+      expect(sanitizePlainTextSpy).toHaveBeenCalledWith("Hello plain text")
+      expect(sanitizeHtmlEmailSpy).not.toHaveBeenCalled()
+    })
+
+    it("Scenario: Last-message signature preservation — last thread message sanitized with keepSignature:true", async () => {
+      // WHEN parseMessage is called for the last message of a thread
+      // THEN it MUST be invoked with { keepSignature: true }.
+      const htmlMsg = makeMessage({
+        payload: {
+          headers: [{ name: "Subject", value: "HTML" }],
+          mimeType: "text/html",
+          body: { data: Buffer.from("<p>m</p>").toString("base64url") },
+        },
+      })
+      mockFetch.mockReturnValueOnce(
+        okJson({ id: "t1", messages: [htmlMsg, { ...htmlMsg, id: "last" }] }),
+      )
+
+      await getThread("test-token", "t1")
+      // First (non-last) message: no keepSignature; last message: keepSignature true.
+      expect(sanitizeHtmlEmailSpy).toHaveBeenNthCalledWith(1, "<p>m</p>", { keepSignature: false })
+      expect(sanitizeHtmlEmailSpy).toHaveBeenNthCalledWith(2, "<p>m</p>", { keepSignature: true })
     })
   })
 

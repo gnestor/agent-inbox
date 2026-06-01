@@ -32,7 +32,7 @@ describe("usePreference", () => {
     expect(result.current[0]).toBe("light")
   })
 
-  it("returns loaded value after preferences resolve", async () => {
+  it("Scenario: `usePreference(key, default)` reads from the React Query bag — returns loaded value after preferences resolve", async () => {
     vi.mocked(client.getPreferences).mockResolvedValue({ theme: "dark" })
     const { result } = renderHook(() => usePreference("theme", "light"), { wrapper })
     await waitFor(() => expect(result.current[0]).toBe("dark"))
@@ -44,7 +44,7 @@ describe("usePreference", () => {
     await waitFor(() => expect(result.current[0]).toBe("light"))
   })
 
-  it("setValue updates value immediately and calls setPreference", async () => {
+  it("Scenario: Setter writes optimistically — setValue updates value immediately and calls setPreference", async () => {
     vi.mocked(client.getPreferences).mockResolvedValue({})
     const { result } = renderHook(() => usePreference("theme", "light"), { wrapper })
     await waitFor(() => expect(result.current[0]).toBe("light"))

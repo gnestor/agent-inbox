@@ -89,7 +89,7 @@ describe("preferences routes", () => {
   })
 
   describe("GET /preferences", () => {
-    it("returns 401 when not authenticated", async () => {
+    it("Scenario: Unauthenticated request is rejected — returns 401 when not authenticated", async () => {
       const res = await req("/preferences", {}, null)
       expect(res.status).toBe(401)
     })
@@ -100,7 +100,7 @@ describe("preferences routes", () => {
       expect(await res.json()).toEqual({})
     })
 
-    it("returns preferences for the authenticated user only", async () => {
+    it("Scenario: Authenticated user fetches their bag — returns preferences for the authenticated user only", async () => {
       prefsStore.set("alice@example.com:theme", {
         user_email: "alice@example.com",
         key: "theme",
@@ -147,7 +147,7 @@ describe("preferences routes", () => {
       expect(res.status).toBe(401)
     })
 
-    it("stores a preference and reads it back", async () => {
+    it("Scenario: Valid PUT upserts the row — stores a preference and reads it back", async () => {
       await req("/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -188,7 +188,7 @@ describe("preferences routes", () => {
       expect(await (await req("/preferences", {}, "bob@example.com")).json()).toEqual({ theme: "light" })
     })
 
-    it("returns 400 when key is missing", async () => {
+    it("Scenario: Invalid body returns first Zod issue — returns 400 when key is missing", async () => {
       const res = await req("/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -199,7 +199,7 @@ describe("preferences routes", () => {
   })
 
   describe("PUT /preferences/batch", () => {
-    it("stores multiple preferences atomically", async () => {
+    it("Scenario: Batch PUT writes inside one transaction — stores multiple preferences atomically", async () => {
       await req("/preferences/batch", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

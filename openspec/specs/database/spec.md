@@ -7,7 +7,7 @@ Provide a single Postgres connection pool, transactional helpers, and a forward-
 ## Context
 
 ### Why Postgres-only
-The app started on SQLite (`better-sqlite3`) and migrated to Postgres. The migration is complete: every runtime query goes through `pg.Pool` against `DATABASE_URL`. The legacy file `server/db/schema.ts` still imports `better-sqlite3` and references a `data/inbox.db` path — it has **zero importers** in the current codebase and is dead. Migration `001_initial_schema.sql` carries the forward-port of its DDL; the file itself can be deleted.
+The app started on SQLite (`better-sqlite3`) and migrated to Postgres. The migration is complete: every runtime query goes through `pg.Pool` against `DATABASE_URL`. The legacy file `server/db/schema.ts` (which imported `better-sqlite3` and referenced a `data/inbox.db` path) had **zero importers** and has now been deleted, along with the one-time `scripts/migrate-sqlite-to-postgres.ts` migration script. Migration `001_initial_schema.sql` carries the forward-port of the original DDL.
 
 ### Why a hand-rolled migration list, not a tool
 Migrations are an append-only array of `.sql` filenames in `pool.ts`. Each file is run on every `initializeDatabase()` call; every statement uses `IF NOT EXISTS` / `IF EXISTS` / column-presence guards (`information_schema.columns`) so re-running is a no-op. There is no migrations table, no version tracking, no down migrations. The trade-off: we cannot reorder or hot-fix a shipped migration — once a file is in the list and running in prod, it must stay idempotent forever.
@@ -100,8 +100,7 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 #### Scenario: `server/db/schema.ts` is unreferenced
 - **WHEN** the codebase is grepped for imports of `db/schema` or `./schema` from `server/`
 - **THEN** zero results return.
-- **AND** the file imports `better-sqlite3`, which is no longer a runtime dependency of the database layer.
-- **THEN** this spec records the file as dead and slated for deletion; new work MUST NOT add imports of it.
+- **AND** the file no longer exists — it was the dead SQLite schema and has been deleted; new work MUST NOT reintroduce it or import `better-sqlite3` into the database layer.
 
 ## Technical Notes
 
@@ -110,8 +109,6 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 | Pool construction, query helpers, transaction wrapper | [server/db/pool.ts:9-94](../../../server/db/pool.ts) |
 | Migration list (source of truth for which files run) | [server/db/pool.ts:71-80](../../../server/db/pool.ts) |
 | Migration files | [server/db/migrations/](../../../server/db/migrations/) |
-| Dead SQLite schema (slated for deletion) | [server/db/schema.ts](../../../server/db/schema.ts) |
-| One-time SQLite→Postgres migration script | [scripts/migrate-sqlite-to-postgres.ts](../../../scripts/migrate-sqlite-to-postgres.ts) |
 
 ## History
 
@@ -123,3 +120,4 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 - 006: added `backfill_state` for resumable per-plugin context backfill.
 - 007: added `source_entities` to enable entity-grouped curation passes.
 - 008: added `body_extraction_log` so the bulk body-extraction pass can resume.
+- 2026-05-28: deleted the dead `server/db/schema.ts` and the one-time `scripts/migrate-sqlite-to-postgres.ts`; dropped their Technical Notes rows. The `server/db/schema.ts is unreferenced` scenario now asserts the file's absence (its test greps for importers and confirms zero).

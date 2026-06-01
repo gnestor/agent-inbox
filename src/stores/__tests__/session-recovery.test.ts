@@ -10,7 +10,7 @@ describe("session-recovery coordinator", () => {
     expect(c.getState().pendingReplay).toBe(true)
   })
 
-  it("bootstrap completes and resolves pendingReplay when observed > latest", () => {
+  it("Scenario: Snapshot lifecycle follows begin → (complete | fail) — bootstrap completes and resolves pendingReplay when observed > latest", () => {
     const c = createSessionRecoveryCoordinator()
     c.classifyEvent(5) // defer, pendingReplay = true
     expect(c.beginSnapshotRecovery("bootstrap")).toBe(true)
@@ -29,7 +29,7 @@ describe("session-recovery coordinator", () => {
     expect(shouldReplay).toBe(false)
   })
 
-  it("applies events in strict monotonic order after bootstrap", () => {
+  it("Scenario: Exact next-sequence event applies — applies events in strict monotonic order after bootstrap", () => {
     const c = createSessionRecoveryCoordinator()
     c.beginSnapshotRecovery("bootstrap")
     c.completeSnapshotRecovery(0)
@@ -40,7 +40,7 @@ describe("session-recovery coordinator", () => {
     expect(c.getState().latestSequence).toBe(2)
   })
 
-  it("ignores duplicate sequences", () => {
+  it("Scenario: Duplicate event is ignored — ignores duplicate sequences", () => {
     const c = createSessionRecoveryCoordinator()
     c.beginSnapshotRecovery("bootstrap")
     c.completeSnapshotRecovery(5)
@@ -48,7 +48,7 @@ describe("session-recovery coordinator", () => {
     expect(c.classifyEvent(5)).toBe("ignore")
   })
 
-  it("detects gaps and returns recover", () => {
+  it("Scenario: Sequence gap triggers recovery — detects gaps and returns recover", () => {
     const c = createSessionRecoveryCoordinator()
     c.beginSnapshotRecovery("bootstrap")
     c.completeSnapshotRecovery(1)
@@ -60,7 +60,7 @@ describe("session-recovery coordinator", () => {
     expect(c.getState().highestObservedSequence).toBe(5)
   })
 
-  it("defers events while snapshot is in flight", () => {
+  it("Scenario: Event during snapshot-in-flight is deferred — defers events while snapshot is in flight", () => {
     const c = createSessionRecoveryCoordinator()
     c.beginSnapshotRecovery("bootstrap")
     expect(c.classifyEvent(7)).toBe("defer")
@@ -86,7 +86,7 @@ describe("session-recovery coordinator", () => {
     expect(c.getState().latestSequence).toBe(5)
   })
 
-  it("failSnapshotRecovery clears inFlight so the caller can retry", () => {
+  it("Scenario: Failed snapshot does not retry indefinitely — failSnapshotRecovery clears inFlight so the caller can retry", () => {
     const c = createSessionRecoveryCoordinator()
     expect(c.beginSnapshotRecovery("bootstrap")).toBe(true)
     c.failSnapshotRecovery()
@@ -108,7 +108,7 @@ describe("session-recovery coordinator", () => {
   })
 
   describe("circuit breaker", () => {
-    it("opens after MAX consecutive snapshots that fail to close the gap", () => {
+    it("Scenario: Coordinator gives up after N unsatisfied snapshots in a row — opens after MAX consecutive snapshots that fail to close the gap", () => {
       const c = createSessionRecoveryCoordinator()
       // Bootstrap with a low ceiling — broadcaster is way ahead.
       // Bootstrap with a non-zero baseline so the gap check (which skips
@@ -155,7 +155,7 @@ describe("session-recovery coordinator", () => {
       expect(c.isCircuitOpen()).toBe(false)
     })
 
-    it("resets on invalidateBootstrap (cursor_miss recovery path)", () => {
+    it("Scenario: cursor_miss invalidates bootstrap — resets on invalidateBootstrap (cursor_miss recovery path)", () => {
       const c = createSessionRecoveryCoordinator()
       c.beginSnapshotRecovery("bootstrap")
       c.completeSnapshotRecovery(1000)

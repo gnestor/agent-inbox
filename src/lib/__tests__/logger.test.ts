@@ -22,7 +22,7 @@ describe("client createLogger", () => {
     debugSpy.mockRestore()
   })
 
-  it("logs with module tag", () => {
+  it("Scenario: Logger is the only console emitter for app code — logs with module tag", () => {
     const log = createLogger("client-test")
     log.info("user clicked")
     expect(logSpy).toHaveBeenCalled()

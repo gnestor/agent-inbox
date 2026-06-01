@@ -12,7 +12,7 @@ import {
 } from "../credential-proxy.js"
 
 describe("shouldIntercept", () => {
-  it("returns true for exact match hosts", () => {
+  it("Scenario: Only allowlisted hosts are MITM-intercepted — returns true for exact match hosts", () => {
     expect(shouldIntercept("api.notion.com")).toBe(true)
     expect(shouldIntercept("api.github.com")).toBe(true)
     expect(shouldIntercept("slack.com")).toBe(true)
@@ -46,7 +46,7 @@ describe("shouldIntercept", () => {
 })
 
 describe("hostToIntegration", () => {
-  it("maps known hosts to integration names", () => {
+  it("Scenario: `hostToIntegration` maps hostnames to vault integration names — maps known hosts to integration names", () => {
     expect(hostToIntegration("api.notion.com")).toBe("notion")
     expect(hostToIntegration("api.github.com")).toBe("github")
     expect(hostToIntegration("slack.com")).toBe("slack")
@@ -101,18 +101,24 @@ describe("INTEGRATION_AUTH", () => {
     }
   })
 
-  it("uses custom headers for shopify and klaviyo", () => {
+  it("Scenario: Header-named integrations get a custom header — uses custom headers for shopify and klaviyo", () => {
     expect(INTEGRATION_AUTH.shopify).toEqual({ type: "header", name: "X-Shopify-Access-Token" })
     expect(INTEGRATION_AUTH.klaviyo).toEqual({ type: "header", name: "Klaviyo-API-Key" })
   })
 
-  it("uses query param for meta and gemini", () => {
+  it("Scenario: Query-param integrations rewrite the request URL — uses query param for meta and gemini", () => {
     expect(INTEGRATION_AUTH.meta).toEqual({ type: "query", param: "access_token" })
     expect(INTEGRATION_AUTH.gemini).toEqual({ type: "query", param: "key" })
   })
 
-  it("uses basic auth for gorgias", () => {
+  it("Scenario: Basic-auth integrations encode `<extra>:<token>` — uses basic auth for gorgias", () => {
     expect(INTEGRATION_AUTH.gorgias).toEqual({ type: "basic", extraKey: "email" })
+  })
+
+  it("Scenario: Bearer integrations get `Authorization: Bearer <token>` — bearer type for notion/github/slack/google/air/quickbooks/pinterest", () => {
+    for (const name of ["notion", "github", "slack", "google", "air", "quickbooks", "pinterest"]) {
+      expect(INTEGRATION_AUTH[name]).toEqual({ type: "bearer" })
+    }
   })
 })
 
@@ -148,7 +154,7 @@ describe("createCredentialProxy", () => {
     await proxy.close()
   })
 
-  it("getProxyEnv does not leak raw API tokens", async () => {
+  it("Scenario: Four env vars are returned per session token — getProxyEnv does not leak raw API tokens", async () => {
     proxy = await createCredentialProxy({
       resolveCredential: async () => null,
     })
@@ -175,6 +181,13 @@ describe("createCredentialProxy", () => {
     // the proxy starts and is addressable. The resolveCredential mock would be
     // called during an actual HTTPS request through the proxy.
     expect(proxy.port).toBeGreaterThan(0)
+    await proxy.close()
+  })
+
+  it("Scenario: `NO_PROXY` bypasses Anthropic API and telemetry hosts — NO_PROXY includes .anthropic.com", async () => {
+    proxy = await createCredentialProxy({ resolveCredential: async () => null })
+    const env = proxy.getProxyEnv("tok")
+    expect(env.NO_PROXY).toContain(".anthropic.com")
     await proxy.close()
   })
 

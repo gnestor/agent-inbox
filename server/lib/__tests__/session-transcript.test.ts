@@ -64,7 +64,7 @@ describe("session transcript and artifact patching", () => {
     writeFileSync(join(PROJECT_DIR, `${SESSION_ID}.jsonl`), buildTestJsonl())
   })
 
-  it("getAgentSessionTranscript emits streaming deltas with content and uses line index as sequence", async () => {
+  it("Scenario: `getAgentSessionTranscript` returns parsed JSONL messages — getAgentSessionTranscript emits streaming deltas with content and uses line index as sequence", async () => {
     const { getAgentSessionTranscript } = await import("../session-manager.js")
 
     const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
@@ -239,7 +239,7 @@ describe("patchArtifactCode by tool_use id", () => {
     return null
   }
 
-  it("patches render_output input.data.code", async () => {
+  it("Scenario: `patchArtifactCode(sessionId, toolUseId, code)` rewrites a single tool_use block — patches render_output input.data.code", async () => {
     const { patchArtifactCode } = await import("../session-manager.js")
     const ok = await patchArtifactCode(PATCH_SESSION_ID, "tu_render", "new render")
     expect(ok).toBe(true)

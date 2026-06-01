@@ -62,7 +62,7 @@ describe("useSessionMutations", () => {
     for (const id of Object.keys(s.sessions)) s.removeSession(id)
   })
 
-  it("resume mutation calls resumeSession API and triggers onResume", async () => {
+  it("Scenario: Controller exposes mutations bag — resume mutation calls resumeSession API and triggers onResume", async () => {
     const onResume = vi.fn()
     vi.mocked(client.resumeSession).mockResolvedValueOnce(undefined as any)
 

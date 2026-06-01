@@ -182,7 +182,7 @@ describe("session store — recovery lifecycle", () => {
     expect(store.beginSnapshot("s9", "snapshot-failed")).toBe(true)
   })
 
-  it("server-supplied latestSequence advances the cursor past sparse message sequences", () => {
+  it("Scenario: REST snapshot carries an explicit latestSequence cursor — server-supplied latestSequence advances the cursor past sparse message sequences", () => {
     // Regression: the JSONL transcript can have sparse `sequence` values
     // (skipped system/summary lines, thinking-block fractional offsets,
     // subagent renumbering) so messageIds[last] lags behind the live
@@ -209,7 +209,7 @@ describe("session store — recovery lifecycle", () => {
     expect(slice.messageIds).toContain(10)
   })
 
-  it("ingestEventBatch coalesces N events into one store notification", () => {
+  it("Scenario: Bursts of events commit as one store transition — ingestEventBatch coalesces N events into one store notification", () => {
     const store = useSessionStore.getState()
     store.beginSnapshot("s-batch", "bootstrap")
     store.applySnapshot("s-batch", {
@@ -237,7 +237,7 @@ describe("session store — recovery lifecycle", () => {
     expect(slice.recovery.latestSequence).toBe(500)
   })
 
-  it("ingestEventBatch with all-ignore events does not allocate a new slice", () => {
+  it("Scenario: All-ignore batches skip the slice mutation — ingestEventBatch with all-ignore events does not allocate a new slice", () => {
     const store = useSessionStore.getState()
     store.beginSnapshot("s-dup", "bootstrap")
     store.applySnapshot("s-dup", {
@@ -260,7 +260,35 @@ describe("session store — recovery lifecycle", () => {
     expect(sliceAfter.messageById).toEqual(sliceBefore.messageById)
   })
 
-  it("deferredEvents is bounded at MAX_DEFERRED_EVENTS; oldest drops on overflow", () => {
+  it("Scenario: Open breaker drops deferred events during applySnapshot — once the circuit is open, applySnapshot skips the flush loop and sets deferredEvents to []", () => {
+    const store = useSessionStore.getState()
+    // Bootstrap with a non-zero baseline so gap detection arms.
+    store.beginSnapshot("s-breaker", "bootstrap")
+    store.applySnapshot("s-breaker", {
+      session: makeSession("s-breaker"),
+      messages: [makeMsg(0, "user")],
+      latestSequence: 1000,
+    })
+    // Broadcaster is way ahead; snapshot endpoint can only ever return 1000.
+    // Repeat the unsatisfied-gap round until the breaker trips.
+    for (let i = 0; i < 4; i++) {
+      store.ingestEvent("s-breaker", {
+        sequence: 1500,
+        message: { type: "assistant", content: [] },
+      })
+      store.beginSnapshot("s-breaker", "sequence-gap")
+      store.applySnapshot("s-breaker", {
+        session: makeSession("s-breaker"),
+        messages: [makeMsg(0, "user")],
+        latestSequence: 1000,
+      })
+    }
+    const slice = useSessionStore.getState().sessions["s-breaker"]!
+    // The flush loop was skipped: no deferred events survive an open breaker.
+    expect(slice.deferredEvents).toEqual([])
+  })
+
+  it("Scenario: Deferred buffer caps at MAX_DEFERRED_EVENTS — deferredEvents is bounded at MAX_DEFERRED_EVENTS; oldest drops on overflow", () => {
     const store = useSessionStore.getState()
     // No bootstrap — all message events get deferred.
     for (let i = 1; i <= MAX_DEFERRED_EVENTS + 10; i++) {

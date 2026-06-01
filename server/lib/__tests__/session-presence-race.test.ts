@@ -53,7 +53,7 @@ describe("session presence race conditions", () => {
     expect(users[0]!.email).toBe("bob@test.com")
   })
 
-  it("reapStalePresence removes entries beyond the stale timeout", async () => {
+  it("Scenario: Stale presence is reaped every 30 s with a 60 s cutoff — reapStalePresence removes entries beyond the stale timeout", async () => {
     const { addPresenceUser, getPresenceUsers, reapStalePresence } = await import("../session-manager.js")
     const t0 = Date.now()
     addPresenceUser("race-3", { email: "alice@test.com", name: "Alice" })

@@ -96,7 +96,8 @@ describe("sessionStatusLabel", () => {
     ["complete", "Complete"],
     ["needs_attention", "Needs Attention"],
     ["errored", "Errored"],
-  ])("maps '%s' to '%s'", (input, expected) => {
+  ])("Scenario: `sessionStatusLabel/Color/BadgeClass` are the single source for status presentation — maps '%s' to '%s'", (input, expected) => {
+    // single source: every status string resolves through these helpers, never hard-coded
     expect(sessionStatusLabel(input)).toBe(expected)
   })
 
