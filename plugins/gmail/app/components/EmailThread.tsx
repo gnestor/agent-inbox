@@ -324,7 +324,7 @@ function EmailMessage({ message }: { message: GmailMessage }) {
                   <td className="px-3 py-1.5">
                     <a
                       href={`/api/gmail/messages/${message.id}/attachments/${encodeURIComponent(att.attachmentId)}?filename=${encodeURIComponent(att.filename)}`}
-                      target="_blank"
+                      download={att.filename}
                       rel="noopener noreferrer"
                       className="text-primary hover:underline"
                     >

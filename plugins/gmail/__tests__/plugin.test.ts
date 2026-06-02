@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { Hono } from "hono"
 import type { PluginContext } from "../../../src/types/plugin.js"
 
 // ---------------------------------------------------------------------------
@@ -165,13 +166,51 @@ describe("gmail plugin", () => {
       expect(result.nextCursor).toBe("next")
     })
 
-    it("Scenario: Attachment proxy serves with long immutable cache", () => {
-      // The attachment proxy route (GET /messages/:id/attachments/:attachmentId)
-      // resolves the token, fetches via gmail.getAttachment, sniffs MIME, and
-      // sets Cache-Control: public, max-age=31536000, immutable. It requires a
-      // mounted Hono app + getContext wiring; the MIME-resolution and cache
-      // header contract is verified by integration tests.
-      expect(typeof gmailPlugin.routes).toBe("function")
+    it("Scenario: Attachment proxy serves with long immutable cache", async () => {
+      const app = new Hono()
+      gmailPlugin.routes!(app, { getContext: async () => makeCtx() })
+      gmailMock.getAttachment.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      const res = await app.request("/messages/m1/attachments/a1?filename=logo.png")
+      expect(res.status).toBe(200)
+      expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable")
+      expect(res.headers.get("Content-Type")).toBe("image/png")
+    })
+
+    it("Scenario: Non-viewable types are served as `attachment` so the browser downloads them", async () => {
+      const app = new Hono()
+      gmailPlugin.routes!(app, { getContext: async () => makeCtx() })
+      gmailMock.getAttachment.mockResolvedValue(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+      const res = await app.request("/messages/m1/attachments/a1?filename=contract.docx")
+      expect(res.status).toBe(200)
+      expect(res.headers.get("Content-Type")).toBe(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      )
+      expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="contract.docx"')
+    })
+
+    it("Scenario: Viewable types (image, pdf) are served `inline`", async () => {
+      const app = new Hono()
+      gmailPlugin.routes!(app, { getContext: async () => makeCtx() })
+      gmailMock.getAttachment.mockResolvedValue(Buffer.from([0x25, 0x50, 0x44, 0x46]))
+      const res = await app.request("/messages/m1/attachments/a1?filename=report.pdf")
+      expect(res.headers.get("Content-Disposition")).toBe('inline; filename="report.pdf"')
+    })
+
+    it("Scenario: Attachment fetch failure does not masquerade as the file", async () => {
+      // A dead OAuth token throws during requireToken (token refresh), before
+      // the Gmail fetch — the handler must catch this path too.
+      const app = new Hono()
+      const failCtx = {
+        getCredential: vi.fn(async () => {
+          throw new Error("Google token refresh failed: invalid_grant")
+        }),
+      } as unknown as PluginContext
+      gmailPlugin.routes!(app, { getContext: async () => failCtx })
+      const res = await app.request("/messages/m1/attachments/a1?filename=contract.docx")
+      expect(res.status).toBe(502)
+      expect(res.headers.get("Content-Disposition")).toBeNull()
+      expect(res.headers.get("Content-Type")).toContain("application/json")
+      expect(await res.json()).toMatchObject({ error: expect.stringContaining("invalid_grant") })
     })
 
     it("Scenario: `GET /api/gmail/signature` returns the cached signature", () => {

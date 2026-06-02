@@ -80,6 +80,16 @@ function sniffMimeType(buf: Buffer): string {
   return "application/octet-stream"
 }
 
+// MIME types the browser can safely render in-tab. Everything else (Office
+// docs, zips, octet-stream) must download — otherwise the browser opens it
+// inline, fails to render, and a "Save" captures the viewer shell rather than
+// the file (a docx saved this way is a corrupt 404-byte HTML stub).
+const INLINE_MIME_PREFIXES = ["image/", "application/pdf", "text/"]
+
+function dispositionFor(mime: string): "inline" | "attachment" {
+  return INLINE_MIME_PREFIXES.some((p) => mime.startsWith(p)) ? "inline" : "attachment"
+}
+
 export const gmailPlugin: Plugin = {
   id: "gmail",
   name: "Emails",
@@ -207,18 +217,29 @@ export const gmailPlugin: Plugin = {
   routes(app, { getContext }) {
     // Attachment proxy
     app.get("/messages/:id/attachments/:attachmentId", async (c) => {
-      const ctx = await getContext(c)
-      const accessToken = await requireToken(ctx)
       const messageId = c.req.param("id")
       const attachmentId = c.req.param("attachmentId")
-      const data = await gmail.getAttachment(accessToken, messageId, attachmentId)
       const filename = c.req.query("filename")
+      let data: Buffer
+      try {
+        // Token acquisition (refresh) and the Gmail fetch are both wrapped: an
+        // expired/invalid OAuth token throws here, and we must not let any error
+        // body get saved as the named file — return JSON with no file-named
+        // Content-Disposition so the browser surfaces a failed request instead
+        // of a corrupt download.
+        const ctx = await getContext(c)
+        const accessToken = await requireToken(ctx)
+        data = await gmail.getAttachment(accessToken, messageId, attachmentId)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Attachment fetch failed"
+        return c.json({ error: message }, 502)
+      }
       const mime = filename ? mimeFromFilename(filename) : sniffMimeType(data)
       return new Response(new Uint8Array(data), {
         headers: {
           "Cache-Control": "public, max-age=31536000, immutable",
           "Content-Type": mime,
-          ...(filename ? { "Content-Disposition": `inline; filename="${filename}"` } : {}),
+          ...(filename ? { "Content-Disposition": `${dispositionFor(mime)}; filename="${filename}"` } : {}),
         },
       })
     })

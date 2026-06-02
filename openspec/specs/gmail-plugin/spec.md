@@ -24,6 +24,9 @@ Browser-side fetches would require exposing the OAuth token to the SPA. The prox
 ### Why MIME sniffing has both a filename map and a magic-byte sniff
 The Gmail attachment endpoint returns raw bytes without a content-type. If the caller provides `?filename=`, the extension drives MIME selection (more accurate for spoofable formats like `.csv`). If not, magic-byte sniffing handles common image formats (PNG, JPEG, GIF, WebP) — the rest fall back to `application/octet-stream`, which browsers treat as "download".
 
+### Why Content-Disposition is type-dependent, not always `inline`
+The endpoint serves two consumers: inline `<img>` references in sanitised email HTML (CID-replaced, no `?filename=`), which need `inline`, and the explicit attachment-download list in `EmailThread`, where the user expects a file on disk. The disposition is derived from the resolved MIME: viewable types (`image/*`, `application/pdf`, `text/*`) get `inline`; everything else (Office docs, zips, `application/octet-stream`) gets `attachment`. Without this, a `.docx` link served `inline` opens in-tab, the browser fails to render it, and "Save" captures the viewer shell — a corrupt 404-byte HTML stub instead of the document. The download anchor also carries the HTML `download` attribute as a client-side backstop. A failed `getAttachment` returns a `502` JSON error with **no** file-named `Content-Disposition`, so a token/API failure surfaces as a failed request rather than being written into the named file.
+
 ### Why `itemToContext` filters automated senders inline
 The function returns `null` for messages from `noreply@`, `no-reply@`, `notifications@`, `automated@`, `donotreply@` locals. These would pollute the context index with marketing/transactional noise that has zero curation value. Doing the filter at stub-generation time means the curation pipeline never sees them; doing it later would still write a stub to disk first.
 
@@ -94,7 +97,11 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 
 #### Scenario: Attachment proxy serves with long immutable cache
 - **WHEN** `GET /api/gmail/messages/:id/attachments/:attachmentId` is called
-- **THEN** the route resolves the access token, fetches via `gmail.getAttachment`, sets `Content-Type` from `mimeFromFilename(filename)` if `?filename=` is provided else `sniffMimeType(buf)`, sets `Cache-Control: public, max-age=31536000, immutable`, and includes `Content-Disposition: inline; filename="..."` when the filename is present.
+- **THEN** the route resolves the access token, fetches via `gmail.getAttachment`, sets `Content-Type` from `mimeFromFilename(filename)` if `?filename=` is provided else `sniffMimeType(buf)`, sets `Cache-Control: public, max-age=31536000, immutable`, and includes `Content-Disposition: <disposition>; filename="..."` when the filename is present, where `<disposition>` is `inline` for viewable types (`image/*`, `application/pdf`, `text/*`) and `attachment` otherwise.
+
+#### Scenario: Attachment fetch failure does not masquerade as the file
+- **WHEN** `gmail.getAttachment` throws (e.g. expired token, Gmail API error)
+- **THEN** the route returns a `502` JSON error `{ error }` with no file-named `Content-Disposition`, so the browser surfaces a failed request rather than saving the error body under the attachment's name.
 
 #### Scenario: `GET /api/gmail/signature` returns the cached signature
 - **WHEN** the SPA's compose UI mounts
