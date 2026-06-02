@@ -23,6 +23,9 @@ if ("serviceWorker" in navigator) {
 function isTransientQuery(status: string, queryKey: readonly unknown[], data: unknown): boolean {
   if (status === "error" || status === "pending") return true
   if (queryKey[0] === "sessions") return true
+  // Connection status must always reflect the server after an OAuth round-trip.
+  // Persisting it serves a stale "Connect" state on reload (see use-connections).
+  if (queryKey[0] === "connections") return true
   // Individual session transcripts change every time the agent writes to the JSONL
   // (or the user edits an artifact). Serving the persisted copy on reload shows
   // pre-edit code and confuses users; always re-fetch the authoritative version.

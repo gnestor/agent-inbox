@@ -61,6 +61,11 @@ The `/api/connections/connect/:integration` flow is generic — it reads `authUr
 - **THEN** if `tokenAuthMethod === "basic"`, the request sends `Authorization: Basic base64(clientId:clientSecret)` and omits client creds from the body.
 - **AND** if `tokenContentType === "json"`, the body is `JSON.stringify(...)` with `Content-Type: application/json`; otherwise it is form-urlencoded.
 
+#### Scenario: Connection status reflects the server after an OAuth round-trip
+- **WHEN** the `IntegrationCard` "Connect" button starts OAuth — the flow runs in a popup tab (`window.open`) and the callback redirects that tab to `/settings/integrations?connected=<id>`
+- **THEN** the popup tab toasts success and broadcasts completion over the `oauth-connection` BroadcastChannel, which the original tab listens for to invalidate `["connections"]`.
+- **AND** because that broadcast is best-effort, the `["connections"]` query is itself authoritative: `staleTime: 0`, `refetchOnMount: "always"`, `refetchOnWindowFocus: true`, and it is **excluded from IndexedDB persistence** (see the navigation spec's persistence predicate). A reload, or simply returning to the original tab after closing the popup, therefore refetches and shows the connected state — it never serves the pre-OAuth `connected: false` from the persisted 5-min-stale cache.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -79,3 +84,4 @@ The `/api/connections/connect/:integration` flow is generic — it reads `authUr
 
 - Registry started with Google + Notion only; per-provider OAuth code was inlined into the connect route. Refactored into a registry once Pinterest and QuickBooks added enough variation (basic vs body auth, JSON vs form bodies) that branching by `id` was unsustainable.
 - `buildEnvToIntegrationMap()` was scoped to workspace-only after a migration attempt cross-attributed a user's Google refresh token to the workspace credential row.
+- The connect button kept reading "Connect" after a successful OAuth: the `["connections"]` query was persisted to IndexedDB with the inbox-wide 5-min `staleTime` and `refetchOnWindowFocus: false`, so neither a reload nor refocusing the original tab refetched. Made the query authoritative (no persistence, `staleTime: 0`, refetch on mount + focus) so it self-corrects even when the cross-tab BroadcastChannel notification is missed.

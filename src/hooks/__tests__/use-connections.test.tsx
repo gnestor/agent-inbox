@@ -60,6 +60,26 @@ describe("useConnections", () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error).toBeInstanceOf(Error)
   })
+
+  it("Scenario: Connection status reflects the server after an OAuth round-trip", async () => {
+    // Simulate the post-OAuth reload: cache holds the pre-OAuth state, but the
+    // server now reports connected. The hook must refetch (staleTime: 0 +
+    // refetchOnMount: "always") rather than serve the stale cache.
+    const stale: Integration[] = [{ id: "gmail", name: "Gmail", icon: "mail", scope: "user", authType: "oauth2", connected: false }]
+    const fresh: Integration[] = [{ id: "gmail", name: "Gmail", icon: "mail", scope: "user", authType: "oauth2", connected: true }]
+    // Production-like client: a 5-min global staleTime would serve the cache
+    // without the hook's own staleTime: 0 / refetchOnMount: "always" overrides.
+    const staleClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
+    })
+    staleClient.setQueryData(["connections"], { integrations: stale })
+    vi.mocked(client.getConnections).mockResolvedValue({ integrations: fresh })
+
+    const { result } = renderHook(() => useConnections(), { wrapper: makeWrapper(staleClient) })
+
+    await waitFor(() => expect(result.current.data?.[0]?.connected).toBe(true))
+    expect(client.getConnections).toHaveBeenCalled()
+  })
 })
 
 describe("useDisconnectIntegration", () => {

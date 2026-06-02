@@ -10,6 +10,14 @@ export function useConnections() {
     queryKey: ["connections"],
     queryFn: () => getConnections(),
     select: (data) => data.integrations,
+    // Connection status must be authoritative, not served from the persisted
+    // 5-min-stale cache. After an OAuth round-trip (which completes in a popup
+    // tab), the original tab needs to reflect the new state on reload and on
+    // refocus — otherwise the button keeps reading "Connect" despite success.
+    // The query is also excluded from IndexedDB persistence (see main.tsx).
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   })
 }
 

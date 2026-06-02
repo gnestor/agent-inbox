@@ -24,6 +24,9 @@ The persisted blob includes per-tab panel arrays, `savedPanels` maps, and filter
 ### Why `new_session` is excluded from persisted panel types
 A "new session" compose panel is transient — reloading the app shouldn't drop the user back into a half-typed message. The `validTypes` set in `navigation-storage.ts` deliberately omits `new_session` so it's stripped on load even though the runtime store accepts it.
 
+### Why some React Query keys are excluded from the persisted query cache
+`main.tsx` persists the React Query cache to IndexedDB (`INBOX_QUERY_CACHE_V3`) so list/detail data renders instantly on reload. The `isTransientQuery` predicate excludes keys whose persisted copy would mislead: `sessions`/`session` (the agent rewrites the JSONL constantly, so a stale copy shows pre-edit code) and `connections` (status must reflect the server immediately after an OAuth round-trip — persisting it left the "Connect" button stale on reload; see the [integrations](../integrations/spec.md) spec). Error/pending queries and infinite-query (`pages`) shapes are also never persisted.
+
 ### Why `recent:*` tabs are ephemeral
 "Recent" tabs (URL: `/recent/sessions/<sid>` or `/recent/<plugin>/<itemId>/session/<sid>`) represent an open detail-from-search-or-history view. They're built on demand via `createRecentTabState()` from URL parts and aren't seeded into `defaultState.tabs` — they only exist while the user has them in the sidebar.
 
