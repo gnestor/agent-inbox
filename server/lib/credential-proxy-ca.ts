@@ -3,6 +3,7 @@ import selfsigned from "selfsigned"
 import { writeFileSync, mkdtempSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { rootCertificates } from "node:tls"
 
 interface CertKeyPair {
   cert: string
@@ -103,14 +104,22 @@ export function _getHostCertCacheKeys(): string[] {
 export const _MAX_HOST_CERTS = MAX_HOST_CERTS
 
 /**
- * Write the CA cert to a temp file and return the path.
+ * Write the CA bundle to a temp file and return the path.
  * Used for NODE_EXTRA_CA_CERTS in agent subprocesses.
+ *
+ * The bundle MUST contain the public root certificates in addition to our
+ * proxy CA. The agent SDK reads NODE_EXTRA_CA_CERTS and passes it as the
+ * *exclusive* `ca` for its undici dispatcher's TLS — this replaces (not
+ * augments) the default root store. Without the public roots, direct TLS to
+ * non-intercepted hosts (api.anthropic.com via NO_PROXY) fails certificate
+ * verification, surfacing as UND_ERR_INVALID_ARG / UNABLE_TO_GET_ISSUER_CERT.
  */
 export async function writeCACertFile(): Promise<string> {
   const ca = await generateCA()
   const dir = mkdtempSync(join(tmpdir(), "inbox-proxy-ca-"))
   const certPath = join(dir, "ca.pem")
-  writeFileSync(certPath, ca.cert)
+  const bundle = [ca.cert, ...rootCertificates].join("\n")
+  writeFileSync(certPath, bundle)
   return certPath
 }
 

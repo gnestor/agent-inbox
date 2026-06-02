@@ -3,10 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "dev": "concurrently --kill-others -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
-    "dev:server": "tsx watch --ignore '../agent/**/*' --ignore '../personal-agent/**/*' server/index.ts",
+    "dev:server": "bash scripts/with-node22.sh tsx watch --ignore '../agent/**/*' --ignore '../personal-agent/**/*' server/index.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -18,8 +21,7 @@
     "preview": "vite preview",
     "migrate:credentials": "tsx server/scripts/migrate-env-to-vault.ts",
     "db:setup": "bash scripts/setup-postgres.sh",
-    "db:migrate": "tsx scripts/migrate-sqlite-to-postgres.ts",
-    "start": "npm run build && nohup node --env-file=../../.env --import tsx/esm server/index.ts --workspace ../agent > /tmp/inbox.log 2>&1 & echo $! > /tmp/inbox.pid && echo \"Started (PID $(cat /tmp/inbox.pid)), logs at /tmp/inbox.log\"",
+    "start": "npm run build && nohup bash scripts/with-node22.sh node --env-file=../../.env --import tsx/esm server/index.ts --workspace ../agent > /tmp/inbox.log 2>&1 & echo $! > /tmp/inbox.pid && echo \"Started (PID $(cat /tmp/inbox.pid)), logs at /tmp/inbox.log\"",
     "stop": "if [ -f /tmp/inbox.pid ] && kill -0 $(cat /tmp/inbox.pid) 2>/dev/null; then kill $(cat /tmp/inbox.pid) && rm /tmp/inbox.pid && echo 'Stopped'; else echo 'Not running'; rm -f /tmp/inbox.pid; fi",
     "test:e2e": "playwright test --project=mocked",
     "test:e2e:api": "playwright test --project=api",

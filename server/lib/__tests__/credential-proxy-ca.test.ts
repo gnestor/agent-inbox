@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { X509Certificate } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { rootCertificates } from "node:tls"
 import {
   generateCA,
   generateCertForHost,
@@ -55,11 +56,24 @@ describe("credential-proxy-ca", () => {
     expect(x509.subjectAltName).toContain("DNS:api.notion.com")
   })
 
-  it("Scenario: CA cert is written to a temp file for `NODE_EXTRA_CA_CERTS` — writes ca.pem and returns its path", async () => {
+  it("Scenario: CA bundle is written to a temp file for `NODE_EXTRA_CA_CERTS` — writes ca.pem and returns its path", async () => {
     const path = await writeCACertFile()
     expect(path).toMatch(/ca\.pem$/)
     expect(path).toContain("inbox-proxy-ca-")
     expect(readFileSync(path, "utf8")).toContain("-----BEGIN CERTIFICATE-----")
+  })
+
+  it("Scenario: CA bundle includes the proxy CA AND the public root certificates — so the SDK's exclusive-`ca` TLS still trusts public hosts", async () => {
+    const proxyCa = await generateCA()
+    const bundle = readFileSync(await writeCACertFile(), "utf8")
+
+    // The proxy CA must be present (for MITM-intercepted hosts)
+    expect(bundle).toContain(proxyCa.cert.trim())
+
+    // A public root must also be present (for direct TLS to non-intercepted
+    // hosts like api.anthropic.com, since the SDK passes this file as the
+    // exclusive `ca`, replacing Node's default root store).
+    expect(bundle).toContain(rootCertificates[0]!.trim())
   })
 
   it("generates different certificates for different hosts", async () => {

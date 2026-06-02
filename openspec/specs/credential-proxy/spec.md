@@ -33,6 +33,9 @@ For Meta/Gemini-style query auth, the credential goes in the URL itself. We pars
 ### Why the proxy listens on 127.0.0.1 only
 The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0` would expose a credential lookup endpoint to the local network, gated only by guessable session tokens. `127.0.0.1` plus the agent subprocess being a child of the inbox server (sharing the loopback) is the trust boundary.
 
+### Why the server (and its agent subprocesses) must run on Node 22 LTS
+Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *own bundled* `undici`, while the actual `fetch` is driven by the host Node's *built-in* `undici`. On Node 26 (built-in `undici` 8.x) the two `Dispatcher` handler interfaces are incompatible — the bundled dispatcher hands the built-in fetch handler to a client that validates for the old `onError` method shape, throwing `InvalidArgumentError: invalid onError method` synchronously on every request. Users see `API Error: Unable to connect to API (UND_ERR_INVALID_ARG)`. Node 22's built-in `undici` matches the bundled version's handler interface, so the proxy path works. The server is pinned to Node 22 via `scripts/with-node22.sh` (wraps `dev:server` and `start`); the spawned agent subprocesses resolve `node` from the same PATH and inherit Node 22. This is a workaround until the SDK ships a fix for the mismatch — direct (non-proxied) connections are unaffected because both sides then use the matched built-in `undici`.
+
 ### What is NOT in scope
 - The credential vault itself (encryption, refresh) → `credentials-vault` spec.
 - Session-token issuance and validation → `auth-and-sessions` spec.
@@ -129,10 +132,10 @@ The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0
 - **THEN** the first call runs `selfsigned.generate({ days: 3650, keySize: 2048, extensions: [basicConstraints{cA:true}, keyUsage{keyCertSign,cRLSign}] })` and caches the result in `cachedCA`.
 - **AND** subsequent calls return the cached pair.
 
-#### Scenario: CA cert is written to a temp file for `NODE_EXTRA_CA_CERTS`
+#### Scenario: CA bundle is written to a temp file for `NODE_EXTRA_CA_CERTS`
 - **WHEN** the proxy starts
-- **THEN** `writeCACertFile()` creates a `mkdtempSync(${tmpdir()}/inbox-proxy-ca-)` directory, writes `ca.pem`, and returns the path.
-- **WHY:** `NODE_EXTRA_CA_CERTS` requires a file path; the agent subprocess (which we spawn) reads it at startup to extend its trust store.
+- **THEN** `writeCACertFile()` creates a `mkdtempSync(${tmpdir()}/inbox-proxy-ca-)` directory, writes `ca.pem` containing the proxy CA cert **followed by every cert in `tls.rootCertificates`**, and returns the path.
+- **WHY:** `NODE_EXTRA_CA_CERTS` requires a file path; the agent subprocess reads it at startup. The agent SDK does not treat it as *additional* trust — it reads the file and passes its contents as the **exclusive** `ca` for its undici dispatcher's TLS (`connect`/`requestTls`), which *replaces* the default public root store. A proxy-CA-only file therefore breaks direct TLS to non-intercepted hosts (e.g. `api.anthropic.com` reached via `NO_PROXY`): the real public cert can't be verified. Bundling `tls.rootCertificates` keeps the public roots trusted (direct hosts work) while still trusting the proxy's MITM certs (intercepted hosts work).
 
 #### Scenario: Per-host certs include SAN for the host
 - **WHEN** `generateCertForHost("api.notion.com", ca)` runs
@@ -147,8 +150,8 @@ The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0
 
 #### Scenario: `NO_PROXY` bypasses Anthropic API and telemetry hosts
 - **WHEN** `getProxyEnv(token)` is called
-- **THEN** `NO_PROXY` includes `.anthropic.com` (and other non-intercepted infra hosts the agent binary reaches) so traffic to the Claude API skips the proxy entirely.
-- **WHY:** The Bun-compiled native binary shipped in `@anthropic-ai/claude-agent-sdk` ≥0.2.138 mis-handles the local CONNECT tunnel for HTTPS targets, failing with a spurious `Unable to connect to API (ConnectionRefused / FailedToOpenSocket)`. The proxy adds no value for `api.anthropic.com` (it's not on the intercept allowlist — just a transparent pipe), so bypassing it lets the binary connect directly using its keychain-stored OAuth.
+- **THEN** `NO_PROXY` includes `.anthropic.com` (and other non-intercepted infra hosts the agent reaches) so traffic to the Claude API skips the proxy entirely.
+- **WHY:** `api.anthropic.com` is not on the intercept allowlist — the proxy would only transparent-tunnel it, adding nothing. Bypassing it lets the SDK connect directly using its keychain-stored OAuth. NOTE: `NO_PROXY` does **not** fix the Node 26 `UND_ERR_INVALID_ARG` failure — the SDK's bundled `undici` still builds a proxy dispatcher (and mismatches the host's built-in `undici`) whenever `HTTPS_PROXY` is present, regardless of `NO_PROXY`. The real fix is running on Node 22 (see Context). `NO_PROXY` remains a correct optimization, not a connectivity fix.
 
 ### Agent preload (`agent-proxy-preload.mjs`)
 
@@ -182,4 +185,5 @@ The proxy holds every user's credentials in resolvable form. Binding to `0.0.0.0
 - Per-host cert LRU cap added after a long-running agent generated 4,000+ certs for unique Shopify shop subdomains over a weekend, leaking ~150 MB.
 - The `agent-proxy-preload.mjs` route was preceded by a per-skill `setGlobalDispatcher` snippet copied into every skill — a maintenance hazard. Centralising via `NODE_OPTIONS=--import` means skills are credential-config-free.
 - Session token extraction originally only supported `Bearer`; switched to also accept `Basic <user:>` after `undici`/curl/python all naturally encoded userinfo as Basic when given `HTTPS_PROXY=http://token@host`.
-- `NO_PROXY` added (2026-05-11) bypassing `.anthropic.com` and other non-intercepted infra hosts. `@anthropic-ai/claude-agent-sdk` ≥0.2.138 swapped its Node-based CLI for a Bun-compiled native binary whose HTTP client mis-handles the local CONNECT tunnel for HTTPS targets — surfacing as `Unable to connect to API (ConnectionRefused / FailedToOpenSocket)` even though curl through the same proxy URL succeeds. Since `api.anthropic.com` was only ever transparent-tunneled (not on the intercept allowlist), bypassing the proxy entirely is the right answer.
+- `NO_PROXY` added (2026-05-11) bypassing `.anthropic.com` and other non-intercepted infra hosts. Since `api.anthropic.com` was only ever transparent-tunneled (not on the intercept allowlist), skipping the pointless tunnel is the right optimization.
+- (2026-06-02) Diagnosed `API Error: Unable to connect to API (UND_ERR_INVALID_ARG)` affecting every session after the server moved to Node 26. Root cause: with `HTTPS_PROXY` set, the SDK's *bundled* `undici` builds the proxy dispatcher while the host's *built-in* `undici` (8.x on Node 26) drives `fetch`; the dispatch-handler interfaces are incompatible (`invalid onError method`). Earlier the failure was misattributed to a "Bun binary CONNECT-tunnel bug" that `NO_PROXY` supposedly fixed — that narrative was wrong; `NO_PROXY` never fixed it (the bundled-undici proxy path is built whenever `HTTPS_PROXY` is present). Fix: pin the server + agent subprocesses to Node 22 LTS via `scripts/with-node22.sh` (built-in undici then matches the bundled handler interface). Also fixed a latent bug exposed during diagnosis: `writeCACertFile()` wrote only the proxy CA, but the SDK uses `NODE_EXTRA_CA_CERTS` as the exclusive TLS `ca` (replacing public roots) — direct TLS to `api.anthropic.com` failed cert verification. Now bundles `tls.rootCertificates` alongside the proxy CA.
