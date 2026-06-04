@@ -1,5 +1,4 @@
 -- Initial PostgreSQL schema for the Inbox app.
--- Translated from the original SQLite schema in server/db/schema.ts.
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,

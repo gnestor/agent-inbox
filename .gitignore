@@ -1,8 +1,5 @@
 node_modules
 dist
-data/inbox.db
-data/*.db-shm
-data/*.db-wal
 data/telemetry/
 .env
 .superpowers

@@ -123,7 +123,7 @@
 - [x] Audit use of inline styles vs. Tailwind classes
 - [ ] Use prettier across hammies-workspace
 - [ ] Add sort by to list view
-- [ ] Migrate from SQLite to local Postgres database
+- [x] Migrate from SQLite to local Postgres database
 - [ ] Sync qmd DB with Mac Mini, or store in Postgres
 - [ ] Sync sessions with Mac Mini
 - [ ] Remove the Projects filter from the sessions list view. We're only fetch session transcripts from the workspace's project folder in ~/.claude/projects now. 

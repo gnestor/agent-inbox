@@ -29,14 +29,13 @@ Server runs on port 3002, client on port 5175. Vite proxies `/api` to the server
 server/           # Hono API server
   routes/         # gmail, notion, sessions, webhooks
   lib/            # credentials, gmail, notion, session-manager
-  db/             # SQLite schema
+  db/             # Postgres pool + migrations
 src/              # React frontend
   components/     # email/, task/, session/, layout/
   hooks/          # use-emails, use-tasks, use-sessions, use-session-transcript, use-ws-stream
   api/            # Typed API client
   lib/            # Formatters, utilities
   types/          # TypeScript types
-data/             # SQLite database (gitignored)
 ```
 
 ## Auth
