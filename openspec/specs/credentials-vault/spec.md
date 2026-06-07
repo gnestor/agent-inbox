@@ -144,11 +144,33 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 - **THEN** every `.env` value is included EXCEPT `ANTHROPIC_API_KEY`.
 - **WHY:** Claude Code uses the user's subscription-based auth when no API key is present; presence of the key would silently switch to API-credits billing.
 
+### Access token refresh
+
+#### Scenario: A credential past its expiry is refreshed
+- **WHEN** a stored credential's `expiresAt` is at or before `now` (or within the 60s skew)
+- **THEN** `isCredentialExpired` reports true and the access token is refreshed before use.
+
+#### Scenario: A credential within the skew window is refreshed
+- **WHEN** `expiresAt` is in the future but within the skew margin
+- **THEN** it is treated as expired and refreshed early, so a token never lapses mid-request.
+
+#### Scenario: A comfortably valid credential is not refreshed
+- **WHEN** `expiresAt` is beyond the skew margin
+- **THEN** the cached access token is returned without a refresh call.
+
+#### Scenario: A credential with no expiry is not treated as expired
+- **WHEN** `expiresAt` is null/absent (e.g. a workspace bearer token)
+- **THEN** it is never refreshed on expiry grounds.
+
+**Refresh serialization (DB-concurrency invariant — not unit-asserted, so not a Scenario).** When two callers both find the token expired and attempt to refresh concurrently, a transaction-scoped Postgres advisory lock (`pg_advisory_xact_lock` on a hash of `user:integration`) forces them to run one at a time; the second re-reads under the lock and reuses the first's freshly-persisted token instead of issuing its own refresh. **WHY:** OAuth providers (notably QuickBooks) rotate the refresh token on every use and revoke the whole token family if a stale token is presented after a newer one — concurrent refreshers fork and kill the chain. This silently broke the data-pipeline tap (May 2026); see `packages/auth/openspec/changes/quickbooks-credential-vault/proposal.md`. The expiry-decision scenarios above cover the refresh *trigger*; the lock itself is verified by behavior, not a unit test.
+
 ## Technical Notes
 
 | Concern | Location |
 |---|---|
 | AES-256-GCM encrypt/decrypt + key validation | [server/lib/vault.ts:24-47](../../../server/lib/vault.ts#L24-L47) |
+| Access-token expiry decision (pure, testable) | [server/lib/credential-expiry.ts](../../../server/lib/credential-expiry.ts) |
+| Lazy refresh + advisory-lock serialization | `server/index.ts` `maybeRefreshToken` / `refreshOAuthAccessToken` (file owned by `health-rate-limit-logging`) |
 | User credential CRUD | [server/lib/vault.ts:57-128](../../../server/lib/vault.ts#L57-L128) |
 | Workspace credential CRUD | [server/lib/vault.ts:130-157](../../../server/lib/vault.ts#L130-L157) |
 | `resolveCredential` (user > workspace) | [server/lib/vault.ts:163-172](../../../server/lib/vault.ts#L163-L172) |
@@ -167,3 +189,4 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 - Origin captured at OAuth connect-time and threaded through to the callback because Vite's dev proxy strips `Origin` headers, breaking redirect-URI matching otherwise.
 - `getAgentEnv()` excludes `ANTHROPIC_API_KEY` so Claude sessions use the user's subscription instead of being silently billed to API credits.
 - `seedWorkspaceCredentials()` only inserts missing integrations — once a row exists in the vault, editing `.env` no longer affects it.
+- 2026-06-07: Token refresh serialized with a transaction-scoped Postgres advisory lock + double-check, after concurrent/independent refreshers forked the QuickBooks token chain and silently killed the data-pipeline tap. Expiry decision extracted to `credential-expiry.ts` for unit testing. First step of the unified credential-vault initiative (`packages/auth/openspec/changes/quickbooks-credential-vault/`).

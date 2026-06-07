@@ -34,6 +34,8 @@ import type { WorkspaceContext } from "./lib/workspace-context.js" // used in Ap
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
 import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials, type StoredCredential } from "./lib/vault.js"
+import { isCredentialExpired } from "./lib/credential-expiry.js"
+import { withTransaction } from "./db/pool.js"
 import { getIntegration } from "./lib/integrations.js"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
@@ -186,10 +188,29 @@ async function maybeRefreshToken(
   const cred = await getUserCredential(userEmail, integration)
   if (!cred) return null
 
-  const isExpired = cred.expiresAt && new Date(cred.expiresAt) <= new Date(Date.now() + 60_000)
-  if (!isExpired || !cred.refreshToken) return cred.token
+  // Fast path: still valid, or nothing to refresh with — no lock needed.
+  if (!isCredentialExpired(cred.expiresAt) || !cred.refreshToken) return cred.token
 
-  return refreshOAuthAccessToken(userEmail, integration, cred.refreshToken, cred)
+  // Serialize the refresh across concurrent callers AND processes. OAuth
+  // providers (notably QuickBooks) rotate the refresh token on every use and
+  // revoke the whole token family if a stale token is presented after a newer
+  // one was issued. Two refreshers racing therefore *kills* the chain — this is
+  // what silently broke the data-pipeline tap (see
+  // packages/auth/openspec/changes/quickbooks-credential-vault/proposal.md).
+  // A transaction-scoped Postgres advisory lock keyed on (user, integration)
+  // forces refreshes to happen one at a time; it auto-releases on commit.
+  return withTransaction(async (tx) => {
+    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `cred:${userEmail}:${integration}`,
+    ])
+    // Double-check under the lock: a caller we were queued behind may have
+    // already refreshed, in which case we reuse their freshly-persisted token
+    // instead of issuing a redundant (chain-forking) refresh.
+    const fresh = await getUserCredential(userEmail, integration)
+    if (!fresh) return cred.token
+    if (!isCredentialExpired(fresh.expiresAt) || !fresh.refreshToken) return fresh.token
+    return refreshOAuthAccessToken(userEmail, integration, fresh.refreshToken, fresh)
+  })
 }
 
 createCredentialProxy({
