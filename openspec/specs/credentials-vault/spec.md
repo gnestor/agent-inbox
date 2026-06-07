@@ -24,7 +24,7 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 
 ## Requirements
 
-> **The vault implementation moved to `@hammies/auth`.** Encryption, per-user/per-workspace CRUD, resolution order, and `.env` seeding are now owned by the [`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md) spec in `@hammies/auth` (with their tests). Inbox re-exports those functions via `server/lib/vault.ts` and configures the store with its pool at startup. The scenarios below cover what stays in inbox: the OAuth connections API, the `.env` Agent-SDK credential map, and on-demand token refresh.
+> **The vault implementation moved to `@hammies/auth`.** Encryption, per-user/per-workspace CRUD, resolution order, and `.env` seeding are now owned by the [`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md) spec in `@hammies/auth` (with their tests). Inbox re-exports those functions via `server/lib/vault.ts` and configures the store with its pool at startup. The scenarios below cover what stays in inbox: the OAuth connections API, the `.env` Agent-SDK credential map, and wiring the shared refresh + lock primitive into the credential proxy.
 
 ### Connections API
 
@@ -73,23 +73,7 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 
 ### Access token refresh
 
-#### Scenario: A credential past its expiry is refreshed
-- **WHEN** a stored credential's `expiresAt` is at or before `now` (or within the 60s skew)
-- **THEN** `isCredentialExpired` reports true and the access token is refreshed before use.
-
-#### Scenario: A credential within the skew window is refreshed
-- **WHEN** `expiresAt` is in the future but within the skew margin
-- **THEN** it is treated as expired and refreshed early, so a token never lapses mid-request.
-
-#### Scenario: A comfortably valid credential is not refreshed
-- **WHEN** `expiresAt` is beyond the skew margin
-- **THEN** the cached access token is returned without a refresh call.
-
-#### Scenario: A credential with no expiry is not treated as expired
-- **WHEN** `expiresAt` is null/absent (e.g. a workspace bearer token)
-- **THEN** it is never refreshed on expiry grounds.
-
-**Refresh serialization (DB-concurrency invariant — not unit-asserted, so not a Scenario).** When two callers both find the token expired and attempt to refresh concurrently, a transaction-scoped Postgres advisory lock (`pg_advisory_xact_lock` on a hash of `user:integration`) forces them to run one at a time; the second re-reads under the lock and reuses the first's freshly-persisted token instead of issuing its own refresh. **WHY:** OAuth providers (notably QuickBooks) rotate the refresh token on every use and revoke the whole token family if a stale token is presented after a newer one — concurrent refreshers fork and kill the chain. This silently broke the data-pipeline tap (May 2026); see `packages/auth/openspec/changes/quickbooks-credential-vault/proposal.md`. The expiry-decision scenarios above cover the refresh *trigger*; the lock itself is verified by behavior, not a unit test.
+> Refresh + the advisory-lock serialization moved to `@hammies/auth` ([`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md), with tests). Inbox's role is to (a) wire `maybeRefreshToken` into the credential proxy's `resolveCredential` callback, and (b) **implement the lock primitive**: the `withAdvisoryLock` on inbox's credential-store adapter acquires a dedicated pool connection, takes a `pg_advisory_lock`, and runs the whole critical section on that one connection so refresh is deadlock-free.
 
 ## Technical Notes
 
@@ -97,9 +81,8 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 |---|---|
 | Vault re-export shim (impl + tests in `@hammies/auth` `credential-vault`) | [server/lib/vault.ts](../../../server/lib/vault.ts) |
 | Vault implementation | `@hammies/auth` `src/server/credentials/*` (owned by `credential-vault`) |
-| Access-token expiry decision (pure, testable) | [server/lib/credential-expiry.ts](../../../server/lib/credential-expiry.ts) |
-| Lazy refresh + advisory-lock serialization | `server/index.ts` `maybeRefreshToken` / `refreshOAuthAccessToken` (file owned by `health-rate-limit-logging`) |
-| Store configured with inbox pool at startup | `server/index.ts` `configureCredentialStore(...)` (file owned by `health-rate-limit-logging`) |
+| Refresh + expiry + advisory-lock serialization | `@hammies/auth` `src/server/credentials/{refresh,expiry}.ts` (owned by `credential-vault`) |
+| Store configured + `withAdvisoryLock` impl (dedicated connection) at startup | `server/index.ts` `configureCredentialStore(...)` (file owned by `health-rate-limit-logging`) |
 | In-process .env credential map (legacy + Agent SDK env) | [server/lib/credentials.ts](../../../server/lib/credentials.ts) |
 | `getAgentEnv()` strips ANTHROPIC_API_KEY | [server/lib/credentials.ts:39-47](../../../server/lib/credentials.ts#L39-L47) |
 | `/connections` REST routes | [server/routes/connections.ts](../../../server/routes/connections.ts) |
@@ -116,3 +99,4 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 - `seedWorkspaceCredentials()` only inserts missing integrations — once a row exists in the vault, editing `.env` no longer affects it.
 - 2026-06-07: Token refresh serialized with a transaction-scoped Postgres advisory lock + double-check, after concurrent/independent refreshers forked the QuickBooks token chain and silently killed the data-pipeline tap. Expiry decision extracted to `credential-expiry.ts` for unit testing. First step of the unified credential-vault initiative (`packages/auth/openspec/changes/quickbooks-credential-vault/`).
 - 2026-06-07: Vault implementation (encrypt/decrypt, CRUD, resolve, seed) + its tests moved to `@hammies/auth` (`credential-vault` spec); `server/lib/vault.ts` is now a re-export shim and inbox injects its pool via `configureCredentialStore` at startup. Tables migrated to studio's DB. Step 2a of the unified credential-vault initiative.
+- 2026-06-07: Refresh + expiry moved to `@hammies/auth` too; the inline transaction-scoped lock was replaced by a `withAdvisoryLock` store primitive that inbox implements on a dedicated connection (deadlock-free, resolving the step-1 nested-connection caveat). `credential-expiry.ts` deleted (now in auth). Step 2c.

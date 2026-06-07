@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from "./db/pool.js"
+import { query, queryOne, execute, getPool } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
 import { serveStatic } from "@hono/node-server/serve-static"
@@ -33,10 +33,7 @@ import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scan
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
-import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials, configureCredentialStore, type StoredCredential } from "./lib/vault.js"
-import { isCredentialExpired } from "./lib/credential-expiry.js"
-import { withTransaction } from "./db/pool.js"
-import { getIntegration } from "./lib/integrations.js"
+import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken, type CredentialStore } from "./lib/vault.js"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
@@ -99,7 +96,33 @@ await initializeDatabase()
 
 // Point the shared @hammies/auth credential vault at inbox's Postgres pool.
 // Must run before any vault function (credential proxy, connections routes).
-configureCredentialStore({ query, queryOne, execute })
+// withAdvisoryLock runs the whole locked critical section on ONE dedicated
+// connection (the scoped store), so token refresh never needs a second pooled
+// connection — deadlock-free even under contention.
+configureCredentialStore({
+  query,
+  queryOne,
+  execute,
+  withAdvisoryLock: async (key, fn) => {
+    const client = await getPool().connect()
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
+      const scoped: CredentialStore = {
+        query: (sql, params) => client.query(sql, params).then((r) => r.rows),
+        queryOne: (sql, params) => client.query(sql, params).then((r) => r.rows[0]),
+        execute: (sql, params) => client.query(sql, params),
+      }
+      return await fn(scoped)
+    } finally {
+      try {
+        await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+      } catch {
+        // best-effort unlock; the connection release below drops any session lock anyway
+      }
+      client.release()
+    }
+  },
+})
 
 // Register each workspace path
 const registeredWorkspaces = await registerWorkspaces(workspacePaths)
@@ -125,97 +148,9 @@ if (firstWorkspace) {
   setDefaultWorkspaceId(firstWorkspace.id)
 }
 
-/**
- * Generic OAuth access token refresh using IntegrationConfig metadata.
- * Reads tokenUrl, tokenAuthMethod, clientIdEnv, clientSecretEnv from the
- * integration registry so each provider doesn't need a bespoke block.
- */
-async function refreshOAuthAccessToken(
-  userEmail: string,
-  integration: string,
-  refreshToken: string,
-  existing: StoredCredential,
-): Promise<string> {
-  const config = getIntegration(integration)
-  if (!config?.tokenUrl || !config.clientIdEnv || !config.clientSecretEnv) return existing.token
-
-  const clientId = process.env[config.clientIdEnv]
-  const clientSecret = process.env[config.clientSecretEnv]
-  if (!clientId || !clientSecret) return existing.token
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/x-www-form-urlencoded",
-    "Accept": "application/json",
-  }
-  const body: Record<string, string> = {
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  }
-
-  if (config.tokenAuthMethod === "basic") {
-    headers["Authorization"] = "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
-  } else {
-    body.client_id = clientId
-    body.client_secret = clientSecret
-  }
-
-  try {
-    const res = await fetch(config.tokenUrl, {
-      method: "POST",
-      headers,
-      body: new URLSearchParams(body),
-    })
-    const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
-    if (!res.ok) {
-      console.error(`${config.name} token refresh failed:`, data)
-      return existing.token
-    }
-    const expiresAt = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
-    await storeUserCredential(userEmail, integration, {
-      token: data.access_token!,
-      refreshToken: data.refresh_token ?? refreshToken,
-      scopes: existing.scopes,
-      expiresAt,
-    })
-    console.log(`${config.name} access token refreshed, expires: ${expiresAt}`)
-    return data.access_token!
-  } catch (err) {
-    console.error(`${config.name} token refresh error:`, err)
-    return existing.token
-  }
-}
-
-async function maybeRefreshToken(
-  userEmail: string,
-  integration: string,
-): Promise<string | null> {
-  const cred = await getUserCredential(userEmail, integration)
-  if (!cred) return null
-
-  // Fast path: still valid, or nothing to refresh with — no lock needed.
-  if (!isCredentialExpired(cred.expiresAt) || !cred.refreshToken) return cred.token
-
-  // Serialize the refresh across concurrent callers AND processes. OAuth
-  // providers (notably QuickBooks) rotate the refresh token on every use and
-  // revoke the whole token family if a stale token is presented after a newer
-  // one was issued. Two refreshers racing therefore *kills* the chain — this is
-  // what silently broke the data-pipeline tap (see
-  // packages/auth/openspec/changes/quickbooks-credential-vault/proposal.md).
-  // A transaction-scoped Postgres advisory lock keyed on (user, integration)
-  // forces refreshes to happen one at a time; it auto-releases on commit.
-  return withTransaction(async (tx) => {
-    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
-      `cred:${userEmail}:${integration}`,
-    ])
-    // Double-check under the lock: a caller we were queued behind may have
-    // already refreshed, in which case we reuse their freshly-persisted token
-    // instead of issuing a redundant (chain-forking) refresh.
-    const fresh = await getUserCredential(userEmail, integration)
-    if (!fresh) return cred.token
-    if (!isCredentialExpired(fresh.expiresAt) || !fresh.refreshToken) return fresh.token
-    return refreshOAuthAccessToken(userEmail, integration, fresh.refreshToken, fresh)
-  })
-}
+// OAuth refresh + advisory-lock serialization moved to @hammies/auth
+// (`maybeRefreshToken`). The lock primitive is supplied by inbox via the
+// `withAdvisoryLock` on the credential store adapter configured above.
 
 createCredentialProxy({
   resolveCredential: async (sessionToken, integration): Promise<ResolvedCredential | null> => {

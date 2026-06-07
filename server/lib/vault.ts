@@ -22,6 +22,9 @@ export {
   seedWorkspaceCredentials,
   configureCredentialStore,
   getCredentialStore,
+  maybeRefreshToken,
+  refreshOAuthAccessToken,
+  isCredentialExpired,
   type StoredCredential,
   type CredentialStore,
 } from "@hammies/auth/server"
