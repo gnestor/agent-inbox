@@ -2,19 +2,12 @@
 
 ## Purpose
 
-Encrypt and persist third-party API credentials (OAuth tokens, refresh tokens, API keys) in Postgres, scoped per-user and per-[workspace](../workspace/spec.md), with a single resolution order that downstream code can rely on. The vault is also the destination for two ingestion paths: interactive OAuth flows (`/api/connections/connect/...`) and one-time auto-seeding from a workspace's `.env` file.
+Inbox's use of the shared credential vault: drive the two ingestion paths — interactive OAuth flows (`/api/connections/connect/...`) and one-time auto-seeding from a workspace's `.env` — wire on-demand token refresh, and supply the Agent-SDK `.env` credential map. The vault itself (encryption, per-user/per-[workspace](../workspace/spec.md) storage, resolution order) moved to `@hammies/auth` ([`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md)); inbox re-exports it and injects its Postgres pool.
 
 ## Context
 
-### Two scopes, one resolution order
-Credentials live in two tables:
-- `user_credentials(user_email, integration)` — per-user, used for personal [integrations](../integrations/spec.md) (Gmail, Slack user token).
-- `workspace_credentials(workspace, integration)` — per-workspace, used when every member of a workspace shares the same credential (e.g. a Notion bot token).
-
-Resolution order is fixed: **user-scoped beats workspace-scoped.** A user with their own Gmail token uses it; a user without falls back to the workspace's. Reverse priority would be a security regression — a workspace token shadowing a user's personal grant.
-
-### Why AES-256-GCM with a single key
-We need authenticated encryption (so a tampered ciphertext fails decryption rather than producing garbage), and we need it for short strings stored in a relational DB. AES-256-GCM with `VAULT_SECRET` (64 hex chars = 32 bytes) is the minimum that satisfies both. Format on disk: `iv_hex:authTag_hex:ciphertext_hex` — the IV is generated per-encryption with `randomBytes(16)`, so the same plaintext encrypts to different ciphertexts each time.
+### The vault lives in `@hammies/auth`
+The encryption, two-scope storage (`user_credentials` / `workspace_credentials`), user-beats-workspace resolution order, and AES-256-GCM details are owned by the [`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md) spec in `@hammies/auth`. The tables themselves live in the studio DB. Inbox consumes the vault by re-exporting it (`server/lib/vault.ts`) and injecting its Postgres pool via `configureCredentialStore(...)` at startup. This section covers only inbox's *use* of the vault.
 
 ### Why a separate `credentials.ts` for `.env`-derived values
 `server/lib/credentials.ts` is the legacy, in-process credential map loaded from a workspace's `.env` at boot. It is **NOT a vault** — values are plaintext in process memory and are used for two specific flows:
@@ -31,73 +24,7 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 
 ## Requirements
 
-### Encryption
-
-#### Scenario: `VAULT_SECRET` validation at first use
-- **WHEN** any encrypt/decrypt operation runs and `VAULT_SECRET` is unset, shorter than 64 chars, or contains non-hex characters
-- **THEN** an error is thrown naming the variable and giving the exact `node -e "..."` command to generate one.
-- **WHY:** failing fast at first use beats producing ciphertexts that cannot be decrypted later.
-
-#### Scenario: `encrypt()` produces fresh IV per call
-- **WHEN** the same plaintext is passed to `encrypt()` twice
-- **THEN** the two outputs have different `iv_hex` prefixes and therefore different ciphertexts.
-- **AND** both decrypt back to the original plaintext.
-
-#### Scenario: `decrypt()` rejects tampered ciphertext
-- **WHEN** any of `iv`, `authTag`, or `ciphertext` is altered
-- **THEN** `decipher.final()` throws a GCM auth-tag mismatch error and no plaintext is returned.
-
-### Per-user credentials
-
-#### Scenario: `storeUserCredential` upserts encrypted token + optional refresh token
-- **WHEN** called with `{ token, refreshToken?, scopes?, expiresAt? }`
-- **THEN** `token` and (if provided) `refreshToken` are encrypted before insertion.
-- **AND** `scopes` and `expiresAt` are stored as-is (not encrypted).
-- **AND** an existing `(user_email, integration)` row is overwritten via `ON CONFLICT DO UPDATE`.
-
-#### Scenario: `getUserCredential` returns plaintext token or null
-- **WHEN** the row exists
-- **THEN** both `token` and (if present) `refreshToken` are decrypted before return.
-- **WHEN** the row does not exist
-- **THEN** the function returns `null` (not undefined, not throw).
-
-#### Scenario: `listUserCredentials` returns metadata only
-- **WHEN** called for a user
-- **THEN** the response includes `integration`, `scopes`, `expiresAt`, `updatedAt` for each row.
-- **AND** does NOT include the encrypted token or refresh token.
-- **WHY:** this is the data shape the connections UI shows; tokens never leave the server in list responses.
-
-#### Scenario: `deleteUserCredential` is idempotent
-- **WHEN** called for an integration the user has never connected
-- **THEN** the DELETE affects zero rows and the function returns normally.
-
-### Per-workspace credentials
-
-#### Scenario: `storeWorkspaceCredential` upserts a single encrypted token
-- **WHEN** called with `(workspace, integration, token)`
-- **THEN** the token is encrypted and upserted into `workspace_credentials`.
-- **AND** there is no `refreshToken`/`scopes`/`expiresAt` — workspace credentials are simple bearer tokens.
-
-#### Scenario: `getWorkspaceCredential` returns the decrypted token or null
-- **WHEN** the `(workspace, integration)` row exists, the encrypted token is decrypted and returned.
-- **WHEN** the row does not exist, `null` is returned.
-
-### Resolution order
-
-#### Scenario: User credential takes precedence
-- **WHEN** `resolveCredential(userEmail, workspace, integration)` is called and a `user_credentials` row exists for that user
-- **THEN** the user's token is returned regardless of any workspace credential.
-
-#### Scenario: Falls back to workspace credential
-- **WHEN** the user has no row for the integration
-- **THEN** `resolveCredential` returns the workspace credential, or `null` if neither exists.
-
-### Auto-seeding from `.env`
-
-#### Scenario: First-run seed inserts only missing integrations
-- **WHEN** `seedWorkspaceCredentials(workspaceName, envVars, envToIntegration)` runs
-- **THEN** for each `(envKey, integration)` pair where `envVars[envKey]` is non-empty AND no `workspace_credentials` row exists yet, the value is encrypted and inserted.
-- **AND** existing rows are NEVER overwritten — the vault is authoritative once seeded.
+> **The vault implementation moved to `@hammies/auth`.** Encryption, per-user/per-workspace CRUD, resolution order, and `.env` seeding are now owned by the [`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md) spec in `@hammies/auth` (with their tests). Inbox re-exports those functions via `server/lib/vault.ts` and configures the store with its pool at startup. The scenarios below cover what stays in inbox: the OAuth connections API, the `.env` Agent-SDK credential map, and on-demand token refresh.
 
 ### Connections API
 
@@ -168,19 +95,17 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 
 | Concern | Location |
 |---|---|
-| AES-256-GCM encrypt/decrypt + key validation | [server/lib/vault.ts:24-47](../../../server/lib/vault.ts#L24-L47) |
+| Vault re-export shim (impl + tests in `@hammies/auth` `credential-vault`) | [server/lib/vault.ts](../../../server/lib/vault.ts) |
+| Vault implementation | `@hammies/auth` `src/server/credentials/*` (owned by `credential-vault`) |
 | Access-token expiry decision (pure, testable) | [server/lib/credential-expiry.ts](../../../server/lib/credential-expiry.ts) |
 | Lazy refresh + advisory-lock serialization | `server/index.ts` `maybeRefreshToken` / `refreshOAuthAccessToken` (file owned by `health-rate-limit-logging`) |
-| User credential CRUD | [server/lib/vault.ts:57-128](../../../server/lib/vault.ts#L57-L128) |
-| Workspace credential CRUD | [server/lib/vault.ts:130-157](../../../server/lib/vault.ts#L130-L157) |
-| `resolveCredential` (user > workspace) | [server/lib/vault.ts:163-172](../../../server/lib/vault.ts#L163-L172) |
-| `seedWorkspaceCredentials` (.env → vault) | [server/lib/vault.ts:178-198](../../../server/lib/vault.ts#L178-L198) |
+| Store configured with inbox pool at startup | `server/index.ts` `configureCredentialStore(...)` (file owned by `health-rate-limit-logging`) |
 | In-process .env credential map (legacy + Agent SDK env) | [server/lib/credentials.ts](../../../server/lib/credentials.ts) |
 | `getAgentEnv()` strips ANTHROPIC_API_KEY | [server/lib/credentials.ts:39-47](../../../server/lib/credentials.ts#L39-L47) |
 | `/connections` REST routes | [server/routes/connections.ts](../../../server/routes/connections.ts) |
 | In-memory OAuth state map | [server/routes/connections.ts:24-35](../../../server/routes/connections.ts#L24-L35) |
 | Integration registry (auth type, scopes, token URLs) | [server/lib/integrations.ts](../../../server/lib/integrations.ts) |
-| Tables `user_credentials`, `workspace_credentials` | `server/db/migrations/001_initial_schema.sql:75-94` |
+| Credential tables now live in studio's DB | `packages/studio/src/server/credentials/schema.sql` (owned by `studio`) |
 
 ## History
 
@@ -190,3 +115,4 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 - `getAgentEnv()` excludes `ANTHROPIC_API_KEY` so Claude sessions use the user's subscription instead of being silently billed to API credits.
 - `seedWorkspaceCredentials()` only inserts missing integrations — once a row exists in the vault, editing `.env` no longer affects it.
 - 2026-06-07: Token refresh serialized with a transaction-scoped Postgres advisory lock + double-check, after concurrent/independent refreshers forked the QuickBooks token chain and silently killed the data-pipeline tap. Expiry decision extracted to `credential-expiry.ts` for unit testing. First step of the unified credential-vault initiative (`packages/auth/openspec/changes/quickbooks-credential-vault/`).
+- 2026-06-07: Vault implementation (encrypt/decrypt, CRUD, resolve, seed) + its tests moved to `@hammies/auth` (`credential-vault` spec); `server/lib/vault.ts` is now a re-export shim and inbox injects its pool via `configureCredentialStore` at startup. Tables migrated to studio's DB. Step 2a of the unified credential-vault initiative.

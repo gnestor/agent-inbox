@@ -91,7 +91,11 @@ const mockFetch = vi.fn()
 global.fetch = mockFetch
 
 const { connectionRoutes } = await import("../../routes/connections.js")
-const { getUserCredential } = await import("../vault.js")
+const { getUserCredential, configureCredentialStore } = await import("../vault.js")
+// The vault now lives in @hammies/auth and reads through an injected store —
+// point it at the mocked pool so the in-memory tables back it.
+const poolMock = await import("../../db/pool.js")
+configureCredentialStore({ query: poolMock.query, queryOne: poolMock.queryOne, execute: poolMock.execute })
 
 function createTestApp() {
   const app = new Hono()

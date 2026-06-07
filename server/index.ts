@@ -1,4 +1,4 @@
-import { query } from "./db/pool.js"
+import { query, queryOne, execute } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
 import { serveStatic } from "@hono/node-server/serve-static"
@@ -33,7 +33,7 @@ import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scan
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
-import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials, type StoredCredential } from "./lib/vault.js"
+import { resolveCredential, getUserCredential, storeUserCredential, seedWorkspaceCredentials, configureCredentialStore, type StoredCredential } from "./lib/vault.js"
 import { isCredentialExpired } from "./lib/credential-expiry.js"
 import { withTransaction } from "./db/pool.js"
 import { getIntegration } from "./lib/integrations.js"
@@ -96,6 +96,10 @@ log.info("Workspaces", { paths: workspacePaths.map(p => basename(p)) })
 
 // Initialize database
 await initializeDatabase()
+
+// Point the shared @hammies/auth credential vault at inbox's Postgres pool.
+// Must run before any vault function (credential proxy, connections routes).
+configureCredentialStore({ query, queryOne, execute })
 
 // Register each workspace path
 const registeredWorkspaces = await registerWorkspaces(workspacePaths)
