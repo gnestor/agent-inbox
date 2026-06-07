@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { writeFileSync, mkdirSync, rmSync } from "fs"
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
+import { writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from "fs"
 import { join } from "path"
 import { tmpdir, homedir } from "os"
 
@@ -25,6 +25,23 @@ const SESSION_ID = "test-transcript-123"
 const ENCODED_DIR = TEST_DIR.replace(/\//g, "-")
 const PROJECT_DIR = join(homedir(), ".claude", "projects", ENCODED_DIR)
 const JSONL_PATH = join(PROJECT_DIR, `${SESSION_ID}.jsonl`)
+
+// `findAgentSession` (exercised by `patchArtifactCode`) scans EVERY directory
+// under ~/.claude/projects and returns the first `${sessionId}.jsonl` match.
+// `tmpdir()` differs between environments (sandboxed `/tmp/...` vs direct
+// `/var/folders/...`), so prior runs in another environment leave a duplicate
+// project dir with the same session ids that can shadow the freshly-written
+// fixture and fail the patch tests with stale content. Wipe every test project
+// dir (across all encodings) before each test so exactly one copy ever exists.
+function cleanTestProjectDirs() {
+  const projectsRoot = join(homedir(), ".claude", "projects")
+  if (!existsSync(projectsRoot)) return
+  for (const name of readdirSync(projectsRoot)) {
+    if (name.endsWith("-test-session-transcript")) {
+      rmSync(join(projectsRoot, name), { recursive: true, force: true })
+    }
+  }
+}
 
 // Build a realistic JSONL with streaming deltas (stop_reason:null), tool
 // results, and render_output. The Agent SDK writes each streaming delta as
@@ -60,9 +77,12 @@ describe("session transcript and artifact patching", () => {
     vi.resetModules()
 
     // Write JSONL to ~/.claude/projects/{encoded-cwd}/ where session-manager expects it
+    cleanTestProjectDirs()
     mkdirSync(PROJECT_DIR, { recursive: true })
     writeFileSync(join(PROJECT_DIR, `${SESSION_ID}.jsonl`), buildTestJsonl())
   })
+
+  afterAll(() => cleanTestProjectDirs())
 
   it("Scenario: `getAgentSessionTranscript` returns parsed JSONL messages — getAgentSessionTranscript emits streaming deltas with content and uses line index as sequence", async () => {
     const { getAgentSessionTranscript } = await import("../session-manager.js")
@@ -222,9 +242,12 @@ function buildPatchJsonl(): string {
 describe("patchArtifactCode by tool_use id", () => {
   beforeEach(() => {
     vi.resetModules()
+    cleanTestProjectDirs()
     mkdirSync(PROJECT_DIR, { recursive: true })
     writeFileSync(join(PROJECT_DIR, `${PATCH_SESSION_ID}.jsonl`), buildPatchJsonl())
   })
+
+  afterAll(() => cleanTestProjectDirs())
 
   async function readBlock(toolUseId: string) {
     const fs = await import("fs")

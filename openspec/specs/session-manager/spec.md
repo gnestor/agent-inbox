@@ -241,7 +241,7 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 | WebSocket client registry, sequenced broadcast buffer, cursor replay | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L592-L732) |
 | Presence tracking with debounce + reaper | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L497-L591) |
 | JSONL transcript reader, head/tail meta extraction, search | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L1432-L1740) |
-| Artifact code patching (JSONL is source of truth) | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L1987-L2063) |
+| Artifact code patching (JSONL is source of truth) | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L2150-L2226) |
 | `AskUserQuestion` resolver registry | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L53-L73) |
 | System-prompt assembly composing `SESSION_INSTRUCTIONS` + source context | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L825-L828) |
 | `<SessionTab>` top-level Sessions tab composition | [src/components/session/SessionTab.tsx](../../../src/components/session/SessionTab.tsx) |
