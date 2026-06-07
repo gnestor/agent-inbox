@@ -34,6 +34,7 @@ import type { WorkspaceContext } from "./lib/workspace-context.js" // used in Ap
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
 import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken, type CredentialStore } from "./lib/vault.js"
+import { credentialBrokerRoutes, startCredentialKeepAlive } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
@@ -123,6 +124,13 @@ configureCredentialStore({
     }
   },
 })
+
+// Keep the OAuth refresh-token chains alive on the always-on host so they never
+// idle into expiry. Opt-in (CREDENTIAL_KEEPALIVE=1) so it doesn't fire from
+// dev/test server boots and hit live OAuth providers.
+if (process.env.CREDENTIAL_KEEPALIVE === "1") {
+  startCredentialKeepAlive()
+}
 
 // Register each workspace path
 const registeredWorkspaces = await registerWorkspaces(workspacePaths)
@@ -225,6 +233,13 @@ app.get("/api/health", async (c) => {
     ok ? 200 : 503,
   )
 })
+
+// Credential broker (service-token auth, NOT user-cookie) — lets out-of-process
+// consumers (the data-pipeline tap) fetch a current QBO access token. Mounted
+// before the user-session middleware. No-op unless CREDENTIAL_BROKER_TOKEN is set.
+if (process.env.CREDENTIAL_BROKER_TOKEN) {
+  app.route("/api/credentials", credentialBrokerRoutes({ serviceToken: process.env.CREDENTIAL_BROKER_TOKEN }))
+}
 
 // Auth middleware — protect all other /api routes and set user context
 app.use("/api/*", async (c, next) => {
