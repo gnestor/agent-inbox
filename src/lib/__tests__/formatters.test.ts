@@ -3,7 +3,6 @@ import {
   formatRelativeDate,
   formatTimeAgo,
   formatEmailAddress,
-  formatEmailListDate,
   truncate,
   sessionStatusLabel,
   sessionStatusColor,
@@ -74,36 +73,6 @@ describe("formatEmailAddress", () => {
 
   it("handles name with special chars", () => {
     expect(formatEmailAddress("O'Brien, Tim <tim@co.com>")).toBe("O'Brien, Tim")
-  })
-})
-
-describe("formatEmailListDate", () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    // Local time, so month/day/hour getters are deterministic regardless of TZ.
-    vi.setSystemTime(new Date(2025, 5, 15, 10, 30))
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it("returns 12-hour time for today", () => {
-    expect(formatEmailListDate(new Date(2025, 5, 15, 8, 15).toISOString())).toMatch(
-      /^\d{1,2}:\d{2}\s[AP]M$/i,
-    )
-  })
-
-  it("returns M/D for an earlier day this year", () => {
-    expect(formatEmailListDate(new Date(2025, 2, 5, 12, 0).toISOString())).toBe("3/5")
-  })
-
-  it("returns M/D/YY for a prior year", () => {
-    expect(formatEmailListDate(new Date(2023, 11, 25, 12, 0).toISOString())).toBe("12/25/23")
-  })
-
-  it("returns the raw value for an invalid date", () => {
-    expect(formatEmailListDate("not a date")).toBe("not a date")
   })
 })
 

@@ -1,5 +1,5 @@
 import type { PluginItem, FieldDef } from "@/types/plugin"
-import { formatEmailAddress } from "@/lib/formatters"
+import { formatEmailAddress, formatRelativeDate } from "@/lib/formatters"
 
 const TITLE_KEYS = ["title", "name", "channelName", "subject", "text", "summary"]
 const SUBTITLE_KEYS = ["subtitle", "description", "latestText", "preview", "from"]
@@ -37,30 +37,25 @@ export function getItemSubtitle(item: PluginItem | Record<string, unknown>, fiel
   return undefined
 }
 
-export function getItemTimestamp(item: PluginItem | Record<string, unknown>, fieldSchema?: FieldDef[]): string {
-  if (fieldSchema) {
-    const tsField = fieldSchema.find((f) => f.listRole === "timestamp")
-    if (tsField) {
-      const val = item[tsField.id]
-      if (val) {
-        if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
-        if (typeof val === "string") {
-          const n = Number(val)
-          if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString()
-          return new Date(val).toLocaleDateString()
-        }
-      }
-    }
+/** Normalize a raw field value (unix seconds, numeric string, or ISO string)
+ *  to a date string `formatRelativeDate` can parse; null if not date-like. */
+function toDateString(val: unknown): string | null {
+  if (typeof val === "number") return new Date(val * 1000).toISOString()
+  if (typeof val === "string" && val) {
+    const n = Number(val)
+    return isNaN(n) ? val : new Date(n * 1000).toISOString()
   }
-  for (const key of TIMESTAMP_KEYS) {
-    const val = item[key]
-    if (!val) continue
-    if (typeof val === "number") return new Date(val * 1000).toLocaleDateString()
-    if (typeof val === "string") {
-      const n = Number(val)
-      if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString()
-      return new Date(val).toLocaleDateString()
-    }
+  return null
+}
+
+export function getItemTimestamp(item: PluginItem | Record<string, unknown>, fieldSchema?: FieldDef[]): string {
+  // Prefer the schema's timestamp field, else fall back to common keys. All
+  // list views render dates via the shared relative format (sessions style).
+  const tsField = fieldSchema?.find((f) => f.listRole === "timestamp")
+  const keys = tsField ? [tsField.id, ...TIMESTAMP_KEYS] : TIMESTAMP_KEYS
+  for (const key of keys) {
+    const ds = toDateString(item[key])
+    if (ds) return formatRelativeDate(ds)
   }
   return ""
 }
