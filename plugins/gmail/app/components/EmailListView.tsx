@@ -3,7 +3,7 @@ import { useNavigation } from "@/hooks/use-navigation"
 import { ListView } from "@/components/shared/ListView"
 import { useEmails } from "../hooks/use-emails"
 import { getEmailLabels } from "../api"
-import { formatEmailAddress } from "@/lib/formatters"
+import { formatEmailAddress, formatEmailListDate } from "@/lib/formatters"
 import { BadgeToggleMenu } from "@/components/shared/BadgeToggleMenu"
 import { usePreference } from "@/hooks/use-preferences"
 import { Mail } from "lucide-react"
@@ -152,6 +152,7 @@ export function EmailListView() {
       getItemId={getThreadId}
       selectedId={getSelectedItemId("plugin:gmail")}
       onSelect={selectItem}
+      formatTimestamp={formatEmailListDate}
     >
       <ListView.Header title="Emails">
         <ListView.Filters

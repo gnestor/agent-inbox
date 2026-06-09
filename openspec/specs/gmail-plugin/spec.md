@@ -36,6 +36,9 @@ Gmail has a fixed set of system labels (`INBOX`, `UNREAD`, `STARRED`, `IMPORTANT
 ### Why label badges are capped at 3
 Labels are text — three is the empirical cap before list rows become unreadable. The plugin's `addDerivedFields` slices at `MAX_LABEL_BADGES = 3`; users with more than three labels per thread see a truncated set. Filtering via the labels filter is the way to find threads with specific other labels.
 
+### List row presentation
+`EmailListView` derives `fromDisplay` via `formatEmailAddress` (the sender's display name with the ` <addr>` stripped, falling back to the bare address), and passes `formatTimestamp={formatEmailListDate}` to `ListView` for a compact mail-client column: 12-hour `h:MM AM/PM` for today, `M/D` for earlier days this year, `M/D/YY` for prior years.
+
 ### What is NOT in scope
 - The OAuth flow that produces the Google credential → `auth-and-sessions` and `credentials-vault`.
 - The HTML email sanitiser called inside `gmail.parseMessage` → `email-sanitizer`.

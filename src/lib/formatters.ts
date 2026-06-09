@@ -13,6 +13,23 @@ export function formatEmailAddress(address: string): string {
   return match?.[1] ? match[1].replace(/"/g, "") : address
 }
 
+/**
+ * Compact mail-client list timestamp: 12-hour `h:MM AM/PM` for today, `M/D` for
+ * earlier days this year, `M/D/YY` for prior years.
+ */
+export function formatEmailListDate(value: string): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const now = new Date()
+  const sameYear = d.getFullYear() === now.getFullYear()
+  const sameDay = sameYear && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  if (sameDay) {
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  }
+  const md = `${d.getMonth() + 1}/${d.getDate()}`
+  return sameYear ? md : `${md}/${String(d.getFullYear()).slice(-2)}`
+}
+
 export function sessionStatusLabel(status: string): string {
   switch (status) {
     case "running":

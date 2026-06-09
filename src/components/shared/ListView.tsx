@@ -26,6 +26,8 @@ interface ListViewContextValue {
   getItemId: (item: Record<string, unknown>) => string
   selectedId?: string
   onSelect: (id: string, index: number) => void
+  /** Formats the timestamp field's raw value for display (default: relative). */
+  formatTimestamp: (value: string) => string
 }
 
 const ListViewContext = createContext<ListViewContextValue | null>(null)
@@ -46,6 +48,8 @@ interface ListViewRootProps<T extends Record<string, unknown>> {
   getItemId: (item: T) => string
   selectedId?: string
   onSelect: (id: string, index: number) => void
+  /** Override the timestamp display formatter (default: relative date). */
+  formatTimestamp?: (value: string) => string
   children: React.ReactNode
 }
 
@@ -55,6 +59,7 @@ function ListViewRoot<T extends Record<string, unknown>>({
   getItemId,
   selectedId,
   onSelect,
+  formatTimestamp = formatRelativeDate,
   children,
 }: ListViewRootProps<T>) {
   const ctx = useMemo(
@@ -64,8 +69,9 @@ function ListViewRoot<T extends Record<string, unknown>>({
       getItemId: getItemId as (item: Record<string, unknown>) => string,
       selectedId,
       onSelect,
+      formatTimestamp,
     }),
-    [items, fieldSchema, getItemId, selectedId, onSelect],
+    [items, fieldSchema, getItemId, selectedId, onSelect, formatTimestamp],
   )
 
   return (
@@ -162,7 +168,8 @@ function ListViewBody({
   emptyIcon = Bot,
   emptyMessage,
 }: ListViewBodyProps) {
-  const { items, fieldSchema, getItemId, selectedId, onSelect } = useListViewContext()
+  const { items, fieldSchema, getItemId, selectedId, onSelect, formatTimestamp } =
+    useListViewContext()
 
   const titleField = useMemo(() => getTitleField(fieldSchema), [fieldSchema])
   const subtitleField = useMemo(() => getSubtitleField(fieldSchema), [fieldSchema])
@@ -235,7 +242,7 @@ function ListViewBody({
               ? String(extractFieldValue(item, subtitleField.id) ?? "")
               : undefined
             const timestamp = timestampField
-              ? formatRelativeDate(String(extractFieldValue(item, timestampField.id) ?? ""))
+              ? formatTimestamp(String(extractFieldValue(item, timestampField.id) ?? ""))
               : ""
 
             return (
