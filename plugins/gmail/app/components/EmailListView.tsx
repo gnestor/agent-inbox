@@ -10,8 +10,8 @@ import { Mail } from "lucide-react"
 import type { FieldDef } from "@/types/plugin"
 
 export const emailFieldSchema: FieldDef[] = [
-  { id: "fromDisplay", label: "From", type: "text", listRole: "title" },
-  { id: "subject", label: "Subject", type: "text", listRole: "subtitle" },
+  { id: "fromDisplay", label: "From", type: "text", listRole: "subtitle" },
+  { id: "subject", label: "Subject", type: "text", listRole: "title" },
   { id: "date", label: "Date", type: "date", listRole: "timestamp" },
   {
     id: "isUnread",
