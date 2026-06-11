@@ -50,12 +50,6 @@ describe("core plugin", () => {
       expect(desc).toContain("present_files")
       expect(desc).toContain("render_output")
     })
-
-    it("Scenario: `context-manager` activates for curation operations", () => {
-      expect(existsSync(join(coreDir, "skills", "context-manager", "SKILL.md"))).toBe(true)
-      const desc = skillDescription("context-manager")
-      expect(desc.toLowerCase()).toContain("context")
-    })
   })
 
   describe("Hooks manifest", () => {

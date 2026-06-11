@@ -19,7 +19,7 @@ Built-in `gmail` ships with `query()` and basic schemas; the `agent` workspace's
 The Notion plugin file exports two plugins (`notion-tasks`, `notion-pages`) backed by the same Notion client. Forcing two files would duplicate the client setup; allowing `export default [taskPlugin, pagePlugin]` keeps shared infra together. `toPluginArray` normalises both shapes.
 
 ### Why `isValidPlugin` accepts skills-only plugins
-The `core` plugin has `hasSkills: true` and no `query`/`itemToContext` — it provides Claude skills without a sidebar tab. Without the `hasSkills === true` clause, validation would reject it and the `plugin-creator` / `render-output` / `context-manager` skills would be unavailable to agents.
+The `core` plugin has `hasSkills: true` and no `query`/`itemToContext` — it provides Claude skills without a sidebar tab. Without the `hasSkills === true` clause, validation would reject it and the `plugin-creator` / `render-output` skills would be unavailable to agents.
 
 ### Why `loadPlugins` clears non-builtin entries on reload
 Hot-reload writes the new plugin set into the registry. If the previous reload had registered a plugin that no longer exists in the new directory listing, the stale entry would linger forever. Clearing all non-builtin entries before re-scanning ensures the registry is exactly what's on disk; built-ins are protected by the `builtinIds` set so a workspace can't accidentally clobber them.
@@ -38,7 +38,7 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 
 ### What is NOT in scope
 - Per-plugin `query`/`mutate` body content (Gmail labels, Notion blocks) → individual plugin specs (e.g. `gmail-plugin`).
-- The `core` skills package (plugin-creator, render-output, context-manager) → `core-plugin` spec.
+- The `core` skills package (plugin-creator, render-output) → `core-plugin` spec.
 - Credential resolution inside `PluginContext.getCredential` and Google token refresh → `context-system` (specifically `plugin-context.ts`).
 - Skills metadata file format → consumed via the Claude SDK's skills loader, not this spec.
 - Sidebar nav and item selection → `navigation` spec.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The built-in `core` plugin — a skills-only plugin (`hasSkills: true`, no `query`, no `fieldSchema`) that bundles three foundational Claude skills into every [workspace](../workspace/spec.md): `plugin-creator` (creates new workspace plugins), `render-output` (output-rendering guidance for `create_file`/`present_files` and `render_output`), and `context-manager` (manages the workspace context index). Because the plugin has no `fieldSchema`, it doesn't appear as a sidebar tab — its only contribution is the `skills/` directory the Claude Agent SDK auto-discovers when sessions launch.
+The built-in `core` plugin — a skills-only plugin (`hasSkills: true`, no `query`, no `fieldSchema`) that bundles two foundational Claude skills into every [workspace](../workspace/spec.md): `plugin-creator` (creates new workspace plugins) and `render-output` (output-rendering guidance for `create_file`/`present_files` and `render_output`). Because the plugin has no `fieldSchema`, it doesn't appear as a sidebar tab — its only contribution is the `skills/` directory the Claude Agent SDK auto-discovers when sessions launch.
 
 ## Context
 
@@ -12,12 +12,13 @@ The Claude Agent SDK loads skills from plugins it discovers in the working direc
 ### Why core has no `fieldSchema`
 Skills-only plugins should not appear as data tabs. The `GET /api/plugins` route filters `p.fieldSchema?.length > 0`; without a schema, core is invisible to the sidebar but still loads its skills. The plugin loader's validation (`isValidPlugin`) explicitly accepts the `hasSkills === true` path so the plugin doesn't fail registration without `query`/`itemToContext`.
 
-### Why three skills, not one
+### Why two skills, not one
 - `plugin-creator` activates on phrases like "create a plugin for X" / "connect X to inbox" — it walks the user through plugin scaffolding, including translating existing Claude Code skills into the `Plugin` interface.
 - `render-output` is the output-rendering guidebook: when the agent has a visual artifact to surface, this skill teaches it the `create_file` + `present_files` flow (preferred for React) and the `render_output` flow (preferred for tables/charts/markdown).
-- `context-manager` is the operations manual for the curated `${workspace}/context/*.md` knowledge base that the context-system pipeline produces and consumes.
 
 Bundling them as separate skill files lets the SDK activate each only when its description matches the user's request — narrowing the agent's instruction context to what's relevant.
+
+The `context-manager` skill (operations manual for the curated `${workspace}/context/*.md` knowledge base) used to live here but moved to the agent workspace's own skill set (`packages/agent/.claude/skills/context-manager/`) — it is workspace-specific, depends on agent-only skills (`google-workspace`, `google-bigquery`, `notion`) and the agent's `context/` tree, so it belongs with the workspace it operates on rather than in the inbox app's core bundle. The Agent SDK still auto-discovers it for sessions launched in that workspace.
 
 ### Why `render-output` is preferred over inline markdown
 The skill explicitly directs the agent to choose `create_file` + `present_files` for React artifacts (interactive UIs, dashboards, forms) and `render_output` for structured data. This pairs with the `session-instructions` rule "one `render_output` per artifact" and the `artifacts-and-render-tools` panel-per-output UI: the skill teaches HOW, the [session instructions](../session-instructions/spec.md) teach WHEN.
@@ -31,7 +32,7 @@ Claude plugins can register hooks; core has no hook bindings yet but ships the m
 ### What is NOT in scope
 - The `Plugin` interface itself, validation, and registry merge → `plugin-system`.
 - The `render_output` MCP tool implementation that skill files describe → `artifacts-and-render-tools`.
-- The context curation pipeline that `context-manager` operates against → `context-system`.
+- The context curation pipeline and the `context-manager` skill that operates against it → `context-system` (the skill now lives in the agent workspace, not this plugin).
 - The `SESSION_INSTRUCTIONS` static string that complements these skills at session start → `session-instructions`.
 
 ## Requirements
@@ -62,10 +63,6 @@ Claude plugins can register hooks; core has no hook bindings yet but ships the m
 - **AND** the skill names two flows: (1) `create_file(description, path, file_text)` then `present_files(filepaths)` — preferred for `.jsx` (React), `.html`, `.md`, `.svg`, with path convention `/mnt/user-data/outputs/<name>.<ext>`; (2) `render_output` for structured data (table/json/markdown/html/chart/react with `data: { code: "<JSX string>" }`).
 - **AND** the skill specifies the update path: re-call `create_file` with the same path, then `present_files` again — only the latest version renders.
 
-#### Scenario: `context-manager` activates for curation operations
-- **WHEN** the agent needs to update or read the `${workspace}/context/*.md` knowledge base
-- **THEN** the SDK activates `plugins/core/skills/context-manager/SKILL.md`.
-
 ### Hooks manifest
 
 #### Scenario: Empty hooks manifest is a deliberate placeholder
@@ -81,7 +78,6 @@ Claude plugins can register hooks; core has no hook bindings yet but ships the m
 | Empty hooks manifest placeholder | [plugins/core/hooks/hooks.json](../../../plugins/core/hooks/hooks.json) |
 | Skill: create new workspace plugins | [plugins/core/skills/plugin-creator/SKILL.md](../../../plugins/core/skills/plugin-creator/SKILL.md) |
 | Skill: output-rendering guidance | [plugins/core/skills/render-output/SKILL.md](../../../plugins/core/skills/render-output/SKILL.md) |
-| Skill: context-index management | [plugins/core/skills/context-manager/SKILL.md](../../../plugins/core/skills/context-manager/SKILL.md) |
 | Plugin-creator references (interface, patterns, slack example) | [plugins/core/skills/plugin-creator/references/](../../../plugins/core/skills/plugin-creator/references/) |
 | Render-output references (app components, component patterns) | [plugins/core/skills/render-output/references/](../../../plugins/core/skills/render-output/references/) |
 
@@ -91,3 +87,4 @@ Claude plugins can register hooks; core has no hook bindings yet but ships the m
 - `render-output`'s preference order was flipped from "render_output for everything" to "create_file + present_files for React" after sessions kept jamming JSX strings into the `react` render type with escaping bugs; the file-based path is more robust.
 - `plugin-creator`'s "check skills first" step was added after the third copy of an API client appeared inline in a plugin file when the same client already existed in `skills/<service>/scripts/`.
 - The empty `hooks/hooks.json` stub was kept after a discussion about deleting it — keeping it in place means a future hook addition is a one-file Edit rather than a manifest restructure.
+- `context-manager` was moved out of the core bundle to the agent workspace's own skill set (`packages/agent/.claude/skills/context-manager/`). It was always workspace-specific — it operates on the agent's `context/*.md` tree and shells out to agent-only skills (`google-workspace`, `google-bigquery`, `notion`) — so it belongs with the workspace it serves rather than in the inbox app's portable core plugin. The Agent SDK auto-discovers it from the workspace's `.claude/skills/`, so sessions launched there keep the skill; the core bundle dropped from three skills to two.

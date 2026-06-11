@@ -4,7 +4,6 @@
  * Provides foundational skills for the Inbox app:
  * - plugin-creator: creates new workspace plugins
  * - render-output: structured output rendering for sessions
- * - context-manager: manages the workspace context index
  */
 
 import type { Plugin } from "../../src/types/plugin.js"
