@@ -118,3 +118,50 @@ describe("extractSessionMeta", () => {
     expect(meta.summary).toBeNull()
   })
 })
+
+describe("extractSessionMeta — title resolution (custom-title / last-prompt)", () => {
+  const lastPrompt = (text: string) => JSON.stringify({ type: "last-prompt", lastPrompt: text, sessionId: "s1" })
+  const customTitle = (text: string) => JSON.stringify({ type: "custom-title", customTitle: text, sessionId: "s1" })
+
+  it("custom-title wins over everything", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    const head = [userMsg("You are the Hammies marketing lead. …long role prompt…"), assistantMsg()]
+    const tail = [lastPrompt("Draft a Memorial Day email"), customTitle("Memorial Day campaign")]
+    expect(extractSessionMeta(head, tail).title).toBe("Memorial Day campaign")
+  })
+
+  it("last-prompt beats the first (role) prompt", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    const head = [userMsg("You are the Hammies marketing lead. …long role prompt…"), assistantMsg()]
+    const meta = extractSessionMeta(head, [lastPrompt("Summarize Q2 ad performance")])
+    expect(meta.title).toBe("Summarize Q2 ad performance")
+    expect(meta.firstPrompt).toContain("You are the Hammies marketing lead")
+  })
+
+  it("falls back to the first prompt with no custom-title or last-prompt", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    expect(extractSessionMeta([userMsg("Fix the login bug"), assistantMsg()], []).title).toBe("Fix the login bug")
+  })
+
+  it("the latest custom-title wins (last-wins across the file)", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    const tail = [customTitle("Old title"), lastPrompt("a"), customTitle("New title")]
+    expect(extractSessionMeta([userMsg("hi")], tail).title).toBe("New title")
+  })
+})
+
+describe("extractSessionMeta — spec scenario", () => {
+  const lastPrompt = (text: string) => JSON.stringify({ type: "last-prompt", lastPrompt: text, sessionId: "s1" })
+  const customTitle = (text: string) => JSON.stringify({ type: "custom-title", customTitle: text, sessionId: "s1" })
+
+  it("Scenario: title resolution prefers custom-title, then last-prompt, then the first prompt", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    const role = userMsg("You are the Hammies marketing lead. …long role prompt…")
+    // custom-title present → wins
+    expect(extractSessionMeta([role], [lastPrompt("draft email"), customTitle("Campaign")]).title).toBe("Campaign")
+    // no custom-title → last-prompt
+    expect(extractSessionMeta([role], [lastPrompt("draft email")]).title).toBe("draft email")
+    // neither → first real prompt
+    expect(extractSessionMeta([userMsg("Fix the login bug")], []).title).toBe("Fix the login bug")
+  })
+})

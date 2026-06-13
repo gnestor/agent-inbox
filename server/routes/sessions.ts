@@ -131,7 +131,10 @@ sessionRoutes.get("/", async (c) => {
         id: s.sessionId,
         status: db.status,
         prompt,
-        summary: db.summary || s.summary || null,
+        // Title authority is the JSONL `custom-title` (resolved in s.summary:
+        // custom-title → last-prompt → first prompt), so a rename/curated title
+        // round-tripped to the JSONL wins; the DB summary is the fallback.
+        summary: s.summary || db.summary || null,
         startedAt: db.started_at || new Date(s.lastModified).toISOString(),
         updatedAt: db.updated_at || new Date(s.lastModified).toISOString(),
         completedAt: db.completed_at || null,
@@ -299,6 +302,17 @@ sessionRoutes.patch("/:id", async (c) => {
 
   await sessions.updateSessionSummary(sessionId, summary.slice(0, 200))
   return c.json({ ok: true })
+})
+
+/**
+ * POST /api/sessions/backfill-titles — one-shot migration: write each session's
+ * DB title into its JSONL `custom-title` (only real titles, not the initial
+ * prompt slice) so Claude Code + Studio show the titles Inbox generated/curated.
+ * Idempotent; safe to re-run.
+ */
+sessionRoutes.post("/backfill-titles", async (c) => {
+  const result = await sessions.backfillCustomTitles()
+  return c.json(result)
 })
 
 sessionRoutes.post("/:id/answer", async (c) => {

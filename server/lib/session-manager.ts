@@ -266,6 +266,27 @@ export function workspaceProjectsDir(cwd?: string): string {
   return join(homedir(), ".claude", "projects", encodedDir)
 }
 
+/**
+ * Persist a session's editable title as a `custom-title` entry appended to its
+ * JSONL — the same field Claude Code reads/writes, so a rename here shows up in
+ * Claude Code's own session list and in Studio too (last-write-wins). Skips the
+ * append if the latest custom-title already equals `title`. Best-effort: a
+ * missing/unwritable file is a no-op (the DB `summary` still holds the rename).
+ */
+function writeCustomTitle(filePath: string, title: string, sessionId: string): boolean {
+  const trimmed = title.trim()
+  if (!trimmed || !fs.existsSync(filePath)) return false
+  try {
+    // Don't re-append if the file's latest custom-title is already this value.
+    const { headLines, tailLines } = readHeadTailLines(filePath, 20, 300, fs)
+    if (extractSessionMeta(headLines, tailLines).customTitle === trimmed) return false
+    fs.appendFileSync(filePath, JSON.stringify({ type: "custom-title", customTitle: trimmed, sessionId }) + "\n")
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Legacy compat — default workspace path for callers not yet migrated
 let defaultWorkspacePath = ""
 let defaultWorkspaceName = ""
@@ -485,6 +506,14 @@ export async function updateSessionSummary(sessionId: string, summary: string) {
     "UPDATE sessions SET summary = $1, updated_at = $2 WHERE id = $3",
     [summary, new Date().toISOString(), sessionId],
   )
+  // Also persist as a `custom-title` JSONL entry so the rename / auto-name
+  // round-trips to Claude Code (and Studio), which read the same field.
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    if (agentSession) writeCustomTitle(agentSession.filePath, summary, sessionId)
+  } catch {
+    /* JSONL not found / unwritable — DB summary still holds the title */
+  }
 }
 
 export async function getSessionRecord(sessionId: string) {
@@ -492,6 +521,29 @@ export async function getSessionRecord(sessionId: string) {
     "SELECT * FROM sessions WHERE id = $1",
     [sessionId],
   )
+}
+
+/**
+ * One-shot migration: write each session's DB title into its JSONL `custom-title`
+ * so Claude Code (and Studio) show the titles Inbox generated/curated. Only
+ * **real** titles are backfilled — rows whose `summary` differs from the initial
+ * prompt slice (`left(prompt, 80)`); the bad first-prompt summaries are skipped
+ * so they're re-derived from `last-prompt` going forward instead of being frozen
+ * as a custom title. Idempotent (writeCustomTitle skips when already current).
+ */
+export async function backfillCustomTitles(): Promise<{ scanned: number; written: number }> {
+  const rows = await query<SessionDbRow>(
+    `SELECT id, summary FROM sessions
+     WHERE summary IS NOT NULL AND summary <> '' AND summary <> left(prompt, $1)`,
+    [INITIAL_SUMMARY_LENGTH],
+  )
+  let written = 0
+  for (const row of rows) {
+    if (!row.summary) continue
+    const agentSession = await findAgentSession(row.id)
+    if (agentSession && writeCustomTitle(agentSession.filePath, row.summary, row.id)) written++
+  }
+  return { scanned: rows.length, written }
 }
 
 /** Count lines in a session's JSONL file. */
@@ -1441,14 +1493,16 @@ export async function watchProjectsDir(): Promise<void> {
     for (const filePath of filePaths) {
       try {
         const stat = fs.statSync(filePath)
-        const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
-        const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+        // Wide tail so the latest `last-prompt` / `custom-title` (followed by
+        // assistant/tool lines) are seen for title resolution.
+        const { headLines, tailLines } = readHeadTailLines(filePath, 20, 300, fs)
+        const { cwd, firstPrompt, title } = extractSessionMeta(headLines, tailLines)
         if (!cwd) continue
 
         const sessionId = filePath.split("/").pop()!.replace(".jsonl", "")
         await importAgentSession(sessionId, {
           firstPrompt,
-          summary,
+          summary: title,
           lastModified: stat.mtimeMs,
         })
       } catch { /* skip unreadable files */ }
@@ -1485,13 +1539,13 @@ export async function findAgentSession(sessionId: string) {
 
     try {
       const stat = fs.statSync(filePath)
-      const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
-      const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+      const { headLines, tailLines } = readHeadTailLines(filePath, 20, 300, fs)
+      const { cwd, firstPrompt, title } = extractSessionMeta(headLines, tailLines)
       if (!cwd) return null
 
       return {
         sessionId,
-        summary,
+        summary: title,
         lastModified: stat.mtimeMs,
         firstPrompt,
         cwd,
@@ -1602,40 +1656,67 @@ function formatScheduledTaskPrompt(text: string): string | null {
   return name ? `Routine: ${name}` : null
 }
 
+/** Clean a raw prompt string into a title candidate (or null if it's tooling noise). */
+function promptTitle(raw: string): string | null {
+  if (!raw || isNonPromptText(raw)) return null
+  return (formatScheduledTaskPrompt(raw) ?? raw).slice(0, 200)
+}
+
+/**
+ * Derive session metadata from a JSONL's head + tail. The display `title` is
+ * resolved from Claude Code's own metadata — `custom-title` (the editable,
+ * cross-tool title that Studio/Inbox renames write) → `last-prompt` (the latest
+ * user prompt, far better than the first message, which for role-primed sessions
+ * is the long system prompt) → first real prompt → SDK result. `custom-title`
+ * and `last-prompt` are appended throughout the file and last-wins, so we scan
+ * all available lines.
+ */
 export function extractSessionMeta(headLines: string[], tailLines: string[]) {
   let cwd: string | null = null
   let firstPrompt: string | null = null
   let summary: string | null = null
+  let customTitle: string | null = null
+  let lastPrompt: string | null = null
   let hasContent = false
 
-  // Head lines: find cwd, firstPrompt, and whether the session has any
-  // substantive content (user or assistant message) at all.
-  for (const line of headLines) {
-    if (!line.trim()) continue
-    try {
-      const msg = JSON.parse(line)
-      if (!cwd && msg.cwd) cwd = msg.cwd
-      const isUser = msg.type === "user" || msg.role === "user"
-      const isAssistant = msg.type === "assistant" || msg.role === "assistant"
-      if (isUser || isAssistant) hasContent = true
-      if (!firstPrompt && isUser) {
-        const content = msg.message?.content ?? msg.content
-        if (typeof content === "string" && !isNonPromptText(content)) {
-          firstPrompt = formatScheduledTaskPrompt(content) ?? content.slice(0, 200)
-        } else if (Array.isArray(content)) {
-          const texts = content
-            .filter((b: Record<string, unknown>) => b.type === "text" && !isNonPromptText((b.text as string) ?? ""))
-            .map((b: Record<string, unknown>) => b.text as string)
-          const joined = texts.join(" ")
-          if (joined) firstPrompt = formatScheduledTaskPrompt(joined) ?? joined.slice(0, 200)
+  const scan = (lines: string[]) => {
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const msg = JSON.parse(line)
+        if (!cwd && msg.cwd) cwd = msg.cwd
+        if (msg.type === "custom-title" && typeof msg.customTitle === "string" && msg.customTitle.trim()) {
+          customTitle = msg.customTitle.trim().slice(0, 200)
+          continue
         }
+        if (msg.type === "last-prompt" && typeof msg.lastPrompt === "string") {
+          lastPrompt = promptTitle(msg.lastPrompt) ?? lastPrompt
+          continue
+        }
+        const isUser = msg.type === "user" || msg.role === "user"
+        const isAssistant = msg.type === "assistant" || msg.role === "assistant"
+        if (isUser || isAssistant) hasContent = true
+        if (!firstPrompt && isUser) {
+          const content = msg.message?.content ?? msg.content
+          if (typeof content === "string") {
+            firstPrompt = promptTitle(content)
+          } else if (Array.isArray(content)) {
+            const joined = content
+              .filter((b: Record<string, unknown>) => b.type === "text" && !isNonPromptText((b.text as string) ?? ""))
+              .map((b: Record<string, unknown>) => b.text as string)
+              .join(" ")
+            if (joined) firstPrompt = promptTitle(joined)
+          }
+        }
+      } catch {
+        /* skip */
       }
-    } catch {
-      /* skip */
     }
   }
+  scan(headLines)
+  scan(tailLines)
 
-  // Tail lines: find summary (result message is typically near the end)
+  // SDK result (final assistant text) as a last-resort summary.
   for (let i = tailLines.length - 1; i >= 0; i--) {
     const line = tailLines[i]!
     if (!line.trim()) continue
@@ -1650,7 +1731,8 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
     }
   }
 
-  return { cwd, firstPrompt, summary, hasContent }
+  const title = customTitle || lastPrompt || firstPrompt || summary || null
+  return { cwd, firstPrompt, summary, hasContent, customTitle, lastPrompt, title }
 }
 
 /**
@@ -1692,19 +1774,19 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
         try {
           const stat = fs.statSync(filePath)
           // Read more lines than the list view to capture long prompts
-          const { headLines, tailLines } = readHeadTailLines(filePath, 50, 10, fs)
+          const { headLines, tailLines } = readHeadTailLines(filePath, 50, 300, fs)
 
           // Search raw content — avoids the 200-char firstPrompt truncation limit
           const rawHead = headLines.join("\n").toLowerCase()
           const rawTail = tailLines.join("\n").toLowerCase()
           if (!rawHead.includes(qLower) && !rawTail.includes(qLower)) continue
 
-          const { cwd, firstPrompt, summary } = extractSessionMeta(headLines, tailLines)
+          const { cwd, firstPrompt, title } = extractSessionMeta(headLines, tailLines)
           if (!cwd) continue
 
           results.push({
             sessionId: fileName.replace(".jsonl", ""),
-            summary,
+            summary: title,
             lastModified: stat.mtimeMs,
             firstPrompt,
             cwd,
@@ -1768,8 +1850,10 @@ export async function listAllAgentSessions(wsPath?: string) {
         const filePath = join(dirPath, fileName)
         try {
           const stat = fs.statSync(filePath)
-          const { headLines, tailLines } = readHeadTailLines(filePath, 20, 10, fs)
-          const { cwd, firstPrompt, summary, hasContent } = extractSessionMeta(headLines, tailLines)
+          // Wide tail so the latest `last-prompt` / `custom-title` (followed by
+          // assistant/tool lines) are captured for title resolution.
+          const { headLines, tailLines } = readHeadTailLines(filePath, 20, 300, fs)
+          const { cwd, firstPrompt, title, hasContent } = extractSessionMeta(headLines, tailLines)
 
           const resolvedCwd = knownCwd ?? cwd
           if (!resolvedCwd) continue
@@ -1783,7 +1867,7 @@ export async function listAllAgentSessions(wsPath?: string) {
 
           results.push({
             sessionId: fileName.replace(".jsonl", ""),
-            summary,
+            summary: title,
             lastModified: stat.mtimeMs,
             firstPrompt,
             cwd: resolvedCwd,

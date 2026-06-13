@@ -232,6 +232,18 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 - **THEN** if `session.summary === session.prompt.slice(0, 80)` (i.e. user hasn't manually renamed), `generateSessionTitle(transcript)` is called and the result becomes the new summary.
 - **AND** sessions with fewer than 2 transcript entries are skipped (trivial / immediate errors).
 
+### Session title resolution (custom-title / last-prompt)
+
+The display title is resolved from Claude Code's own JSONL metadata — `custom-title` (the editable, cross-tool title) → `last-prompt` (the latest user prompt, far better than the first message, which for role-primed sessions is the long system prompt) → first real prompt → SDK result. `custom-title` + `last-prompt` are appended throughout the file and last-wins. The JSONL is the title authority: the session list prefers the JSONL-resolved title over the cached DB `summary`. Renames/auto-names write the title back to the JSONL (`writeCustomTitle`) so Studio and Claude Code show it too.
+
+#### Scenario: title resolution prefers custom-title, then last-prompt, then the first prompt
+- **WHEN** `extractSessionMeta` runs on a session whose first message is a role/system prompt
+- **THEN** `title` is the latest `custom-title` if present, else the latest `last-prompt`, else the first real prompt, else the SDK result.
+
+**Write-back + migration** (thin wrappers over the resolution above, verified in-browser):
+- `updateSessionSummary(id, title)` (manual rename or auto-name) updates the DB `summary` **and** appends a `{ type: "custom-title", customTitle, sessionId }` line to the session's JSONL via `writeCustomTitle` (skipped if the latest custom-title already equals it), so Claude Code and Studio read the same title.
+- `POST /api/sessions/backfill-titles` (`backfillCustomTitles`) is the one-shot migration: every session whose DB `summary` is a real title (`summary <> left(prompt, 80)`) gets that title written to its JSONL `custom-title`; bad first-prompt summaries are skipped so they're re-derived from `last-prompt` going forward. Idempotent.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -240,7 +252,8 @@ A streaming session emits dozens of events per second. Writing `UPDATE sessions 
 | Env builder excluding sensitive vars and integrating credential proxy | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L105-L148) |
 | WebSocket client registry, sequenced broadcast buffer, cursor replay | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L592-L732) |
 | Presence tracking with debounce + reaper | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L497-L591) |
-| JSONL transcript reader, head/tail meta extraction, search | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L1432-L1740) |
+| JSONL transcript reader, head/tail meta extraction (`extractSessionMeta` title resolution), search | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L1432-L1740) |
+| Title persistence + migration: `writeCustomTitle` (append `custom-title` to JSONL on rename/auto-name), `backfillCustomTitles` (DB titles → JSONL one-shot) | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts) |
 | Artifact code patching (JSONL is source of truth) | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L2150-L2226) |
 | `AskUserQuestion` resolver registry | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L53-L73) |
 | System-prompt assembly composing `SESSION_INSTRUCTIONS` + source context | [server/lib/session-manager.ts](../../../server/lib/session-manager.ts#L825-L828) |

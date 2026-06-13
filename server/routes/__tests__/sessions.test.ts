@@ -230,8 +230,9 @@ describe("session routes", () => {
       const data = await res.json()
       expect(data.sessions).toHaveLength(1)
       expect(data.sessions[0].id).toBe("s1")
-      // DB summary takes priority
-      expect(data.sessions[0].summary).toBe("DB summary")
+      // The JSONL-resolved title (custom-title → last-prompt → …) is the authority;
+      // the DB summary is the fallback. Status still comes from the DB record.
+      expect(data.sessions[0].summary).toBe("JSONL summary")
       expect(data.sessions[0].status).toBe("running")
     })
 
