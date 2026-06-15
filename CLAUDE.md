@@ -23,6 +23,8 @@ The `--workspace` arg (defaults to `../agent`) sets the agent's working director
 
 Server runs on port 3002, client on port 5175. Vite proxies `/api` to the server.
 
+**Stopping the dev servers:** `npm run dev:stop`. Ctrl-C on `npm run dev` does not reliably kill the child Vite/tsx processes — orphans survive and serve stale code on the same ports. `dev:stop` force-kills whatever is on ports 3002 and 5175, so a clean restart is `npm run dev:stop && npm run dev`.
+
 ## Key Directories
 
 ```

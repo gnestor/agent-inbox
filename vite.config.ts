@@ -92,6 +92,8 @@ export default defineConfig(({ mode }) => {
       "/api": {
         target: "http://localhost:3002",
         changeOrigin: true,
+        // Required: without ws:true the /api/ws upgrade is HTTP-proxied and
+        // fails silently, so the multiplexed session WebSocket never connects in dev.
         ws: true,
         configure: (proxy) => {
           proxy.on("error", (err, _req, res) => {
