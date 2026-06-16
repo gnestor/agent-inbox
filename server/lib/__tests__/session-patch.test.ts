@@ -225,6 +225,19 @@ describe("PATCH /sessions/:id", () => {
       body: JSON.stringify({ summary: "Renamed JSONL session" }),
     })
 
+    // A rename writes the new title to the JSONL `custom-title` (updateSessionSummary
+    // → writeCustomTitle), so findAgentSession now resolves the renamed title. GET
+    // prefers this JSONL-resolved title (same authority as the list), so the rename
+    // round-trips — simulate the JSONL update here.
+    mockFindAgentSession.mockResolvedValue({
+      sessionId: "sess-jsonl-1",
+      project: "test-workspace",
+      firstPrompt: "JSONL prompt",
+      summary: "Renamed JSONL session",
+      lastModified: new Date("2026-03-01T10:00:00Z").getTime(),
+      cwd: "/test/workspace",
+    })
+
     // GET the session
     const getRes = await app.request("http://localhost/api/sessions/sess-jsonl-1")
     expect(getRes.status).toBe(200)

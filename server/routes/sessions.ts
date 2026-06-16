@@ -225,7 +225,11 @@ sessionRoutes.get("/:id", async (c) => {
         id: session.id,
         status,
         prompt: session.prompt,
-        summary: session.summary,
+        // Title authority is the JSONL `custom-title` (resolved in
+        // `agentSession.summary` via `extractSessionMeta`), same as the list
+        // route — the DB `summary` can be a stale pre-rename value, which would
+        // make the detail header disagree with the list.
+        summary: agentSession?.summary || session.summary,
         startedAt: session.started_at,
         updatedAt: session.updated_at,
         completedAt: session.completed_at,
