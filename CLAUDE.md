@@ -49,33 +49,11 @@ src/              # React frontend
 
 ## Feature Workflow
 
-**IMPORTANT: These steps are mandatory after EVERY task — not optional.**
+Follow the root [CLAUDE.md](../../CLAUDE.md) → **Development Workflow + Completion Checklist** (read/update spec → tests → typecheck → `docs:coverage` → tests → `/simplify` → browser → commit). It's mandatory after every task. Inbox-specific points that extend it:
 
-After implementing any feature, fix, or refactor, complete this sequence in order before considering the task done:
-
-1. **Read/update the owning spec** — identify the owning domain in [`openspec/specs/`](openspec/specs/). The Technical Notes table of each spec is the ownership map (enforced by `npm run docs:coverage`). If behavior, architecture, data contracts, UI flow, or verification expectations change, update the spec before implementation. Specs must keep separate `Purpose`, `Context`, `Spec`, `Technical Notes`, and `History` sections.
-
-2. **Write tests** — every change needs tests. Write them before or alongside the implementation:
-   - Pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts`
-   - React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx`
-   - Do not skip this step even for refactors that preserve the same interface.
-
-3. **Run tests** — `npm run test:ci` must pass (tsc + vitest). Fix failures before proceeding.
-
-4. **Run docs coverage** — `npm run docs:coverage` must pass. If a file was added or moved, update the owning spec's Technical Notes table.
-
-5. **Update `TODO.md`** — mark completed items `- [x]` and add new items if the work introduced follow-up tasks.
-
-6. **Browser verification** — for any visible UI change, use `playwright-cli` with the persistent `hammies` profile (see workspace root [CLAUDE.md](../../CLAUDE.md) → Completion Checklist) to verify the changed flow and check for console errors. Playwright e2e tests (`npm run test:e2e`) are optional supplemental coverage — useful for complex cross-boundary flows, but the browser skill is the primary verification method.
-
-7. **Commit** — stage only files for this task, then commit:
-   ```
-   feat: short description
-
-   - Key implementation detail
-   - Another detail if needed
-   ```
-   Use `fix:` for bug fixes, `refactor:` for refactors, `test:` for test-only changes.
+- **Test locations** — pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node env); React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom`). Run via `npm run test:ci` (tsc + vitest); tests also auto-run on save via a PostToolUse hook. See **Testing** below for e2e tiers.
+- **`TODO.md`** — mark completed items `- [x]`, add follow-ups.
+- **Browser verification** — inbox is **Google-OAuth-gated**, so use the authenticated **`-s=hammies`** profile against `http://localhost:5175` (details under Testing → Browser testing). The browser skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
 
 ## Testing
 
