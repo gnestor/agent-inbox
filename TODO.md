@@ -239,3 +239,5 @@
 - [x] Unify templates — `_template.md` and `SCHEMAS.md` both updated to match `entity-curator.ts` schema.
 - [ ] Move noise/alias filters to JSON config (deferred) — current rules are hard-coded in TS.
 - [ ] Alias map / source_entities canonicalization pass (deferred) — same-person variants produce duplicate queue entries.
+- [ ] **Context-base lint/audit agent (deferred)** — scheduled (e.g. weekly) agent over the curated `${workspace}/context/*.md` pages that flags epistemic drift: contradictions across pages, stale claims (outdated `last_updated`), orphaned pages (no inbound cross-links), missing pages (referenced in a `[[link]]` but absent), and dead source links (deleted Notion pages / Gmail threads). Automates the manual cleanup we now do by hand. (The `log.md` changelog idea from the same analysis is already implemented.)
+- [ ] **Generated `index.md` navigation layer (deferred)** — auto-generate (from page frontmatter) an index of all curated pages with one-line summaries, grouped by entity type, injected as cheap L1 orientation so an agent gets a map before reaching for expensive qmd hybrid search. (Analogous to the memory store's `MEMORY.md`.)

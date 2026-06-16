@@ -53,7 +53,7 @@ Follow the root [CLAUDE.md](../../CLAUDE.md) → **Development Workflow + Comple
 
 - **Test locations** — pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node env); React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom`). Run via `npm run test:ci` (tsc + vitest); tests also auto-run on save via a PostToolUse hook. See **Testing** below for e2e tiers.
 - **`TODO.md`** — mark completed items `- [x]`, add follow-ups.
-- **Browser verification** — inbox is **Google-OAuth-gated**, so use the authenticated **`-s=hammies`** profile against `http://localhost:5175` (details under Testing → Browser testing). The browser skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
+- **Browser verification** — test on the clean **`-s=app`** profile with a minted dev cookie (no Google login needed); inbox verifies the same `hammies_session` JWT as Studio. See Testing → Browser testing. The browser skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
 
 ## Testing
 
@@ -98,13 +98,16 @@ curl -s -X POST http://localhost:3002/api/backfill/sessions \
 
 Use `npm run dev` from the inbox package directory to start both servers (Vite client + Hono API). The client runs on port 5175 (or next available) and proxies `/api` to the server on port 3002.
 
-To test in the browser, use `playwright-cli` with the persistent `hammies` profile (see workspace root [CLAUDE.md](../../CLAUDE.md) → Completion Checklist):
+Test on the clean **`-s=app`** profile — inbox needs no browser Google login. Mint a dev session cookie and inject it (inbox + Studio share the `hammies_session` JWT, so one cookie auths both):
 
 ```bash
-playwright-cli -s=hammies open --persistent http://localhost:5175
-playwright-cli -s=hammies --raw snapshot
-playwright-cli -s=hammies console        # check for errors
-playwright-cli -s=hammies close
+JWT=$(node --env-file=../../.env ../../scripts/mint-dev-cookie.mjs)   # default grant@hammies.com
+playwright-cli -s=app open --persistent http://localhost:5175
+playwright-cli -s=app cookie-set hammies_session "$JWT" --domain localhost --path /
+playwright-cli -s=app goto http://localhost:5175
+playwright-cli -s=app --raw snapshot
+playwright-cli -s=app console        # check for errors
+playwright-cli -s=app close
 ```
 
 Key flows to verify:
