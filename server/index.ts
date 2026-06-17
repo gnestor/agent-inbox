@@ -1,4 +1,5 @@
-import { query, queryOne, execute, getPool } from "./db/pool.js"
+import { query } from "./db/pool.js"
+import { vaultQuery, vaultQueryOne, vaultExecute, getVaultPool } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
 import { serveStatic } from "@hono/node-server/serve-static"
@@ -95,17 +96,21 @@ log.info("Workspaces", { paths: workspacePaths.map(p => basename(p)) })
 // Initialize database
 await initializeDatabase()
 
-// Point the shared @hammies/auth credential vault at inbox's Postgres pool.
+// Point the shared @hammies/auth credential vault at the STUDIO DB (its single
+// canonical home — STUDIO_DATABASE_URL), NOT inbox's own DATABASE_URL. The vault
+// is a separate database from inbox's tables; binding it here to the same DB
+// studio + the data-pipeline broker use means one shared row + one advisory lock
+// keyspace, so concurrent refreshers can't fork the QBO refresh-token chain.
 // Must run before any vault function (credential proxy, connections routes).
 // withAdvisoryLock runs the whole locked critical section on ONE dedicated
 // connection (the scoped store), so token refresh never needs a second pooled
 // connection — deadlock-free even under contention.
 configureCredentialStore({
-  query,
-  queryOne,
-  execute,
+  query: vaultQuery,
+  queryOne: vaultQueryOne,
+  execute: vaultExecute,
   withAdvisoryLock: async (key, fn) => {
-    const client = await getPool().connect()
+    const client = await getVaultPool().connect()
     try {
       await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
       const scoped: CredentialStore = {
