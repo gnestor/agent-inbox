@@ -34,8 +34,8 @@ import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scan
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
-import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken, type CredentialStore } from "./lib/vault.js"
-import { credentialBrokerRoutes, startCredentialKeepAlive } from "@hammies/auth/server"
+import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken } from "./lib/vault.js"
+import { credentialBrokerRoutes, startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
@@ -102,32 +102,15 @@ await initializeDatabase()
 // studio + the data-pipeline broker use means one shared row + one advisory lock
 // keyspace, so concurrent refreshers can't fork the QBO refresh-token chain.
 // Must run before any vault function (credential proxy, connections routes).
-// withAdvisoryLock runs the whole locked critical section on ONE dedicated
+// pgAdvisoryLockAdapter runs the whole locked critical section on ONE dedicated
 // connection (the scoped store), so token refresh never needs a second pooled
-// connection — deadlock-free even under contention.
+// connection — deadlock-free under contention. Shared with studio so the lock
+// keyspace is identical by construction (one implementation, not two copies).
 configureCredentialStore({
   query: vaultQuery,
   queryOne: vaultQueryOne,
   execute: vaultExecute,
-  withAdvisoryLock: async (key, fn) => {
-    const client = await getVaultPool().connect()
-    try {
-      await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
-      const scoped: CredentialStore = {
-        query: (sql, params) => client.query(sql, params).then((r) => r.rows),
-        queryOne: (sql, params) => client.query(sql, params).then((r) => r.rows[0]),
-        execute: (sql, params) => client.query(sql, params),
-      }
-      return await fn(scoped)
-    } finally {
-      try {
-        await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
-      } catch {
-        // best-effort unlock; the connection release below drops any session lock anyway
-      }
-      client.release()
-    }
-  },
+  withAdvisoryLock: pgAdvisoryLockAdapter(getVaultPool()),
 })
 
 // Keep the OAuth refresh-token chains alive on the always-on host so they never
