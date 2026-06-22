@@ -264,11 +264,25 @@ export async function searchThreads(accessToken: string, query: string, maxResul
 
   const threads = await fetchBatched(listResult.threads.map((t: { id: string }) => t.id), (id: string) => getThreadSummary(accessToken, id))
 
+  // Gmail's `threads.list?q=` returns results in a search-relevance order, NOT by
+  // date — a thread from today can land below week-old ones, and the order even
+  // differs between `is:starred` and `label:Starred`. The web UI sorts by date,
+  // so re-sort the fetched page newest-first to match it. (Per-page: across page
+  // boundaries the order is still approximate, since the API page itself isn't
+  // date-ordered — acceptable vs. fetching every match.)
+  threads.sort((a, b) => threadDateMs(b) - threadDateMs(a))
+
   return {
     threads,
     nextPageToken: listResult.nextPageToken || null,
     historyId: listResult.historyId || null,
   }
+}
+
+/** Latest-message timestamp (ms) for sorting; 0 when the Date header is unparseable. */
+function threadDateMs(t: ThreadSummary): number {
+  const ms = Date.parse(t.date)
+  return Number.isNaN(ms) ? 0 : ms
 }
 
 export async function getHistory(accessToken: string, startHistoryId: string): Promise<GmailApiHistoryResponse> {

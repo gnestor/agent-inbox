@@ -230,6 +230,40 @@ describe("Gmail API functions", () => {
       expect(url).toContain("maxResults=10")
       expect(url).toContain("pageToken=page2")
     })
+
+    it("Scenario: sorts the fetched page newest-first (Gmail's q= order is not date-sorted)", async () => {
+      const threadDetail = (id: string, date: string) =>
+        okJson({
+          id,
+          messages: [
+            {
+              id: `${id}-m1`,
+              threadId: id,
+              labelIds: ["INBOX"],
+              snippet: "",
+              payload: {
+                headers: [
+                  { name: "From", value: "a@example.com" },
+                  { name: "Subject", value: id },
+                  { name: "Date", value: date },
+                ],
+                mimeType: "text/plain",
+                body: { data: "" },
+              },
+            },
+          ],
+        })
+      // Thread list comes back in a non-date order (as Gmail's q= search does);
+      // the detail fetches resolve in list order.
+      mockFetch
+        .mockReturnValueOnce(okJson({ threads: [{ id: "old" }, { id: "new" }, { id: "mid" }], nextPageToken: null }))
+        .mockReturnValueOnce(threadDetail("old", "1 Jan 2025 00:00:00 +0000"))
+        .mockReturnValueOnce(threadDetail("new", "1 Jun 2025 00:00:00 +0000"))
+        .mockReturnValueOnce(threadDetail("mid", "1 Mar 2025 00:00:00 +0000"))
+
+      const result = await searchThreads("test-token", "is:starred")
+      expect(result.threads.map((t) => t.id)).toEqual(["new", "mid", "old"])
+    })
   })
 
   describe("getThread", () => {

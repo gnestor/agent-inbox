@@ -67,6 +67,10 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 - **THEN** the search starts with `filters.q` if present (else `in:inbox`); appends `is:<flag>` for each comma-separated flag in `filters.flags`; appends `label:<label>` for each in `filters.labels`.
 - **AND** the function fetches threads (page size 20) and the user-label map in parallel, calls `addDerivedFields` to attach `isImportant`/`isStarred`/`labels`, returns `{ items, nextCursor }`.
 
+#### Scenario: sorts the fetched page newest-first (Gmail's q= order is not date-sorted)
+- **WHEN** `searchThreads` fetches a page whose threads Gmail returned in search-relevance order (not by date — e.g. a thread with a message from today below week-old ones)
+- **THEN** the returned threads are re-sorted by the latest message's date descending, so the list matches Gmail's web-UI ordering. (Per-page only: across page boundaries the order stays approximate, since each API page itself isn't date-ordered.)
+
 #### Scenario: `getItem` returns the full thread including sanitised HTML
 - **WHEN** the route invokes `getItem(threadId, ctx)`
 - **THEN** the function calls `gmail.getThread(accessToken, threadId)` which is the integration boundary that runs `parseMessage` (the sanitiser entry) on every message body.
@@ -151,6 +155,7 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 
 ## History
 
+- `searchThreads` now sorts each fetched page newest-first by the latest message's date. Gmail's `threads.list?q=` returns results in a search-relevance order (not by date — a thread with a message from today could land below week-old ones, and the order even differed between `is:starred` and `label:Starred`), so the list disagreed with Gmail's web UI and with Studio. Same fix applied to the Studio Email app.
 - The Gmail plugin was originally a server route (`server/routes/gmail.ts`) plus a frontend hook; collapsed into a plugin once the `Plugin` interface gained enough surface (`routes`, `components`, `itemToContext`) to express it without a special case.
 - The 5-minute thread cache was added after a profile of the SessionView's email-attachment widget showed every render hitting `users.threads.get` for the same thread; the same key (`gmail:thread:<id>`) is shared with the email-sanitizer's cached output.
 - The signature 1-hour TTL replaced an unbounded cache after a regression where editing a Gmail signature didn't propagate within the same session day.
