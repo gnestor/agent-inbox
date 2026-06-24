@@ -218,6 +218,39 @@ describe("plugin-loader", () => {
       // Without a workspace id, only builtins are guaranteed.
       expect(getPlugins().find((p) => p.id === "gmail")).toBeDefined()
     })
+
+    it("Scenario: a workspace plugin overlays a builtin — overrides its own keys and inherits the rest", async () => {
+      const builtinQuery = async () => ({ items: [] })
+      const builtinFilterOptions = { labels: async () => ["builtin-label"] }
+      const builtin = makePlugin({
+        id: "gmail",
+        name: "Builtin Gmail",
+        query: builtinQuery,
+        filterOptions: builtinFilterOptions,
+        auth: { integrationId: "google", scope: "user" },
+      })
+      registerPlugin(builtin)
+      mockWorkspacePluginDirs(["gmail"])
+
+      // Overlay defines ONLY an overridden query + an added itemToContext; it
+      // omits filterOptions/auth/name, which should be inherited from the builtin.
+      const overlayQuery = async () => ({ items: [{ id: "x" }] })
+      const overlay = {
+        id: "gmail",
+        query: overlayQuery,
+        itemToContext: () => "stub",
+      } as unknown as Plugin
+      await loadPlugins("/fake/workspace", "ws-1", makeImporter({ "plugin.ts": overlay }))
+
+      const merged = getPlugin("gmail", "ws-1")!
+      expect(merged.query).toBe(overlayQuery) // overridden
+      expect(merged.itemToContext).toBeDefined() // added
+      expect(merged.filterOptions).toBe(builtinFilterOptions) // inherited
+      expect(merged.auth).toEqual({ integrationId: "google", scope: "user" }) // inherited
+      expect(merged.name).toBe("Builtin Gmail") // inherited (overlay omitted it)
+      // getPlugins(ws) returns the same merged shape.
+      expect(getPlugins("ws-1").find((p) => p.id === "gmail")!.query).toBe(overlayQuery)
+    })
   })
 
   // ── validation safety ──────────────────────────────────────────────────────

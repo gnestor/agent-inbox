@@ -171,16 +171,29 @@ export async function loadPlugins(
 }
 
 /** Get all plugins for a workspace (built-ins merged with workspace-specific). */
+/**
+ * Overlay a workspace plugin on top of a builtin of the same id. A workspace
+ * plugin only needs to define the keys it overrides or adds — every other field
+ * (methods + metadata) is inherited from the builtin. This is a shallow per-key
+ * merge (overlay wins), so e.g. the agent workspace's gmail can override `query`
+ * and add `extractEntities`/`curationPrompt` while inheriting the builtin's
+ * `filterOptions`, `routes`, `auth`, and `components`. When there's no builtin
+ * for the id, the workspace plugin stands alone.
+ */
+function overlayPlugin(builtin: Plugin | undefined, overlay: Plugin): Plugin {
+  return builtin ? { ...builtin, ...overlay } : overlay
+}
+
 export function getPlugins(workspaceId?: string): Plugin[] {
   const merged = new Map<string, Plugin>()
   for (const p of registry.values()) merged.set(p.id, p)
   if (workspaceId) {
     const wsPlugins = workspacePluginRegistries.get(workspaceId)
-    if (wsPlugins) for (const [id, p] of wsPlugins) merged.set(id, p)
+    if (wsPlugins) for (const [id, p] of wsPlugins) merged.set(id, overlayPlugin(registry.get(id), p))
   } else {
     // No workspace ID — merge all workspace registries (fallback)
     for (const wsRegistry of workspacePluginRegistries.values()) {
-      for (const [id, p] of wsRegistry) merged.set(id, p)
+      for (const [id, p] of wsRegistry) merged.set(id, overlayPlugin(registry.get(id), p))
     }
   }
   return [...merged.values()]
@@ -194,14 +207,14 @@ export function getPluginDir(id: string): string | undefined {
 export function getPlugin(id: string, workspaceId?: string): Plugin | undefined {
   if (workspaceId) {
     const wsPlugin = workspacePluginRegistries.get(workspaceId)?.get(id)
-    if (wsPlugin) return wsPlugin
+    if (wsPlugin) return overlayPlugin(registry.get(id), wsPlugin)
   }
   const builtin = registry.get(id)
   if (builtin) return builtin
   // Fallback: search all workspace registries (handles missing workspace cookie)
   for (const wsRegistry of workspacePluginRegistries.values()) {
     const plugin = wsRegistry.get(id)
-    if (plugin) return plugin
+    if (plugin) return overlayPlugin(registry.get(id), plugin)
   }
   return undefined
 }

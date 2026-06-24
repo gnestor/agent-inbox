@@ -12,8 +12,8 @@ A plugin is code — credentials, query logic, side-effect mutations. Storing th
 ### Why the loader uses `import(path + "?v=" + Date.now())`
 Node's ESM module cache is keyed by URL. Without a unique query string, a second `import(path)` after the file changes returns the old module object — the plugin watcher's hot-reload would silently no-op. The cache-busting query gives every reload a fresh URL, which Node treats as a new module. The cost is a small steady-state heap leak across many reloads; acceptable in a dev-watch context, and the production path doesn't reload.
 
-### Why workspace plugins override built-ins by ID
-Built-in `gmail` ships with `query()` and basic schemas; the `agent` workspace's `gmail` plugin adds `itemToContext` and `enrichForContext` for the curation pipeline. Per-workspace registry merge (`getPlugins`: workspace map on top of builtin map by ID) lets the workspace extend a builtin without forking it. This is intentional — multiple workspaces can layer different extensions over the same builtin without colliding.
+### Why workspace plugins overlay built-ins by ID
+Built-in `gmail` ships with `query()`, `mutate()`, `filterOptions`, `routes`, and metadata; the `agent` workspace's `gmail` plugin overrides `query`/`getItem`/`mutate`/`fieldSchema` (env-token sourcing + signature-aware send/draft) and **adds** `itemToContext`/`extractEntities`/`curationPrompt`/`enrichForContext` for the curation pipeline. Resolution is a **shallow per-key overlay**, not a whole-plugin replace: `getPlugin`/`getPlugins` return `{ ...builtin, ...workspaceOverlay }` for an id present in both, so a workspace plugin declares only the keys it overrides or adds and inherits everything else (here `name`/`icon`/`emoji`/`components`/`auth`) from the builtin. This is intentional — a workspace extends a builtin without forking it, and the shared base (e.g. the low-level Gmail API in `gmail.ts`) lives in one place. The `overlayPlugin` helper performs the merge; when there's no builtin for the id the workspace plugin stands alone.
 
 ### Why a `Plugin[]` default export is supported
 The Notion plugin file exports two plugins (`notion-tasks`, `notion-pages`) backed by the same Notion client. Forcing two files would duplicate the client setup; allowing `export default [taskPlugin, pagePlugin]` keeps shared infra together. `toPluginArray` normalises both shapes.
@@ -70,8 +70,12 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 
 #### Scenario: `getPlugins(workspaceId)` merges workspace registry on top of built-ins
 - **WHEN** any consumer reads the plugin list
-- **THEN** built-ins are added first, then the workspace map keyed by `workspaceId` overwrites by ID — the result is `[...builtin, ...workspace overrides]` with workspace winning ties.
+- **THEN** built-ins are added first, then for each workspace plugin the result is `overlayPlugin(builtin, workspacePlugin)` — `{ ...builtin, ...workspacePlugin }` when a builtin shares the id (overlay wins per key), else the workspace plugin alone.
 - **AND** without a workspace ID, only built-ins are returned.
+
+#### Scenario: a workspace plugin overlays a builtin — overrides its own keys and inherits the rest
+- **WHEN** a workspace plugin shares an id with a builtin and declares only some keys (e.g. overrides `query`, adds `itemToContext`, omits `name`/`filterOptions`/`auth`)
+- **THEN** `getPlugin(id, workspaceId)` / `getPlugins(workspaceId)` return a shallow merge `{ ...builtin, ...overlay }`: the overlay's declared keys win, and every omitted key (methods + metadata) is inherited from the builtin.
 
 ### Hot-reload
 
@@ -139,6 +143,7 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 
 ## History
 
+- Workspace/builtin resolution became a **shallow per-key overlay** (`overlayPlugin`: `{ ...builtin, ...workspaceOverlay }`) rather than a whole-plugin replace. Previously a workspace plugin sharing a builtin id had to re-implement the entire `Plugin`; now it declares only what it overrides or adds and inherits the rest. This let the `agent` workspace's gmail plugin drop ~350 lines of duplicated Gmail API code (now imported from the builtin's `gmail.ts`) while keeping its env-token query, signature-aware send/draft, and curation methods.
 - The cache-busting `?v=Date.now()` was added after a hot-reload regression where edits to a plugin file silently no-op'd; root cause was Node's ESM cache returning the original module object.
 - The legacy `{workspace}/inbox-plugins/*.ts` path remains supported because early workspaces predate the `plugins/<id>/plugin.ts` directory convention; the loader scans both.
 - Recursive plugin watching used to include `node_modules`, which started exhausting macOS file descriptors with `EMFILE` errors as plugins gained build steps; the watcher was changed to ignore the path inline.

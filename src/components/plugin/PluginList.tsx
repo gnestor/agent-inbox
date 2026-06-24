@@ -76,6 +76,10 @@ function PluginListInner({
   const pluginTabId: TabId = `plugin:${plugin.id}`
   const navFilters = getFilters(pluginTabId)
   const searchQuery = navFilters.q ?? ""
+  // Fall back to the id when name is transiently absent — a persisted React
+  // Query cache can rehydrate a plugin object on first paint before the fresh
+  // /api/plugins fetch resolves; never hard-crash on a missing display label.
+  const pluginName = plugin.name ?? plugin.id
 
   // Persist filter state per plugin via user preferences
   const [filterState, setFilterState] = usePreference<Record<string, string[]>>(
@@ -298,7 +302,7 @@ function PluginListInner({
         left={
           <div className="flex items-center gap-2">
             <SidebarButton />
-            <span className="font-semibold text-sm">{plugin.name}</span>
+            <span className="font-semibold text-sm">{pluginName}</span>
           </div>
         }
         right={
@@ -312,14 +316,14 @@ function PluginListInner({
       <SearchInput
         value={searchQuery}
         onChange={(q) => setFilter("q", q)}
-        placeholder={`Search ${plugin.name.toLowerCase()}...`}
+        placeholder={`Search ${pluginName.toLowerCase()}...`}
       />
 
       {isPending && !items.length && <ListSkeleton itemHeight={72} />}
 
       {!isPending && !items.length && (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          No {plugin.name} items
+          No {pluginName} items
         </div>
       )}
 
