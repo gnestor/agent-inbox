@@ -122,12 +122,20 @@ describe("extractSessionMeta", () => {
 describe("extractSessionMeta — title resolution (custom-title / last-prompt)", () => {
   const lastPrompt = (text: string) => JSON.stringify({ type: "last-prompt", lastPrompt: text, sessionId: "s1" })
   const customTitle = (text: string) => JSON.stringify({ type: "custom-title", customTitle: text, sessionId: "s1" })
+  const aiTitle = (text: string) => JSON.stringify({ type: "ai-title", aiTitle: text, sessionId: "s1" })
 
   it("custom-title wins over everything", async () => {
     const { extractSessionMeta } = await import("../session-manager.js")
     const head = [userMsg("You are the Hammies marketing lead. …long role prompt…"), assistantMsg()]
-    const tail = [lastPrompt("Draft a Memorial Day email"), customTitle("Memorial Day campaign")]
+    const tail = [lastPrompt("Draft a Memorial Day email"), customTitle("Memorial Day campaign"), aiTitle("Email draft")]
     expect(extractSessionMeta(head, tail).title).toBe("Memorial Day campaign")
+  })
+
+  it("ai-title is used when there is no custom-title (beats last-prompt)", async () => {
+    const { extractSessionMeta } = await import("../session-manager.js")
+    const head = [userMsg("You are the Hammies marketing lead. …long role prompt…"), assistantMsg()]
+    const tail = [lastPrompt("Draft a Memorial Day email"), aiTitle("Memorial Day campaign plan")]
+    expect(extractSessionMeta(head, tail).title).toBe("Memorial Day campaign plan")
   })
 
   it("last-prompt beats the first (role) prompt", async () => {

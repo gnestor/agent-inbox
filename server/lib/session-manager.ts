@@ -1676,6 +1676,7 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
   let firstPrompt: string | null = null
   let summary: string | null = null
   let customTitle: string | null = null
+  let aiTitle: string | null = null
   let lastPrompt: string | null = null
   let hasContent = false
 
@@ -1687,6 +1688,10 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
         if (!cwd && msg.cwd) cwd = msg.cwd
         if (msg.type === "custom-title" && typeof msg.customTitle === "string" && msg.customTitle.trim()) {
           customTitle = msg.customTitle.trim().slice(0, 200)
+          continue
+        }
+        if (msg.type === "ai-title" && typeof msg.aiTitle === "string" && msg.aiTitle.trim()) {
+          aiTitle = msg.aiTitle.trim().slice(0, 200)
           continue
         }
         if (msg.type === "last-prompt" && typeof msg.lastPrompt === "string") {
@@ -1731,8 +1736,8 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
     }
   }
 
-  const title = customTitle || lastPrompt || firstPrompt || summary || null
-  return { cwd, firstPrompt, summary, hasContent, customTitle, lastPrompt, title }
+  const title = customTitle || aiTitle || lastPrompt || firstPrompt || summary || null
+  return { cwd, firstPrompt, summary, hasContent, customTitle, aiTitle, lastPrompt, title }
 }
 
 /**
