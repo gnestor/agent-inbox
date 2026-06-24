@@ -287,6 +287,22 @@ function writeCustomTitle(filePath: string, title: string, sessionId: string): b
   }
 }
 
+/**
+ * Append an `archived` flag (last-wins) to the session's JSONL so archiving is
+ * cross-tool — Studio and Claude Code read the same flag. Best-effort; the DB
+ * status remains the in-app authority. Resolves the file via findAgentSession.
+ */
+async function writeArchivedFlag(sessionId: string, archived: boolean): Promise<void> {
+  try {
+    const agentSession = await findAgentSession(sessionId)
+    const filePath = agentSession?.filePath ?? sessionJsonlPath(sessionId, agentSession?.cwd)
+    if (!fs.existsSync(filePath)) return
+    fs.appendFileSync(filePath, JSON.stringify({ type: "archived", archived, sessionId }) + "\n")
+  } catch {
+    /* unwritable — DB status still holds the archive state */
+  }
+}
+
 // Legacy compat — default workspace path for callers not yet migrated
 let defaultWorkspacePath = ""
 let defaultWorkspaceName = ""
@@ -468,6 +484,7 @@ export async function archiveSession(sessionId: string): Promise<boolean> {
   queuedPrompts.delete(sessionId)
 
   await updateSessionStatus(sessionId, "archived")
+  await writeArchivedFlag(sessionId, true) // cross-tool: Studio + Claude Code see it
   return true
 }
 
@@ -477,6 +494,7 @@ export async function unarchiveSession(sessionId: string): Promise<boolean> {
     `UPDATE sessions SET status = 'complete', updated_at = $1 WHERE id = $2 AND status = 'archived'`,
     [now, sessionId],
   )
+  await writeArchivedFlag(sessionId, false)
   return result.rowCount > 0
 }
 
@@ -1678,6 +1696,7 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
   let customTitle: string | null = null
   let aiTitle: string | null = null
   let lastPrompt: string | null = null
+  let archived: boolean | null = null
   let hasContent = false
 
   const scan = (lines: string[]) => {
@@ -1692,6 +1711,10 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
         }
         if (msg.type === "ai-title" && typeof msg.aiTitle === "string" && msg.aiTitle.trim()) {
           aiTitle = msg.aiTitle.trim().slice(0, 200)
+          continue
+        }
+        if (msg.type === "archived" && typeof msg.archived === "boolean") {
+          archived = msg.archived
           continue
         }
         if (msg.type === "last-prompt" && typeof msg.lastPrompt === "string") {
@@ -1737,7 +1760,7 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
   }
 
   const title = customTitle || aiTitle || lastPrompt || firstPrompt || summary || null
-  return { cwd, firstPrompt, summary, hasContent, customTitle, aiTitle, lastPrompt, title }
+  return { cwd, firstPrompt, summary, hasContent, customTitle, aiTitle, lastPrompt, archived, title }
 }
 
 /**
@@ -1761,6 +1784,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
     firstPrompt: string | null
     cwd: string
     project: string
+    archived: boolean | null
   }> = []
 
   // If workspace path provided, only scan its specific directory
@@ -1786,7 +1810,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
           const rawTail = tailLines.join("\n").toLowerCase()
           if (!rawHead.includes(qLower) && !rawTail.includes(qLower)) continue
 
-          const { cwd, firstPrompt, title } = extractSessionMeta(headLines, tailLines)
+          const { cwd, firstPrompt, title, archived } = extractSessionMeta(headLines, tailLines)
           if (!cwd) continue
 
           results.push({
@@ -1796,6 +1820,7 @@ export async function searchAgentSessions(q: string, wsPath?: string) {
             firstPrompt,
             cwd,
             project: projectLabel(cwd),
+            archived,
           })
         } catch {
           /* skip unreadable files */
@@ -1844,6 +1869,7 @@ export async function listAllAgentSessions(wsPath?: string) {
     firstPrompt: string | null
     cwd: string
     project: string
+    archived: boolean | null
   }> = []
 
   for (const { name: dirName, knownCwd } of dirEntries) {
@@ -1858,7 +1884,7 @@ export async function listAllAgentSessions(wsPath?: string) {
           // Wide tail so the latest `last-prompt` / `custom-title` (followed by
           // assistant/tool lines) are captured for title resolution.
           const { headLines, tailLines } = readHeadTailLines(filePath, 20, 300, fs)
-          const { cwd, firstPrompt, title, hasContent } = extractSessionMeta(headLines, tailLines)
+          const { cwd, firstPrompt, title, hasContent, archived } = extractSessionMeta(headLines, tailLines)
 
           const resolvedCwd = knownCwd ?? cwd
           if (!resolvedCwd) continue
@@ -1877,6 +1903,7 @@ export async function listAllAgentSessions(wsPath?: string) {
             firstPrompt,
             cwd: resolvedCwd,
             project: projectLabel(resolvedCwd),
+            archived,
           })
         } catch {
           /* skip unreadable files */

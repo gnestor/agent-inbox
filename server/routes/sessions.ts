@@ -126,10 +126,17 @@ sessionRoutes.get("/", async (c) => {
     const db = dbRecords.get(s.sessionId)
     const prompt = db ? (db.prompt || s.firstPrompt || "") : (s.firstPrompt || "")
     // DB record takes priority for status, summary, and linked items
+    // Cross-tool archive: the JSONL `archived` flag (written by any app/Claude
+    // Code) wins over the DB status — archived=true → archived, archived=false
+    // un-archives an archived row; null leaves the DB status as-is.
+    const archiveStatus = (dbStatus: string) =>
+      s.archived === true ? "archived"
+      : s.archived === false && dbStatus === "archived" ? "complete"
+      : dbStatus
     if (db) {
       return {
         id: s.sessionId,
-        status: db.status,
+        status: archiveStatus(db.status) as typeof db.status,
         prompt,
         // Title authority is the JSONL `custom-title` (resolved in s.summary:
         // custom-title → last-prompt → first prompt), so a rename/curated title
@@ -147,7 +154,7 @@ sessionRoutes.get("/", async (c) => {
     }
     return {
       id: s.sessionId,
-      status: "complete" as const,
+      status: (s.archived === true ? "archived" : "complete") as "archived" | "complete",
       prompt,
       summary: s.summary || null,
       startedAt: new Date(s.lastModified).toISOString(),
