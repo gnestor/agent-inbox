@@ -62,10 +62,15 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 
 ### Query and detail
 
-#### Scenario: `query` builds a Gmail search string from filter fields
-- **WHEN** the route invokes `query(filters, cursor, ctx)`
-- **THEN** the search starts with `filters.q` if present (else `in:inbox`); appends `is:<flag>` for each comma-separated flag in `filters.flags`; appends `label:<label>` for each in `filters.labels`.
-- **AND** the function fetches threads (page size 20) and the user-label map in parallel, calls `addDerivedFields` to attach `isImportant`/`isStarred`/`labels`, returns `{ items, nextCursor }`.
+#### Scenario: `query` builds a Gmail search string from q + labels (the default, no-flag path)
+- **WHEN** the route invokes `query(filters, cursor, ctx)` with no `filters.flags`
+- **THEN** the Gmail query starts with `filters.q` if present (else `in:inbox`) and appends `label:<label>` for each comma-separated label in `filters.labels`. Flags are NOT translated into `is:` operators.
+- **AND** the function fetches a page (size 200 — the whole inbox in one request, matching Studio's sessions list, so scrolling has no mid-scroll pagination stalls; larger inboxes still paginate via the cursor) and the user-label map in parallel, calls `addDerivedFields` to attach `isImportant`/`isStarred`/`labels`, returns `{ items, nextCursor }`.
+
+#### Scenario: a flag filters threads at the THREAD level (star on any message counts)
+- **WHEN** `query` is invoked with `filters.flags` (e.g. `starred`)
+- **THEN** flags are applied at the THREAD level, not as Gmail `is:` operators: a thread matches if its union `labelIds` (any message) includes the flag's label. Gmail's `is:` operator is message-level, so `in:inbox is:starred` would drop threads starred via a sent/older reply (the inbox shows 16 starred but that query returns 8).
+- **AND** the path lists the scope's thread ids (`in:inbox [+labels]`, one cheap call via `listThreadIds`), fetches those summaries at high concurrency, keeps the matches, sorts newest-first, and returns the full set in one response (`nextCursor` undefined) — so the list never stalls on a sparse first page.
 
 #### Scenario: sorts the fetched page newest-first (Gmail's q= order is not date-sorted)
 - **WHEN** `searchThreads` fetches a page whose threads Gmail returned in search-relevance order (not by date — e.g. a thread with a message from today below week-old ones)

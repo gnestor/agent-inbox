@@ -194,7 +194,11 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
 export async function fetchBatched<T>(
   items: string[],
   fn: (item: string) => Promise<T>,
-  batchSize = 5,
+  // Concurrency for per-thread summary fetches. 12 keeps each list page well
+  // under Gmail's ~250 quota-units/sec (threads.get ≈ 10 units) while loading a
+  // 20-thread page in ~0.5s instead of ~1.2s — so the infinite-scroll buffer
+  // refills faster than the user can scroll past it.
+  batchSize = 12,
 ): Promise<T[]> {
   const results: T[] = []
   for (let i = 0; i < items.length; i += batchSize) {

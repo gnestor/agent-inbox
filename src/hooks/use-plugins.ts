@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query"
 import { getPlugins, queryPluginItems, queryPluginSubItems, getPluginItem } from "@/api/client"
 import type { PluginManifest } from "@/api/client"
 import { useWorkspaceId } from "@/hooks/use-user"
@@ -32,6 +32,27 @@ export function usePluginItems(
   return useQuery({
     queryKey: ["plugin-items", wsId, sourceId, filters, cursor],
     queryFn: () => queryPluginItems(sourceId, filters, cursor),
+    enabled: enabled && !!sourceId,
+  })
+}
+
+/**
+ * Paginated variant of usePluginItems — accumulates pages via the plugin
+ * query's `nextCursor` so list views can load the full result set (the inbox
+ * list otherwise stops at the first page of ~20). Pair with an infinite-scroll
+ * sentinel that calls `fetchNextPage`.
+ */
+export function usePluginItemsInfinite(
+  sourceId: string,
+  filters: Record<string, string>,
+  enabled = true,
+) {
+  const wsId = useWorkspaceId()
+  return useInfiniteQuery({
+    queryKey: ["plugin-items-infinite", wsId, sourceId, filters],
+    queryFn: ({ pageParam }) => queryPluginItems(sourceId, filters, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: enabled && !!sourceId,
   })
 }

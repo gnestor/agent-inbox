@@ -179,7 +179,10 @@ export const gmailPlugin: Plugin = {
     }
 
     const [result, userLabelMap] = await Promise.all([
-      gmail.searchThreads(accessToken, query, 20, cursor || undefined),
+      // Load the whole inbox in one page (like Studio's sessions list) so
+      // scrolling has no mid-scroll pagination stalls; larger inboxes still
+      // paginate via the cursor.
+      gmail.searchThreads(accessToken, query, 200, cursor || undefined),
       getUserLabelMapCached(accessToken),
     ])
     return {

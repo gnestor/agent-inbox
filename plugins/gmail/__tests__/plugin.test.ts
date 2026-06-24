@@ -77,7 +77,7 @@ describe("gmail plugin", () => {
       expect(gmailMock.searchThreads).toHaveBeenCalledWith(
         "access-token-123",
         "from:alice label:Work label:VIP",
-        20,
+        200,
         undefined,
       )
 

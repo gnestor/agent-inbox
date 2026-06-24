@@ -104,6 +104,11 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 - **WHEN** the SPA hits `GET /:pluginId/items` / `GET /:pluginId/items/:itemId` / `GET /:pluginId/items/:itemId/subitems` / `POST /:pluginId/items/:itemId/mutate` / `GET /:pluginId/fields/:fieldId/options`
 - **THEN** the route resolves the workspace's plugin via `getPlugin(pluginId, workspaceId)` and invokes the corresponding `query`/`getItem`/`querySubItems`/`mutate`/`filterOptions` method with a `PluginContext` built from the request.
 
+#### Scenario: the list view paginates plugin items and preloads ahead of the viewport
+- **WHEN** `<PluginList>` renders a plugin's items via `usePluginItemsInfinite`
+- **THEN** it accumulates pages by passing each page's `nextCursor` back to `GET /:pluginId/items`, flattening them into one list — so the list loads the full result set instead of stopping at the first page (~20).
+- **AND** a bottom-sentinel IntersectionObserver (root = the scroll container, downward `rootMargin` ≈ 50 rows) plus an eager-fill effect fetch the next pages before the user reaches the bottom.
+
 ### Component embedding
 
 #### Scenario: Plugin component HTML is built with importmap + null-origin srcDoc
@@ -138,7 +143,8 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 | `<PluginDetail>` generic plugin detail panel | [src/components/plugin/PluginDetail.tsx](../../../src/components/plugin/PluginDetail.tsx) |
 | `<PluginFrame>` iframe host for plugin-supplied components | [src/components/plugin/PluginFrame.tsx](../../../src/components/plugin/PluginFrame.tsx) |
 | `<PropertiesPopover>` shared edit popover for plugin item fields | [src/components/plugin/PropertiesPopover.tsx](../../../src/components/plugin/PropertiesPopover.tsx) |
-| Plugin data hooks (`usePlugins`, `usePluginItems`, `usePluginItem`, sub-items) | [src/hooks/use-plugins.ts](../../../src/hooks/use-plugins.ts) |
+| Plugin data hooks (`usePlugins`, `usePluginItems`, `usePluginItemsInfinite`, `usePluginItem`, sub-items) | [src/hooks/use-plugins.ts](../../../src/hooks/use-plugins.ts) |
+| `useInfiniteScroll` — viewport-rooted sentinel observer + eager fill that preloads ~50 rows ahead (mirrors Studio's hook); drives `<PluginList>` pagination | [src/hooks/use-infinite-scroll.ts](../../../src/hooks/use-infinite-scroll.ts) |
 | Plugin item mutation hook with optimistic patches | [src/hooks/use-plugin-mutations.ts](../../../src/hooks/use-plugin-mutations.ts) |
 
 ## History

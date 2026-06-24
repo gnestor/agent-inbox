@@ -6,7 +6,8 @@ import {
   Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty,
   ComboboxCollection, ComboboxGroup, ComboboxLabel, ComboboxSeparator,
 } from "@hammies/frontend/components/ui"
-import { usePlugins, usePluginItems } from "@/hooks/use-plugins"
+import { usePlugins, usePluginItemsInfinite } from "@/hooks/use-plugins"
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
 import { useWorkspaceId } from "@/hooks/use-user"
 import { getFieldOptions } from "@/api/client"
 import { ListItem } from "@/components/shared/ListItem"
@@ -166,11 +167,25 @@ function PluginListInner({
     },
   }))
 
-  const { data, isPending } = usePluginItems(plugin.id, queryFilters)
-  const items = data?.items ?? []
+  const { data, isPending, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    usePluginItemsInfinite(plugin.id, queryFilters)
+  const items = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data])
 
   const hasSubtitle = plugin.fieldSchema?.some((f) => f.listRole === "subtitle")
   const rowHeight = plugin.listRowHeight ?? (hasSubtitle ? 100 : 80)
+
+  // Infinite scroll: preload pages ~50 rows ahead of the viewport so the list
+  // fills in before the user reaches the bottom (Studio's pagination logic —
+  // viewport-rooted observer + eager fill; see use-infinite-scroll).
+  const { sentinelRef } = useInfiniteScroll({
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    itemCount: items.length,
+    // Preload ~100 rows ahead so fast scrolling doesn't outrun the chained
+    // fetches and hit the bottom; pairs with the bumped fetch concurrency.
+    preloadPx: rowHeight * 100,
+  })
 
 
   const filterUI = filterableFields.length > 0 ? (
@@ -353,6 +368,10 @@ function PluginListInner({
               </div>
             )
           })}
+          <div ref={sentinelRef} className="h-px" />
+          {isFetchingNextPage && (
+            <div className="p-3 text-center text-xs text-muted-foreground">Loading more…</div>
+          )}
         </div>
       )}
     </div>

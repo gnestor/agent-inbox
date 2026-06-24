@@ -3,7 +3,7 @@ import React from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { usePlugins, usePluginItems } from "../use-plugins"
+import { usePlugins, usePluginItems, usePluginItemsInfinite } from "../use-plugins"
 import * as client from "@/api/client"
 import type { PluginManifest } from "@/api/client"
 
@@ -109,5 +109,43 @@ describe("usePluginItems", () => {
     const { result } = renderHook(() => usePluginItems("slack", {}), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.data?.nextCursor).toBe("cursor-abc")
+  })
+})
+
+describe("usePluginItemsInfinite", () => {
+  let queryClient: QueryClient
+  let wrapper: ReturnType<typeof makeWrapper>
+
+  beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    wrapper = makeWrapper(queryClient)
+    vi.resetAllMocks()
+  })
+
+  it("Scenario: the list view paginates plugin items and preloads ahead of the viewport", async () => {
+    vi.mocked(client.queryPluginItems)
+      .mockResolvedValueOnce({ items: [{ id: "a" }, { id: "b" }], nextCursor: "c1" })
+      .mockResolvedValueOnce({ items: [{ id: "c" }], nextCursor: undefined })
+
+    const { result } = renderHook(() => usePluginItemsInfinite("gmail", {}), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Page 1: cursor undefined, more pages available.
+    expect(vi.mocked(client.queryPluginItems)).toHaveBeenNthCalledWith(1, "gmail", {}, undefined)
+    expect(result.current.hasNextPage).toBe(true)
+    expect(result.current.data?.pages.flatMap((p) => p.items)).toHaveLength(2)
+
+    // Page 2: fetched with the prior cursor; no more pages after.
+    await result.current.fetchNextPage()
+    await waitFor(() => expect(result.current.isFetchingNextPage).toBe(false))
+    expect(vi.mocked(client.queryPluginItems)).toHaveBeenNthCalledWith(2, "gmail", {}, "c1")
+    expect(result.current.data?.pages.flatMap((p) => p.items).map((i) => i.id)).toEqual(["a", "b", "c"])
+    expect(result.current.hasNextPage).toBe(false)
+  })
+
+  it("is disabled when sourceId is empty", async () => {
+    const { result } = renderHook(() => usePluginItemsInfinite("", {}), { wrapper })
+    expect(result.current.isPending).toBe(true)
+    expect(vi.mocked(client.queryPluginItems)).not.toHaveBeenCalled()
   })
 })

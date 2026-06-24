@@ -6,6 +6,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
 import { get, set, del } from "idb-keyval"
 import { queryClient } from "@/lib/queryClient"
+import { isTransientQuery } from "@/lib/query-persistence"
 import { initCrashTelemetry } from "@/lib/crash-telemetry"
 import { App } from "./App"
 import "./index.css"
@@ -17,21 +18,6 @@ initCrashTelemetry()
 // Register service worker for PWA standalone mode
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js")
-}
-
-/** Shared predicate: queries that should NOT be persisted to IndexedDB. */
-function isTransientQuery(status: string, queryKey: readonly unknown[], data: unknown): boolean {
-  if (status === "error" || status === "pending") return true
-  if (queryKey[0] === "sessions") return true
-  // Connection status must always reflect the server after an OAuth round-trip.
-  // Persisting it serves a stale "Connect" state on reload (see use-connections).
-  if (queryKey[0] === "connections") return true
-  // Individual session transcripts change every time the agent writes to the JSONL
-  // (or the user edits an artifact). Serving the persisted copy on reload shows
-  // pre-edit code and confuses users; always re-fetch the authoritative version.
-  if (queryKey[0] === "session") return true
-  if (data && typeof data === "object" && "pages" in data) return true
-  return false
 }
 
 const persister = createAsyncStoragePersister({
