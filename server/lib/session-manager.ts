@@ -1192,10 +1192,15 @@ export async function resumeSessionQuery(
   try {
     const { query: agentQuery } = await import("@anthropic-ai/claude-agent-sdk")
 
-    await updateSessionStatus(sessionId, "running")
-
     // Reuse the record fetched during stale-check if available; otherwise fetch now.
     sessionRecord = sessionRecord ?? await getSessionRecord(sessionId)
+
+    // Resuming un-archives: an actively-used session isn't "archived". Write the
+    // freshest cross-tool flag (so it can't stay buried beneath later content) so
+    // Studio + Claude Code drop the archive too. Only when it was archived.
+    if (sessionRecord?.status === "archived") await writeArchivedFlag(sessionId, false)
+
+    await updateSessionStatus(sessionId, "running")
     const resumeSourceContext = buildSourceContext(
       sessionRecord?.linked_source_type ?? undefined,
       sessionRecord?.linked_source_id ?? undefined,
