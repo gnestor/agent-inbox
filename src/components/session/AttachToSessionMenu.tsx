@@ -44,12 +44,10 @@ export function SessionActionMenu({
     openSession(sessionId)
   }
 
-  // A search hits ALL unarchived sessions server-side (the /sessions q= path runs
-  // searchAgentSessions over every JSONL); show every match, not a first page.
-  // The no-search recent list is capped for readability.
-  const searching = deferredSearch.trim().length > 0
-  const matches = sessions.filter((s) => s.summary && s.status !== "archived")
-  const recentSessions = searching ? matches : matches.slice(0, 25)
+  // Show every unarchived session (scrollable), no arbitrary cap — same as the
+  // Sessions list. A search hits ALL sessions server-side (the /sessions q= path
+  // runs searchAgentSessions over every JSONL).
+  const recentSessions = sessions.filter((s) => s.summary && s.status !== "archived")
 
   return (
     <DropdownMenu
