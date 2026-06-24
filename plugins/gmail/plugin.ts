@@ -129,17 +129,12 @@ export const gmailPlugin: Plugin = {
   async query(filters, cursor, ctx) {
     const accessToken = await requireToken(ctx)
 
-    // Build Gmail search query from filters.
-    // Only default to "in:inbox" when no other filter is active — flags like
-    // "is:starred" or label filters apply across all mail, not just the inbox.
+    // Build Gmail search query from filters. A free-text q searches ALL mail
+    // (the escape hatch); otherwise scope to "in:inbox". Labels stay as Gmail
+    // query terms.
     const parts: string[] = []
     if (filters.q) parts.push(filters.q)
-    else if (!filters.flags && !filters.labels) parts.push("in:inbox")
-    if (filters.flags) {
-      for (const flag of filters.flags.split(",")) {
-        parts.push(`is:${flag.trim()}`)
-      }
-    }
+    else parts.push("in:inbox")
     if (filters.labels) {
       for (const label of filters.labels.split(",")) {
         parts.push(`label:${label.trim()}`)
@@ -147,12 +142,48 @@ export const gmailPlugin: Plugin = {
     }
     const query = parts.join(" ")
 
+    // Flags (starred/important/unread/…) are THREAD-level: a thread counts if
+    // ANY message carries the label (Gmail unions labels over the thread — see
+    // getThreadSummary). Gmail's `is:` operator is message-level, so
+    // `in:inbox is:starred` drops threads whose star sits on a sent/older reply
+    // (Gmail's inbox shows 16 starred but that query returns 8). Resolve it by
+    // listing the scope's thread IDs (one cheap call), fetching their summaries
+    // at high concurrency, and filtering on the union labelIds — the full match
+    // set returns in one response so the list never stalls on a sparse first
+    // page. (Listing every `is:<flag>` id would be far slower — is:starred ≈1750.)
+    const FLAG_LABEL: Record<string, string> = {
+      starred: "STARRED",
+      important: "IMPORTANT",
+      unread: "UNREAD",
+      snoozed: "SNOOZED",
+    }
+    const flagLabels = (filters.flags || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((f) => FLAG_LABEL[f] ?? f.toUpperCase())
+
+    type PluginItem = import("../../src/types/plugin.js").PluginItem
+    if (flagLabels.length > 0) {
+      const [scopeIds, userLabelMap] = await Promise.all([
+        gmail.listThreadIds(accessToken, query),
+        getUserLabelMapCached(accessToken),
+      ])
+      const scoped = await gmail.fetchBatched(scopeIds, (id) => gmail.getThreadSummary(accessToken, id), 20)
+      const matches = scoped.filter((t) => flagLabels.every((l) => t.labelIds.includes(l)))
+      matches.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))
+      return {
+        items: matches.map((t) => addDerivedFields(t, userLabelMap)) as unknown as PluginItem[],
+        nextCursor: undefined,
+      }
+    }
+
     const [result, userLabelMap] = await Promise.all([
       gmail.searchThreads(accessToken, query, 20, cursor || undefined),
       getUserLabelMapCached(accessToken),
     ])
     return {
-      items: result.threads.map((t) => addDerivedFields(t, userLabelMap)) as unknown as import("../../src/types/plugin.js").PluginItem[],
+      items: result.threads.map((t) => addDerivedFields(t, userLabelMap)) as unknown as PluginItem[],
       nextCursor: result.nextPageToken ?? undefined,
     }
   },

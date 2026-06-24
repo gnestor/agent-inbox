@@ -285,6 +285,26 @@ function threadDateMs(t: ThreadSummary): number {
   return Number.isNaN(ms) ? 0 : ms
 }
 
+/**
+ * List thread IDs matching a query, paginated fully — IDs only, no per-thread
+ * summary fetch, so it's cheap. Used to intersect ID sets (e.g. in:inbox ∩
+ * is:starred) and fetch summaries for ONLY the matches, instead of fetching
+ * every in:inbox summary to filter client-side. Capped to bound runaway
+ * pagination on huge sets (e.g. is:unread across all mail).
+ */
+export async function listThreadIds(accessToken: string, query: string, cap = 2000): Promise<string[]> {
+  const ids: string[] = []
+  let pageToken: string | undefined
+  do {
+    const params = new URLSearchParams({ q: query, maxResults: "500" })
+    if (pageToken) params.set("pageToken", pageToken)
+    const res: GmailApiThreadListResponse = await gmailRequest(accessToken, `/threads?${params}`)
+    for (const t of res.threads || []) ids.push(t.id)
+    pageToken = res.nextPageToken || undefined
+  } while (pageToken && ids.length < cap)
+  return ids
+}
+
 export async function getHistory(accessToken: string, startHistoryId: string): Promise<GmailApiHistoryResponse> {
   const params = new URLSearchParams({
     startHistoryId,

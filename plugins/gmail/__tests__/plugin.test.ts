@@ -8,6 +8,11 @@ import type { PluginContext } from "../../../src/types/plugin.js"
 
 const gmailMock = {
   searchThreads: vi.fn(),
+  listThreadIds: vi.fn(),
+  getThreadSummary: vi.fn(),
+  fetchBatched: vi.fn(async (ids: string[], fn: (id: string) => Promise<unknown>) =>
+    Promise.all(ids.map(fn)),
+  ),
   getThread: vi.fn(),
   modifyThreadLabels: vi.fn(),
   trashThread: vi.fn(),
@@ -62,14 +67,16 @@ describe("gmail plugin", () => {
   })
 
   describe("Query and detail", () => {
-    it("Scenario: `query` builds a Gmail search string from filter fields", async () => {
+    it("Scenario: `query` builds a Gmail search string from q + labels (the default, no-flag path)", async () => {
       gmailMock.searchThreads.mockResolvedValue({ threads: [], nextPageToken: null })
       const ctx = makeCtx()
 
-      await gmailPlugin.query!({ q: "from:alice", flags: "starred,unread", labels: "Work,VIP" }, undefined, ctx)
+      // No flags → the normal paginated searchThreads path. Only q and labels go
+      // into the Gmail query; a free-text q searches all mail.
+      await gmailPlugin.query!({ q: "from:alice", labels: "Work,VIP" }, undefined, ctx)
       expect(gmailMock.searchThreads).toHaveBeenCalledWith(
         "access-token-123",
-        "from:alice is:starred is:unread label:Work label:VIP",
+        "from:alice label:Work label:VIP",
         20,
         undefined,
       )
@@ -78,6 +85,27 @@ describe("gmail plugin", () => {
       gmailMock.searchThreads.mockClear()
       await gmailPlugin.query!({}, undefined, ctx)
       expect(gmailMock.searchThreads.mock.calls[0][1]).toBe("in:inbox")
+    })
+
+    it("Scenario: a flag filters threads at the THREAD level (star on any message counts)", async () => {
+      // The flag path lists the scope's ids (in:inbox), fetches their summaries,
+      // and keeps threads whose union labelIds include the flag. Thread A is
+      // starred via a SENT message — `in:inbox is:starred` would miss it, the
+      // thread-level union catches it; thread B is not starred.
+      gmailMock.searchThreads.mockClear()
+      gmailMock.listThreadIds.mockResolvedValue(["starred-thread", "plain-thread"])
+      const summaries: Record<string, { id: string; labelIds: string[]; date: string }> = {
+        "starred-thread": { id: "starred-thread", labelIds: ["INBOX", "STARRED", "SENT"], date: "Mon, 02 Jun 2026 10:00:00 -0700" },
+        "plain-thread": { id: "plain-thread", labelIds: ["INBOX"], date: "Mon, 01 Jun 2026 10:00:00 -0700" },
+      }
+      gmailMock.getThreadSummary.mockImplementation(async (_t: string, id: string) => summaries[id])
+      const ctx = makeCtx()
+      const result = await gmailPlugin.query!({ flags: "starred" }, undefined, ctx)
+      // Flags never enter the Gmail query — listThreadIds gets the bare scope.
+      expect(gmailMock.listThreadIds).toHaveBeenCalledWith("access-token-123", "in:inbox")
+      expect(gmailMock.searchThreads).not.toHaveBeenCalled()
+      expect(result.items.map((i) => i.id)).toEqual(["starred-thread"])
+      expect(result.nextCursor).toBeUndefined()
     })
 
     it("Scenario: `getItem` returns the full thread including sanitised HTML", async () => {
