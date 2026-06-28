@@ -102,40 +102,45 @@ export async function loadPlugins(
     }
   }
 
-  // Scan {workspace}/plugins/*/plugin.ts (new convention)
-  const pluginsDir = join(workspacePath, "plugins")
-  try {
-    const entries = await readdir(pluginsDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      for (const filename of ["plugin.ts", "plugin.js"]) {
-        const fullPath = join(pluginsDir, entry.name, filename)
-        try {
-          const mod = await importer(fullPath)
-          const plugins = toPluginArray(mod.default)
-          for (const plugin of plugins) {
-            if (!isValidPlugin(plugin)) {
-              log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
-              continue
+  // Scan {workspace}/inbox/*/plugin.ts (Inbox plugins) and {workspace}/plugins/*/plugin.ts
+  // (legacy co-located convention). The agent repo separates the two: Inbox
+  // plugins live in `inbox/`, Studio plugins (manifest-only, no plugin.ts) in
+  // `plugins/`. Scanning both keeps older workspaces that still co-locate working.
+  for (const subdir of ["inbox", "plugins"]) {
+    const pluginsDir = join(workspacePath, subdir)
+    try {
+      const entries = await readdir(pluginsDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        for (const filename of ["plugin.ts", "plugin.js"]) {
+          const fullPath = join(pluginsDir, entry.name, filename)
+          try {
+            const mod = await importer(fullPath)
+            const plugins = toPluginArray(mod.default)
+            for (const plugin of plugins) {
+              if (!isValidPlugin(plugin)) {
+                log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
+                continue
+              }
+              // Workspace plugins are always stored — getPlugins() merges
+              // workspace registry on top of builtins so a workspace can
+              // override a builtin (e.g. agent's gmail extends inbox builtin
+              // gmail with itemToContext + enrichForContext).
+              targetRegistry.set(plugin.id, plugin)
+              pluginDirs.set(plugin.id, join(pluginsDir, entry.name))
             }
-            // Workspace plugins are always stored — getPlugins() merges
-            // workspace registry on top of builtins so a workspace can
-            // override a builtin (e.g. agent's gmail extends inbox builtin
-            // gmail with itemToContext + enrichForContext).
-            targetRegistry.set(plugin.id, plugin)
-            pluginDirs.set(plugin.id, join(pluginsDir, entry.name))
+          } catch (err: unknown) {
+            // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
+            if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
+                (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
+            log.error("Failed to load plugin", { dir: entry.name, file: filename, error: err instanceof Error ? err.message : String(err) })
           }
-        } catch (err: unknown) {
-          // ENOENT = file doesn't exist, try next filename; other errors = broken plugin
-          if ((err as NodeJS.ErrnoException).code === "ENOENT" ||
-              (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") continue
-          log.error("Failed to load plugin", { dir: entry.name, file: filename, error: err instanceof Error ? err.message : String(err) })
+          break
         }
-        break
       }
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
   }
 
   // Also scan {workspace}/inbox-plugins/*.ts|js (backward compat)
