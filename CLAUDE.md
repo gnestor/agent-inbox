@@ -52,7 +52,7 @@ src/              # React frontend
 Follow the root [CLAUDE.md](../../CLAUDE.md) → **Development Workflow + Completion Checklist** (read/update spec → tests → typecheck → `docs:coverage` → tests → `/simplify` → browser → commit). It's mandatory after every task. Inbox-specific points that extend it:
 
 - **Test locations** — pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node env); React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom`). Run via `npm run test:ci` (tsc + vitest); tests also auto-run on save via a PostToolUse hook. See **Testing** below for e2e tiers.
-- **`TODO.md`** — mark completed items `- [x]`, add follow-ups.
+- **Notion tasks** (Inbox project) — file follow-ups and mark completed tasks Complete (the former in-repo `TODO.md` was migrated to Notion on 2026-06-28).
 - **Browser verification** — test on the clean **`-s=app`** profile with a minted dev cookie (no Google login needed); inbox verifies the same `hammies_session` JWT as Studio. See Testing → Browser testing. The browser skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
 
 ## Testing
