@@ -85,7 +85,12 @@ export default defineConfig(({ mode }) => {
   server: {
     port: 5175,
     strictPort: true,
-    host: true,
+    // Bind all interfaces by default. Inbox's Tailscale Serve is on the BARE
+    // host (:443 → localhost:5175), a different port from Vite's, so tailscaled
+    // doesn't claim :5175 and 0.0.0.0 is safe. Set INBOX_VITE_HOST=127.0.0.1 only
+    // if Serve is ever moved to front :5175 directly (then 0.0.0.0 would collide,
+    // as it does for Studio/Vision whose Serve is same-port). See those configs.
+    host: env.INBOX_VITE_HOST || true,
     allowedHosts: true,
     https: loadHttpsConfig(env),
     proxy: {
