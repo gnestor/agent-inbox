@@ -67,6 +67,7 @@ const svgFileIcons: Record<string, string> = {
   gemini: geminiSvg,
   github: githubSvg,
   google: googleWorkspaceSvg,
+  "google-workspace": googleWorkspaceSvg,
   "google-ads": googleAdsSvg,
   "google-analytics": googleAnalyticsSvg,
   "google-search-console": googleSearchConsoleSvg,
