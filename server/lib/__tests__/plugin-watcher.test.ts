@@ -54,9 +54,13 @@ describe("plugin-watcher", () => {
     expect(watchCalls).toHaveLength(1)
     const { cb } = watchCalls[0]
 
-    // node_modules and dotfiles are ignored.
+    // node_modules, dotfiles, and NESTED churn (Meltano state/logs, temp) are ignored.
     cb("change", "node_modules/foo.js")
     cb("change", ".hidden")
+    cb("change", "meltano/.meltano/run/tap-shopify/state.json") // nested dot-dir — was slipping through
+    cb("change", "meltano/logs/shopify.log")
+    cb("change", "context/temp/logs/curate.log")
+    cb("change", "design/dist/bundle.js")
     await vi.advanceTimersByTimeAsync(600)
     expect(loadPluginsSpy).not.toHaveBeenCalled()
 
