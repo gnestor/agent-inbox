@@ -47,7 +47,7 @@ describe("gmail plugin", () => {
       expect(gmailPlugin.icon).toBe("Mail")
       expect(gmailPlugin.emoji).toBe("✉️")
       expect(gmailPlugin.components).toEqual({ detail: "EmailThread" })
-      expect(gmailPlugin.auth).toEqual({ integrationId: "google", scope: "user" })
+      expect(gmailPlugin.auth).toEqual({ integrationId: "google-workspace", scope: "user" })
     })
 
     it("Scenario: Field schema declares list roles and filterable system flags", () => {

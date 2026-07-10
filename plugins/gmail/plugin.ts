@@ -2,8 +2,10 @@
  * Gmail built-in plugin — wraps server/lib/gmail.ts and the incremental sync
  * logic formerly in server/routes/gmail.ts.
  *
- * Auth: per-user OAuth (Google). The plugin uses PluginContext.getCredential("google")
- * to obtain the user's access token.
+ * Auth: per-user OAuth (Google). The plugin uses PluginContext.getCredential("google-workspace")
+ * to obtain the user's access token. (`google-workspace` is the per-user Gmail/
+ * Calendar/Drive OAuth identity since the W5 rename; `google` is now the workspace
+ * service-account, not a user credential.)
  */
 
 import * as gmail from "./app/lib/gmail.js"
@@ -48,7 +50,7 @@ async function getUserLabelMapCached(accessToken: string): Promise<Map<string, s
 
 async function requireToken(ctx?: PluginContext): Promise<string> {
   if (!ctx) throw new Error("Google account not connected. Go to Settings → Integrations to connect Google.")
-  const token = await ctx.getCredential("google")
+  const token = await ctx.getCredential("google-workspace")
   if (!token) throw new Error("Google account not connected. Go to Settings → Integrations to connect Google.")
   return token
 }
@@ -96,7 +98,7 @@ export const gmailPlugin: Plugin = {
   icon: "Mail",
   emoji: "✉️",
   components: { detail: "EmailThread" },
-  auth: { integrationId: "google", scope: "user" },
+  auth: { integrationId: "google-workspace", scope: "user" },
 
   fieldSchema: [
     { id: "from", label: "From", type: "text", listRole: "subtitle" },

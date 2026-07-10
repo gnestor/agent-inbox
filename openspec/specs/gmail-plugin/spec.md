@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The built-in `gmail` plugin (`plugins/gmail/`) — a full `Plugin` shape with `query`/`getItem`/`mutate`/`itemToContext`/`filterOptions`/`routes`, plus a custom React detail component (`EmailThread`) and a list view (`EmailListView`) embedded as plugin components. Wraps the Gmail API for thread search, single-thread fetch, label/star/archive/trash mutations, draft + send composition with cached signature, and an attachment proxy. The plugin's `auth: { integrationId: "google", scope: "user" }` declares per-user OAuth; tokens are obtained via `PluginContext.getCredential("google")` (with refresh handled in `plugin-context.ts`). `itemToContext` shapes raw threads into the markdown stub format the context-system pipeline consumes.
+The built-in `gmail` plugin (`plugins/gmail/`) — a full `Plugin` shape with `query`/`getItem`/`mutate`/`itemToContext`/`filterOptions`/`routes`, plus a custom React detail component (`EmailThread`) and a list view (`EmailListView`) embedded as plugin components. Wraps the Gmail API for thread search, single-thread fetch, label/star/archive/trash mutations, draft + send composition with cached signature, and an attachment proxy. The plugin's `auth: { integrationId: "google-workspace", scope: "user" }` declares per-user OAuth; tokens are obtained via `PluginContext.getCredential("google-workspace")` (with the refresh→access-token exchange handled in `plugin-context.ts`). (`google-workspace` is the per-user Gmail/Calendar/Drive identity since the W5 rename — `google` became the workspace service-account.) `itemToContext` shapes raw threads into the markdown stub format the context-system pipeline consumes.
 
 ## Context
 
@@ -52,7 +52,7 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 
 #### Scenario: Manifest declares per-user Google OAuth and a custom detail component
 - **WHEN** the loader registers the plugin
-- **THEN** the manifest is `{ id: "gmail", name: "Emails", icon: "Mail", emoji: "✉️", components: { detail: "EmailThread" }, auth: { integrationId: "google", scope: "user" } }`.
+- **THEN** the manifest is `{ id: "gmail", name: "Emails", icon: "Mail", emoji: "✉️", components: { detail: "EmailThread" }, auth: { integrationId: "google-workspace", scope: "user" } }`.
 - **AND** the plugin's tab uses the custom `EmailThread` component for the detail panel; the list uses `EmailListView`.
 
 #### Scenario: Field schema declares list roles and filterable system flags

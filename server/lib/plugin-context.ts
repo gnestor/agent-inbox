@@ -23,7 +23,10 @@ export async function buildPluginContext(c: { get: (key: string) => unknown }): 
     async getCredential(integration: string): Promise<string | null> {
       const cred = await getUserCredential(userEmail, integration)
       if (cred?.refreshToken) {
-        if (integration === "google") {
+        // `google-workspace` (the per-user Gmail/Calendar/Drive OAuth identity
+        // since the W5 rename) needs a refresh→access-token exchange; other
+        // integrations use the stored token directly.
+        if (integration === "google-workspace") {
           return refreshGoogleToken(cred.refreshToken)
         }
         return cred.refreshToken
