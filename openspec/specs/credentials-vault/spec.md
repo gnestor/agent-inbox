@@ -26,6 +26,14 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 
 > **The vault implementation moved to `@hammies/auth`.** Encryption, per-user/per-workspace CRUD, resolution order, and `.env` seeding are now owned by the [`credential-vault`](../../../../auth/openspec/specs/credential-vault/spec.md) spec in `@hammies/auth` (with their tests). Inbox re-exports those functions via `server/lib/vault.ts` and configures the store with its pool at startup. The scenarios below cover what stays in inbox: the OAuth connections API, the `.env` Agent-SDK credential map, and wiring the shared refresh + lock primitive into the credential proxy.
 
+### Plugin integration aggregation at boot
+
+#### Scenario: Inbox registers workspace plugins' declared integrations at startup
+- **WHEN** the server boots, after `configureCredentialStore(...)` and before the keep-alive + `.env`→vault seeder
+- **THEN** it calls `discoverWorkspacePluginIntegrations(workspacePaths)` → `registerPluginIntegrations(...)` (both re-exported from `@hammies/auth` via `server/lib/integrations.ts`), scanning each workspace's `plugins/*/package.json` `studio.integrations` and merging them into the shared registry.
+- **AND** this is the SAME aggregation Studio runs (owned by the auth [`integrations`](../../../../auth/openspec/specs/integrations/spec.md) spec), so a plugin-declared integration is visible to inbox's connections API + credential proxy — inbox no longer depends on the built-in catalog being complete.
+- **AND** it runs before the seeder so `buildEnvToIntegrationMap()` covers plugin-declared workspace integrations too; a plugin misconfiguration is logged, never fatal (email/tasks still boot).
+
 ### Connections API
 
 #### Scenario: `GET /connections` reports connected status without leaking tokens
@@ -102,3 +110,4 @@ The state param for OAuth CSRF is a 24-byte random hex string stored in a proces
 - 2026-06-07: Refresh + expiry moved to `@hammies/auth` too; the inline transaction-scoped lock was replaced by a `withAdvisoryLock` store primitive that inbox implements on a dedicated connection (deadlock-free, resolving the step-1 nested-connection caveat). `credential-expiry.ts` deleted (now in auth). Step 2c.
 - 2026-06-16: **Bound the credential store to the studio DB, not inbox's own DB.** Although the tables were "migrated to studio's DB" on 2026-06-07, inbox kept injecting its `DATABASE_URL` (`/inbox`) pool into `configureCredentialStore`, so inbox's vault writes/refreshes actually landed in a *separate* `/inbox` copy. The advisory lock (per-database) therefore never serialized against studio. When studio began reading QBO in-process against its own `/studio` copy (finance migration), the two diverged and re-forked the QuickBooks refresh-token chain — the same failure as 2026-06-07, killing the data-pipeline tap with "Incorrect or invalid refresh token". Fix: a dedicated `vaultPool()` bound to `STUDIO_DATABASE_URL` (`server/db/pool.ts`) now backs `configureCredentialStore`, so inbox + studio share one row and one lock keyspace. Requires `STUDIO_DATABASE_URL` in inbox's env.
 - 2026-06-16: Replaced inbox's hand-rolled `withAdvisoryLock` block with the shared `pgAdvisoryLockAdapter(getVaultPool())` from `@hammies/auth` (studio uses the same helper), so the lock keyspace is single-sourced and can't drift between the two consumers. Pure refactor.
+- 2026-07-10: **W3 convergence** — inbox now aggregates workspace plugins' declared integrations at boot (`discoverWorkspacePluginIntegrations` → `registerPluginIntegrations`, the shared `@hammies/auth` path Studio also runs), so a plugin-only integration is visible to inbox's connections API + credential proxy. Previously inbox read the registry but never aggregated plugin manifests, which pinned every integration to the central built-in catalog. Credential-manager goal, W3 (D1).

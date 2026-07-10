@@ -35,6 +35,7 @@ import type { WorkspaceContext } from "./lib/workspace-context.js" // used in Ap
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
 import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken } from "./lib/vault.js"
+import { registerPluginIntegrations, discoverWorkspacePluginIntegrations } from "./lib/integrations.js"
 import { credentialBrokerRoutes, startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
@@ -112,6 +113,27 @@ configureCredentialStore({
   execute: vaultExecute,
   withAdvisoryLock: pgAdvisoryLockAdapter(getVaultPool()),
 })
+
+// Converge onto the plugin-aggregated registry — the SAME path Studio runs at
+// boot. Scan each workspace's plugins for their `studio.integrations` manifest
+// and register them into the shared @hammies/auth registry. Inbox reads the
+// registry (connections UI, credential proxy) but does NOT run Studio's plugin
+// loader, so without this a plugin-declared integration is invisible here — the
+// coupling that pinned every integration to the central built-in list. Runs
+// BEFORE the keep-alive and the env→vault seeder (below) so both cover
+// plugin-declared integrations too. Inbox doesn't serve plugin assets, so no
+// assetUrl (an asset-path icon falls back to a generic icon). Best-effort: a
+// plugin misconfiguration is logged, never fatal — email/tasks must still boot.
+try {
+  const pluginIntegrations = discoverWorkspacePluginIntegrations(workspacePaths)
+  registerPluginIntegrations(pluginIntegrations)
+  log.info("Plugin integrations registered", {
+    plugins: pluginIntegrations.length,
+    integrations: pluginIntegrations.reduce((n, p) => n + p.integrations.length, 0),
+  })
+} catch (err) {
+  log.error("Plugin integration registration failed", { error: err instanceof Error ? err.message : String(err) })
+}
 
 // Keep the OAuth refresh-token chains alive on the always-on host so they never
 // idle into expiry. Opt-in (CREDENTIAL_KEEPALIVE=1) so it doesn't fire from

@@ -11,4 +11,10 @@ export {
   getIntegration,
   getOAuthIntegrations,
   buildEnvToIntegrationMap,
+  // Plugin-aggregation: inbox registers workspace plugins' declared integrations
+  // at boot (the same path Studio runs), so a plugin-only integration is visible
+  // to inbox's connections UI + credential proxy. See @hammies/auth
+  // plugin-integrations.ts and this package's plugin-system spec.
+  registerPluginIntegrations,
+  discoverWorkspacePluginIntegrations,
 } from "@hammies/auth/server"
