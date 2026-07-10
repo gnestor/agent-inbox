@@ -61,6 +61,9 @@ connectionRoutes.get("/", async (c) => {
     id: config.id,
     name: config.name,
     icon: config.icon,
+    // Served brand icon for plugin-declared integrations (e.g. icons/microsoft.svg);
+    // the UI prefers it over the per-id icon map. Absent for built-ins.
+    iconUrl: config.iconUrl,
     scope: config.scope,
     authType: config.authType,
     connected:

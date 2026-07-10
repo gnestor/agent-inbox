@@ -29,6 +29,7 @@ export function IntegrationCard({ integration }: IntegrationCardProps) {
       <div className="flex items-center gap-3">
         <IntegrationIcon
           integrationId={integration.id}
+          iconUrl={integration.iconUrl}
           className="flex h-8 w-8 items-center justify-center rounded-md bg-muted"
         />
         <div>

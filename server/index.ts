@@ -36,6 +36,7 @@ import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
 import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken } from "./lib/vault.js"
 import { registerPluginIntegrations, discoverWorkspacePluginIntegrations } from "./lib/integrations.js"
+import { pluginAssetRoutes, inboxPluginAssetUrl } from "./routes/plugin-assets.js"
 import { credentialBrokerRoutes, startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
@@ -121,12 +122,16 @@ configureCredentialStore({
 // loader, so without this a plugin-declared integration is invisible here — the
 // coupling that pinned every integration to the central built-in list. Runs
 // BEFORE the keep-alive and the env→vault seeder (below) so both cover
-// plugin-declared integrations too. Inbox doesn't serve plugin assets, so no
-// assetUrl (an asset-path icon falls back to a generic icon). Best-effort: a
-// plugin misconfiguration is logged, never fatal — email/tasks must still boot.
+// plugin-declared integrations too. Inbox serves each plugin's icon assets from
+// its `dir` (see `pluginAssetRoutes` below), so it passes `inboxPluginAssetUrl`
+// — an asset-path icon becomes a served iconUrl instead of the generic
+// fallback. Best-effort: a plugin misconfiguration is logged, never fatal —
+// email/tasks must still boot.
+const pluginAssetDirs = new Map<string, string>()
 try {
   const pluginIntegrations = discoverWorkspacePluginIntegrations(workspacePaths)
-  registerPluginIntegrations(pluginIntegrations)
+  registerPluginIntegrations(pluginIntegrations, { assetUrl: inboxPluginAssetUrl })
+  for (const p of pluginIntegrations) if (p.dir) pluginAssetDirs.set(p.name, p.dir)
   log.info("Plugin integrations registered", {
     plugins: pluginIntegrations.length,
     integrations: pluginIntegrations.reduce((n, p) => n + p.integrations.length, 0),
@@ -328,6 +333,8 @@ app.route("/api/preferences", preferencesRoutes)
 app.route("/api/panels", panelRoutes)
 app.route("/api/connections", connectionRoutes)
 app.route("/api/backfill", backfillRoutes)
+// Plugin icon assets — before the /:pluginId/* catch-all so it isn't shadowed.
+app.route("/api", pluginAssetRoutes(pluginAssetDirs))
 // Plugin routes last — /:pluginId/* is a catch-all that must not shadow static routes
 app.route("/api", pluginRoutes)
 

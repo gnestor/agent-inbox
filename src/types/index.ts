@@ -127,6 +127,8 @@ export interface Integration {
   id: string
   name: string
   icon: string
+  /** Served brand icon for plugin-declared integrations; preferred over the per-id icon map. */
+  iconUrl?: string
   scope: "user" | "workspace"
   authType: "oauth2" | "api_key"
   connected: boolean

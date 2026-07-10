@@ -94,13 +94,25 @@ const inlineIcons: Record<string, React.FC> = {
 
 export function IntegrationIcon({
   integrationId,
+  iconUrl,
   className,
 }: {
   integrationId: string
+  /** Served brand icon (plugin-declared integrations); wins over the per-id map + inline icons. */
+  iconUrl?: string
   className?: string
 }) {
   const isMono = monochromeIcons.has(integrationId)
   const imgClass = isMono ? "dark:invert" : ""
+
+  // A plugin-provided served icon takes precedence over the built-in per-id maps.
+  if (iconUrl) {
+    return (
+      <div className={className}>
+        <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+      </div>
+    )
+  }
 
   const svgUrl = svgFileIcons[integrationId]
   if (svgUrl) {

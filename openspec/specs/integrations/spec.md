@@ -28,11 +28,20 @@ Why a single typed TS object (not JSON/DB), how OAuth metadata rides on each rec
 - **THEN** the popup tab toasts success and broadcasts completion over the `oauth-connection` BroadcastChannel, which the original tab listens for to invalidate `["connections"]`.
 - **AND** because that broadcast is best-effort, the `["connections"]` query is itself authoritative: `staleTime: 0`, `refetchOnMount: "always"`, `refetchOnWindowFocus: true`, and it is **excluded from IndexedDB persistence** (see the navigation spec's persistence predicate). A reload, or simply returning to the original tab after closing the popup, therefore refetches and shows the connected state — it never serves the pre-OAuth `connected: false` from the persisted 5-min-stale cache.
 
+### Plugin icon assets
+
+#### Scenario: A plugin-declared integration's brand icon renders in inbox
+- **WHEN** inbox aggregates workspace plugin manifests at boot, it passes `inboxPluginAssetUrl` to `registerPluginIntegrations` so a plugin's asset-path icon (e.g. `icons/microsoft.svg`) becomes `iconUrl = /api/plugin-assets/<plugin>/<path>`, and records each plugin's `dir` for serving.
+- **THEN** `GET /api/plugin-assets/:id/*` serves that plugin's icon from its `dir` via the shared `resolvePluginAsset` (image ext allowlist + path-traversal check in `@hammies/auth`), and the connections API returns `iconUrl` on each integration.
+- **AND** `IntegrationIcon` renders `iconUrl` (an `<img>`) in preference to its built-in per-id SVG map, so a plugin-owned integration shows its own brand icon instead of the generic fallback.
+- **WHY:** built-ins moving into plugin manifests (W3) must not lose their icon in inbox just because inbox doesn't run Studio's plugin loader.
+
 ## Technical Notes
 
 | Concern | Location |
 |---|---|
 | Registry (catalog + helpers + tests) | `@hammies/auth` `src/server/credentials/integrations.ts` (owned by auth `integrations`) |
+| Plugin icon asset route (`/api/plugin-assets/:id/*`) + `inboxPluginAssetUrl` builder — serves workspace-plugin icons via the shared `resolvePluginAsset` | [server/routes/plugin-assets.ts](../../../server/routes/plugin-assets.ts) |
 | Registry re-export shim | `server/lib/integrations.ts` (owned by `credentials-vault`) |
 | OAuth connect/callback routes that read this registry | `server/lib/credentials.ts` |
 | Env-to-vault migration script (one-time seed) | [server/scripts/migrate-env-to-vault.ts](../../../server/scripts/migrate-env-to-vault.ts) |
