@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "local": {
+      "source": { "source": "directory", "path": "../agent/plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "notion@local": true
+  }
+}
