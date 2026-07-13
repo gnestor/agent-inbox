@@ -22,23 +22,23 @@ describe("session-files", () => {
   })
 
   describe("path layout", () => {
-    it("Scenario: Sessions root is `${workspacePath}/sessions/` — per-session dirs are <root>/<id>/{input,output}", () => {
+    it("Scenario: Sessions root is `${workspacePath}/temp/sessions/` — per-session dirs are <root>/<id>/{input,output}", () => {
       const dir = getSessionFilesDir(ws, "abc123", "output")
-      expect(dir).toBe(join(ws, "sessions", "abc123", "output"))
+      expect(dir).toBe(join(ws, "temp", "sessions", "abc123", "output"))
       const inputDir = getSessionFilesDir(ws, "abc123", "input")
-      expect(inputDir).toBe(join(ws, "sessions", "abc123", "input"))
+      expect(inputDir).toBe(join(ws, "temp", "sessions", "abc123", "input"))
     })
 
-    it("Scenario: Sessions root is `${workspacePath}/sessions/` — empty workspace path falls back to process CWD", () => {
+    it("Scenario: Sessions root is `${workspacePath}/temp/sessions/` — empty workspace path falls back to process CWD", () => {
       const dir = getSessionFilesDir("", "abc123", "input")
-      expect(dir).toBe(join(process.cwd(), "sessions", "abc123", "input"))
+      expect(dir).toBe(join(process.cwd(), "temp", "sessions", "abc123", "input"))
       // Clean up the dir created under CWD
-      rmSync(join(process.cwd(), "sessions", "abc123"), { recursive: true, force: true })
+      rmSync(join(process.cwd(), "temp", "sessions", "abc123"), { recursive: true, force: true })
     })
 
     it('Scenario: Subfolder is exactly `"input" | "output"` — defaults to input and is created recursively on first access', () => {
       const dir = getSessionFilesDir(ws, "sess1")
-      expect(dir).toBe(join(ws, "sessions", "sess1", "input"))
+      expect(dir).toBe(join(ws, "temp", "sessions", "sess1", "input"))
       expect(existsSync(dir)).toBe(true)
     })
   })
@@ -56,7 +56,7 @@ describe("session-files", () => {
     it("Scenario: Filenames are coerced to a safe alphabet — disallowed chars become underscores and that name is written + returned", () => {
       const meta = saveSessionFile(ws, "sess1", "my report(v2)!.txt", Buffer.from("hi"))
       expect(meta.name).toBe("my report_v2__.txt")
-      expect(existsSync(join(ws, "sessions", "sess1", "input", "my report_v2__.txt"))).toBe(true)
+      expect(existsSync(join(ws, "temp", "sessions", "sess1", "input", "my report_v2__.txt"))).toBe(true)
     })
   })
 
@@ -65,7 +65,7 @@ describe("session-files", () => {
       const meta = saveSessionFile(ws, "sess1", "data.bin", Buffer.from("abcde"))
       expect(meta).toEqual({
         name: "data.bin",
-        path: join(ws, "sessions", "sess1", "input", "data.bin"),
+        path: join(ws, "temp", "sessions", "sess1", "input", "data.bin"),
         size: 5,
         mimeType: "application/octet-stream",
       })
@@ -113,10 +113,10 @@ describe("session-files", () => {
     })
 
     it("Scenario: Bullet list with subfolder and byte size — input files before output files", () => {
-      mkdirSync(join(ws, "sessions", "sess1", "input"), { recursive: true })
-      mkdirSync(join(ws, "sessions", "sess1", "output"), { recursive: true })
-      writeFileSync(join(ws, "sessions", "sess1", "input", "name1"), "x".repeat(1234))
-      writeFileSync(join(ws, "sessions", "sess1", "output", "name2"), "y".repeat(5678))
+      mkdirSync(join(ws, "temp", "sessions", "sess1", "input"), { recursive: true })
+      mkdirSync(join(ws, "temp", "sessions", "sess1", "output"), { recursive: true })
+      writeFileSync(join(ws, "temp", "sessions", "sess1", "input", "name1"), "x".repeat(1234))
+      writeFileSync(join(ws, "temp", "sessions", "sess1", "output", "name2"), "y".repeat(5678))
       const manifest = buildFileManifest(ws, "sess1")
       expect(manifest).toBe(
         "\nSession files:\n- name1 (input/, 1234 bytes)\n- name2 (output/, 5678 bytes)\n",

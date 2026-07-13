@@ -4,7 +4,9 @@ import { join } from "path"
 /**
  * Per-session file directories.
  *
- * Convention: $WORKSPACE_ROOT/sessions/{sessionId}/{input,output}/
+ * Convention: $WORKSPACE_ROOT/temp/sessions/{sessionId}/{input,output}/
+ * (`temp/` is the workspace scratch convention, gitignored at any depth —
+ * a bare `sessions/` dir at the workspace root is explicitly disallowed)
  *
  * - input/  — files uploaded by the user via POST /api/sessions/:id/files
  * - output/ — files written by the agent (referenced in render_output file specs)
@@ -23,7 +25,7 @@ function sanitizeFilename(filename: string): string {
 }
 
 function getSessionsRoot(workspacePath: string): string {
-  return join(workspacePath || process.cwd(), "sessions")
+  return join(workspacePath || process.cwd(), "temp", "sessions")
 }
 
 export function getSessionFilesDir(workspacePath: string, sessionId: string, subfolder: "input" | "output" = "input"): string {

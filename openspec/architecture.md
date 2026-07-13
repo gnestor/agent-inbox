@@ -35,7 +35,7 @@ Specs already in `openspec/specs/`:
 Specs not yet written (planned, in roughly the order they will be added):
 
 - `session-manager` — Agent SDK lifecycle, JSONL parsing, sequence assignment, optimistic prompts, `runningQueries`
-- `session-files` — per-session input/output directories under the workspace, file uploads
+- `session-files` — per-session input/output directories under the workspace `temp/` tree, file uploads
 - `session-instructions` — per-session and per-workspace instruction overlays
 - `plugin-system` — plugin loading, lifecycle, REST mounting, panel registry, sidebar, watcher
 - `context-system` — body extraction, entity extraction, entity curation, backfill scheduler, source entities

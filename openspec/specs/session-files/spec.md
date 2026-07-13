@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Per-session filesystem layout for files exchanged with the agent: `${workspacePath}/sessions/{sessionId}/input/` for user uploads and `${workspacePath}/sessions/{sessionId}/output/` for agent writes. Helpers to validate/sanitise paths, save uploads, look up files for download, list contents, and build a manifest string the session-instruction layer prepends to the system prompt so the agent knows what files exist.
+Per-session filesystem layout for files exchanged with the agent: `${workspacePath}/temp/sessions/{sessionId}/input/` for user uploads and `${workspacePath}/temp/sessions/{sessionId}/output/` for agent writes. Helpers to validate/sanitise paths, save uploads, look up files for download, list contents, and build a manifest string the session-instruction layer prepends to the system prompt so the agent knows what files exist.
 
 ## Context
 
@@ -31,7 +31,7 @@ The manifest is concatenated into the system prompt — a token-counted resource
 
 ### Path layout
 
-#### Scenario: Sessions root is `${workspacePath}/sessions/`
+#### Scenario: Sessions root is `${workspacePath}/temp/sessions/`
 - **WHEN** any helper is called with a workspace path
 - **THEN** the root is `join(workspacePath || process.cwd(), "sessions")` — a missing/empty workspace path falls back to the process CWD.
 - **AND** per-session directories are `<root>/<sessionId>/input/` and `<root>/<sessionId>/output/`.
@@ -99,3 +99,4 @@ The manifest is concatenated into the system prompt — a token-counted resource
 - The directory layout was originally flat (`sessions/<id>/<file>`); split into `input/`/`output/` after agent-written reports overwrote a user upload of the same name in a debugging session.
 - `validateSessionId` was added after a prototype accepted `..` in the path, exposing the workspace root above `sessions/` to read.
 - `buildFileManifest` was JSON early on; rewritten to bullet text after a token-budget review showed ~25% of system-prompt tokens for sessions with many files were JSON syntax.
+- 2026-07-13: sessions root moved from `${workspacePath}/sessions/` to `${workspacePath}/temp/sessions/` — the bare `sessions/` dir at the workspace root violated the monorepo temp-file convention (all ephemeral output under a gitignored `temp/` tree) and kept resurrecting a stray dir in the agent repo. Files under the old root are no longer found by name-based lookup.
