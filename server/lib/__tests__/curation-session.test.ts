@@ -23,7 +23,7 @@ beforeEach(() => {
 })
 
 describe("getCurationCwd", () => {
-  it("Scenario: Curation sessions run with CWD = `${workspacePath}/context` — joins workspace path with `context`", async () => {
+  it("Scenario: Curation sessions run with CWD = the knowledge corpus dir — joins workspace path with `plugins/context/knowledge`", async () => {
     const { getCurationCwd } = await import("../curation-session.js")
     expect(getCurationCwd("/home/u/agent")).toBe("/home/u/agent/plugins/context/knowledge")
   })

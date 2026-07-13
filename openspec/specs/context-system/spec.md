@@ -95,9 +95,9 @@ The DB query for `unprocessedSourcesForEntity` already limits to 100 sources. Th
 - **THEN** the helper invokes `onComplete()` (which marks sources processed, inserts discovered entities, rolls up persons to domains).
 - **AND** if the session errors before completion, the pending row remains with its current `last_run_at`; the stale-lock TTL is the only recovery path.
 
-#### Scenario: Curation sessions run with CWD = `${workspacePath}/context`
+#### Scenario: Curation sessions run with CWD = the knowledge corpus dir
 - **WHEN** any curation session is launched
-- **THEN** `getCurationCwd(workspacePath)` returns `join(workspacePath, "context")` and that path is passed as the SDK's `cwd`.
+- **THEN** `getCurationCwd(workspacePath)` returns `join(workspacePath, "plugins/context/knowledge")` and that path is passed as the SDK's `cwd`.
 - **AND** the SDK's JSONL transcript ends up in `~/.claude/projects/<encoded-context-path>/<sessionId>.jsonl`, separate from interactive sessions.
 
 #### Scenario: Curation sessions skip `sessions` DB rows
