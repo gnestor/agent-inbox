@@ -37,7 +37,7 @@ import { createCredentialProxy, type ResolvedCredential } from "./lib/credential
 import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken } from "./lib/vault.js"
 import { registerPluginIntegrations, discoverWorkspacePluginIntegrations } from "./lib/integrations.js"
 import { pluginAssetRoutes, inboxPluginAssetUrl } from "./routes/plugin-assets.js"
-import { credentialBrokerRoutes, startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
+import { startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
@@ -249,12 +249,11 @@ app.get("/api/health", async (c) => {
   )
 })
 
-// Credential broker (service-token auth, NOT user-cookie) — lets out-of-process
-// consumers (the data-pipeline tap) fetch a current QBO access token. Mounted
-// before the user-session middleware. No-op unless CREDENTIAL_BROKER_TOKEN is set.
-if (process.env.CREDENTIAL_BROKER_TOKEN) {
-  app.route("/api/credentials", credentialBrokerRoutes({ serviceToken: process.env.CREDENTIAL_BROKER_TOKEN }))
-}
+// The credential broker is now single-homed on Studio (:5181) — the single
+// broker host (consolidation Phase 3). Inbox no longer mounts it; the Meltano
+// taps and the laptop finance skills all read credentials from Studio's mount.
+// Inbox keeps only the in-process keep-alive above (refreshes the OAuth chains
+// on this always-on host); it never served credentials to itself over HTTP.
 
 // Auth middleware — protect all other /api routes and set user context
 app.use("/api/*", async (c, next) => {
