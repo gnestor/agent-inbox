@@ -81,12 +81,12 @@ type CurateResult =
   | { error: string }
 
 /**
- * Strip the leading `context/` segment from a path stored in source_entities
+ * Strip the leading `plugins/context/knowledge/` segment from a path stored in source_entities
  * so it becomes relative to the curation CWD.
  */
 function toCurationRelative(pathFromWorkspace: string): string {
-  return pathFromWorkspace.startsWith("context/")
-    ? pathFromWorkspace.slice("context/".length)
+  return pathFromWorkspace.startsWith("plugins/context/knowledge/")
+    ? pathFromWorkspace.slice("plugins/context/knowledge/".length)
     : pathFromWorkspace
 }
 
@@ -146,7 +146,7 @@ async function findParentCompanyPage(
 
 /**
  * Tiered candidate-page lookup. Returned path is relative to the context
- * directory (no `context/` prefix) so it's usable directly from the curation
+ * directory (no corpus-dir prefix) so it's usable directly from the curation
  * session's CWD.
  *  1. Canonical slug → <slug>.md
  *  2. ripgrep literal match
@@ -263,7 +263,7 @@ async function hasHammiesEngagement(
 ): Promise<boolean> {
   if (sourcePaths.length === 0) return false
   const HAMMIES_SENDER_RE = /@(?:hammies\.com|hammiesshorts\.com|hammies\.shorts)\b/i
-  const contextDir = resolve(workspacePath, "context")
+  const contextDir = resolve(workspacePath, "plugins/context/knowledge")
   for (const sp of sourcePaths) {
     let text: string
     try {
@@ -363,7 +363,7 @@ Automated lookup (slug → ripgrep → qmd) did not find an existing page for th
 
 ${parentHintSection}
 
-Your working directory is the \`context/\` folder — all paths below are relative to it.
+Your working directory is the \`plugins/context/knowledge/\` corpus folder — all paths below are relative to it.
 
 ## Entity
 - **Type:** ${entityType}
@@ -435,9 +435,9 @@ last_updated: YYYY-MM-DD
 
 ## Paths (critical — get these right)
 
-You are in \`context/\`. Links to other pages in this directory are bare
+You are in \`plugins/context/knowledge/\`. Links to other pages in this directory are bare
 filenames. Links to source stubs in subdirectories use the subdirectory prefix.
-All source stubs now live under \`context/\` — no \`../\` prefixes anywhere.
+All source stubs now live in this directory — no \`../\` prefixes anywhere.
 
 - Curated page: \`[Title](filename.md)\`
 - Gmail source: \`[Subject](gmail/threadId.md)\`
@@ -513,7 +513,7 @@ status-change webhooks, empty Instagram comments, etc.):
 **Tier 3 — write to \`proposals.md\`** for schema, template, prompt, or
 ranking changes (operator reviews and applies):
 
-- Path: \`proposals.md\` (you're already in \`context/\`).
+- Path: \`proposals.md\` (you are already in the corpus dir).
 - Append a row to the table:
   \`| YYYY-MM-DD | <area> | <proposed change> | <rationale + 1-2 source paths> |\`
 - Areas: \`schema\`, \`template\`, \`prompt\`, \`ranking\`, \`other\`.
@@ -584,7 +584,7 @@ export async function curateEntity(
     return { skipped: `below min-source threshold (${sources.length} < ${minThreshold} for ${entityType})` }
   }
 
-  const contextDir = resolve(workspacePath, "context")
+  const contextDir = resolve(workspacePath, "plugins/context/knowledge")
   const candidatePath = await findCandidatePage(contextDir, entityType, entityValue)
 
   // Engagement gate: an entity whose unprocessed sources show NO Hammies
@@ -635,7 +635,7 @@ export async function curateEntity(
     }
   }
 
-  // source_entities stores workspace-relative paths; strip "context/" so the
+  // source_entities stores workspace-relative paths; strip the corpus prefix so the
   // agent can reference them from its CWD.
   const promptSources = sources.map(toCurationRelative)
   const prompt = buildEntityPrompt(

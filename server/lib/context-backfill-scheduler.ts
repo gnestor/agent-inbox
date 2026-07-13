@@ -106,7 +106,7 @@ export async function runCuratedUpdate(
   workspaceId?: string,
   sourceFilter?: string,
 ): Promise<{ sessionId: string; remaining: number } | { skipped: string } | { error: string }> {
-  const contextDir = resolve(workspacePath, "context")
+  const contextDir = resolve(workspacePath, "plugins/context/knowledge")
   if (!fs.existsSync(contextDir)) {
     return { skipped: "no context directory" }
   }
@@ -140,7 +140,7 @@ export async function runCuratedUpdate(
   const pluginDir = plugin.backfillDir
     ? resolve(workspacePath, plugin.backfillDir)
     : join(contextDir, plugin.id)
-  const relPath = plugin.backfillDir ?? `context/${plugin.id}`
+  const relPath = plugin.backfillDir ?? `plugins/context/knowledge/${plugin.id}`
 
   if (!fs.existsSync(pluginDir)) {
     return { skipped: `no source directory for ${sourceFilter}` }
@@ -195,13 +195,13 @@ export async function runCuratedUpdate(
     remaining,
   })
 
-  // Paths in the batch are workspace-relative (e.g. "context/gmail/abc.md"
+  // Paths in the batch are workspace-relative (e.g. "plugins/context/knowledge/gmail/abc.md"
   // or "backfill-cache/google-drive/abc.md"). The curation CWD is
   // {workspace}/context, so strip the context/ prefix for files inside it
   // and prefix "../" for files outside it.
   const filePaths = batch.map((f) => (
-    f.path.startsWith("context/")
-      ? f.path.slice("context/".length)
+    f.path.startsWith("plugins/context/knowledge/")
+      ? f.path.slice("plugins/context/knowledge/".length)
       : `../${f.path}`
   ))
   if (!plugin.curationPrompt) {
@@ -257,7 +257,7 @@ export function buildDefaultCurationPrompt(
 
   return `You are maintaining Hammies' relationship index by curating ${source} source files.
 
-Your working directory is the \`context/\` folder — all paths below are relative to it.
+Your working directory is the \`plugins/context/knowledge/\` corpus folder — all paths below are relative to it.
 
 ## A context page IS
 - An index of an entity's identity, attributes, and dense links to other entities and sources
@@ -313,7 +313,7 @@ When a curation session reveals a noise pattern that should be filtered before r
 
 - **Tier 1** — \`packages/agent/plugins/workspace-filters.ts\`: cross-plugin sets like \`SPAM_DOMAINS\`, \`AUTOMATED_LOCAL_RE\`, \`GENERIC_FOLDERS\`, \`REP_AGGREGATION_DOMAINS\`. Add an entry with a short comment explaining the source pattern.
 - **Tier 2** — the plugin's own \`itemToContext\` (e.g. \`packages/agent/plugins/gorgias/plugin.ts\`): early \`return null\` for source-specific patterns (subject regexes, single-message detectors).
-- **Tier 3** (schema/template/prompt changes) — write a row to \`context/proposals.md\` instead of editing code; operator review required.
+- **Tier 3** (schema/template/prompt changes) — write a row to \`plugins/context/knowledge/proposals.md\` instead of editing code; operator review required.
 
 **Critical when editing \`itemToContext\`**: scan the function for existing variable declarations before adding any new ones. The function commonly has \`const messages\`, \`const subject\`, \`const email\`, \`const domain\` declared near the top. **Reuse these — do not redeclare.** A duplicate \`const\` is a TypeScript error that kills plugin loading and stalls the entire entity pipeline. Pattern to follow: if your new filter needs \`messages\`, place it after the existing declaration and use that variable; do not write a fresh \`const messages = ...\` line.
 
@@ -370,7 +370,7 @@ Every page tagged \`company, customer, wholesale\` MUST include in \`## Sources\
 Use dense inline links throughout prose, not just in Sources/Related:
 - "[Grant](grant-nestor.md) hired [Kurt Koenig](kurt-koenig.md) for the [Levi's lawsuit](levi-lawsuit.md)"
 
-Flat format (relative to \`context/\`):
+Flat format (relative to \`plugins/context/knowledge/\`):
 - Curated page: \`[Title](filename.md)\`
 - Gmail source: \`[Subject](gmail/threadId.md)\`
 - Gorgias source: \`[Ticket #id](gorgias/ticketId.md)\`
