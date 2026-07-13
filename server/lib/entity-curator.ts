@@ -81,12 +81,12 @@ type CurateResult =
   | { error: string }
 
 /**
- * Strip the leading `plugins/context/knowledge/` segment from a path stored in source_entities
+ * Strip the leading `plugins/context/assets/` segment from a path stored in source_entities
  * so it becomes relative to the curation CWD.
  */
 function toCurationRelative(pathFromWorkspace: string): string {
-  return pathFromWorkspace.startsWith("plugins/context/knowledge/")
-    ? pathFromWorkspace.slice("plugins/context/knowledge/".length)
+  return pathFromWorkspace.startsWith("plugins/context/assets/")
+    ? pathFromWorkspace.slice("plugins/context/assets/".length)
     : pathFromWorkspace
 }
 
@@ -263,7 +263,7 @@ async function hasHammiesEngagement(
 ): Promise<boolean> {
   if (sourcePaths.length === 0) return false
   const HAMMIES_SENDER_RE = /@(?:hammies\.com|hammiesshorts\.com|hammies\.shorts)\b/i
-  const contextDir = resolve(workspacePath, "plugins/context/knowledge")
+  const contextDir = resolve(workspacePath, "plugins/context/assets")
   for (const sp of sourcePaths) {
     let text: string
     try {
@@ -363,7 +363,7 @@ Automated lookup (slug → ripgrep → qmd) did not find an existing page for th
 
 ${parentHintSection}
 
-Your working directory is the \`plugins/context/knowledge/\` corpus folder — all paths below are relative to it.
+Your working directory is the \`plugins/context/assets/\` corpus folder — all paths below are relative to it.
 
 ## Entity
 - **Type:** ${entityType}
@@ -435,7 +435,7 @@ last_updated: YYYY-MM-DD
 
 ## Paths (critical — get these right)
 
-You are in \`plugins/context/knowledge/\`. Links to other pages in this directory are bare
+You are in \`plugins/context/assets/\`. Links to other pages in this directory are bare
 filenames. Links to source stubs in subdirectories use the subdirectory prefix.
 All source stubs now live in this directory — no \`../\` prefixes anywhere.
 
@@ -584,7 +584,7 @@ export async function curateEntity(
     return { skipped: `below min-source threshold (${sources.length} < ${minThreshold} for ${entityType})` }
   }
 
-  const contextDir = resolve(workspacePath, "plugins/context/knowledge")
+  const contextDir = resolve(workspacePath, "plugins/context/assets")
   const candidatePath = await findCandidatePage(contextDir, entityType, entityValue)
 
   // Engagement gate: an entity whose unprocessed sources show NO Hammies

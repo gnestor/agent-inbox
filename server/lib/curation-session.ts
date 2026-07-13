@@ -19,7 +19,7 @@ import { startSession } from "./session-manager.js"
 
 /** Curation sessions run with CWD = `{workspace}/context`. */
 export function getCurationCwd(workspacePath: string): string {
-  return join(workspacePath, "plugins/context/knowledge")
+  return join(workspacePath, "plugins/context/assets")
 }
 
 /**

@@ -23,9 +23,9 @@ beforeEach(() => {
 })
 
 describe("getCurationCwd", () => {
-  it("Scenario: Curation sessions run with CWD = the knowledge corpus dir — joins workspace path with `plugins/context/knowledge`", async () => {
+  it("Scenario: Curation sessions run with CWD = the knowledge corpus dir — joins workspace path with `plugins/context/assets`", async () => {
     const { getCurationCwd } = await import("../curation-session.js")
-    expect(getCurationCwd("/home/u/agent")).toBe("/home/u/agent/plugins/context/knowledge")
+    expect(getCurationCwd("/home/u/agent")).toBe("/home/u/agent/plugins/context/assets")
   })
 })
 
@@ -73,7 +73,7 @@ describe("runBackgroundCurationSession", () => {
     await runBackgroundCurationSession(baseOpts())
     expect(mockStartSession).toHaveBeenCalledWith(
       "curate it",
-      expect.objectContaining({ skipDbRecord: true, workspacePath: "/home/u/agent/plugins/context/knowledge" }),
+      expect.objectContaining({ skipDbRecord: true, workspacePath: "/home/u/agent/plugins/context/assets" }),
     )
   })
 

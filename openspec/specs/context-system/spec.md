@@ -97,7 +97,7 @@ The DB query for `unprocessedSourcesForEntity` already limits to 100 sources. Th
 
 #### Scenario: Curation sessions run with CWD = the knowledge corpus dir
 - **WHEN** any curation session is launched
-- **THEN** `getCurationCwd(workspacePath)` returns `join(workspacePath, "plugins/context/knowledge")` and that path is passed as the SDK's `cwd`.
+- **THEN** `getCurationCwd(workspacePath)` returns `join(workspacePath, "plugins/context/assets")` and that path is passed as the SDK's `cwd`.
 - **AND** the SDK's JSONL transcript ends up in `~/.claude/projects/<encoded-context-path>/<sessionId>.jsonl`, separate from interactive sessions.
 
 #### Scenario: Curation sessions skip `sessions` DB rows
