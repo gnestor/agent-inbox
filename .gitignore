@@ -11,6 +11,7 @@ IMPLEMENTATION.md
 REVIEW.md
 .DS_Store
 .playwright-cli
+temp
 
 # spec-gen analysis artifacts
 .spec-gen/
