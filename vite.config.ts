@@ -83,7 +83,10 @@ export default defineConfig(({ mode }) => {
     },
   },
   server: {
-    port: 5175,
+    // Overridable so a SECOND instance (a worktree checkout) can run alongside
+    // the main checkout's dev server instead of fighting it for the port —
+    // mirrors Studio's STUDIO_VITE_PORT/STUDIO_PORT. Defaults are unchanged.
+    port: Number(env.INBOX_VITE_PORT) || 5175,
     strictPort: true,
     // Bind all interfaces by default. Inbox's Tailscale Serve is on the BARE
     // host (:443 → localhost:5175), a different port from Vite's, so tailscaled
@@ -95,7 +98,9 @@ export default defineConfig(({ mode }) => {
     https: loadHttpsConfig(env),
     proxy: {
       "/api": {
-        target: "http://localhost:3002",
+        // Must follow INBOX_PORT so a second instance proxies to ITS OWN Hono
+        // server, not the main checkout's.
+        target: `http://localhost:${Number(env.INBOX_PORT) || 3002}`,
         changeOrigin: true,
         // Required: without ws:true the /api/ws upgrade is HTTP-proxied and
         // fails silently, so the multiplexed session WebSocket never connects in dev.

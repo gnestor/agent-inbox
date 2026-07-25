@@ -365,7 +365,10 @@ if (existsSync(distPath)) {
   app.get("/*", serveStatic({ path: "./dist/index.html" }))
 }
 
-const port = parseInt(process.env.PORT || "3002", 10)
+// INBOX_PORT is the inbox-specific override (mirrors Studio's STUDIO_PORT) so a
+// second instance from a worktree can run beside the main checkout's server;
+// PORT stays supported for generic hosts. Vite's /api proxy reads the same var.
+const port = parseInt(process.env.INBOX_PORT || process.env.PORT || "3002", 10)
 
 // Load workspace plugins before starting the server
 for (const ws of registeredWorkspaces) {
