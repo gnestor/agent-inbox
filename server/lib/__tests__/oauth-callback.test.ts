@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { Hono } from "hono"
+import { registerIntegrations, resetIntegrationRegistry, type IntegrationConfig } from "@hammies/auth/server"
 import { _getDefaultStore } from "../rate-limit.js"
 
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
@@ -106,6 +107,42 @@ function createTestApp() {
 const testEmail = "test@hammies.com"
 
 /**
+ * The integration registry starts EMPTY and is filled by plugin registration at
+ * boot (the built-in catalog was removed 2026-07-11), and no boot happens here.
+ * Without this fixture `/connect/:integration` 404s, so `getValidState` never
+ * gets a state token and every exchange case fails. These records exist to drive
+ * the two token-exchange shapes the callback supports: Pinterest's Basic-auth
+ * header, and the generic client_id-in-body form post (google, quickbooks).
+ */
+const TEST_INTEGRATIONS: IntegrationConfig[] = [
+  {
+    id: "google", name: "Google", icon: "mail", scope: "user", authType: "oauth2",
+    envVars: { credential: "GOOGLE_REFRESH_TOKEN" },
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+    clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+  },
+  {
+    id: "pinterest", name: "Pinterest", icon: "image", scope: "user", authType: "oauth2",
+    envVars: { credential: "PINTEREST_ACCESS_TOKEN" },
+    authUrl: "https://www.pinterest.com/oauth/",
+    tokenUrl: "https://api.pinterest.com/v5/oauth/token",
+    clientIdEnv: "PINTEREST_CLIENT_ID", clientSecretEnv: "PINTEREST_CLIENT_SECRET",
+    // The case under test: credentials go in an Authorization: Basic header,
+    // not the body.
+    tokenAuthMethod: "basic", tokenContentType: "form",
+  },
+  {
+    id: "quickbooks", name: "QuickBooks", icon: "receipt", scope: "workspace", authType: "oauth2",
+    envVars: { credential: "QUICKBOOKS_REFRESH_TOKEN" },
+    authUrl: "https://appcenter.intuit.com/connect/oauth2",
+    tokenUrl: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    clientIdEnv: "QUICKBOOKS_CLIENT_ID", clientSecretEnv: "QUICKBOOKS_CLIENT_SECRET",
+  },
+]
+
+/**
  * Helper: start an OAuth flow to generate a valid state token.
  */
 async function getValidState(app: Hono, integration: string): Promise<string> {
@@ -135,6 +172,7 @@ async function getValidState(app: Hono, integration: string): Promise<string> {
 
 describe("OAuth callback token exchange", () => {
   beforeEach(() => {
+    registerIntegrations(TEST_INTEGRATIONS, "test-fixture")
     users.clear()
     userCredentials.clear()
     workspaceCredentials.clear()
@@ -146,6 +184,10 @@ describe("OAuth callback token exchange", () => {
       user: { name: "Test User", email: testEmail },
     })
     mockFetch.mockReset()
+  })
+
+  afterEach(() => {
+    resetIntegrationRegistry()
   })
 
   it("Scenario: OAuth callback validates state, exchanges code, stores token — exchanges code for token with Pinterest (Basic auth + form-encoded body)", async () => {

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { Hono } from "hono"
+import { registerIntegrations, resetIntegrationRegistry, type IntegrationConfig } from "@hammies/auth/server"
 
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
@@ -93,6 +94,44 @@ const { storeUserCredential, storeWorkspaceCredential, configureCredentialStore 
 const poolMock = await import("../../db/pool.js")
 configureCredentialStore({ query: poolMock.query, queryOne: poolMock.queryOne, execute: poolMock.execute })
 
+/**
+ * The integration registry starts EMPTY and is populated by plugin registration
+ * at boot (`discoverWorkspacePluginIntegrations`); the built-in catalog was
+ * removed 2026-07-11. No boot happens here, so without this fixture every
+ * `getIntegration` lookup misses and the routes 404 — which is exactly how these
+ * tests broke. Register the records the cases below exercise, the way a plugin
+ * manifest would, rather than depending on a platform catalog that no longer
+ * exists.
+ */
+const TEST_INTEGRATIONS: IntegrationConfig[] = [
+  {
+    id: "google", name: "Google", icon: "mail", scope: "user", authType: "oauth2",
+    envVars: { credential: "GOOGLE_REFRESH_TOKEN" },
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+    clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+  },
+  {
+    id: "notion", name: "Notion", icon: "book-open", scope: "user", authType: "oauth2",
+    envVars: { credential: "NOTION_API_TOKEN" },
+    authUrl: "https://api.notion.com/v1/oauth/authorize",
+    tokenUrl: "https://api.notion.com/v1/oauth/token",
+    clientIdEnv: "NOTION_CLIENT_ID", clientSecretEnv: "NOTION_CLIENT_SECRET",
+  },
+  {
+    id: "pinterest", name: "Pinterest", icon: "image", scope: "user", authType: "oauth2",
+    envVars: { credential: "PINTEREST_ACCESS_TOKEN" },
+    authUrl: "https://www.pinterest.com/oauth/", tokenUrl: "https://api.pinterest.com/v5/oauth/token",
+    clientIdEnv: "PINTEREST_APP_ID", clientSecretEnv: "PINTEREST_APP_SECRET",
+  },
+  // Workspace-scoped + non-OAuth: drives the "400 for non-OAuth" and
+  // "403 disconnecting a workspace integration" cases.
+  { id: "shopify", name: "Shopify", icon: "shopping-bag", scope: "workspace", authType: "api_key", envVars: { credential: "SHOPIFY_ACCESS_TOKEN" } },
+  { id: "slack", name: "Slack", icon: "message-square", scope: "workspace", authType: "api_key", envVars: { credential: "SLACK_BOT_TOKEN" } },
+  { id: "gorgias", name: "Gorgias", icon: "headphones", scope: "workspace", authType: "api_key", envVars: { credential: "GORGIAS_API_KEY" } },
+]
+
 function createTestApp() {
   const app = new Hono()
   app.route("/api/connections", connectionRoutes)
@@ -113,6 +152,7 @@ describe("connection routes", () => {
   const testEmail = "test@hammies.com"
 
   beforeEach(() => {
+    registerIntegrations(TEST_INTEGRATIONS, "test-fixture")
     users.clear()
     userCredentials.clear()
     workspaceCredentials.clear()
@@ -121,6 +161,10 @@ describe("connection routes", () => {
     mockGetSession.mockReturnValue({
       user: { name: "Test User", email: testEmail, picture: undefined },
     })
+  })
+
+  afterEach(() => {
+    resetIntegrationRegistry()
   })
 
   describe("GET /api/connections", () => {

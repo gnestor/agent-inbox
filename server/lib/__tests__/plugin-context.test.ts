@@ -29,10 +29,12 @@ describe("buildPluginContext", () => {
     const ctx = await buildPluginContext(fakeContext({ userEmail: "alice@example.com" }))
     expect(ctx.userEmail).toBe("alice@example.com")
 
-    // google → refreshed access token
+    // `google-workspace` (the per-user Gmail/Calendar/Drive identity since the
+    // W5 rename) is the ONLY id that gets a refresh→access exchange; the old
+    // `google` id now falls through to the stored-token path below.
     mockGetUserCredential.mockResolvedValueOnce({ refreshToken: "g-refresh" })
     mockRefreshGoogleToken.mockResolvedValueOnce("g-access")
-    const google = await ctx.getCredential!("google")
+    const google = await ctx.getCredential!("google-workspace")
     expect(google).toBe("g-access")
     expect(mockRefreshGoogleToken).toHaveBeenCalledWith("g-refresh")
 
