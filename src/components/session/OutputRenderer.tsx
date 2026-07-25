@@ -11,54 +11,17 @@ import { unwrapReactData } from "@/lib/artifact-transform"
 
 // --- Spec types ---
 
-export type OutputSpec =
-  | { type: "markdown"; data: string; title?: string }
-  | { type: "html"; data: string; title?: string }
-  | { type: "table"; data: TableData; title?: string }
-  | { type: "json"; data: unknown; title?: string }
-  | { type: "chart"; data: ChartData; title?: string }
-  | { type: "file"; data: FileData; title?: string }
-  | { type: "conversation"; data: ConversationData; title?: string }
-  // sourceToolUseId points at the tool_use block in the session JSONL that owns
-  // the artifact's source code (render_output's input.data, create_file's
-  // input.file_text, or Write's input.content). Lets the editor PATCH the
-  // correct block and lets consumers re-derive fresh code across reloads.
-  | { type: "react"; data: ReactArtifactData; title?: string; sourceToolUseId?: string }
-
-export interface TableData {
-  columns: string[]
-  rows: unknown[][]
-}
-
-export interface ChartData {
-  /** Chart type */
-  type?: "bar" | "line" | "area" | "pie"
-  /** Array of data points, e.g. [{ month: "Jan", revenue: 100 }] */
-  data: Record<string, unknown>[]
-  /** Field name for x-axis / category */
-  xKey: string
-  /** Field names for y-axis series */
-  yKeys: string[]
-  /** Optional labels for series (defaults to yKey names) */
-  labels?: Record<string, string>
-  /** Optional colors for series (defaults to chart-1, chart-2, etc.) */
-  colors?: Record<string, string>
-}
-
-export interface FileData {
-  name: string
-  path: string
-  mimeType?: string
-}
-
-export interface ConversationData {
-  messages: Array<{ role: string; content: string }>
-}
-
-export interface ReactArtifactData {
-  code: string
-  title?: string
-}
+// The spec union is the shared artifact wire format — one definition both apps
+// and the shared transcript component type against.
+export type {
+  OutputSpec,
+  TableData,
+  ChartData,
+  FileData,
+  ConversationData,
+  ReactArtifactData,
+} from "@hammies/session-core"
+import type { OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
 
 // --- Main component ---
 

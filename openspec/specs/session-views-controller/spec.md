@@ -173,14 +173,12 @@ Two behaviors changed with the move, both deliberate. The transcript no longer v
 | Detail panel composition | [src/components/session/SessionView.tsx](../../../src/components/session/SessionView.tsx) |
 | List view + field schema + status filter set | [src/components/session/SessionListView.tsx](../../../src/components/session/SessionListView.tsx) |
 | Transcript renderer | Moved to [`@hammies/frontend`](../../../../frontend/openspec/specs/session-transcript/spec.md) (`components/session`) — one component for both apps |
+| AskUserQuestion form + its state hook, and the transcript scroll pin — all moved to [`@hammies/frontend`](../../../../frontend/openspec/specs/session-transcript/spec.md); this app kept byte-identical forks until the lift was finished, and the scroll one had already gone stale |
 | Inbox's `TranscriptHost`: artifact rendering, run-file URLs, and the structured text-block panels (`<inbox-context>`, `<inbox-result>`, plugin panel-schema tags) the shared transcript delegates back | [src/components/session/transcriptHost.tsx](../../../src/components/session/transcriptHost.tsx) |
 | Route + REST tests | [server/routes/__tests__/sessions.test.ts](../../../server/routes/__tests__/sessions.test.ts) |
 | Controller hook tests | [src/hooks/__tests__/use-session-view.test.tsx](../../../src/hooks/__tests__/use-session-view.test.tsx) |
 | `<SessionInput>` composer textarea + send/stop button | [src/components/session/SessionInput.tsx](../../../src/components/session/SessionInput.tsx) |
-| `<AskUserForm>` inline AskUserQuestion form rendered in transcript | [src/components/session/AskUserForm.tsx](../../../src/components/session/AskUserForm.tsx) |
 | `<SessionConnectionSurface>` toast surfacing of WS connection state | [src/components/session/SessionConnectionSurface.tsx](../../../src/components/session/SessionConnectionSurface.tsx) |
-| AskUserForm controller hook (selections, other-text, submit) | [src/hooks/use-ask-user-form.ts](../../../src/hooks/use-ask-user-form.ts) |
-| Transcript autoscroll / pin-to-bottom hook | [src/hooks/use-transcript-scroll.ts](../../../src/hooks/use-transcript-scroll.ts) |
 | Composer draft persistence (IndexedDB-backed) | [src/hooks/use-local-draft.ts](../../../src/hooks/use-local-draft.ts) |
 | Pure transcript-processing helpers (no React) | Moved to [`@hammies/session-core`](../../../../session-core/openspec/specs/session-core/spec.md) |
 | Pure session-slice reducer | [src/stores/session-reducer.ts](../../../src/stores/session-reducer.ts) |

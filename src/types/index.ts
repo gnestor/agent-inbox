@@ -33,18 +33,10 @@ export interface WorkspaceMember {
 
 export type SessionStatus = "running" | "complete" | "needs_attention" | "errored" | "awaiting_user_input" | "archived"
 
-export interface AskUserQuestionOption {
-  label: string
-  description: string
-  preview?: string
-}
-
-export interface AskUserQuestion {
-  question: string
-  header: string
-  options: AskUserQuestionOption[]
-  multiSelect: boolean
-}
+// The ask-user shapes are the shared pipeline's — a local copy had already
+// drifted (description required here, optional there).
+export type { AskUserQuestion, AskUserQuestionOption } from "@hammies/session-core"
+import type { AskUserQuestion } from "@hammies/session-core"
 
 export interface PendingQuestion {
   questions: AskUserQuestion[]

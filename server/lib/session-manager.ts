@@ -1986,33 +1986,6 @@ export async function listProjectOptions(): Promise<string[]> {
   return [...projects].sort()
 }
 
-/** Route an assistant message's content blocks for transcript emission. The
- *  Agent SDK writes each streaming delta as its own JSONL entry with its own
- *  block subset; only the terminal entry has stop_reason set. We classify by
- *  block type, not by stop_reason, so partial entries with real content aren't
- *  silently dropped.
- *
- *  - thinking: emit later as a standalone assistant message (so the UI renders
- *    it on its own line instead of nested with the next tool call)
- *  - tool_use (Agent): defer and prepend to the next emitted entry so subagent
- *    groupings stay contiguous with their parent Agent call
- *  - text / other tool_use: emit alongside this entry */
-function classifyAssistantBlocks(content: unknown): {
-  emitBlocks: Array<Record<string, unknown>>
-  thinking: Array<Record<string, unknown>>
-  agentToolUse: Array<Record<string, unknown>>
-} {
-  const blocks: Array<Record<string, unknown>> = Array.isArray(content) ? content : []
-  const emitBlocks: Array<Record<string, unknown>> = []
-  const thinking: Array<Record<string, unknown>> = []
-  const agentToolUse: Array<Record<string, unknown>> = []
-  for (const block of blocks) {
-    if (block?.type === "thinking" && block.thinking) thinking.push(block)
-    else if (block?.type === "tool_use" && block.name === "Agent") agentToolUse.push(block)
-    else emitBlocks.push(block)
-  }
-  return { emitBlocks, thinking, agentToolUse }
-}
 
 /**
  * A session's transcript, merged and display-ready.
