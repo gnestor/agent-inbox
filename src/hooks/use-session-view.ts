@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react"
+import type { ClassifiedMessage } from "@hammies/session-core"
 import { useLocation } from "react-router-dom"
 import { useNavActions } from "@/lib/navigation-store"
 import { useFileAttachments } from "./use-file-attachments"
@@ -35,6 +36,17 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
       id: `output:${sessionId}:${sequence}`,
       type: "output",
       props: { sessionId, sequence, outputType: spec.type, spec },
+    })
+  }, [sessionId, pushPanel])
+
+  // Open a delegation's transcript in its own panel. The shared transcript hands
+  // over the already-grouped children, so the panel renders them directly rather
+  // than re-deriving the group. Keyed by the first child's sequence, as before.
+  const handleOpenSubagent = useCallback((_agentId: string, agentLabel: string, children: ClassifiedMessage[]) => {
+    pushPanel({
+      id: `subagent:${sessionId}:${children[0]?.source.sequence ?? 0}`,
+      type: "subagent",
+      props: { sessionId, agentLabel, children },
     })
   }, [sessionId, pushPanel])
 
@@ -97,6 +109,7 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
     // Navigation
     handleBack,
     handleOpenPanel,
+    handleOpenSubagent,
     isFromSidebar,
   }
 }

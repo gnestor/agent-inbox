@@ -6,7 +6,7 @@ import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PanelHeader } from "@/components/shared/PanelHeader"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
-import { AskUserOptions, parseAskUserAnswer } from "@/components/session/SessionTranscript"
+import { AskUserOptions, parseAskUserAnswer, SessionTranscript } from "@hammies/frontend/components/session"
 import { findCodeByToolUseId, type ClassifiedMessage } from "@hammies/session-core"
 import { AskUserForm } from "@/components/session/AskUserForm"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
@@ -15,7 +15,6 @@ import { resumeSession, answerSessionQuestion, getSession } from "@/api/client"
 import { useEditingCode, artifactEditorKey, setEditingCode } from "@/hooks/use-artifact-editor"
 import { Skeleton } from "@hammies/frontend/components/ui"
 import { createLogger } from "@/lib/logger"
-import { SessionTranscript } from "@/components/session/SessionTranscript"
 
 const log = createLogger("panel")
 

@@ -14,8 +14,8 @@ import {
 import { X, Ellipsis, Archive, ArchiveRestore } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { SessionInput } from "./SessionInput"
-import { SessionTranscript, WorkingIndicator, DEFAULT_TRANSCRIPT_VISIBILITY } from "./SessionTranscript"
-import type { TranscriptVisibility } from "./SessionTranscript"
+import { SessionTranscript, WorkingIndicator, DEFAULT_TRANSCRIPT_VISIBILITY } from "@hammies/frontend/components/session"
+import type { TranscriptVisibility } from "@hammies/frontend/components/session"
 import { PanelHeader, BackButton, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { useSessionController } from "@/hooks/use-session-controller"
@@ -193,6 +193,7 @@ export function SessionView({ sessionId, panelId, title }: SessionViewProps) {
           sessionId={sessionId}
           currentUserEmail={user?.email}
           onOpenPanel={sessionView.handleOpenPanel}
+          onOpenSubagent={sessionView.handleOpenSubagent}
           onAction={controller.resumeSession}
           onAnswer={controller.answerQuestion}
           onArtifactsReady={handleArtifactsReady}
