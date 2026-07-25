@@ -30,6 +30,7 @@ import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 import { buildArtifactMcpServer } from "./artifact-tools.js"
 import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES } from "@hammies/session-core"
+import { readTranscript } from "@hammies/session-core/reader"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
@@ -2013,246 +2014,22 @@ function classifyAssistantBlocks(content: unknown): {
   return { emitBlocks, thinking, agentToolUse }
 }
 
+/**
+ * A session's transcript, merged and display-ready.
+ *
+ * The reader itself now lives in `@hammies/session-core/reader` — Studio grew a
+ * copy of this same algorithm, so both apps consume one implementation. What
+ * stays here is the inbox-specific part: resolving a session id to its JSONL
+ * path via `findAgentSession` when the caller has not already done so.
+ *
+ * All three reader options stay ON, which is the behavior inbox has always had
+ * (subagent sidecar merge with partial-thinking coalescing and Agent-tool_use
+ * deferral, plan-file injection, and render_output retry dedup).
+ */
 export async function getAgentSessionTranscript(sessionId: string, filePath?: string) {
   const sessionFile = filePath ?? (await findAgentSession(sessionId))?.filePath
   if (!sessionFile) return []
-
-  try {
-    const content = fs.readFileSync(sessionFile, "utf-8")
-    const lines = content.trim().split("\n")
-    const displayTypes = new Set(["user", "assistant", "system"])
-    const messages: Array<Record<string, unknown>> = []
-    // Collect thinking blocks from partial assistant messages so they can be
-    // merged into the next complete assistant message.
-    let pendingThinking: Array<Record<string, unknown>> = []
-    // Collect Agent tool_use blocks from partial messages for subagent positioning
-    let pendingAgentToolUse: Array<Record<string, unknown>> = []
-
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const msg = JSON.parse(lines[lineIdx]!)
-
-      // Detect plan file updates (Write/Edit to ~/.claude/plans/) and inject
-      // a synthetic plan message so the frontend can render the plan content.
-      const toolResult = msg.toolUseResult
-      if (
-        toolResult &&
-        typeof toolResult.filePath === "string" &&
-        toolResult.filePath.includes(".claude/plans/") &&
-        toolResult.content
-      ) {
-        messages.push({
-          id: lineIdx,
-          sessionId,
-          sequence: lineIdx,
-          type: "plan",
-          message: {
-            type: "plan",
-            filePath: toolResult.filePath,
-            content: toolResult.content,
-          },
-          createdAt: msg.timestamp || new Date().toISOString(),
-        })
-        continue
-      }
-
-      if (displayTypes.has(msg.type)) {
-        if (msg.type === "assistant") {
-          const { emitBlocks, thinking, agentToolUse } = classifyAssistantBlocks(msg.message?.content)
-          pendingThinking.push(...thinking)
-          pendingAgentToolUse.push(...agentToolUse)
-
-          // Entry contributed only thinking/Agent tool_use — deferred for the
-          // next entry with real content.
-          if (emitBlocks.length === 0) continue
-
-          for (let ti = 0; ti < pendingThinking.length; ti++) {
-            messages.push({
-              id: `${lineIdx}-thinking-${ti}`,
-              sessionId,
-              sequence: lineIdx + (ti + 1) * 0.001,
-              type: "assistant",
-              message: { type: "assistant", message: { content: [pendingThinking[ti]], stop_reason: "end_turn" } },
-              createdAt: msg.timestamp || new Date().toISOString(),
-            })
-          }
-          pendingThinking = []
-
-          const finalContent = pendingAgentToolUse.length > 0
-            ? [...pendingAgentToolUse, ...emitBlocks]
-            : emitBlocks
-          pendingAgentToolUse = []
-
-          msg.message = { ...msg.message, content: finalContent }
-        }
-
-        messages.push({
-          id: lineIdx,
-          sessionId,
-          sequence: lineIdx,
-          type: msg.type,
-          message: msg,
-          createdAt: msg.timestamp || new Date().toISOString(),
-        })
-      }
-    }
-
-    // -----------------------------------------------------------------------
-    // Merge subagent JSONL files from the subagents/ directory.
-    // Each subagent's messages are inserted as a contiguous block right after
-    // the Agent tool_result in the main session (preserving grouping).
-    // -----------------------------------------------------------------------
-    const subagentsDir = join(dirname(sessionFile), sessionId, "subagents")
-    if (fs.existsSync(subagentsDir)) {
-      // Map each subagent's agentId to its parent Agent tool_use id, and
-      // record where to splice each batch in the main timeline. Each `Agent`
-      // tool call writes a sidecar JSONL named `agent-<agentId>.jsonl`; the
-      // matching `toolUseResult.agentId` tells us which tool_use it belongs to.
-      // Pairing by sorted filename instead would misalign the batches, and
-      // the reverse splice below would then interleave later batches into the
-      // middle of earlier ones — fragmenting each subagent into many groups.
-      const agentIdToToolUseId = new Map<string, string>()
-      const toolUseInsertIdx = new Map<string, number>()
-      for (let mi = 0; mi < messages.length; mi++) {
-        const raw = messages[mi]!.message as any
-        const content: any[] | undefined = raw?.message?.content ?? raw?.content
-        if (!Array.isArray(content)) continue
-        for (const block of content) {
-          if (block?.type === "tool_use" && block.name === "Agent" && block.id) {
-            toolUseInsertIdx.set(block.id, mi + 1)
-          }
-          if (block?.type === "tool_result" && typeof block.tool_use_id === "string") {
-            const aid = raw?.toolUseResult?.agentId
-            if (typeof aid === "string") agentIdToToolUseId.set(aid, block.tool_use_id)
-          }
-        }
-      }
-
-      // Exclude `agent-acompact-*.jsonl` — those are SDK auto-compaction resume
-      // artifacts, not Task subagents. They have no `.meta.json` companion and
-      // including them shifts the index-based alignment with `Agent` tool_use
-      // ids below. Compactions are rendered separately from the main session's
-      // `system/compact_boundary` markers.
-      const subFiles = fs.readdirSync(subagentsDir)
-        .filter((f: string) => f.endsWith(".jsonl") && !f.startsWith("agent-acompact-"))
-        .sort()
-
-      // Process each subagent and collect its parsed messages
-      const subagentBatches: Array<{ toolUseId: string; msgs: Array<Record<string, unknown>> }> = []
-
-      for (const subFile of subFiles) {
-        const subPath = join(subagentsDir, subFile)
-        const subContent = fs.readFileSync(subPath, "utf-8")
-        const subLines = subContent.trim().split("\n")
-        const agentId = subFile.replace(/^agent-/, "").replace(/\.jsonl$/, "")
-
-        // Read description from companion .meta.json file
-        let agentDescription: string | undefined
-        const metaPath = join(subagentsDir, `agent-${agentId}.meta.json`)
-        try {
-          const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"))
-          agentDescription = meta.description
-        } catch { /* no meta file */ }
-
-        const batch: Array<Record<string, unknown>> = []
-        let subPendingThinking: Array<Record<string, unknown>> = []
-
-        for (const line of subLines) {
-          const msg = JSON.parse(line)
-          if (!displayTypes.has(msg.type)) continue
-
-          if (msg.type === "assistant") {
-            // Subagent JSONLs have no nested subagents, so Agent tool_use blocks
-            // (if any) are emitted inline rather than deferred.
-            const { emitBlocks, thinking, agentToolUse } = classifyAssistantBlocks(msg.message?.content)
-            subPendingThinking.push(...thinking)
-            const finalEmit = agentToolUse.length > 0 ? [...agentToolUse, ...emitBlocks] : emitBlocks
-            if (finalEmit.length === 0) continue
-            msg.message = { ...msg.message, content: [...subPendingThinking, ...finalEmit] }
-            subPendingThinking = []
-          }
-
-          if (agentDescription) {
-            msg.agentDescription = agentDescription
-          }
-
-          batch.push({
-            id: `${agentId}-${batch.length}`,
-            sessionId,
-            sequence: 0, // re-numbered below
-            type: msg.type,
-            message: msg,
-            createdAt: msg.timestamp || new Date().toISOString(),
-          })
-        }
-
-        const toolUseId = agentIdToToolUseId.get(agentId) ?? ""
-        subagentBatches.push({ toolUseId, msgs: batch })
-      }
-
-      // Sort batches by insertion position descending. We splice into the
-      // live array, so we must process highest-position-first; otherwise an
-      // earlier splice shifts later positions and a subsequent splice lands
-      // inside the previously inserted batch — which fragments both batches
-      // into many interleaved subagent_groups on the client.
-      const sortedBatches = subagentBatches
-        .map((b, originalIdx) => ({ ...b, originalIdx, insertIdx: toolUseInsertIdx.get(b.toolUseId) ?? messages.length }))
-        .sort((a, b) => b.insertIdx - a.insertIdx || a.originalIdx - b.originalIdx)
-
-      // Count batches per insertIdx so each gets a non-overlapping sub-range of
-      // the fractional sequence space. Two Agent tool calls emitted in the
-      // same assistant turn share an insertIdx; without sub-ranges, their
-      // sequences interleave on sort and the client fragments each subagent
-      // across the other.
-      const batchesPerInsertIdx = new Map<number, number>()
-      for (const b of sortedBatches) {
-        batchesPerInsertIdx.set(b.insertIdx, (batchesPerInsertIdx.get(b.insertIdx) ?? 0) + 1)
-      }
-      const slotCursor = new Map<number, number>()
-
-      // Assign fractional sequences between the parent's lineIdx and the next
-      // main message — keeping all subagent sequences < lineCount so they never
-      // collide with the live WS broadcast counter (which starts at lineCount).
-      for (const { msgs, insertIdx } of sortedBatches) {
-        if (msgs.length === 0) continue
-        const parentSeq = (messages[insertIdx - 1]?.sequence as number) ?? 0
-        const slotCount = batchesPerInsertIdx.get(insertIdx)!
-        const slotIdx = slotCursor.get(insertIdx) ?? 0
-        slotCursor.set(insertIdx, slotIdx + 1)
-        const slotWidth = 1 / (slotCount + 1)
-        const slotStart = parentSeq + (slotIdx + 1) * slotWidth
-        for (let si = 0; si < msgs.length; si++) {
-          msgs[si]!.sequence = slotStart + ((si + 1) / (msgs.length + 1)) * slotWidth
-        }
-        messages.splice(insertIdx, 0, ...msgs)
-      }
-    }
-
-    // Deduplicate render_output blocks: when the agent retries with the same
-    // title, keep only the last attempt. Walk backwards to find which titles
-    // have already been seen, then strip earlier duplicates.
-    const seenOutputTitles = new Set<string>()
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i] as any
-      const content: any[] | undefined =
-        msg.message?.message?.content ?? msg.message?.content
-      if (!Array.isArray(content)) continue
-      const blockIdx = content.findIndex((b: any) =>
-        b?.type === "tool_use" && RENDER_OUTPUT_NAMES.has(b.name),
-      )
-      if (blockIdx === -1) continue
-      const title = content[blockIdx].input?.title ?? ""
-      if (seenOutputTitles.has(title)) {
-        content.splice(blockIdx, 1)
-        if (content.length === 0) messages.splice(i, 1)
-      } else {
-        seenOutputTitles.add(title)
-      }
-    }
-
-    return messages
-  } catch {
-    return []
-  }
+  return readTranscript({ sessionFile, sessionId })
 }
 
 /**
