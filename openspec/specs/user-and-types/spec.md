@@ -121,7 +121,7 @@ Workflow result panels (`<inbox-result>` XML emitted by the agent) need a determ
 | Wire shapes (`UserProfile`, `Workspace`, `Session`, `Integration`, status unions, structured output types) | [src/types/index.ts](../../../src/types/index.ts) |
 | Plugin interface, `FieldDef`, `BadgeConfig`, `FilterConfig`, `PluginContext`, `Entity` | `src/types/plugin.ts` |
 | Widget schema (`WidgetDef`, `ProseWidget`, `KvTableWidget`, `DataTableWidget`, `ActionButtonsWidget`, ...) | [src/types/panels.ts](../../../src/types/panels.ts) |
-| Per-message session payload union | [src/types/session-message.ts](../../../src/types/session-message.ts) |
+| Per-message session payload union | Moved to [`@hammies/session-core`](../../../../session-core/openspec/specs/session-core/spec.md) — Studio carried a byte-equivalent fork, so both apps now import one copy |
 | `useUserProvider`, `useUser`, `useWorkspaceId` with retry-on-network-error | [src/hooks/use-user.ts](../../../src/hooks/use-user.ts) |
 
 ## History

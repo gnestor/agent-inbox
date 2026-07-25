@@ -30,6 +30,16 @@ Aborting waits on the SDK's cancellation propagation, which can take seconds for
 ### Why session creation is rate-limited per user-or-IP
 Creating a session spawns an agent process and burns API tokens. The route applies `rateLimit({ windowMs: 60_000, max: 10, keyFn: email ?? ip })` — generous enough for normal use, low enough to bound damage from a runaway client or a leaked cookie.
 
+### Why the transcript renderer is no longer here
+
+Studio and Inbox each grew a fork of the same renderer, and the same message types and pipeline underneath it. The component now lives in `@hammies/frontend/components/session` and the pure layer in `@hammies/session-core`; this app supplies what only it can through a `TranscriptHost`.
+
+Three capabilities are seams rather than shared code, because each is an app concept a UI package must not learn: rendering an output (Inbox's `OutputRenderer`), resolving a run-file URL, and rendering an assistant text block as a structured panel. That last one covers `<inbox-context>`, `<inbox-result>`, and any tag an installed plugin declares via its panel schema — one seam for all three, rather than teaching the shared component about the plugin registry. Navigation stays optional intent callbacks (`onOpenPanel`, `onOpenSubagent`), so the transcript never learns about the panel stack.
+
+Two behaviors changed with the move, both deliberate. The transcript no longer virtualizes: rows render in document flow at real heights, because estimate-based windowing visibly jumps the viewport on WebKit, which has no scroll anchoring and is every iOS browser. And a bare `Write` is no longer an artifact whatever its extension — sessions run against a real repo, so that pushed typed React modules through a JSX renderer that cannot parse them. A written file still renders when the agent explicitly `present_files`es it.
+
+`onArtifactsReady` survives the move as an optional seam: the transcript counts the react artifacts it will render and fires once each reports in, which is what holds this app's skeleton over the panel until the height has settled.
+
 ### What is NOT in scope
 - Agent lifecycle, JSONL writes, broadcast buffer → `session-manager` spec.
 - File path layout and validation → `session-files` spec.
@@ -162,7 +172,8 @@ Creating a session spawns an agent process and burns API tokens. The route appli
 | Detail-panel UI state (title edit, panel nav, attachments) | [src/hooks/use-session-view.ts](../../../src/hooks/use-session-view.ts) |
 | Detail panel composition | [src/components/session/SessionView.tsx](../../../src/components/session/SessionView.tsx) |
 | List view + field schema + status filter set | [src/components/session/SessionListView.tsx](../../../src/components/session/SessionListView.tsx) |
-| Transcript renderer (classifies JSONL → bubbles, tool groups, output accordions, AskUserQuestion forms) | [src/components/session/SessionTranscript.tsx](../../../src/components/session/SessionTranscript.tsx) |
+| Transcript renderer | Moved to [`@hammies/frontend`](../../../../frontend/openspec/specs/session-transcript/spec.md) (`components/session`) — one component for both apps |
+| Inbox's `TranscriptHost`: artifact rendering, run-file URLs, and the structured text-block panels (`<inbox-context>`, `<inbox-result>`, plugin panel-schema tags) the shared transcript delegates back | [src/components/session/transcriptHost.tsx](../../../src/components/session/transcriptHost.tsx) |
 | Route + REST tests | [server/routes/__tests__/sessions.test.ts](../../../server/routes/__tests__/sessions.test.ts) |
 | Controller hook tests | [src/hooks/__tests__/use-session-view.test.tsx](../../../src/hooks/__tests__/use-session-view.test.tsx) |
 | `<SessionInput>` composer textarea + send/stop button | [src/components/session/SessionInput.tsx](../../../src/components/session/SessionInput.tsx) |
@@ -171,7 +182,7 @@ Creating a session spawns an agent process and burns API tokens. The route appli
 | AskUserForm controller hook (selections, other-text, submit) | [src/hooks/use-ask-user-form.ts](../../../src/hooks/use-ask-user-form.ts) |
 | Transcript autoscroll / pin-to-bottom hook | [src/hooks/use-transcript-scroll.ts](../../../src/hooks/use-transcript-scroll.ts) |
 | Composer draft persistence (IndexedDB-backed) | [src/hooks/use-local-draft.ts](../../../src/hooks/use-local-draft.ts) |
-| Pure transcript-processing helpers (no React) | [src/lib/session-pipeline.ts](../../../src/lib/session-pipeline.ts) |
+| Pure transcript-processing helpers (no React) | Moved to [`@hammies/session-core`](../../../../session-core/openspec/specs/session-core/spec.md) |
 | Pure session-slice reducer | [src/stores/session-reducer.ts](../../../src/stores/session-reducer.ts) |
 
 ## History
