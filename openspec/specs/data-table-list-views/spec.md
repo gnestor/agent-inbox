@@ -36,27 +36,11 @@ Plugin items often nest values (`author.name`, `metadata.priority`). A dot-path 
 
 ### `<DataTable>`
 
-#### Scenario: Auto-enables search above 5 rows, pagination above 20
-- **WHEN** `<DataTable columns rows>` is rendered without explicit `searchable`/`paginated` props
-- **THEN** `searchable` defaults to `rows.length > 5` and `paginated` defaults to `rows.length > pageSize` (default 20).
-- **AND** explicit props override the defaults in either direction.
-
-#### Scenario: Cells render `null`/`undefined` as a muted em-dash
-- **WHEN** a row's cell value is `null` or `undefined`
-- **THEN** the cell renders `—` in `text-muted-foreground` rather than an empty cell, so missing data is distinguishable from empty strings.
-
-#### Scenario: Sortable column headers
-- **WHEN** the user clicks a column header
-- **THEN** TanStack `column.toggleSorting(column.getIsSorted() === "asc")` runs, cycling through asc → desc → unsorted.
-
-#### Scenario: Empty/no-results state
-- **WHEN** the filtered row model is empty
-- **THEN** a single row spans all columns with the centered message "No results".
-
-#### Scenario: Pagination footer shows count and chevrons
-- **WHEN** pagination is active
-- **THEN** the footer shows `<filteredCount> row[s]` on the left and prev/next chevrons + page indicator (`current / total`) on the right.
-- **AND** prev/next are `disabled` when at the first/last page (TanStack's `getCanPreviousPage()` / `getCanNextPage()`).
+**Moved to `@hammies/frontend`** (`src/components/DataTable.tsx`) — its requirements
+and tests now live in that package `ui-components` spec. Studio needed the same
+component, and Inbox copy was missing the memoization fix for an unbounded
+re-render loop that crashed the tab on any table large enough to paginate.
+Inbox imports it from `@hammies/frontend/components/DataTable`.
 
 ### `<ListView>` compound
 
@@ -136,7 +120,7 @@ Plugin items often nest values (`author.name`, `metadata.priority`). A dot-path 
 
 | Concern | Location |
 |---|---|
-| `<DataTable>` columns/rows/sort/filter/paginate | [src/components/shared/DataTable.tsx](../../../src/components/shared/DataTable.tsx) |
+| `<DataTable>` columns/rows/sort/filter/paginate | **moved** to `@hammies/frontend` (`src/components/DataTable.tsx`) — shared with Studio; owned by that package `ui-components` spec |
 | `<ListView>` compound (Root, Header, Search, Filters, Body) and `IntersectionObserver` infinite scroll | [src/components/shared/ListView.tsx](../../../src/components/shared/ListView.tsx) |
 | `<ListItem>` rendering, custom memo comparator, badge styling | `src/components/shared/ListItem.tsx` |
 | Field-schema helpers (`getTitleField`, `getBadgeFields`, `extractFieldValue`, ...) | `src/lib/field-schema.ts` |

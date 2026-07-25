@@ -22,7 +22,9 @@ Models often forget `import { useState } from 'react'` or destructure components
 The model frequently writes `return <div>...</div>` at column 0 instead of declaring a component. The transform detects this (unindented `return` keyword) and synthesizes `export default function App() { ...body... }` so mounting succeeds. Imports stay at top level — the wrapper only encloses the body.
 
 ### Why iframe sandbox is `allow-scripts allow-same-origin`
-The artifact must execute JS (`allow-scripts`) and load ES modules from the parent origin via the import map (`allow-same-origin`). `srcDoc` gives the iframe a *null* origin for cookie/storage purposes, so even with `allow-same-origin` the artifact cannot read parent cookies or `localStorage`. CSP further restricts `connect-src` to esm.sh/jsdelivr only — no fetch back into our API.
+The artifact must execute JS (`allow-scripts`) and load ES modules from the parent origin via the import map (`allow-same-origin`). CSP restricts `connect-src` to the host origin plus esm.sh/jsdelivr.
+
+**Correction (2026-07, on adopting the shared builder):** this section used to claim `srcDoc` gives the iframe a *null* origin, so the artifact could not reach parent cookies or `localStorage`, and that `connect-src` excluded our own API. Both were wrong. With `allow-same-origin` the frame **inherits the host origin** — the sandbox attribute is not a boundary against the parent, and same-origin requests carry the session cookie. Studio depends on that deliberately (artifacts call plugin API routes), which is why the shared `build-artifact-html.ts` lists the host origin in `connect-src`; Inbox now inherits the same policy. The real containment boundary is the `connect-src` allowlist, which is what stops artifact code exfiltrating to an arbitrary host. Treat artifact code as running with the signed-in user's authority.
 
 ### Why theme variables sync via `MutationObserver`
 Artifacts must match the parent's theme (light/dark, color tokens) without inheriting the parent's CSS (different document). The iframe reads computed CSS variables from `window.parent.document.documentElement` on load and re-syncs whenever the parent's `class` attribute changes (theme toggle). `MutationObserver` is the only way to react to a class flip on a DOM node we don't own.
@@ -40,7 +42,7 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 - Persisting artifact code to the JSONL transcript → `session-files` / `session-streaming` specs (the JSONL is the authoritative source — see Memory note `project_inbox_artifact_source_of_truth.md`).
 - Rendering non-React artifact types (`.html`, `.md`, `.svg`) → handled in transcript renderers under `session-views-controller`.
 - The `present_files` → `create_file` lookup logic in the transcript view → `session-views-controller`.
-- The iframe theme variable list and base CSS → `shared-ui-components` (`iframe-theme.ts`).
+- The iframe theme variable list and base CSS → `@hammies/frontend` `artifact-runtime` (`src/lib/iframe-theme.ts`).
 
 ## Requirements
 
@@ -60,55 +62,20 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 - **WHEN** `create_file` resolves
 - **THEN** the response is `File created: <path> (<size> chars, .<ext>)` — the file content is not echoed back, since the frontend reads it directly from the `tool_use` block in the transcript.
 
-### JSX transform (`src/lib/artifact-transform.ts`)
+### JSX transform
 
-#### Scenario: Allowlisted package imports survive; everything else is dropped
-- **WHEN** the source contains `import X from 'antd'` and `import { useState } from 'react'`
-- **THEN** the React import is preserved and the antd line is silently removed (no import resolution failure at runtime).
-- **AND** the allowlist is exactly: `react`, `react-dom`, `@hammies/frontend`, `recharts`, `lucide-react`, `d3`, `lodash` (and subpaths thereof).
+**Moved to `@hammies/frontend`** (`src/lib/artifact-transform.ts`) — the requirements
+and their tests now live in that package's [`artifact-runtime`](../../../../frontend/openspec/specs/artifact-runtime/spec.md)
+spec. Inbox imports `transformArtifactCode`, `unwrapReactData`, and `escapeForScript`
+from `@hammies/frontend/lib/artifact-transform`.
 
-#### Scenario: Missing React APIs are auto-imported
-- **WHEN** the source uses `useState` / `useEffect` / `useMemo` etc. without importing them
-- **THEN** the transform consolidates all React imports into one `import React, { ... } from 'react';` line that includes every used API from `REACT_APIS`.
-- **AND** existing React imports (default and named) are merged into the same line — no duplicate import statements remain.
+The transform and the iframe bundle are two halves of one contract — the import
+map names exactly the specifiers the bundle satisfies, and the allowlist names
+exactly the packages that import map resolves — so they belong to the same owner.
+Studio had accumulated two fixes (dynamic-import hoisting, duplicate-`cn` guard)
+that Inbox's copy never received; that drift is what forced the consolidation.
 
-#### Scenario: Missing `@hammies/frontend` component imports are auto-injected
-- **WHEN** the source references `Card`, `Button`, etc. without importing them and without locally declaring them
-- **THEN** a single `import { ... } from '@hammies/frontend/components/ui';` line is prepended including every used `ARTIFACT_COMPONENTS` name.
-- **AND** locally declared identifiers (`function Card`, `const Card = ...`) are excluded from auto-import.
-
-#### Scenario: `cn` is auto-imported from `@hammies/frontend/lib/utils`
-- **WHEN** the source uses `cn(...)` without importing it
-- **THEN** `import { cn } from '@hammies/frontend/lib/utils';` is prepended.
-- **WHY:** importing `cn` from both `lib/utils` and `components/ui` produces a duplicate-identifier compile error — the transform always uses the canonical `lib/utils` path.
-
-#### Scenario: Hallucinated destructuring from globals is stripped
-- **WHEN** the source contains `const { Card, Button } = Components`
-- **THEN** the line is removed (it would reference an undefined global).
-- **AND** the deleted bindings are subsequently re-imported from `@hammies/frontend/components/ui` via the auto-injection pass.
-
-#### Scenario: Bare top-level `return` is wrapped in `App`
-- **WHEN** the source has an unindented `return <div>...</div>` and no `export default`
-- **THEN** `exportedName` is set to `"App"` and the body is wrapped in `export default function App() { ... }` — imports stay at file top.
-
-#### Scenario: `export default` is detected for mounting
-- **WHEN** the source contains `export default function MyComp() {}` or `export default MyComp;`
-- **THEN** `exportedName` is `"MyComp"` and the host iframe HTML mounts `<MyComp />`.
-
-#### Scenario: JSX → `React.createElement` via `@babel/standalone`
-- **WHEN** the cleanup passes are complete
-- **THEN** the code is run through Babel with `presets: ["react"], sourceType: "module"`.
-- **AND** `@babel/standalone` is dynamic-imported on first call (it is ~37 MB) and the transform function is cached for subsequent calls.
-
-#### Scenario: Common LLM regex bug is patched
-- **WHEN** the source contains `/\n/g` literally split across lines (a common LLM artifact)
-- **THEN** the transform rewrites it to a single-line `/\\n/g` before Babel sees it.
-
-#### Scenario: `escapeForScript` neutralises `</script>` for inline embedding
-- **WHEN** the transformed code is about to be embedded inside `<script type="module">...</script>`
-- **THEN** every `</script` substring is rewritten to `<\/script` so the parser cannot exit the script context.
-
-### Iframe HTML builder (`src/lib/build-artifact-html.ts`)
+### Iframe HTML builder
 
 #### Scenario: Document includes import map, Tailwind CDN, theme @theme block
 - **WHEN** `buildArtifactHtml(code, title, exportedName, transformError)` runs
@@ -230,13 +197,11 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 | Concern | Location |
 |---|---|
 | MCP `create_file` / `present_files` tool definitions | [server/lib/artifact-tools.ts](../../../server/lib/artifact-tools.ts) |
-| JSX → `React.createElement` transform, import filtering, auto-injection, App-wrapper, `escapeForScript` | [src/lib/artifact-transform.ts](../../../src/lib/artifact-transform.ts) |
-| Iframe HTML document, CSP, import map, theme sync, postMessage bridge, height/error/wheel handlers | [src/lib/build-artifact-html.ts](../../../src/lib/build-artifact-html.ts) |
+| JSX transform, iframe HTML document (CSP, import map, theme sync, postMessage bridge), and the iframe theme vars | **moved** to `@hammies/frontend` (`src/lib/artifact-transform.ts`, `src/lib/build-artifact-html.ts`, `src/lib/iframe-theme.ts`) — shared with Studio; owned by that package `artifact-runtime` spec |
 | `<ArtifactFrame>` host: transform query, `srcDoc` cache, height cache, postMessage handling, error overlay | [src/components/session/ArtifactFrame.tsx](../../../src/components/session/ArtifactFrame.tsx) |
 | Code-editor pub-sub for live artifact editing | [src/hooks/use-artifact-editor.ts](../../../src/hooks/use-artifact-editor.ts) |
 | Lazy `rehype-highlight` loader with `useSyncExternalStore` re-render hook | `src/lib/lazy-rehype-highlight.ts` (removed; highlighting now handled inline) |
 | Minimal HAST → HTML serialiser for lowlight output | [src/lib/hast-html.ts](../../../src/lib/hast-html.ts) |
-| Iframe theme variable list and base CSS (consumed by `build-artifact-html.ts`) | `src/lib/iframe-theme.ts` |
 | In-process MCP server registering the `render_output` tool | [server/lib/render-output-tool.ts](../../../server/lib/render-output-tool.ts) |
 | `<OutputRenderer>` transcript/panel renderer for `render_output` payloads | [src/components/session/OutputRenderer.tsx](../../../src/components/session/OutputRenderer.tsx) |
 | `<InboxResultPanel>` panel host for an output rendered to its own panel | [src/components/session/InboxResultPanel.tsx](../../../src/components/session/InboxResultPanel.tsx) |

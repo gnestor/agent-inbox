@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { usePreference } from "@/hooks/use-preferences"
-import { transformArtifactCode } from "@/lib/artifact-transform"
-import { buildArtifactHtml } from "@/lib/build-artifact-html"
+import { transformArtifactCode } from "@hammies/frontend/lib/artifact-transform"
+import { buildArtifactHtml } from "@hammies/frontend/lib/build-artifact-html"
 import { Skeleton } from "@hammies/frontend/components/ui"
 
 // Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes.

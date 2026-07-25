@@ -20,7 +20,7 @@ The app is installable on iOS and Android. `public/manifest.json` declares the s
 
 ### What is NOT in scope
 - Component styling rules → `shared-ui-components` spec.
-- Iframe theme propagation for sandboxed plugin/artifact renderers → owned by [`src/lib/iframe-theme.ts`](../../../src/lib/iframe-theme.ts) (covered under shared-ui-components).
+- Iframe theme propagation for sandboxed plugin/artifact renderers → owned by `@hammies/frontend` (`src/lib/iframe-theme.ts`, `artifact-runtime` spec).
 - Brand voice or copy — only visual surface lives here.
 
 ## Requirements

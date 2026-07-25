@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { Markdown } from "@hammies/frontend/components/Markdown"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
-import { DataTable } from "@/components/shared/DataTable"
+import { DataTable } from "@hammies/frontend/components/DataTable"
 import { cn } from "@hammies/frontend/lib/utils"
 import { useResolvedDark } from "@hammies/frontend/hooks"
-import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@/lib/iframe-theme"
+import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@hammies/frontend/lib/iframe-theme"
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
-import { unwrapReactData } from "@/lib/artifact-transform"
+import { unwrapReactData } from "@hammies/frontend/lib/artifact-transform"
 
 // --- Spec types ---
 

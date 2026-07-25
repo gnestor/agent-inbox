@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { injectIntoHtml, THEME_VARS, IFRAME_BASE_CSS } from "../iframe-theme"
+import { injectIntoHtml, THEME_VARS, IFRAME_BASE_CSS } from "@hammies/frontend/lib/iframe-theme"
 import { queryClient } from "../queryClient"
 
 const STYLE = "<style>:root{--background:#fff}</style>"

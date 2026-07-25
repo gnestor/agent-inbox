@@ -1,4 +1,4 @@
-import { THEME_VARS_JSON } from "./iframe-theme"
+import { THEME_VARS_JSON } from "@hammies/frontend/lib/iframe-theme"
 
 /**
  * Build an HTML document for a plugin component iframe.

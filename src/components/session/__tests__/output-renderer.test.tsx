@@ -21,7 +21,7 @@ vi.mock("@/api/client", () => ({
 
 // Mock Babel transform — dynamic import of @babel/standalone is slow and flaky in jsdom.
 // The test only verifies ArtifactFrame renders an iframe for a successful transform.
-vi.mock("@/lib/artifact-transform", () => ({
+vi.mock("@hammies/frontend/lib/artifact-transform", () => ({
   transformArtifactCode: vi.fn(async (code: string) => ({ code, exportedName: "App" })),
   escapeForScript: (code: string) => code,
   unwrapReactData: (data: unknown) => {

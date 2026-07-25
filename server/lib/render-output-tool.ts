@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import { transform } from "esbuild"
-import { unwrapReactData } from "../../src/lib/artifact-transform.js"
+import { unwrapReactData } from "@hammies/frontend/lib/artifact-transform"
 
 /**
  * Builds an in-process MCP server that registers the `render_output` tool.

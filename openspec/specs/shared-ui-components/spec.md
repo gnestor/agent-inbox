@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Inbox-local presentational primitives that wrap or extend `@hammies/frontend`'s shadcn library: panel chrome (`PanelHeader`, `EmptyState`, `PanelSkeleton`), error boundaries with reset-keys, sidebar shell (`AppSidebar`), property editors (select / combobox / date), filter UI (`FilterCombobox`, `FilterPopover`, `BadgeToggleMenu`), and plumbing the rest of the app shares (`queryClient`, `iframe-theme`, `formatters`, `plugin-utils`, `field-schema`). Stuff that isn't big enough to be its own domain but is wider than any single feature.
+Inbox-local presentational primitives that wrap or extend `@hammies/frontend`'s shadcn library: panel chrome (`PanelHeader`, `EmptyState`, `PanelSkeleton`), error boundaries with reset-keys, sidebar shell (`AppSidebar`), property editors (select / combobox / date), filter UI (`FilterCombobox`, `FilterPopover`, `BadgeToggleMenu`), and plumbing the rest of the app shares (`queryClient`, `formatters`, `plugin-utils`, `field-schema`). Stuff that isn't big enough to be its own domain but is wider than any single feature.
 
 ## Context
 
@@ -15,8 +15,8 @@ The frontend package is the cross-app shadcn surface. Components here either dep
 ### Why error boundaries take `resetKeys`
 React error boundaries don't auto-reset — once caught, the fallback persists until `setState` is called. The inbox places boundaries at three levels (root, tab, plugin); when the user navigates to a different tab, the boundary should clear so the new tab renders fresh. `resetKeys` makes that declarative: pass the active tab id, and `componentDidUpdate` clears the error when it changes.
 
-### Why iframe theme is centralized in `iframe-theme.ts`
-HTML outputs, React artifacts, plugin components, and email bodies all render inside sandboxed iframes. Each needs the same set of CSS custom properties forwarded so they pick up the dark/light theme. Centralizing the variable list (`THEME_VARS`) and base CSS (`IFRAME_BASE_CSS`) here means a token rename touches one file rather than four.
+### Why iframe theme lives in `@hammies/frontend`
+HTML outputs, React artifacts, plugin components, and email bodies all render inside sandboxed iframes, and each needs the same CSS custom properties forwarded to pick up the dark/light theme — so the variable list (`THEME_VARS`) and base CSS (`IFRAME_BASE_CSS`) are centralized rather than repeated per surface. They moved up to `@hammies/frontend` in 2026-07 once Studio needed the identical set: the file had been duplicated in both apps, differing only in comment wording. Inbox still consumes it from four places; the import is now `@hammies/frontend/lib/iframe-theme`.
 
 ### Why `queryClient` config is two settings
 `staleTime: 5min` keeps cached queries from refetching on every nav (avoiding the loading flash); `gcTime: 24h` matches the React Query persister's `maxAge` so the persisted cache is never trusted longer than the in-memory cache. Other defaults (retry, refetchOnWindowFocus) are tuned to be quiet.
@@ -143,7 +143,7 @@ HTML outputs, React artifacts, plugin components, and email bodies all render in
 | App sidebar (tabs, plugin order, recent sessions, user menu) | [src/components/layout/AppSidebar.tsx](../../../src/components/layout/AppSidebar.tsx) |
 | Login page, liquid-glass filter | [src/components/layout/LoginPage.tsx](../../../src/components/layout/LoginPage.tsx), [src/components/layout/LiquidGlassFilter.tsx](../../../src/components/layout/LiquidGlassFilter.tsx) |
 | React Query client defaults | [src/lib/queryClient.ts](../../../src/lib/queryClient.ts) |
-| Iframe theme forwarding (`THEME_VARS`, `IFRAME_BASE_CSS`, `injectIntoHtml`) | [src/lib/iframe-theme.ts](../../../src/lib/iframe-theme.ts) |
+| Iframe theme forwarding (`THEME_VARS`, `IFRAME_BASE_CSS`, `injectIntoHtml`) | **moved** to `@hammies/frontend` (`src/lib/iframe-theme.ts`) — shared with Studio; owned by that package `artifact-runtime` spec |
 | Inbox formatters (`getItemTitle`, `formatEmailAddress`, session status helpers) | [src/lib/formatters.ts](../../../src/lib/formatters.ts) |
 | Plugin item title/subtitle/timestamp extraction | [src/lib/plugin-utils.ts](../../../src/lib/plugin-utils.ts) |
 | Field schema typings shared by plugin views | [src/lib/field-schema.ts](../../../src/lib/field-schema.ts) |

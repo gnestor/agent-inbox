@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ArtifactFrame } from "../ArtifactFrame"
 
 // Babel transform is slow/flaky in jsdom — mock it to a passthrough.
-vi.mock("@/lib/artifact-transform", () => ({
+vi.mock("@hammies/frontend/lib/artifact-transform", () => ({
   transformArtifactCode: vi.fn(async (code: string) => ({ code, exportedName: "App" })),
   escapeForScript: (code: string) => code,
 }))

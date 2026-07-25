@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest"
-import { buildArtifactHtml } from "@/lib/build-artifact-html"
+import { buildArtifactHtml } from "@hammies/frontend/lib/build-artifact-html"
 
 describe("buildArtifactHtml", () => {
   it("returns fallback HTML when code is undefined", () => {

@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react"
-import { THEME_VARS } from "@/lib/iframe-theme"
+import { THEME_VARS } from "@hammies/frontend/lib/iframe-theme"
 
 /**
  * Manages iframe auto-height by observing the iframe body's scroll height
