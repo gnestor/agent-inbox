@@ -4,9 +4,9 @@ import { answerSessionQuestion, getUserProfiles } from "@/api/client"
 import { useSessionTranscript } from "./use-session-transcript"
 import { useSessionStore } from "@/stores/session-store"
 import { useSessionMutations } from "./use-session-mutations"
-import { processTranscript, filterVisible } from "@/lib/session-pipeline"
+import { processTranscript, filterVisible } from "@hammies/session-core"
 import type { Session, PendingQuestion, SessionMessage, PresenceUser } from "@/types"
-import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@/lib/session-pipeline"
+import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@hammies/session-core"
 import type { SessionSlice } from "@/stores/session-store"
 import type { PendingPrompt } from "@/stores/session-reducer"
 
@@ -128,7 +128,7 @@ export function useSessionController({
     const optimistic: SessionMessage[] = pendingPrompts.map((p, i) => {
       const seq = Number.MAX_SAFE_INTEGER - (pendingPrompts.length - 1 - i)
       return {
-        id: seq,
+        id: String(seq),
         sessionId,
         sequence: seq,
         type: "user",

@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionTranscript } from "../SessionTranscript"
-import { processTranscript, filterVisible } from "@/lib/session-pipeline"
+import { processTranscript, filterVisible } from "@hammies/session-core"
 import { DEFAULT_TRANSCRIPT_VISIBILITY } from "../SessionTranscript"
 import type { SessionMessage } from "@/types"
 

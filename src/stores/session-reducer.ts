@@ -4,7 +4,7 @@
 // one of these functions. Tests can exercise them directly.
 
 import type { Session, SessionMessage, PendingQuestion, PresenceUser } from "@/types"
-import { normalizeMessagePayload, getMessageType } from "@/types/session-message"
+import { normalizeMessagePayload, getMessageType } from "@hammies/session-core"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,7 +92,7 @@ export function reduceEvent(slice: SessionSlice, event: ServerEvent): SessionSli
     if (slice.messageById[event.sequence]) return slice
 
     const msg: SessionMessage = {
-      id: event.sequence,
+      id: String(event.sequence),
       sessionId: slice.session.id,
       sequence: event.sequence,
       type: getMessageType(event.message),

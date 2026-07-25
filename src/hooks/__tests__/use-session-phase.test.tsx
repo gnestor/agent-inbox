@@ -28,7 +28,7 @@ vi.mock("../use-session-mutations", () => ({
     return mutationsMockState
   }),
 }))
-vi.mock("@/lib/session-pipeline", () => ({
+vi.mock("@hammies/session-core", () => ({
   processTranscript: vi.fn((msgs: any[]) => ({
     classified: msgs,
     lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [], fileMap: new Map(), fileIdMap: new Map() },

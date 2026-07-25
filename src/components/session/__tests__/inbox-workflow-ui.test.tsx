@@ -33,7 +33,7 @@ vi.mock("@hammies/frontend/lib/utils", () => ({
 
 // ── extractXmlTag ────────────────────────────────────────────────────────────
 
-import { extractXmlTag } from "@/lib/session-pipeline"
+import { extractXmlTag } from "@hammies/session-core"
 
 describe("extractXmlTag", () => {
   it("extracts content from a simple tag", () => {

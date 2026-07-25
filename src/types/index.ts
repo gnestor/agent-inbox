@@ -113,11 +113,11 @@ export interface Session {
 }
 
 export interface SessionMessage {
-  id: number
+  id: string
   sessionId: string
   sequence: number
   type: string
-  message: import("./session-message").SessionMessagePayload
+  message: import("@hammies/session-core").SessionMessagePayload
   createdAt: string
 }
 

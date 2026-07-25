@@ -4,8 +4,8 @@ import { useTranscriptScroll } from "@/hooks/use-transcript-scroll"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { FileText, FileIcon, ChevronRight, Paperclip, Maximize2 } from "lucide-react"
 import type { AskUserQuestion, InboxContextData, InboxResultData } from "@/types"
-import type { ContentBlock as ContentBlockType, ToolUseBlock, AssistantMessage } from "@/types/session-message"
-import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES, PRESENT_FILES_NAMES } from "@/types/session-message"
+import type { ContentBlock as ContentBlockType, ToolUseBlock, AssistantMessage } from "@hammies/session-core"
+import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES, PRESENT_FILES_NAMES } from "@hammies/session-core"
 import { ContextPanel } from "./ContextPanel"
 import { InboxResultPanel } from "./InboxResultPanel"
 import { useQuery } from "@tanstack/react-query"
@@ -20,16 +20,15 @@ import type { OutputSpec } from "./OutputRenderer"
 import { useEditingCode, artifactEditorKey } from "@/hooks/use-artifact-editor"
 import { useAskUserForm } from "@/hooks/use-ask-user-form"
 import { AskUserForm } from "./AskUserForm"
-import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@/lib/session-pipeline"
+import type { MessageLookups, ClassifiedMessage, TranscriptVisibility } from "@hammies/session-core"
 import {
   extractXmlTag,
   getContentBlocks,
   toolUseSummary,
   toolUseCommand,
-  isWriteArtifact,
   TOOL_DISPLAY_NAME,
   TOOLS_WITH_DESCRIPTION,
-} from "@/lib/session-pipeline"
+} from "@hammies/session-core"
 
 // ---------------------------------------------------------------------------
 // Attachment parsing (module-scope to avoid per-render allocation)
@@ -75,8 +74,8 @@ const markdownComponents: Components = {
 // ---------------------------------------------------------------------------
 
 // Re-export from pipeline (canonical definition lives there to avoid circular imports)
-export type { TranscriptVisibility } from "@/lib/session-pipeline"
-export { DEFAULT_TRANSCRIPT_VISIBILITY } from "@/lib/session-pipeline"
+export type { TranscriptVisibility } from "@hammies/session-core"
+export { DEFAULT_TRANSCRIPT_VISIBILITY } from "@hammies/session-core"
 
 const LookupsContext = createContext<MessageLookups>({
   toolResults: new Map(),
@@ -789,16 +788,12 @@ const ContentBlockView = memo(function ContentBlockView({ block, sequence, visib
     }
     // create_file — hidden from transcript (content consumed by present_files)
     if (CREATE_FILE_NAMES.has(block.name)) return null
-    // Write tool creating renderable files (HTML, JSX, etc.) — render as artifact
-    if (isWriteArtifact(block) && sessionId) {
-      if (!visibility.artifacts) return null
-      const filePath = block.input!.file_path as string
-      const content = lookups.fileMap.get(filePath)
-      if (content) {
-        const spec = withSourceToolUseId(fileToOutputSpec(filePath, content), block.id)
-        return <OutputAccordion spec={spec} sessionId={sessionId} sequence={sequence} onOpenPanel={onOpenPanel} onAction={onAction} onArtifactLoaded={onArtifactLoaded} />
-      }
-    }
+    // A bare `Write` is NEVER an artifact, whatever its extension — behavior
+    // adopted from Studio when both apps moved onto the shared pipeline. Inbox
+    // used to render a Write to .html/.jsx/.svg as an artifact, which pushes
+    // ordinary source edits (typed React modules in a real repo) through the JSX
+    // renderer, where they fail to parse. A written file still renders when the
+    // agent explicitly `present_files`es it, because fileMap indexes both writers.
     if (block.name === "AskUserQuestion" && block.input?.questions) {
       const resultText = lookups.toolResults.get(block.id) ?? ""
       return <AskUserQuestionEntry questions={block.input.questions as AskUserQuestion[]} resultText={resultText} sessionId={sessionId} sequence={sequence} onAnswer={!resultText ? onAnswer : undefined} />

@@ -29,7 +29,7 @@ import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
 import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 import { buildArtifactMcpServer } from "./artifact-tools.js"
-import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES } from "../../src/types/session-message.js"
+import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES } from "@hammies/session-core"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
