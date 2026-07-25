@@ -2,12 +2,12 @@ import { useState, useCallback } from "react"
 import type { ClassifiedMessage } from "@hammies/session-core"
 import { useLocation } from "react-router-dom"
 import { useNavActions } from "@/lib/navigation-store"
-import { useFileAttachments } from "./use-file-attachments"
+import { useFileAttachments } from "@hammies/frontend/components/session"
 import { uploadSessionFile } from "@/api/client"
 import type { OutputSpec } from "@/components/session/OutputRenderer"
 import type { SessionPhase } from "@/hooks/use-session-controller"
 import type { Session } from "@/types"
-import type { PendingFile, UploadedFile } from "./use-file-attachments"
+import type { PendingFile, UploadedFile } from "@hammies/frontend/components/session"
 
 interface UseSessionViewOptions {
   sessionId: string

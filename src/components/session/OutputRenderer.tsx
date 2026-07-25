@@ -22,6 +22,7 @@ export type {
   ReactArtifactData,
 } from "@hammies/session-core"
 import type { OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
+import { normalizeChartData } from "@hammies/session-core"
 
 // --- Main component ---
 
@@ -241,30 +242,6 @@ function JsonTree({ value, depth }: { value: unknown; depth: number }) {
  * Normalize chart data — accepts our ChartData format or simple Vega-Lite specs
  * (backward compat with old sessions). Complex Vega-Lite should use type "react".
  */
-function normalizeChartData(raw: ChartData): ChartData | null {
-  if (!raw) return null
-
-  // Already our format
-  if (raw.xKey && raw.yKeys) return raw
-
-  // Simple Vega-Lite spec: extract fields from encoding + inline data
-  // These fields don't exist on ChartData but may be present in legacy sessions
-  const rawRecord = raw as unknown as Record<string, Record<string, Record<string, string>>>
-  const encoding = rawRecord.encoding
-  const values = (rawRecord.data as unknown as { values?: Record<string, unknown>[] })?.values
-  if (encoding && Array.isArray(values) && encoding.x?.field && encoding.y?.field) {
-    const mark = (rawRecord as unknown as Record<string, unknown>).mark
-    const markType = typeof mark === "string" ? mark : (mark as Record<string, string>)?.type
-    return {
-      type: markType === "line" ? "line" : markType === "area" ? "area" : markType === "arc" ? "pie" : "bar",
-      data: values,
-      xKey: encoding.x.field,
-      yKeys: [encoding.y.field],
-    }
-  }
-
-  return null
-}
 
 function ChartOutput({ data }: { data: ChartData }) {
   const [Recharts, setRecharts] = useState<typeof import("recharts") | null>(null)

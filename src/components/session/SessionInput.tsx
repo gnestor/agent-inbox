@@ -2,8 +2,8 @@ import { Button, Textarea } from "@hammies/frontend/components/ui"
 import { Send, Square, Loader2 } from "lucide-react"
 import { useLocalDraft } from "@/hooks/use-local-draft"
 import { uploadPendingFiles } from "@/hooks/use-session-view"
-import { FileAttachmentBar, AttachButton, DragOverlay, HiddenFileInput } from "./FileAttachmentBar"
-import type { useFileAttachments } from "@/hooks/use-file-attachments"
+import { FileAttachmentBar, AttachButton, DragOverlay, HiddenFileInput } from "@hammies/frontend/components/session"
+import type { useFileAttachments } from "@hammies/frontend/components/session"
 
 type FileAttachments = ReturnType<typeof useFileAttachments>
 

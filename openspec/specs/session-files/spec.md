@@ -91,8 +91,7 @@ The manifest is concatenated into the system prompt — a token-counted resource
 | Path layout, validation, sanitisation, save/lookup/list, manifest builder | [server/lib/session-files.ts](../../../server/lib/session-files.ts) |
 | HTTP consumers (upload + download routes) | `server/routes/sessions.ts` |
 | Tests covering upload/list/download against the helpers | `server/routes/__tests__/sessions.test.ts` |
-| `<FileAttachmentBar>` composer attachment chips + drag overlay | [src/components/session/FileAttachmentBar.tsx](../../../src/components/session/FileAttachmentBar.tsx) |
-| Pending-file state hook (drag/drop, upload reducer) | [src/hooks/use-file-attachments.ts](../../../src/hooks/use-file-attachments.ts) |
+| Composer attachment chips + drag overlay, and the pending-file state hook | **moved** to `@hammies/frontend` (`src/components/session/FileAttachmentBar.tsx`, `use-file-attachments.ts`) — shared with Studio, whose copy was byte-identical; owned by that package `session-transcript` spec |
 
 ## History
 
