@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { BrowserRouter } from "react-router-dom"
 import { ThemeProvider } from "@hammies/frontend"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import type { PersistedClient } from "@tanstack/query-persist-client-core"
 import { TranscriptHostProvider } from "@hammies/frontend/components/session"
 import { useInboxTranscriptHost } from "@/components/session/transcriptHost"
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
@@ -12,6 +13,12 @@ import { isTransientQuery } from "@/lib/query-persistence"
 import { initCrashTelemetry } from "@/lib/crash-telemetry"
 import { App } from "./App"
 import "./index.css"
+
+const EMPTY_PERSISTED_CLIENT: PersistedClient = {
+  timestamp: 0,
+  buster: "",
+  clientState: { mutations: [], queries: [] },
+}
 
 // Start heartbeat + crash-detection telemetry as early as possible so we
 // capture pre-crash state even if app boot fails. Safe to call before render.
@@ -25,24 +32,31 @@ if ("serviceWorker" in navigator) {
 const persister = createAsyncStoragePersister({
   storage: {
     getItem: async (key: string) => {
-      try { return await get(key) } catch { await del(key).catch((err) => console.warn("[cache] Failed to clear corrupted cache entry:", err)); return null }
+      try {
+        return await get<string>(key)
+      } catch {
+        await del(key).catch((err: unknown) => console.warn("[cache] Failed to clear corrupted cache entry:", err))
+        return null
+      }
     },
     setItem: set,
     removeItem: del,
   },
   key: "INBOX_QUERY_CACHE_V3",
-  deserialize: (cached) => {
+  deserialize: (cached: string): PersistedClient => {
     try {
-      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached
-      if (parsed?.clientState?.queries) {
-        parsed.clientState.queries = parsed.clientState.queries.filter(
-          (q: { queryKey?: unknown[]; state?: { data?: unknown; status?: string } }) =>
-            !isTransientQuery(q.state?.status ?? "", q.queryKey ?? [], q.state?.data),
+      const parsed: unknown = JSON.parse(cached)
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return EMPTY_PERSISTED_CLIENT
+      const client = parsed as PersistedClient
+      if (Array.isArray(client.clientState?.queries)) {
+        client.clientState.queries = client.clientState.queries.filter(
+          (query) =>
+            !isTransientQuery(query.state.status ?? "", [...query.queryKey], query.state.data),
         )
       }
-      return parsed
+      return client
     } catch {
-      return { timestamp: 0, buster: "", clientState: { mutations: [], queries: [] } }
+      return EMPTY_PERSISTED_CLIENT
     }
   },
 })

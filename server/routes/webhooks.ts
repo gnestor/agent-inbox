@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import { isRecord } from "../lib/schemas.js"
 
 export const webhookRoutes = new Hono()
 
@@ -6,10 +7,10 @@ export const webhookRoutes = new Hono()
 // Each plugin can handle its own webhook payloads via plugin.webhookHandler()
 webhookRoutes.post("/:pluginId", async (c) => {
   const pluginId = c.req.param("pluginId")
-  const payload = await c.req.json()
+  const payload: unknown = await c.req.json()
 
   // Handle Slack URL verification challenge
-  if (payload.type === "url_verification") {
+  if (isRecord(payload) && payload.type === "url_verification" && typeof payload.challenge === "string") {
     return c.json({ challenge: payload.challenge })
   }
 

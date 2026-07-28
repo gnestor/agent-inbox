@@ -24,6 +24,10 @@ export type {
 import type { OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
 import { normalizeChartData } from "@hammies/session-core"
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
 // --- Main component ---
 
 interface OutputRendererProps {
@@ -123,8 +127,9 @@ function useIframeAutoHeight(max = 600) {
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.source !== ref.current?.contentWindow) return
-      if (e.data?.type === 'html-height' && typeof e.data.height === 'number') {
-        setHeight(Math.min(e.data.height, max))
+      const data = Reflect.get(e, "data") as unknown
+      if (isRecord(data) && data.type === 'html-height' && typeof data.height === 'number') {
+        setHeight(Math.min(data.height, max))
       }
     }
     window.addEventListener('message', handleMessage)
@@ -192,6 +197,7 @@ function JsonTree({ value, depth }: { value: unknown; depth: number }) {
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return <span className="text-xs text-muted-foreground">[]</span>
+    const items: unknown[] = [...value]
     return (
       <div style={{ paddingLeft: indent }}>
         <button
@@ -202,7 +208,7 @@ function JsonTree({ value, depth }: { value: unknown; depth: number }) {
           {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           [{value.length}]
         </button>
-        {!collapsed && value.map((item, i) => (
+        {!collapsed && items.map((item, i) => (
           <div key={i} className="flex items-start gap-1">
             <span className="text-xs text-muted-foreground shrink-0">{i}:</span>
             <JsonTree value={item} depth={depth + 1} />
@@ -278,10 +284,6 @@ function ChartOutput({ data }: { data: ChartData }) {
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts element types (Line|Area|Bar) share props but don't share a union type
-  const ChartElement: any = type === "line" ? Recharts.Line
-    : type === "area" ? Recharts.Area
-    : Recharts.Bar
-
   if (type === "pie") {
     // Pie chart needs special handling — data is the slice values
     const pieData = chartData.map((d) => ({
@@ -307,18 +309,16 @@ function ChartOutput({ data }: { data: ChartData }) {
           <Recharts.XAxis dataKey={xKey} tickLine={false} axisLine={false} className="text-xs" />
           <Recharts.YAxis tickLine={false} axisLine={false} className="text-xs" />
           <ChartTooltip content={<ChartTooltipContent />} />
-          {yKeys.map((key) => (
-            <ChartElement
-              key={key}
-              dataKey={key}
-              fill={config[key]!.color}
-              stroke={config[key]!.color}
-              radius={type === "bar" ? [4, 4, 0, 0] as [number, number, number, number] : undefined}
-              strokeWidth={type !== "bar" ? 2 : undefined}
-              fillOpacity={type === "area" ? 0.3 : undefined}
-              dot={type === "line" ? false : undefined}
-            />
-          ))}
+          {yKeys.map((key) => {
+            const series = config[key]!
+            if (type === "bar") {
+              return <Recharts.Bar key={key} dataKey={key} fill={series.color} stroke={series.color} radius={[4, 4, 0, 0]} />
+            }
+            if (type === "area") {
+              return <Recharts.Area key={key} dataKey={key} fill={series.color} stroke={series.color} strokeWidth={2} fillOpacity={0.3} />
+            }
+            return <Recharts.Line key={key} dataKey={key} fill={series.color} stroke={series.color} strokeWidth={2} dot={false} />
+          })}
         </Recharts.ComposedChart>
       </ChartContainer>
   )
@@ -371,7 +371,7 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
     fetch(downloadUrl)
       .then(r => r.text())
       .then(setRawHtml)
-      .catch((err) => console.warn("[output] Failed to fetch HTML file:", err))
+      .catch((err: unknown) => console.warn("[output] Failed to fetch HTML file:", err))
   }, [downloadUrl, isHtml])
 
   const htmlSrcDoc = useMemo(() => {
@@ -440,7 +440,13 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
 
 function ConversationOutput({ data }: { data: ConversationData }) {
   // Handle data sent as array directly or with missing messages field
-  const messages = Array.isArray(data) ? data : data?.messages ?? []
+  const raw: unknown = data
+  const messages: Array<{ role: string; content: string }> = Array.isArray(raw)
+    ? ([...raw] as unknown[]).filter(
+        (message: unknown): message is { role: string; content: string } =>
+          isRecord(message) && typeof message.role === "string" && typeof message.content === "string",
+      )
+    : data.messages
   return (
     <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
       {messages.map((msg, i) => {

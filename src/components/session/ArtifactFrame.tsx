@@ -5,6 +5,10 @@ import { transformArtifactCode } from "@hammies/frontend/lib/artifact-transform"
 import { buildArtifactHtml } from "@hammies/frontend/lib/build-artifact-html"
 import { Skeleton } from "@hammies/frontend/components/ui"
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
 // Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes.
 // Capped to prevent unbounded growth in long sessions.
 const srcDocCache = new Map<string, string>()
@@ -108,16 +112,16 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
       if (!iframe) return
       if (event.source !== iframe.contentWindow) return
 
-      const data = event.data
-      if (!data || typeof data !== "object") return
+      const data = Reflect.get(event, "data") as unknown
+      if (!isRecord(data)) return
 
       if (data.type === "action" && typeof data.intent === "string") {
         const safeIntent = data.intent.replace(/[<>"&]/g, "")
         const payload = data.data !== undefined ? JSON.stringify(data.data, null, 2) : ""
         const message = `<artifact_action intent="${safeIntent}">${payload}</artifact_action>`
         onAction?.(message)
-      } else if (data.type === "state" && data.state) {
-        setSavedState(data.state as Record<string, unknown>)
+      } else if (data.type === "state" && isRecord(data.state)) {
+        setSavedState(data.state)
       } else if (data.type === "error" && typeof data.message === "string") {
         setRuntimeError(data.message)
       } else if (data.type === "height" && typeof data.height === "number") {
@@ -129,7 +133,11 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         setContentHeight(data.height)
         setHeightReported(true)
         onHeightReported?.()
-      } else if (data.type === "wheel") {
+      } else if (
+        data.type === "wheel" &&
+        typeof data.deltaX === "number" &&
+        typeof data.deltaY === "number"
+      ) {
         iframe.dispatchEvent(new WheelEvent("wheel", {
           deltaX: data.deltaX,
           deltaY: data.deltaY,

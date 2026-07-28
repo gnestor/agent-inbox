@@ -33,7 +33,7 @@ describe("useEmailThread", () => {
   })
 
   it("fetches and returns thread data", async () => {
-    const mockThread = { id: "t1", subject: "Hello", messages: [] } as any
+    const mockThread = { id: "t1", subject: "Hello", messages: [] } as unknown
     vi.mocked(client.getEmailThread).mockResolvedValueOnce(mockThread)
 
     const { result } = renderHook(() => useEmailThread("t1"), { wrapper })
@@ -54,7 +54,7 @@ describe("useEmailThread", () => {
   })
 
   it("deduplicates requests for the same threadId", async () => {
-    const mockThread = { id: "t1", subject: "Hello", messages: [] } as any
+    const mockThread = { id: "t1", subject: "Hello", messages: [] } as unknown
     vi.mocked(client.getEmailThread).mockResolvedValue(mockThread)
 
     renderHook(() => useEmailThread("t1"), { wrapper })
@@ -64,7 +64,7 @@ describe("useEmailThread", () => {
   })
 
   it("refetches when threadId changes back to a cached value (staleTime: 0)", async () => {
-    const mockThread = { id: "t1", subject: "Hello", messages: [] } as any
+    const mockThread = { id: "t1", subject: "Hello", messages: [] } as unknown
     vi.mocked(client.getEmailThread).mockResolvedValue(mockThread)
 
     const { result, rerender } = renderHook(({ id }) => useEmailThread(id), {

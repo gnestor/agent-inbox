@@ -6,15 +6,37 @@ import Placeholder from "@tiptap/extension-placeholder"
 import { TaskList } from "@tiptap/extension-task-list"
 import { TaskItem } from "@tiptap/extension-task-item"
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight"
-import { Extension, generateJSON } from "@tiptap/core"
-import Suggestion from "@tiptap/suggestion"
+import { Extension, generateJSON, type Editor } from "@tiptap/core"
+import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from "@tiptap/suggestion"
 import { Markdown } from "tiptap-markdown"
 import { common, createLowlight } from "lowlight"
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon } from "lucide-react"
-import { SlashCommandMenu, SLASH_COMMANDS } from "./SlashCommandMenu"
+import {
+  SlashCommandMenu,
+  SLASH_COMMANDS,
+  type SlashCommandItem,
+  type SlashCommandMenuHandle,
+  type SlashCommandMenuProps,
+} from "./SlashCommandMenu"
 import "./rich-text-editor.css"
 
 const lowlight = createLowlight(common)
+
+function getMarkdown(editor: Editor): string {
+  const storage = editor.storage as unknown
+  if (storage === null || typeof storage !== "object" || Array.isArray(storage)) {
+    throw new Error("TipTap markdown storage is unavailable")
+  }
+  const markdown = Reflect.get(storage, "markdown") as unknown
+  if (markdown === null || typeof markdown !== "object" || Array.isArray(markdown)) {
+    throw new Error("TipTap markdown extension is unavailable")
+  }
+  const getter = Reflect.get(markdown, "getMarkdown") as unknown
+  if (typeof getter !== "function") throw new Error("TipTap markdown serializer is unavailable")
+  const value = Reflect.apply(getter, markdown, []) as unknown
+  if (typeof value !== "string") throw new Error("TipTap markdown serializer returned a non-string value")
+  return value
+}
 
 // ── Slash command extension ──────────────────────────────────────────────────
 
@@ -33,7 +55,7 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
 
     addProseMirrorPlugins() {
       return [
-        Suggestion({
+        Suggestion<SlashCommandItem, SlashCommandItem>({
           editor: this.editor,
           char: "/",
           allowSpaces: false,
@@ -45,44 +67,37 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
               : SLASH_COMMANDS
           },
           render: () => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap ReactRenderer generic requires component ref type; SlashCommandMenu ref is not exported as a standalone type
-            let component: ReactRenderer<any>
+            let component: ReactRenderer<SlashCommandMenuHandle, SlashCommandMenuProps>
             return {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
-              onStart: (props: any) => {
+              onStart: (props: SuggestionProps<SlashCommandItem, SlashCommandItem>) => {
                 component = new ReactRenderer(SlashCommandMenu, {
                   props: {
-                    ...props,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command callback passes opaque item data
-                    command: (item: any) => {
+                    items: props.items,
+                    command: (item: SlashCommandItem) => {
                       props.command(item)
                     },
-                    clientRect: props.clientRect,
+                    clientRect: props.clientRect ?? null,
                   },
                   editor: props.editor,
                 })
                 document.body.appendChild(component.element)
               },
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
-              onUpdate: (props: any) => {
+              onUpdate: (props: SuggestionProps<SlashCommandItem, SlashCommandItem>) => {
                 component.updateProps({
-                  ...props,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command callback passes opaque item data
-                  command: (item: any) => {
+                  items: props.items,
+                  command: (item: SlashCommandItem) => {
                     props.command(item)
                   },
-                  clientRect: props.clientRect,
+                  clientRect: props.clientRect ?? null,
                 })
               },
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion plugin render callbacks use untyped prop bags
-              onKeyDown: (props: any) => {
+              onKeyDown: (props: SuggestionKeyDownProps) => {
                 if (props.event.key === "Escape") {
                   component.destroy()
                   component.element.remove()
                   return true
                 }
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ReactRenderer.ref type doesn't include onKeyDown from useImperativeHandle
-                return (component.ref as any)?.onKeyDown(props.event) ?? false
+                return component.ref?.onKeyDown(props.event) ?? false
               },
               onExit: () => {
                 component.element.remove()
@@ -90,8 +105,7 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
               },
             }
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Suggestion command handler receives untyped editor/range/props
-          command: ({ editor, range, props }: { editor: any; range: any; props: any }) => {
+          command: ({ editor, range, props }) => {
             props.command({ editor, range })
           },
         }),
@@ -176,15 +190,13 @@ export function RichTextEditor({
     onCreate: ({ editor }) => {
       // If initial content was HTML, sync the parent with the markdown version
       if (typeof initialContent !== "string") {
-        const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
-(editor.storage as Record<string, any>).markdown.getMarkdown() as string
+        const md = getMarkdown(editor)
         lastEmittedRef.current = md
         onChange(md)
       }
     },
     onUpdate: ({ editor }) => {
-      const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
-(editor.storage as Record<string, any>).markdown.getMarkdown() as string
+      const md = getMarkdown(editor)
       lastEmittedRef.current = md
       onChange(md)
     },
@@ -201,8 +213,7 @@ export function RichTextEditor({
       const json = generateJSON(value, extensions)
       editor.commands.setContent(json, { emitUpdate: false })
       // Re-export as markdown so parent state stays in sync
-      const md = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tiptap-markdown extension stores getMarkdown() on editor.storage.markdown but doesn't export types
-(editor.storage as Record<string, any>).markdown.getMarkdown() as string
+      const md = getMarkdown(editor)
       lastEmittedRef.current = md
       onChange(md)
     } else {
@@ -259,7 +270,14 @@ export function RichTextEditor({
           <button
             type="button"
             onClick={() => {
-              const prev = editor.getAttributes("link").href as string | undefined
+              const attributes = editor.getAttributes("link") as unknown
+              const prev =
+                attributes !== null &&
+                typeof attributes === "object" &&
+                !Array.isArray(attributes) &&
+                typeof Reflect.get(attributes, "href") === "string"
+                  ? Reflect.get(attributes, "href") as string
+                  : undefined
               const url = window.prompt("URL", prev ?? "https://")
               if (url === null) return
               if (url === "") {

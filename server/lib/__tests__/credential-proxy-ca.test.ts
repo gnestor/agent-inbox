@@ -123,7 +123,7 @@ describe("credential-proxy-ca", () => {
     let callCount = 0
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const spy = vi.spyOn(realSelfsigned.default, "generate").mockImplementation(
-      (async (attrs: any, opts: any) => {
+      (async (attrs: unknown, opts: unknown) => {
         callCount++
         // Let the first call (CA generation) go through for real,
         // then use fast stubs for host certs
@@ -134,7 +134,7 @@ describe("credential-proxy-ca", () => {
           cert: `CERT-${attrs?.[0]?.value}`,
           private: `KEY-${attrs?.[0]?.value}`,
         }
-      }) as any,
+      }) as unknown,
     )
 
     try {

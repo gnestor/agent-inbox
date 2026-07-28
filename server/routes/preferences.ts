@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie"
 import { execute, query, withTransaction } from "../db/pool.js"
 import { getSession } from "../lib/auth.js"
 import { SESSION_COOKIE } from "./auth.js"
-import { SetPreferenceBody } from "../lib/schemas.js"
+import { BatchPreferencesBody, SetPreferenceBody } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
 
 /** Extract first user-facing message from a Zod validation error */
@@ -68,8 +68,9 @@ preferencesRoutes.put("/batch", async (c) => {
   const email = await getUserEmail(c)
   if (!email) return c.json({ error: "Unauthorized" }, 401)
 
-  const { prefs } = await c.req.json()
-  if (!prefs || typeof prefs !== "object") return c.json({ error: "Missing prefs" }, 400)
+  const parsed = BatchPreferencesBody.safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ error: "Missing prefs" }, 400)
+  const { prefs } = parsed.data
 
   const now = new Date().toISOString()
   await withTransaction(async (client) => {

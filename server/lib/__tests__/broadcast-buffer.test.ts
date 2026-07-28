@@ -9,7 +9,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
   queryOne: vi.fn((...args: unknown[]) => queryOneStub.current(...args)),
   execute: vi.fn(async () => ({ rowCount: 0 })),
-  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 vi.mock("../../lib/credentials.js", () => ({ getAgentEnv: () => ({}) }))
 vi.mock("../../lib/title-generator.js", () => ({ generateSessionTitle: vi.fn().mockResolvedValue(null) }))
@@ -108,7 +108,7 @@ describe("wsSubscribe cursor replay", () => {
       broadcastToSession("sess-cr-1", { sequence: i, message: { type: "assistant", i } })
     }
 
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("client-cr-1", (data) => received.push(data))
     await wsSubscribe("client-cr-1", [{ id: "sess-cr-1", fromSequence: 2 }])
 
@@ -129,7 +129,7 @@ describe("wsSubscribe cursor replay", () => {
       broadcastToSession("sess-cr-miss", { sequence: i, message: {} })
     }
 
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("client-cr-miss", (data) => received.push(data))
     await wsSubscribe("client-cr-miss", [{ id: "sess-cr-miss", fromSequence: 5 }])
 
@@ -145,7 +145,7 @@ describe("wsSubscribe cursor replay", () => {
     clearBroadcastBuffer("sess-cr-legacy")
     broadcastToSession("sess-cr-legacy", { sequence: 1, message: {} })
 
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("client-legacy", (data) => received.push(data))
     await wsSubscribe("client-legacy", [{ id: "sess-cr-legacy" }])
 
@@ -165,7 +165,7 @@ describe("wsSubscribe cursor replay", () => {
     // Covered: cursor inside the buffer window replays the missing tail.
     clearBroadcastBuffer("sess-sub-cov")
     for (let i = 1; i <= 3; i++) broadcastToSession("sess-sub-cov", { sequence: i, message: { i } })
-    const covered: any[] = []
+    const covered: unknown[] = []
     addWsClient("client-sub-cov", (d) => covered.push(d))
     await wsSubscribe("client-sub-cov", [{ id: "sess-sub-cov", fromSequence: 1 }])
     expect(
@@ -179,7 +179,7 @@ describe("wsSubscribe cursor replay", () => {
     for (let i = 1; i <= BROADCAST_BUFFER_CAPACITY + 20; i++) {
       broadcastToSession("sess-sub-miss", { sequence: i, message: {} })
     }
-    const missed: any[] = []
+    const missed: unknown[] = []
     addWsClient("client-sub-miss", (d) => missed.push(d))
     await wsSubscribe("client-sub-miss", [{ id: "sess-sub-miss", fromSequence: 2 }])
     expect(missed.find((m) => m.type === "cursor_miss" && m.sessionId === "sess-sub-miss")).toBeDefined()
@@ -204,7 +204,7 @@ describe("ws connection lifecycle", () => {
     const { addWsClient, broadcastToSession, clearBroadcastBuffer } =
       await import("../session-manager.js")
     // Mirror server onOpen: register, then send the connected frame.
-    const received: any[] = []
+    const received: unknown[] = []
     const clientId = "conn-client"
     addWsClient(clientId, (data) => received.push(data))
     // Route handler sends this immediately after addWsClient.
@@ -226,7 +226,7 @@ describe("ws connection lifecycle", () => {
     // cookie-gated upgrade succeeds), and broadcast reaches zero clients.
     clearBroadcastBuffer("unauth-sess")
     await wsSubscribe("ghost-client", [{ id: "unauth-sess" }]) // no registration → no-op
-    const delivered: any[] = []
+    const delivered: unknown[] = []
     // Even after broadcasting, the unregistered client has no send callback,
     // so nothing is fanned out to it.
     expect(() => broadcastToSession("unauth-sess", { sequence: 1, message: {} })).not.toThrow()
@@ -237,7 +237,7 @@ describe("ws connection lifecycle", () => {
     queryOneStub.current = async () => ({ id: "done-sess", status: "complete" })
     try {
       const { addWsClient, wsSubscribe } = await import("../session-manager.js")
-      const received: any[] = []
+      const received: unknown[] = []
       addWsClient("term-client", (d) => received.push(d))
       await wsSubscribe("term-client", [{ id: "done-sess" }]) // no fromSequence
       const terminal = received.find(
@@ -253,7 +253,7 @@ describe("ws connection lifecycle", () => {
     const { addWsClient, removeWsClient, wsSubscribe, broadcastToSession, clearBroadcastBuffer } =
       await import("../session-manager.js")
     clearBroadcastBuffer("track-sess")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("track-client", (d) => received.push(d))
     await wsSubscribe("track-client", [{ id: "track-sess" }])
     broadcastToSession("track-sess", { sequence: 1, message: { type: "assistant", content: [] } })
@@ -270,7 +270,7 @@ describe("ws connection lifecycle", () => {
     const { addWsClient, wsSubscribe, wsUnsubscribe, broadcastToSession, clearBroadcastBuffer } =
       await import("../session-manager.js")
     clearBroadcastBuffer("unsub-sess")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("unsub-client", (d) => received.push(d))
     await wsSubscribe("unsub-client", [{ id: "unsub-sess" }])
     broadcastToSession("unsub-sess", { sequence: 1, message: { type: "assistant", content: [] } })

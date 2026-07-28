@@ -12,6 +12,14 @@
  */
 import { z } from "zod/v4"
 
+/** Parse untrusted JSON without allowing the standard library's `any` return
+ * type to escape into application code. Callers must narrow or schema-parse. */
+export const parseJson: (text: string) => unknown = JSON.parse
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 // ---------------------------------------------------------------------------
 // Request body schemas (server route inputs)
 // ---------------------------------------------------------------------------
@@ -70,6 +78,37 @@ export const SetPreferenceBody = z.object({
   value: z.unknown(),
 })
 export type SetPreferenceBody = z.infer<typeof SetPreferenceBody>
+
+export const BatchPreferencesBody = z.object({
+  prefs: z.record(z.string(), z.unknown()),
+})
+
+export const GoogleTokenResponse = z.object({
+  access_token: z.string().min(1),
+  expires_in: z.number().positive().optional(),
+})
+
+export const OAuthTokenResponse = z.object({
+  access_token: z.string().optional(),
+  authed_user: z.object({ access_token: z.string().optional() }).optional(),
+  bot: z.object({ bot_access_token: z.string().optional() }).optional(),
+  refresh_token: z.string().optional(),
+  scope: z.string().optional(),
+  expires_in: z.number().positive().optional(),
+})
+
+export const WsClientMessage = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("subscribe"),
+    sessions: z.array(z.object({
+      id: z.string(),
+      fromSequence: z.number().int().nonnegative().optional(),
+    })).optional(),
+    sessionIds: z.array(z.string()).optional(),
+  }),
+  z.object({ type: z.literal("unsubscribe"), sessionIds: z.array(z.string()) }),
+  z.object({ type: z.literal("ping") }),
+])
 
 export const AddWorkspaceMemberBody = z.object({
   email: z.string().email(),

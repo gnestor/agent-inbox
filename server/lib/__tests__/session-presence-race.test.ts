@@ -1,15 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mock DB and credentials (required by session-manager module)
-const mockExecute = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ rowCount: 0 }))
-const mockQueryOne = vi.fn<(...args: any[]) => Promise<any>>(async () => undefined)
-const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
+const mockExecute = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ rowCount: 0 }))
+const mockQueryOne = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined)
+const mockQuery = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
-  query: (...args: any[]) => mockQuery(...args),
-  queryOne: (...args: any[]) => mockQueryOne(...args),
-  execute: (...args: any[]) => mockExecute(...args),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  query: (...args: unknown[]) => mockQuery(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  execute: (...args: unknown[]) => mockExecute(...args),
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))
@@ -86,7 +86,7 @@ describe("session presence race conditions", () => {
 
   it("broadcasts are debounced: rapid add/remove produces one broadcast", async () => {
     const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser } = await import("../session-manager.js")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("c-6", (data) => received.push(data))
     await wsSubscribe("c-6", [{ id: "race-6" }])
 
@@ -109,7 +109,7 @@ describe("session presence race conditions", () => {
 
   it("broadcasts separated beyond debounce window are distinct", async () => {
     const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("c-7", (data) => received.push(data))
     await wsSubscribe("c-7", [{ id: "race-7" }])
 
@@ -123,7 +123,7 @@ describe("session presence race conditions", () => {
 
   it("removing a user who isn't present is a no-op (no broadcast)", async () => {
     const { addWsClient, wsSubscribe, removePresenceUser } = await import("../session-manager.js")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("c-8", (data) => received.push(data))
     await wsSubscribe("c-8", [{ id: "race-8" }])
     removePresenceUser("race-8", "ghost@test.com")

@@ -72,7 +72,7 @@ vi.mock("../../db/pool.js", () => ({
 
     return { rowCount: 0 }
   }),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))

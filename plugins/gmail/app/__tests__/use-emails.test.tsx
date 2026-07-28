@@ -26,7 +26,7 @@ describe("useEmails", () => {
 
   it("starts in loading state and resolves with messages", async () => {
     vi.mocked(client.searchEmails).mockResolvedValueOnce({
-      messages: [{ id: "m1", threadId: "t1" } as any],
+      messages: [{ id: "m1", threadId: "t1" } as unknown],
       nextPageToken: null,
     })
 
@@ -41,7 +41,7 @@ describe("useEmails", () => {
 
   it("sets hasMore=true when nextPageToken is returned", async () => {
     vi.mocked(client.searchEmails).mockResolvedValueOnce({
-      messages: [{ id: "m1" } as any],
+      messages: [{ id: "m1" } as unknown],
       nextPageToken: "tok123",
     })
 
@@ -79,8 +79,8 @@ describe("useEmails", () => {
 
   it("fetches next page on loadMore and appends messages", async () => {
     vi.mocked(client.searchEmails)
-      .mockResolvedValueOnce({ messages: [{ id: "m1" } as any], nextPageToken: "tok1" })
-      .mockResolvedValueOnce({ messages: [{ id: "m2" } as any], nextPageToken: null })
+      .mockResolvedValueOnce({ messages: [{ id: "m1" } as unknown], nextPageToken: "tok1" })
+      .mockResolvedValueOnce({ messages: [{ id: "m2" } as unknown], nextPageToken: null })
 
     const { result } = renderHook(() => useEmails(), { wrapper })
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -94,7 +94,7 @@ describe("useEmails", () => {
 
   it("passes pageToken to searchEmails on loadMore", async () => {
     vi.mocked(client.searchEmails)
-      .mockResolvedValueOnce({ messages: [{ id: "m1" } as any], nextPageToken: "tok-abc" })
+      .mockResolvedValueOnce({ messages: [{ id: "m1" } as unknown], nextPageToken: "tok-abc" })
       .mockResolvedValueOnce({ messages: [], nextPageToken: null })
 
     const { result } = renderHook(() => useEmails(), { wrapper })

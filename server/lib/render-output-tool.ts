@@ -2,6 +2,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import { transform } from "esbuild"
 import { unwrapReactData } from "@hammies/frontend/lib/artifact-transform"
+import { isRecord } from "../lib/schemas.js"
 
 /**
  * Builds an in-process MCP server that registers the `render_output` tool.
@@ -75,7 +76,7 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
         "- file: reference to a file on disk\n" +
         "- conversation: chat-style message list"
       ),
-      data: z.any().describe(
+      data: z.unknown().describe(
         "Content format depends on type:\n" +
         "- markdown/html: string\n" +
         "- table: { columns: string[], rows: any[][] }\n" +
@@ -140,9 +141,13 @@ saveState(state: object) — Persists UI state across page reloads. Automaticall
           detail = `react component (${unwrapReactData(args.data).code?.length ?? 0} chars)`
           break
         }
-        case "table":
-          detail = `table: ${args.data?.columns?.length ?? 0} columns, ${args.data?.rows?.length ?? 0} rows`
+        case "table": {
+          const table = isRecord(args.data) ? args.data : {}
+          const columns = Array.isArray(table.columns) ? table.columns.length : 0
+          const rows = Array.isArray(table.rows) ? table.rows.length : 0
+          detail = `table: ${columns} columns, ${rows} rows`
           break
+        }
         case "markdown":
         case "html":
           detail = `${args.type}: ${typeof args.data === "string" ? args.data.length : 0} chars`

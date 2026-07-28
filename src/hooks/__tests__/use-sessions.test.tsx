@@ -26,7 +26,7 @@ describe("useSessions", () => {
 
   it("starts in loading state and resolves with sessions", async () => {
     vi.mocked(client.getSessions).mockResolvedValueOnce({
-      sessions: [{ id: "s1", status: "complete", prompt: "Do the thing" } as any],
+      sessions: [{ id: "s1", status: "complete", prompt: "Do the thing" } as unknown],
     })
 
     const { result } = renderHook(() => useSessions(), { wrapper })
@@ -74,8 +74,8 @@ describe("useSessions", () => {
 
   it("uses separate cache keys for different filters", async () => {
     vi.mocked(client.getSessions)
-      .mockResolvedValueOnce({ sessions: [{ id: "s1" } as any] })
-      .mockResolvedValueOnce({ sessions: [{ id: "s2" } as any] })
+      .mockResolvedValueOnce({ sessions: [{ id: "s1" } as unknown] })
+      .mockResolvedValueOnce({ sessions: [{ id: "s2" } as unknown] })
 
     const { result: r1 } = renderHook(() => useSessions({ status: "running" }), { wrapper })
     const { result: r2 } = renderHook(() => useSessions({ status: "complete" }), { wrapper })

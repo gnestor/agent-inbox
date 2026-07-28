@@ -10,7 +10,7 @@ function getTools(): Record<string, {
 }> {
   const server = buildArtifactMcpServer()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (server.instance as any)._registeredTools
+  return (server.instance as unknown)._registeredTools
 }
 
 describe("buildArtifactMcpServer", () => {

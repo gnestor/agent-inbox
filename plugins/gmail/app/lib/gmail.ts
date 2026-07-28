@@ -13,7 +13,7 @@ import type {
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
-async function gmailRequest(accessToken: string, path: string, options?: RequestInit) {
+async function gmailRequest<T = unknown>(accessToken: string, path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${GMAIL_BASE}${path}`, {
     ...options,
     headers: {
@@ -26,7 +26,7 @@ async function gmailRequest(accessToken: string, path: string, options?: Request
     const text = await res.text()
     throw new Error(`Gmail API ${res.status}: ${text}`)
   }
-  return res.json()
+  return await res.json() as T
 }
 
 export function decodeBase64Url(data: string): string {
@@ -36,8 +36,8 @@ export function decodeBase64Url(data: string): string {
 
 function decodeHtmlEntities(text: string): string {
   return text
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match: string, num: string) => String.fromCharCode(parseInt(num, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match: string, hex: string) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -154,7 +154,7 @@ export function getAttachments(payload: GmailApiPart): { attachmentId: string; f
  */
 function replaceCidReferences(html: string, messageId: string, cidMap: Map<string, { attachmentId: string; mimeType: string }>): string {
   if (cidMap.size === 0) return html
-  return html.replace(/src="cid:([^"]+)"/gi, (match, cid) => {
+  return html.replace(/src="cid:([^"]+)"/gi, (match: string, cid: string) => {
     const attachment = cidMap.get(cid)
     if (!attachment) return match
     return `src="/api/gmail/messages/${messageId}/attachments/${encodeURIComponent(attachment.attachmentId)}"`
@@ -365,7 +365,7 @@ export async function getThread(accessToken: string, threadId: string) {
 }
 
 export async function getLabels(accessToken: string) {
-  const result = await gmailRequest(accessToken, "/labels")
+  const result = await gmailRequest<{ labels?: GmailApiLabel[] }>(accessToken, "/labels")
   return {
     labels: ((result.labels || []) as GmailApiLabel[]).map((l) => ({
       id: l.id,
@@ -417,7 +417,7 @@ export function markdownToHtml(md: string): string {
   // list markers in prose, but we want rich list rendering in email drafts.
   html = html.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g, "$1")
   // Code blocks (must come before inline code)
-  html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`)
+  html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, (_match: string, code: string) => `<pre><code>${code.trim()}</code></pre>`)
   // Inline code
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>")
   // Bold
@@ -544,7 +544,7 @@ export async function sendMessage(
 }
 
 export async function getAttachment(accessToken: string, messageId: string, attachmentId: string): Promise<Buffer> {
-  const data = await gmailRequest(accessToken, `/messages/${messageId}/attachments/${attachmentId}`)
+  const data = await gmailRequest<{ data: string }>(accessToken, `/messages/${messageId}/attachments/${attachmentId}`)
   const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/")
   return Buffer.from(base64, "base64")
 }

@@ -16,9 +16,13 @@ export const ALIVE_TIMEOUT_MS = 45_000
 // Types
 // ---------------------------------------------------------------------------
 
-type SessionEventCallback = (data: any) => void
+type SessionEventCallback = (data: unknown) => void
 type ConnectCallback = () => void
 type CursorMissCallback = () => void
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
 
 /** Per-session subscription options. */
 export interface SubscribeOptions {
@@ -179,18 +183,21 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       // Any message proves the connection is alive — reset the watchdog.
       resetAliveTimeout()
 
-      let msg: any
+      let msg: Record<string, unknown>
       try {
-        msg = JSON.parse(evt.data)
+        const rawData = Reflect.get(evt, "data") as unknown
+        const parsed: unknown = JSON.parse(typeof rawData === "string" ? rawData : String(rawData))
+        if (!isRecord(parsed)) return
+        msg = parsed
       } catch (err) {
-        console.error("[ws] failed to parse message", err, evt.data)
+        console.error("[ws] failed to parse message", err)
         return
       }
 
       // Drop pong frames early — no further handling needed.
       if (msg.type === "pong") return
 
-      if (msg.type === "connected") {
+      if (msg.type === "connected" && typeof msg.clientId === "string") {
         clientIdRef.current = msg.clientId
         // Re-subscribe all active sessions on (re)connect with cursors.
         const ids = [...listenersRef.current.keys()]
@@ -203,7 +210,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (msg.type === "cursor_miss" && msg.sessionId) {
+      if (msg.type === "cursor_miss" && typeof msg.sessionId === "string") {
         const opts = optionsRef.current.get(msg.sessionId)
         try { opts?.onCursorMiss?.() } catch (err) {
           console.error("[ws] onCursorMiss threw", err, msg)
@@ -211,7 +218,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (msg.type === "session_event" && msg.sessionId) {
+      if (msg.type === "session_event" && typeof msg.sessionId === "string") {
         const callbacks = listenersRef.current.get(msg.sessionId)
         if (callbacks) {
           for (const cb of callbacks) {

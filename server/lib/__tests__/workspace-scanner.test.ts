@@ -2,18 +2,18 @@ import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // --- In-memory stores for the mock DB layer ---
 
-let workspacesStore: Record<string, any> = {}
-let membersStore: Array<any> = []
-let usersStore: Array<any> = []
+let workspacesStore: Record<string, unknown> = {}
+let membersStore: Array<unknown> = []
+let usersStore: Array<unknown> = []
 
-const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>()
-const mockQueryOne = vi.fn<(...args: any[]) => Promise<any | undefined>>()
-const mockExecute = vi.fn<(...args: any[]) => Promise<{ rowCount: number }>>()
+const mockQuery = vi.fn<(...args: unknown[]) => Promise<unknown[]>>()
+const mockQueryOne = vi.fn<(...args: unknown[]) => Promise<unknown | undefined>>()
+const mockExecute = vi.fn<(...args: unknown[]) => Promise<{ rowCount: number }>>()
 
 vi.mock("../../db/pool.js", () => ({
-  query: (...args: any[]) => mockQuery(...args),
-  queryOne: (...args: any[]) => mockQueryOne(...args),
-  execute: (...args: any[]) => mockExecute(...args),
+  query: (...args: unknown[]) => mockQuery(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  execute: (...args: unknown[]) => mockExecute(...args),
 }))
 
 // Mock child_process so deriveWorkspaceName doesn't shell out

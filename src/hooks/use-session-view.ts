@@ -137,7 +137,8 @@ export async function uploadPendingFiles(
     if (result.status === "fulfilled") {
       results.push(result.value)
     } else {
-      console.error(`Failed to upload ${files[i]?.name}:`, result.reason)
+      const reason = Reflect.get(result, "reason") as unknown
+      console.error(`Failed to upload ${files[i]?.name}:`, reason)
     }
   })
   return results

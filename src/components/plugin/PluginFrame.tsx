@@ -7,6 +7,10 @@ import { createLogger } from "@/lib/logger"
 
 const log = createLogger("plugin-frame")
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
 interface PluginFrameProps {
   /** Plugin ID (e.g. "gmail", "notion-tasks") */
   pluginId: string
@@ -53,8 +57,8 @@ export function PluginFrame({
       const iframe = iframeRef.current
       if (!iframe || event.source !== iframe.contentWindow) return
 
-      const data = event.data
-      if (!data || typeof data !== "object") return
+      const data = Reflect.get(event, "data") as unknown
+      if (!isRecord(data)) return
 
       switch (data.type) {
         case "navigate":

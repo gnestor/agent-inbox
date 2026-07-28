@@ -10,6 +10,7 @@ import { createLogger, runWithRequestContext } from "@hammies/frontend/lib/serve
 import { randomUUID } from "crypto"
 import { csrfProtection } from "./lib/csrf.js"
 import { runHealthChecks, isHealthy } from "./lib/health.js"
+import { parseJson, WsClientMessage } from "./lib/schemas.js"
 
 const log = createLogger("server")
 import { getCookie } from "hono/cookie"
@@ -196,7 +197,7 @@ createCredentialProxy({
   .then((proxy) => {
     setCredentialProxy(proxy)
   })
-  .catch((err) => log.error("Failed to start credential proxy", { error: err instanceof Error ? err.message : String(err) }))
+  .catch((err: unknown) => log.error("Failed to start credential proxy", { error: err instanceof Error ? err.message : String(err) }))
 
 // Typed Hono app bindings — Phase 3+ routes use c.get("userEmail") etc.
 type AppBindings = {
@@ -300,18 +301,20 @@ app.get("/api/ws", upgradeWebSocket((c) => {
     onMessage(evt) {
       try {
         const raw = typeof evt.data === "string" ? evt.data : evt.data.toString()
-        const msg = JSON.parse(raw)
+        const parsed = WsClientMessage.safeParse(parseJson(raw))
+        if (!parsed.success) return
+        const msg = parsed.data
         if (msg.type === "subscribe") {
           // Accept both shapes:
           //   legacy:  { sessionIds: string[] }
           //   current: { sessions: Array<{ id: string; fromSequence?: number }> }
           // The legacy form means "no cursor" — we behave as before.
-          if (Array.isArray(msg.sessions)) {
+          if (msg.sessions) {
             wsSubscribe(clientId, msg.sessions)
-          } else if (Array.isArray(msg.sessionIds)) {
-            wsSubscribe(clientId, msg.sessionIds.map((id: string) => ({ id })))
+          } else if (msg.sessionIds) {
+            wsSubscribe(clientId, msg.sessionIds.map((id) => ({ id })))
           }
-        } else if (msg.type === "unsubscribe" && Array.isArray(msg.sessionIds)) {
+        } else if (msg.type === "unsubscribe") {
           wsUnsubscribe(clientId, msg.sessionIds)
         } else if (msg.type === "ping") {
           wsSend?.({ type: "pong" })
@@ -372,7 +375,7 @@ const port = parseInt(process.env.INBOX_PORT || process.env.PORT || "3002", 10)
 
 // Load workspace plugins before starting the server
 for (const ws of registeredWorkspaces) {
-  await loadPlugins(ws.path, ws.id).catch((err) => log.warn("Failed to load plugins", { workspaceId: ws.id, error: err.message }))
+  await loadPlugins(ws.path, ws.id).catch((err: unknown) => log.warn("Failed to load plugins", { workspaceId: ws.id, error: err instanceof Error ? err.message : String(err) }))
 }
 mountPluginRoutes(app)
 
@@ -396,7 +399,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
         .then(({ scheduleContextBackfill }) => scheduleContextBackfill(firstRegistered.path, firstRegistered.id))
         .catch((err: unknown) => log.warn("Failed to schedule context backfill", { error: err instanceof Error ? err.message : String(err) }))
     }
-    loadPanels(firstRegistered.path).catch((err) => log.warn("Failed to load panels", { error: err.message }))
+    loadPanels(firstRegistered.path).catch((err: unknown) => log.warn("Failed to load panels", { error: err instanceof Error ? err.message : String(err) }))
   }
 })
 

@@ -15,6 +15,7 @@ import { randomBytes } from "crypto"
 import type { AppBindings } from "../lib/workspace-context.js"
 import { rateLimit, getClientIp } from "../lib/rate-limit.js"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import { OAuthTokenResponse } from "../lib/schemas.js"
 
 const log = createLogger("routes:connections")
 
@@ -225,7 +226,7 @@ connectionRoutes.get("/connect/:integration/callback", rateLimit({
     return c.redirect(`/settings/integrations?error=${encodeURIComponent("Token exchange failed")}`)
   }
 
-  const tokenData = await tokenRes.json()
+  const tokenData = OAuthTokenResponse.parse(await tokenRes.json())
 
   // Extract token (different providers use different field names)
   const accessToken =

@@ -9,7 +9,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes("FROM user_preferences") && sql.includes("WHERE user_email")) {
       const email = params![0] as string
-      const results: any[] = []
+      const results: unknown[] = []
       for (const entry of prefsStore.values()) {
         if (entry.user_email === email) {
           results.push(entry)
@@ -33,7 +33,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     return { rowCount: 0 }
   }),
-  withTransaction: vi.fn(async (fn: any) => {
+  withTransaction: vi.fn(async (fn: unknown) => {
     // For batch operations, provide a client that writes to our store
     const client = {
       query: vi.fn(async (sql: string, params?: unknown[]) => {

@@ -1,15 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mock DB and credentials (required by session-manager module)
-const mockExecute = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ rowCount: 0 }))
-const mockQueryOne = vi.fn<(...args: any[]) => Promise<any>>(async () => undefined)
-const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
+const mockExecute = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ rowCount: 0 }))
+const mockQueryOne = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined)
+const mockQuery = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
-  query: (...args: any[]) => mockQuery(...args),
-  queryOne: (...args: any[]) => mockQueryOne(...args),
-  execute: (...args: any[]) => mockExecute(...args),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  query: (...args: unknown[]) => mockQuery(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  execute: (...args: unknown[]) => mockExecute(...args),
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))
@@ -40,7 +40,7 @@ describe("session presence tracking", () => {
 
   it("Scenario: Presence broadcasts debounce at 200 ms — addPresenceUser broadcasts presence event to WS clients (debounced)", async () => {
     const { addWsClient, wsSubscribe, addPresenceUser } = await import("../session-manager.js")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("c-2", (data) => received.push(data))
     await wsSubscribe("c-2", [{ id: "sess-2" }])
     addPresenceUser("sess-2", { email: "alice@test.com", name: "Alice" })
@@ -54,7 +54,7 @@ describe("session presence tracking", () => {
 
   it("removePresenceUser removes user from presence map and broadcasts", async () => {
     const { addWsClient, wsSubscribe, addPresenceUser, removePresenceUser, getPresenceUsers } = await import("../session-manager.js")
-    const received: any[] = []
+    const received: unknown[] = []
     addWsClient("c-3", (data) => received.push(data))
     await wsSubscribe("c-3", [{ id: "sess-3" }])
     addPresenceUser("sess-3", { email: "alice@test.com", name: "Alice" })
@@ -113,7 +113,7 @@ describe("resumeSessionQuery author attribution", () => {
     const { resumeSessionQuery, addWsClient, wsSubscribe } = await import("../session-manager.js")
 
     // Register a WS client and subscribe to capture broadcasts
-    const broadcasts: any[] = []
+    const broadcasts: unknown[] = []
     addWsClient("c-auth-1", (data) => broadcasts.push(data))
     await wsSubscribe("c-auth-1", [{ id: "sess-auth-1" }])
 
@@ -140,7 +140,7 @@ describe("resumeSessionQuery author attribution", () => {
 
     const { resumeSessionQuery, addWsClient, wsSubscribe } = await import("../session-manager.js")
 
-    const broadcasts: any[] = []
+    const broadcasts: unknown[] = []
     addWsClient("c-auth-2", (data) => broadcasts.push(data))
     await wsSubscribe("c-auth-2", [{ id: "sess-auth-2" }])
 

@@ -15,7 +15,7 @@ const mutationsMockState = {
   unarchive: { isPending: false, mutate: vi.fn() },
   rename: { isPending: false, mutate: vi.fn() },
 }
-let lastMutationsOptions: any = null
+let lastMutationsOptions: unknown = null
 
 let sliceMock: SessionSlice | undefined
 
@@ -23,17 +23,17 @@ vi.mock("../use-session-transcript", () => ({
   useSessionTranscript: vi.fn(() => sliceMock),
 }))
 vi.mock("../use-session-mutations", () => ({
-  useSessionMutations: vi.fn((opts: any) => {
+  useSessionMutations: vi.fn((opts: unknown) => {
     lastMutationsOptions = opts
     return mutationsMockState
   }),
 }))
 vi.mock("@hammies/session-core", () => ({
-  processTranscript: vi.fn((msgs: any[]) => ({
+  processTranscript: vi.fn((msgs: unknown[]) => ({
     classified: msgs,
     lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [], fileMap: new Map(), fileIdMap: new Map() },
   })),
-  filterVisible: vi.fn((msgs: any[]) => msgs),
+  filterVisible: vi.fn((msgs: unknown[]) => msgs),
 }))
 vi.mock("@/api/client", () => ({
   answerSessionQuestion: vi.fn(),
@@ -46,7 +46,7 @@ import { useSessionStore } from "@/stores/session-store"
 
 const DEFAULT_VISIBILITY = { messages: true, toolCalls: true, thinking: true, artifacts: true }
 
-function makeOpts(overrides: Record<string, any> = {}) {
+function makeOpts(overrides: Record<string, unknown> = {}) {
   return { sessionId: "s1", visibility: DEFAULT_VISIBILITY, ...overrides }
 }
 
@@ -149,10 +149,10 @@ describe("useSessionController (phase derivation)", () => {
   })
 
   it("returns awaiting_input phase when pendingQuestion is set", () => {
-    const question = { questions: [{ id: "q1" } as any] }
+    const question = { questions: [{ id: "q1" } as unknown] }
     sliceMock = makeSlice({
       session: makeSession({ status: "awaiting_user_input" }),
-      pendingQuestion: question as any,
+      pendingQuestion: question as unknown,
     })
     const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
     expect(result.current.phase.status).toBe("awaiting_input")
@@ -226,7 +226,7 @@ describe("useSessionController (phase derivation)", () => {
           sessionId: "s1",
           sequence: 1,
           type: "user",
-          message: { type: "user", content: "hi" } as any,
+          message: { type: "user", content: "hi" } as unknown,
           createdAt: "2026-01-01T00:00:00Z",
         },
       },
@@ -262,7 +262,7 @@ describe("answerQuestion", () => {
       session: makeSession({ status: "awaiting_user_input" }),
       messages: [],
     })
-    const question = { questions: [{ question: "?", header: "Q", options: [], multiSelect: false }] as any }
+    const question = { questions: [{ question: "?", header: "Q", options: [], multiSelect: false }] as unknown }
     useSessionStore.getState().setPendingQuestion("s1", question)
     sliceMock = useSessionStore.getState().sessions["s1"]
     return question
@@ -272,7 +272,7 @@ describe("answerQuestion", () => {
     const question = await seedSlicedWithQuestion()
     const answerSpy = vi.mocked(await import("@/api/client")).answerSessionQuestion
     let resolveHttp: () => void = () => {}
-    answerSpy.mockImplementation(() => new Promise<any>((r) => { resolveHttp = () => r(undefined) }))
+    answerSpy.mockImplementation(() => new Promise<unknown>((r) => { resolveHttp = () => r(undefined) }))
 
     const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
 
@@ -316,7 +316,7 @@ describe("answerQuestion", () => {
     sliceMock = useSessionStore.getState().sessions["s1"]
 
     const answerSpy = vi.mocked(await import("@/api/client")).answerSessionQuestion
-    answerSpy.mockResolvedValueOnce(undefined as any)
+    answerSpy.mockResolvedValueOnce(undefined as unknown)
 
     const { result } = renderHook(() => useSessionController(makeOpts()), { wrapper })
     await act(async () => {

@@ -81,7 +81,7 @@ describe("runBackgroundCurationSession", () => {
     const onComplete = vi.fn(async () => {})
     // Capture the onEnd callback startSession receives so we can drive it.
     let onEnd: ((sid: string, status: string) => Promise<void>) | undefined
-    mockStartSession.mockImplementation(async (_prompt: unknown, opts: any) => {
+    mockStartSession.mockImplementation(async (_prompt: unknown, opts: unknown) => {
       onEnd = opts.onEnd
       return "sess-123"
     })

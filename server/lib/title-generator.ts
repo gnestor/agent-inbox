@@ -14,22 +14,23 @@ export function buildTitlePrompt(
     .filter((m) => m.type === "user" || m.type === "assistant")
     .map((m) => {
       try {
-        const obj = JSON.parse(m.message)
+        const obj = parseJson(m.message)
+        if (!isRecord(obj)) return null
         const content = typeof obj.content === "string"
           ? obj.content
           : Array.isArray(obj.content)
-            ? (obj.content as Array<{ type: string; text?: string }>)
-                .filter((b) => b.type === "text")
-                .map((b) => b.text ?? "")
+            ? (obj.content as unknown[])
+                .filter((block): block is Record<string, unknown> => isRecord(block))
+                .map((block) => block.type === "text" && typeof block.text === "string" ? block.text : "")
                 .join(" ")
             : ""
         if (!content.trim()) return null // Skip messages with no text content (e.g. tool-only turns)
-        return { role: obj.type || m.type, content: content.slice(0, 500) }
+        return { role: typeof obj.type === "string" ? obj.type : m.type, content: content.slice(0, 500) }
       } catch {
         return null
       }
     })
-    .filter(Boolean) as Array<{ role: string; content: string }>
+    .filter((message): message is { role: string; content: string } => message !== null)
 
   // Take first 3 user messages and last assistant message
   const userMsgs = parsed.filter((m) => m.role === "user").slice(0, 3)
@@ -99,3 +100,4 @@ export async function generateSessionTitle(
     return null
   }
 }
+import { isRecord, parseJson } from "../lib/schemas.js"

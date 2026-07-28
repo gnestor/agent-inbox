@@ -15,6 +15,7 @@
 import { readFile } from "fs/promises"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { canonicalize } from "./entity-extractor.js"
+import { isRecord, parseJson } from "../lib/schemas.js"
 import type { Entity } from "../../src/types/plugin.js"
 
 /**
@@ -201,17 +202,18 @@ async function callOllama(content: string, model?: string): Promise<string | nul
 export function parseModelOutput(raw: string | null): Entity[] {
   if (!raw) return []
   let parsed: unknown
-  try { parsed = JSON.parse(raw) }
+  try { parsed = parseJson(raw) }
   catch { return [] }
 
-  const list = (parsed as { entities?: unknown }).entities
+  const list = isRecord(parsed) ? parsed.entities : undefined
   if (!Array.isArray(list)) return []
+  const items: unknown[] = list
 
   const seen = new Set<string>()
   const out: Entity[] = []
-  for (const item of list) {
-    if (!item || typeof item !== "object") continue
-    const rec = item as { type?: unknown; value?: unknown }
+  for (const item of items) {
+    if (!isRecord(item)) continue
+    const rec = item
     if (typeof rec.type !== "string" || typeof rec.value !== "string") continue
     if (isNoiseEntity(rec.type, rec.value)) continue
     const value = canonicalize(rec.type, rec.value)

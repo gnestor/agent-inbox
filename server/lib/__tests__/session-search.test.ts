@@ -18,7 +18,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
   queryOne: vi.fn(async () => undefined),
   execute: vi.fn(async () => ({ rowCount: 0 })),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))
@@ -218,7 +218,7 @@ describe("watchProjectsDir", () => {
 
     // importAgentSession issues an INSERT ... ON CONFLICT DO NOTHING for the id.
     const { execute } = await import("../../db/pool.js")
-    const insertCall = (execute as any).mock.calls.find(
+    const insertCall = (execute as unknown).mock.calls.find(
       (c: unknown[]) =>
         typeof c[0] === "string" &&
         c[0].includes("INSERT INTO sessions") &&

@@ -54,7 +54,7 @@ function formatSlackText(text: string): string {
     .replace(/<#[A-Z0-9]+\|([^>]+)>/g, "#$1")    // <#CID|name> → #name
     .replace(/<([^|>]+)\|([^>]+)>/g, "$2")        // <url|text> → text
     .replace(/<(https?:[^>]+)>/g, "$1")           // <url> → url
-    .replace(/:([a-z0-9_+-]+):/g, (_, name) => EMOJI_MAP[name] ?? `:${name}:`)
+    .replace(/:([a-z0-9_+-]+):/g, (_match: string, name: string) => EMOJI_MAP[name] ?? `:${name}:`)
 }
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" })
