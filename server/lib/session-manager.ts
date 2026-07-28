@@ -2,6 +2,11 @@ import { resolve, join, dirname } from "path"
 import * as fs from "fs"
 import { homedir } from "os"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import {
+  CONTRACT_VERSION,
+  SessionEventSchema,
+  decodeContract,
+} from "@hammies/contracts/session"
 
 const log = createLogger("session")
 
@@ -800,12 +805,21 @@ export function clearBroadcastBuffer(sessionId: string) {
 }
 
 export function broadcastToSession(sessionId: string, data: unknown) {
-  if (isSequencedBroadcast(data)) {
-    pushBroadcastBuffer(sessionId, data)
+  const event = decodeContract(SessionEventSchema, data, {
+    contract: "inbox-session-event@1",
+    source: sessionId,
+  })
+  if (isSequencedBroadcast(event)) {
+    pushBroadcastBuffer(sessionId, event)
   }
   for (const client of wsClients.values()) {
     if (client.sessions.has(sessionId)) {
-      client.send({ type: "session_event", sessionId, data })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: event,
+      })
     }
   }
 }
@@ -851,10 +865,19 @@ export async function wsSubscribe(clientId: string, sessions: readonly WsSubscri
     if (typeof fromSequence === "number") {
       const replay = readBroadcastBufferSince(sessionId, fromSequence)
       if (replay === null) {
-        client.send({ type: "cursor_miss", sessionId })
+        client.send({
+          contractVersion: CONTRACT_VERSION,
+          type: "cursor_miss",
+          sessionId,
+        })
       } else {
         for (const entry of replay) {
-          client.send({ type: "session_event", sessionId, data: entry.data })
+          client.send({
+            contractVersion: CONTRACT_VERSION,
+            type: "session_event",
+            sessionId,
+            data: entry.data,
+          })
         }
       }
     }
@@ -863,22 +886,59 @@ export async function wsSubscribe(clientId: string, sessions: readonly WsSubscri
     // apply before the status transition they describe.
     const session = await getSessionRecord(sessionId)
     if (session?.status === "complete") {
-      client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "session_complete",
+          status: "complete",
+        },
+      })
     } else if (session?.status === "errored") {
-      client.send({ type: "session_event", sessionId, data: { type: "session_error", status: "errored" } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "session_error",
+          status: "errored",
+          error: "session error",
+        },
+      })
     } else if (session?.status === "awaiting_user_input" || session?.status === "needs_attention") {
       // awaiting_user_input = live agent parked on a question.
       // needs_attention    = agent process exited mid-question; answer triggers a fresh resume.
       // Both render the same inline form, so we replay the question identically.
       const questions = await getLastAskUserQuestions(sessionId)
       if (questions) {
-        client.send({ type: "session_event", sessionId, data: { type: "ask_user_question", questions } })
+        client.send({
+          contractVersion: CONTRACT_VERSION,
+          type: "session_event",
+          sessionId,
+          data: {
+            contractVersion: CONTRACT_VERSION,
+            type: "ask_user_question",
+            questions,
+          },
+        })
       }
     }
 
     const users = getPresenceUsers(sessionId)
     if (users.length > 0) {
-      client.send({ type: "session_event", sessionId, data: { type: "presence", users } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "presence",
+          users,
+        },
+      })
     }
   }))
 }

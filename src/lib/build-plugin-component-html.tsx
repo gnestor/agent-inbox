@@ -131,28 +131,31 @@ body {
 })();
 
 // postMessage bridge helpers (global functions available in plugin components)
+var __hostOrigin = ${JSON.stringify(origin)};
 window.navigate = function(path) {
-  window.parent.postMessage({ type: 'navigate', path: String(path) }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'navigate', path: String(path) }, __hostOrigin);
 };
 window.selectItem = function(id) {
-  window.parent.postMessage({ type: 'selectItem', id: String(id) }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'selectItem', id: String(id) }, __hostOrigin);
 };
 window.pushPanel = function(panel) {
-  window.parent.postMessage({ type: 'pushPanel', panel: panel }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'pushPanel', panel: panel }, __hostOrigin);
 };
 window.getPluginId = function() {
   return ${JSON.stringify(pluginId)};
 };
 window.sendAction = function(intent, data) {
-  var msg = { type: 'action', intent: String(intent) };
+  var msg = { contractVersion: 1, type: 'action', intent: String(intent) };
   if (data !== undefined) msg.data = data;
-  window.parent.postMessage(msg, '*');
+  window.parent.postMessage(msg, __hostOrigin);
 };
 window.saveState = function(state) {
-  window.parent.postMessage({ type: 'state', state: state }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'state', state: state }, __hostOrigin);
 };
 window.addEventListener('message', function(e) {
-  if (e.data && e.data.type === 'restore' && typeof window.__onStateRestored === 'function') {
+  if (e.source !== window.parent || e.origin !== __hostOrigin ||
+      !e.data || e.data.contractVersion !== 1) return;
+  if (e.data.type === 'restore' && typeof window.__onStateRestored === 'function') {
     window.__onStateRestored(e.data.state);
   }
   if (e.data && e.data.type === 'theme') {
@@ -164,18 +167,18 @@ window.addEventListener('message', function(e) {
 
 // Error reporting
 window.addEventListener('error', function(e) {
-  window.parent.postMessage({ type: 'error', message: e.message || 'Unknown error' }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'error', message: e.message || 'Unknown error' }, __hostOrigin);
 });
 window.addEventListener('unhandledrejection', function(e) {
   var msg = (e.reason && e.reason.message) || String(e.reason) || 'Unhandled promise rejection';
-  window.parent.postMessage({ type: 'error', message: msg }, '*');
+  window.parent.postMessage({ contractVersion: 1, type: 'error', message: msg }, __hostOrigin);
 });
 
 // Height reporting
 window.__reportHeight = function() {
   requestAnimationFrame(function() { requestAnimationFrame(function() {
     var h = document.documentElement.scrollHeight;
-    if (h > 0) window.parent.postMessage({ type: 'height', height: h }, '*');
+    if (h > 0) window.parent.postMessage({ contractVersion: 1, type: 'height', height: h }, __hostOrigin);
   }); });
 };
 </script>

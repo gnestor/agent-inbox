@@ -8,6 +8,10 @@ import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@hammies/frontend/l
 import { getSessionFileUrl } from "@/api/client"
 import { ArtifactFrame } from "./ArtifactFrame"
 import { unwrapReactData } from "@hammies/frontend/lib/artifact-transform"
+import {
+  ArtifactToHostMessageSchema,
+  decodeIframeMessage,
+} from "@hammies/contracts/iframe"
 
 // --- Spec types ---
 
@@ -104,7 +108,7 @@ function MarkdownOutput({ data }: { data: string }) {
 
 // --- HTML ---
 
-const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
+const HEIGHT_SCRIPT = `<script>(function(){function r(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({contractVersion:1,type:'html-height',height:h},'*')}if(document.readyState==='complete'){r()}else{window.addEventListener('load',r)}})()</script>`
 
 
 /** Snapshot current computed theme vars into a <style> block for cross-origin iframes.
@@ -126,10 +130,16 @@ function useIframeAutoHeight(max = 600) {
   const [height, setHeight] = useState(300)
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
-      if (e.source !== ref.current?.contentWindow) return
-      const data = Reflect.get(e, "data") as unknown
-      if (isRecord(data) && data.type === 'html-height' && typeof data.height === 'number') {
-        setHeight(Math.min(data.height, max))
+      const source = ref.current?.contentWindow
+      if (!source) return
+      const decoded = decodeIframeMessage(
+        e,
+        { source, origin: "null" },
+        ArtifactToHostMessageSchema,
+        "html-frame-to-host@1",
+      )
+      if (decoded.success && decoded.data.type === "html-height") {
+        setHeight(Math.min(decoded.data.height, max))
       }
     }
     window.addEventListener('message', handleMessage)

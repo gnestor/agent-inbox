@@ -12,6 +12,8 @@ import { queryClient } from "@/lib/queryClient"
 import { isTransientQuery } from "@/lib/query-persistence"
 import { initCrashTelemetry } from "@/lib/crash-telemetry"
 import { App } from "./App"
+import { decodeContract } from "@hammies/contracts"
+import { z } from "zod"
 import "./index.css"
 
 const EMPTY_PERSISTED_CLIENT: PersistedClient = {
@@ -19,6 +21,28 @@ const EMPTY_PERSISTED_CLIENT: PersistedClient = {
   buster: "",
   clientState: { mutations: [], queries: [] },
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+type PersistedMutation = PersistedClient["clientState"]["mutations"][number]
+type PersistedQuery = PersistedClient["clientState"]["queries"][number]
+const DehydratedMutationSchema = z.custom<PersistedMutation>(isRecord)
+const DehydratedQuerySchema = z.custom<PersistedQuery>(
+  (value) => isRecord(value)
+    && Array.isArray(value.queryKey)
+    && isRecord(value.state)
+    && typeof value.state.status === "string",
+)
+const PersistedClientSchema: z.ZodType<PersistedClient> = z.object({
+  timestamp: z.number().int().nonnegative(),
+  buster: z.string(),
+  clientState: z.object({
+    mutations: z.array(DehydratedMutationSchema),
+    queries: z.array(DehydratedQuerySchema),
+  }),
+})
 
 // Start heartbeat + crash-detection telemetry as early as possible so we
 // capture pre-crash state even if app boot fails. Safe to call before render.
@@ -46,8 +70,10 @@ const persister = createAsyncStoragePersister({
   deserialize: (cached: string): PersistedClient => {
     try {
       const parsed: unknown = JSON.parse(cached)
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return EMPTY_PERSISTED_CLIENT
-      const client = parsed as PersistedClient
+      const client = decodeContract(PersistedClientSchema, parsed, {
+        contract: "inbox-query-cache@1",
+        source: "IndexedDB",
+      })
       if (Array.isArray(client.clientState?.queries)) {
         client.clientState.queries = client.clientState.queries.filter(
           (query) =>

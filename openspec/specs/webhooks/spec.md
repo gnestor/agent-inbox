@@ -2,57 +2,77 @@
 
 ## Purpose
 
-Provide a single ingress route `/api/webhooks/:pluginId` for third-party webhook deliveries. The route is CSRF-exempt (third-party POSTs cannot send a same-origin Origin header) and currently a passthrough — it acknowledges receipt and logs the payload, with per-plugin dispatch reserved for future work.
+Provide one signed ingress route at `/api/webhooks/:pluginId`. The route is
+CSRF-exempt because providers are not browsers, but it is never
+unauthenticated: it verifies freshness and a signature over the exact raw body
+before JSON decoding or dispatch.
 
 ## Context
 
-### Why CSRF-exempt
-Webhook senders (Slack, Notion, Gmail push) are not browsers and do not present an `Origin` header that matches the inbox's allowlist. The CSRF middleware exempts paths starting with `/api/webhooks` for that reason — see `auth-and-sessions` spec.
+### Why a single dispatcher
 
-### Why a single dispatcher rather than per-plugin routes
-Plugins register their own auth/scopes/UI, but webhook ingress shape (URL, JSON body, ack response) is uniform. A single route keeps the URL contract stable for third parties even as plugins are added/removed.
+Plugins register their own data and UI surfaces, while ingress URL, replay, and
+failure semantics are platform concerns. A stable dispatcher keeps those
+security rules consistent as providers are added.
 
-### Slack URL-verification handshake
-Slack requires the endpoint to echo back a `challenge` value in response to a `type: "url_verification"` payload before it will activate event delivery. The route handles this inline without dispatching to a plugin, because the verification arrives before any plugin context exists.
+### Slack and generic signatures
 
-### Current limitations
-The route logs and returns `{ ok: true }`. Per-plugin dispatch (`plugin.webhookHandler()`) is a stub marked `TODO` in code — when implemented it must verify the sender's signature *before* invoking plugin code.
+Slack requests use `X-Slack-Signature` and
+`X-Slack-Request-Timestamp` with Slack's `v0` HMAC construction. Other providers
+use the platform `X-Hammies-Signature`, `X-Hammies-Timestamp`, and
+`X-Hammies-Event-Id` headers. Timestamps have a five-minute window.
+
+### Unsupported events
+
+Per-plugin mutation dispatch remains a later feature. A verified event that has
+no dispatcher returns an explicit `unsupported-event` outcome with HTTP 202,
+rather than claiming the mutation was processed. Event IDs are claimed for the
+process lifetime to suppress immediate retries.
 
 ## Requirements
 
 ### URL verification
 
 #### Scenario: Slack `url_verification` payloads are echoed
-- **WHEN** `POST /api/webhooks/:pluginId` is called with body `{ type: "url_verification", challenge }`
-- **THEN** the route returns `{ challenge }` immediately without any plugin dispatch.
-- **WHY:** Slack will not enable event delivery until the endpoint passes this handshake.
 
-### Generic ingress
+- **WHEN** a correctly signed Slack verification payload is received
+- **THEN** the response includes contract version 1 and its challenge.
 
-#### Scenario: Any other payload is acknowledged
-- **WHEN** a webhook POST arrives that is not URL verification
-- **THEN** the route logs the first 200 chars of the JSON body tagged with `[webhook:<pluginId>]` and returns `{ ok: true }` with HTTP 200.
-- **AND** the route does NOT yet dispatch into the plugin — `plugin.webhookHandler()` is a planned extension.
+### Signed ingress
+
+#### Scenario: Unsupported signed events are explicitly acknowledged
+
+- **WHEN** a correctly signed event reaches a provider without a dispatcher
+- **THEN** the route returns 202 with `outcome: "unsupported-event"`.
+
+#### Scenario: Invalid signatures are rejected before JSON parsing
+
+- **WHEN** signature verification fails, even if the body is malformed JSON
+- **THEN** the route returns 401 without decoding or logging the payload.
 
 #### Scenario: Auth middleware does not gate this route
-- **WHEN** a webhook POST arrives without an `inbox_session` cookie
-- **THEN** the request is processed; `/api/webhooks` is mounted before the auth middleware does NOT apply (CSRF middleware also exempts the path).
+
+- **WHEN** a signed webhook arrives without an `inbox_session` cookie
+- **THEN** signature authentication is sufficient and cookie auth is not
+  applied.
 
 ### Mount point
 
 #### Scenario: Mounted at `/api/webhooks`
+
 - **WHEN** the server boots
-- **THEN** `webhookRoutes` is mounted at `/api/webhooks` and the CSRF middleware's `exemptPaths` list includes the same prefix.
+- **THEN** `webhookRoutes` is mounted at `/api/webhooks` and the CSRF
+  exemption uses the same prefix.
 
 ## Technical Notes
 
 | Concern | Location |
 |---|---|
-| Webhook route + URL verification handler | [server/routes/webhooks.ts](../../../server/routes/webhooks.ts) |
-| Mount point | `server/index.ts:340` |
-| CSRF exemption list (must include `/api/webhooks`) | `server/index.ts:250-253` |
+| Raw signature verification, payload schemas, replay claims, and outcomes | [server/routes/webhooks.ts](../../../server/routes/webhooks.ts) |
 
 ## History
 
-- Endpoint introduced as a passthrough so Slack URL verification could be completed during plugin development.
-- Per-plugin dispatch and signature verification deferred — will land alongside the first plugin that needs inbound events.
+- Endpoint introduced as a passthrough so Slack URL verification could be
+  completed during plugin development.
+- 2026-07-27: Added raw-body HMAC verification, freshness limits, runtime
+  payload schemas, replay outcomes, and explicit unsupported-event handling.

@@ -10,7 +10,18 @@ import { createLogger, runWithRequestContext } from "@hammies/frontend/lib/serve
 import { randomUUID } from "crypto"
 import { csrfProtection } from "./lib/csrf.js"
 import { runHealthChecks, isHealthy } from "./lib/health.js"
-import { parseJson, WsClientMessage } from "./lib/schemas.js"
+import { parseJson } from "./lib/schemas.js"
+import {
+  CONTRACT_VERSION,
+  InboxClientMessageSchema,
+  decodeContract,
+} from "@hammies/contracts/session"
+import {
+  EnvBooleanSchema,
+  EnvPortSchema,
+  decodeEnvironment,
+} from "@hammies/contracts/env"
+import { z } from "zod"
 
 const log = createLogger("server")
 import { getCookie } from "hono/cookie"
@@ -52,8 +63,24 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, "../../../.env") })
 config({ path: resolve(__dirname, "../.env"), override: true })
 
+const inboxEnvironment = decodeEnvironment(
+  "inbox",
+  z.object({
+    VAULT_SECRET: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+    WORKSPACES: z.string().min(1).optional(),
+    WORKSPACE: z.string().min(1).optional(),
+    INBOX_PORT: EnvPortSchema.optional(),
+    PORT: EnvPortSchema.optional(),
+    CREDENTIAL_KEEPALIVE: EnvBooleanSchema.optional(),
+    DISABLE_BACKFILL: EnvBooleanSchema.optional(),
+    SLACK_SIGNING_SECRET: z.string().min(16).optional(),
+    INBOX_WEBHOOK_SECRET: z.string().min(32).optional(),
+  }),
+  process.env,
+)
+
 // Validate VAULT_SECRET
-if (!process.env.VAULT_SECRET || process.env.VAULT_SECRET.length < 64) {
+if (!inboxEnvironment.VAULT_SECRET) {
   log.warn("VAULT_SECRET not set or too short — credential vault will not work")
 }
 
@@ -80,13 +107,13 @@ function getWorkspacePaths(): string[] {
   }
 
   // Env: WORKSPACES=path1,path2
-  if (process.env.WORKSPACES) {
-    return process.env.WORKSPACES.split(",").map(resolvePath)
+  if (inboxEnvironment.WORKSPACES) {
+    return inboxEnvironment.WORKSPACES.split(",").map(resolvePath)
   }
 
   // Env: WORKSPACE=path (legacy single)
-  if (process.env.WORKSPACE) {
-    return [resolvePath(process.env.WORKSPACE)]
+  if (inboxEnvironment.WORKSPACE) {
+    return [resolvePath(inboxEnvironment.WORKSPACE)]
   }
 
   // Default workspace: packages/agent in the monorepo
@@ -144,7 +171,7 @@ try {
 // Keep the OAuth refresh-token chains alive on the always-on host so they never
 // idle into expiry. Opt-in (CREDENTIAL_KEEPALIVE=1) so it doesn't fire from
 // dev/test server boots and hit live OAuth providers.
-if (process.env.CREDENTIAL_KEEPALIVE === "1") {
+if (inboxEnvironment.CREDENTIAL_KEEPALIVE) {
   startCredentialKeepAlive()
 }
 
@@ -296,14 +323,16 @@ app.get("/api/ws", upgradeWebSocket((c) => {
         try { ws.send(JSON.stringify(data)) } catch { /* client gone */ }
       }
       addWsClient(clientId, wsSend, user)
-      wsSend({ type: "connected", clientId })
+      wsSend({ contractVersion: CONTRACT_VERSION, type: "connected", clientId })
     },
     onMessage(evt) {
       try {
         const raw = typeof evt.data === "string" ? evt.data : evt.data.toString()
-        const parsed = WsClientMessage.safeParse(parseJson(raw))
-        if (!parsed.success) return
-        const msg = parsed.data
+        const msg = decodeContract(
+          InboxClientMessageSchema,
+          parseJson(raw),
+          { contract: "inbox-session-client-wire@1", source: clientId },
+        )
         if (msg.type === "subscribe") {
           // Accept both shapes:
           //   legacy:  { sessionIds: string[] }
@@ -317,9 +346,14 @@ app.get("/api/ws", upgradeWebSocket((c) => {
         } else if (msg.type === "unsubscribe") {
           wsUnsubscribe(clientId, msg.sessionIds)
         } else if (msg.type === "ping") {
-          wsSend?.({ type: "pong" })
+          wsSend?.({ contractVersion: CONTRACT_VERSION, type: "pong" })
         }
-      } catch { /* ignore parse errors */ }
+      } catch (error: unknown) {
+        log.warn("Rejected WebSocket client message", {
+          clientId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     },
     onClose() {
       removeWsClient(clientId)
@@ -371,7 +405,7 @@ if (existsSync(distPath)) {
 // INBOX_PORT is the inbox-specific override (mirrors Studio's STUDIO_PORT) so a
 // second instance from a worktree can run beside the main checkout's server;
 // PORT stays supported for generic hosts. Vite's /api proxy reads the same var.
-const port = parseInt(process.env.INBOX_PORT || process.env.PORT || "3002", 10)
+const port = inboxEnvironment.INBOX_PORT ?? inboxEnvironment.PORT ?? 3002
 
 // Load workspace plugins before starting the server
 for (const ws of registeredWorkspaces) {
@@ -394,7 +428,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
   if (firstRegistered) {
     // Schedule periodic context backfill (raw indexing + curated updates)
     // Set DISABLE_BACKFILL=1 to skip scheduling (useful when running multiple server instances)
-    if (!process.env.DISABLE_BACKFILL) {
+    if (!inboxEnvironment.DISABLE_BACKFILL) {
       import("./lib/context-backfill-scheduler.js")
         .then(({ scheduleContextBackfill }) => scheduleContextBackfill(firstRegistered.path, firstRegistered.id))
         .catch((err: unknown) => log.warn("Failed to schedule context backfill", { error: err instanceof Error ? err.message : String(err) }))

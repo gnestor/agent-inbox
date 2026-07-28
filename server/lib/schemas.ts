@@ -97,19 +97,6 @@ export const OAuthTokenResponse = z.object({
   expires_in: z.number().positive().optional(),
 })
 
-export const WsClientMessage = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("subscribe"),
-    sessions: z.array(z.object({
-      id: z.string(),
-      fromSequence: z.number().int().nonnegative().optional(),
-    })).optional(),
-    sessionIds: z.array(z.string()).optional(),
-  }),
-  z.object({ type: z.literal("unsubscribe"), sessionIds: z.array(z.string()) }),
-  z.object({ type: z.literal("ping") }),
-])
-
 export const AddWorkspaceMemberBody = z.object({
   email: z.string().email(),
   role: z.enum(["admin", "member"]).optional(),

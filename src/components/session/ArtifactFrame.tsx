@@ -4,10 +4,11 @@ import { usePreference } from "@/hooks/use-preferences"
 import { transformArtifactCode } from "@hammies/frontend/lib/artifact-transform"
 import { buildArtifactHtml } from "@hammies/frontend/lib/build-artifact-html"
 import { Skeleton } from "@hammies/frontend/components/ui"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-}
+import {
+  ArtifactToHostMessageSchema,
+  CONTRACT_VERSION,
+  decodeIframeMessage,
+} from "@hammies/contracts/iframe"
 
 // Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes.
 // Capped to prevent unbounded growth in long sessions.
@@ -92,7 +93,10 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     const iframe = iframeRef.current
     if (!iframe || !iframe.contentWindow) return
     if (savedState && Object.keys(savedState).length > 0) {
-      iframe.contentWindow.postMessage({ type: "restore", state: savedState }, "*")
+      iframe.contentWindow.postMessage(
+        { contractVersion: CONTRACT_VERSION, type: "restore", state: savedState },
+        window.location.origin,
+      )
     }
   }, [savedState])
 
@@ -109,22 +113,26 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       const iframe = iframeRef.current
-      if (!iframe) return
-      if (event.source !== iframe.contentWindow) return
+      if (!iframe?.contentWindow) return
+      const decoded = decodeIframeMessage(
+        event,
+        { source: iframe.contentWindow, origin: window.location.origin },
+        ArtifactToHostMessageSchema,
+        "artifact-to-host@1",
+      )
+      if (!decoded.success) return
+      const data = decoded.data
 
-      const data = Reflect.get(event, "data") as unknown
-      if (!isRecord(data)) return
-
-      if (data.type === "action" && typeof data.intent === "string") {
+      if (data.type === "action") {
         const safeIntent = data.intent.replace(/[<>"&]/g, "")
         const payload = data.data !== undefined ? JSON.stringify(data.data, null, 2) : ""
         const message = `<artifact_action intent="${safeIntent}">${payload}</artifact_action>`
         onAction?.(message)
-      } else if (data.type === "state" && isRecord(data.state)) {
+      } else if (data.type === "state") {
         setSavedState(data.state)
-      } else if (data.type === "error" && typeof data.message === "string") {
+      } else if (data.type === "error") {
         setRuntimeError(data.message)
-      } else if (data.type === "height" && typeof data.height === "number") {
+      } else if (data.type === "height") {
         artifactHeightCache.set(heightKey, data.height)
         if (artifactHeightCache.size > ARTIFACT_HEIGHT_CACHE_MAX) {
           const first = artifactHeightCache.keys().next().value

@@ -3,7 +3,9 @@
 // --- Tab identification ---
 
 /** Tab IDs: plugin sources + sessions + settings + recent sessions */
-export type TabId = "sessions" | "settings" | "workspace-settings" | `plugin:${string}` | `recent:${string}`
+import type { InboxTabId } from "@hammies/contracts/url"
+
+export type TabId = InboxTabId
 
 /** Ordered tabs for animation direction calculation (settings = 0, then plugins in manifest order, sessions last) */
 export const STATIC_TAB_ORDER: TabId[] = ["sessions"]
