@@ -3,10 +3,14 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Plugin } from "../../src/types/plugin.js"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import {
+  InboxPluginModuleSchema,
+  decodeContract,
+} from "@hammies/contracts/plugin"
 
 const log = createLogger("plugins")
 
-type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
+type Importer = (path: string) => Promise<unknown>
 
 /**
  * Default ESM importer that bypasses Node's module cache. Without the unique
@@ -15,7 +19,7 @@ type Importer = (path: string) => Promise<{ default: Plugin | Plugin[] }>
  * cleanly the first time.
  */
 const cacheBustingImport: Importer = (path) =>
-  import(`${pathToFileURL(path).href}?v=${Date.now()}`) as Promise<{ default: Plugin | Plugin[] }>
+  import(`${pathToFileURL(path).href}?v=${Date.now()}`) as Promise<unknown>
 
 
 const registry = new Map<string, Plugin>()
@@ -26,21 +30,16 @@ const pluginDirs = new Map<string, string>()
 // Per-workspace plugin registries (workspace ID → plugin map)
 const workspacePluginRegistries = new Map<string, Map<string, Plugin>>()
 
-function isValidPlugin(p: unknown): p is Plugin {
-  if (!p || typeof p !== "object") return false
-  const plugin = p as Record<string, unknown>
-  return (
-    typeof plugin.id === "string" &&
-    plugin.id.length > 0 &&
-    (typeof plugin.query === "function" ||
-     plugin.hasSkills === true ||
-     typeof plugin.itemToContext === "function")
-  )
-}
-
-/** Normalize a default export to an array of plugins. */
-function toPluginArray(exported: Plugin | Plugin[]): Plugin[] {
-  return Array.isArray(exported) ? exported : [exported]
+function decodePluginModule(moduleValue: unknown, source: string): Plugin[] {
+  decodeContract(InboxPluginModuleSchema, moduleValue, {
+    contract: "inbox-plugin-module@1",
+    source,
+  })
+  // Validation may apply transport defaults and clone the object. Registration
+  // deliberately preserves the plugin instance exported by the module because
+  // callers use object identity for reload and registry assertions.
+  const original = moduleValue as { default: Plugin | Plugin[] }
+  return Array.isArray(original.default) ? original.default : [original.default]
 }
 
 /** Register a built-in plugin (survives loadPlugins reloads). */
@@ -65,12 +64,8 @@ export async function loadBuiltinPlugins(
         const fullPath = join(builtinDir, entry.name, filename)
         try {
           const mod = await importer(fullPath)
-          const plugins = toPluginArray(mod.default)
+          const plugins = decodePluginModule(mod, fullPath)
           for (const plugin of plugins) {
-            if (!isValidPlugin(plugin)) {
-              log.warn("Skipping invalid builtin plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
-              continue
-            }
             registerPlugin(plugin)
             pluginDirs.set(plugin.id, join(builtinDir, entry.name))
           }
@@ -116,12 +111,8 @@ export async function loadPlugins(
           const fullPath = join(pluginsDir, entry.name, filename)
           try {
             const mod = await importer(fullPath)
-            const plugins = toPluginArray(mod.default)
+            const plugins = decodePluginModule(mod, fullPath)
             for (const plugin of plugins) {
-              if (!isValidPlugin(plugin)) {
-                log.warn("Skipping invalid plugin", { dir: entry.name, file: filename, id: (plugin as Record<string, unknown>)?.id ?? "?" })
-                continue
-              }
               // Workspace plugins are always stored — getPlugins() merges
               // workspace registry on top of builtins so a workspace can
               // override a builtin (e.g. agent's gmail extends inbox builtin
@@ -152,12 +143,8 @@ export async function loadPlugins(
       const fullPath = join(legacyDir, file)
       try {
         const mod = await importer(fullPath)
-        const plugins = toPluginArray(mod.default)
+        const plugins = decodePluginModule(mod, fullPath)
         for (const plugin of plugins) {
-          if (!isValidPlugin(plugin)) {
-            log.warn("Skipping invalid legacy plugin", { file, id: (plugin as Record<string, unknown>)?.id ?? "?" })
-            continue
-          }
           if (!targetRegistry.has(plugin.id) && !builtinIds.has(plugin.id)) {
             targetRegistry.set(plugin.id, plugin)
           }

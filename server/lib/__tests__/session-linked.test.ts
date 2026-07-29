@@ -1,14 +1,14 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
-const mockQueryOne = vi.fn<(...args: any[]) => Promise<any>>(async () => undefined)
-const mockExecute = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ rowCount: 0 }))
-const mockQuery = vi.fn<(...args: any[]) => Promise<any[]>>(async () => [])
+const mockQueryOne = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined)
+const mockExecute = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ rowCount: 0 }))
+const mockQuery = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => [])
 
 vi.mock("../../db/pool.js", () => ({
-  query: (...args: any[]) => mockQuery(...args),
-  queryOne: (...args: any[]) => mockQueryOne(...args),
-  execute: (...args: any[]) => mockExecute(...args),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  query: (...args: unknown[]) => mockQuery(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  execute: (...args: unknown[]) => mockExecute(...args),
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))

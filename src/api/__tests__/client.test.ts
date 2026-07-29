@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import * as client from "../client.js"
 
 const mockFetch = vi.fn()
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
 
 describe("api client", () => {
   beforeEach(() => {
@@ -14,30 +19,36 @@ describe("api client", () => {
   })
 
   it("Scenario: Successful request returns parsed JSON — 2xx body is parsed and JSON content-type is set", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ user: { email: "a@b.c" } }) })
+    mockFetch.mockResolvedValueOnce(jsonResponse({
+      user: { email: "a@example.com", name: "A" },
+    }))
     const result = await client.getAuthSession()
-    expect(result).toEqual({ user: { email: "a@b.c" } })
+    expect(result).toEqual({ user: { email: "a@example.com", name: "A" } })
     const [url, opts] = mockFetch.mock.calls[0]
     expect(url).toBe("/api/auth/session")
     expect((opts.headers as Record<string, string>)["Content-Type"]).toBe("application/json")
   })
 
   it("Scenario: Non-2xx responses throw with status and body; 401 triggers re-login — error shape + session-expired event", async () => {
-    // Non-401 error: throws `API ${status}: ${text}`.
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => "boom" })
-    await expect(client.getAuthSession()).rejects.toThrow("API 500: boom")
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+    await expect(client.getAuthSession()).rejects.toThrow("boom")
 
     // 401: dispatches the session-expired event before throwing.
     const handler = vi.fn()
     window.addEventListener("session-expired", handler)
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 401, text: async () => "no jwt" })
-    await expect(client.getAuthSession()).rejects.toThrow("API 401: no jwt")
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "no jwt" }, 401))
+    await expect(client.getAuthSession()).rejects.toThrow("no jwt")
     expect(handler).toHaveBeenCalledTimes(1)
     window.removeEventListener("session-expired", handler)
   })
 
   it("Scenario: Multipart upload bypasses the helper — uploadSessionFile posts FormData with no JSON content-type, same error shape", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ name: "f.txt", path: "/p", size: 1, mimeType: "text/plain" }) })
+    mockFetch.mockResolvedValueOnce(jsonResponse({
+      name: "f.txt",
+      path: "/p",
+      size: 1,
+      mimeType: "text/plain",
+    }))
     const file = new File(["hi"], "f.txt", { type: "text/plain" })
     await client.uploadSessionFile("s1", file)
     const [url, opts] = mockFetch.mock.calls[0]
@@ -48,8 +59,8 @@ describe("api client", () => {
     expect(opts.headers).toBeUndefined()
 
     // Same throw shape on failure.
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 413, text: async () => "too big" })
-    await expect(client.uploadSessionFile("s1", file)).rejects.toThrow("API 413: too big")
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "too big" }, 413))
+    await expect(client.uploadSessionFile("s1", file)).rejects.toThrow("too big")
   })
 
   it("Scenario: Auth section covers `/api/auth/*` — getAuthClientId, authCallback, getAuthSession, logout are exported", () => {

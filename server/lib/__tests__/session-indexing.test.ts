@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Mutable mock state shared across resetModules boundaries.
-const agentSessionsStub = vi.hoisted(() => ({ current: [] as any[] }))
-const staleRowsStub = vi.hoisted(() => ({ current: [] as any[] }))
+const agentSessionsStub = vi.hoisted(() => ({ current: [] as unknown[] }))
+const staleRowsStub = vi.hoisted(() => ({ current: [] as unknown[] }))
 
 // In-memory record of execute() calls so we can assert status transitions.
 const executeCalls = vi.hoisted(() => ({ list: [] as { sql: string; params: unknown[] }[] }))
@@ -29,7 +29,7 @@ vi.mock("../../db/pool.js", () => ({
     executeCalls.list.push({ sql, params })
     return { rowCount: 1 }
   }),
-  withTransaction: vi.fn(async (fn: any) =>
+  withTransaction: vi.fn(async (fn: unknown) =>
     fn({
       query: vi.fn(async (sql: string, params: unknown[] = []) => {
         if (sql.includes("INSERT INTO sessions") && sql.includes("ON CONFLICT DO NOTHING")) {

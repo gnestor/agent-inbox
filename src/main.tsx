@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { BrowserRouter } from "react-router-dom"
 import { ThemeProvider } from "@hammies/frontend"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import type { PersistedClient } from "@tanstack/query-persist-client-core"
 import { TranscriptHostProvider } from "@hammies/frontend/components/session"
 import { useInboxTranscriptHost } from "@/components/session/transcriptHost"
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
@@ -11,7 +12,37 @@ import { queryClient } from "@/lib/queryClient"
 import { isTransientQuery } from "@/lib/query-persistence"
 import { initCrashTelemetry } from "@/lib/crash-telemetry"
 import { App } from "./App"
+import { decodeContract } from "@hammies/contracts"
+import { z } from "zod"
 import "./index.css"
+
+const EMPTY_PERSISTED_CLIENT: PersistedClient = {
+  timestamp: 0,
+  buster: "",
+  clientState: { mutations: [], queries: [] },
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+type PersistedMutation = PersistedClient["clientState"]["mutations"][number]
+type PersistedQuery = PersistedClient["clientState"]["queries"][number]
+const DehydratedMutationSchema = z.custom<PersistedMutation>(isRecord)
+const DehydratedQuerySchema = z.custom<PersistedQuery>(
+  (value) => isRecord(value)
+    && Array.isArray(value.queryKey)
+    && isRecord(value.state)
+    && typeof value.state.status === "string",
+)
+const PersistedClientSchema: z.ZodType<PersistedClient> = z.object({
+  timestamp: z.number().int().nonnegative(),
+  buster: z.string(),
+  clientState: z.object({
+    mutations: z.array(DehydratedMutationSchema),
+    queries: z.array(DehydratedQuerySchema),
+  }),
+})
 
 // Start heartbeat + crash-detection telemetry as early as possible so we
 // capture pre-crash state even if app boot fails. Safe to call before render.
@@ -25,24 +56,33 @@ if ("serviceWorker" in navigator) {
 const persister = createAsyncStoragePersister({
   storage: {
     getItem: async (key: string) => {
-      try { return await get(key) } catch { await del(key).catch((err) => console.warn("[cache] Failed to clear corrupted cache entry:", err)); return null }
+      try {
+        return await get<string>(key)
+      } catch {
+        await del(key).catch((err: unknown) => console.warn("[cache] Failed to clear corrupted cache entry:", err))
+        return null
+      }
     },
     setItem: set,
     removeItem: del,
   },
   key: "INBOX_QUERY_CACHE_V3",
-  deserialize: (cached) => {
+  deserialize: (cached: string): PersistedClient => {
     try {
-      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached
-      if (parsed?.clientState?.queries) {
-        parsed.clientState.queries = parsed.clientState.queries.filter(
-          (q: { queryKey?: unknown[]; state?: { data?: unknown; status?: string } }) =>
-            !isTransientQuery(q.state?.status ?? "", q.queryKey ?? [], q.state?.data),
+      const parsed: unknown = JSON.parse(cached)
+      const client = decodeContract(PersistedClientSchema, parsed, {
+        contract: "inbox-query-cache@1",
+        source: "IndexedDB",
+      })
+      if (Array.isArray(client.clientState?.queries)) {
+        client.clientState.queries = client.clientState.queries.filter(
+          (query) =>
+            !isTransientQuery(query.state.status ?? "", [...query.queryKey], query.state.data),
         )
       }
-      return parsed
+      return client
     } catch {
-      return { timestamp: 0, buster: "", clientState: { mutations: [], queries: [] } }
+      return EMPTY_PERSISTED_CLIENT
     }
   },
 })

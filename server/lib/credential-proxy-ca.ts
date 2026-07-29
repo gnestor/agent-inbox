@@ -1,4 +1,3 @@
-// @ts-ignore — selfsigned types may not match runtime API
 import selfsigned from "selfsigned"
 import { writeFileSync, mkdtempSync } from "node:fs"
 import { join } from "node:path"
@@ -37,7 +36,7 @@ export async function generateCA(): Promise<CertKeyPair> {
 
   const attrs = [{ name: "commonName", value: "Inbox Credential Proxy CA" }]
   const pems = await selfsigned.generate(attrs, {
-    days: 3650,
+    notAfterDate: new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000),
     keySize: 2048,
     extensions: [
       { name: "basicConstraints", cA: true, critical: true },
@@ -48,8 +47,7 @@ export async function generateCA(): Promise<CertKeyPair> {
         critical: true,
       },
     ],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selfsigned types don't include the extensions/cA options that the runtime API supports
-  } as any)
+  })
 
   cachedCA = { cert: pems.cert, key: pems.private }
   return cachedCA
@@ -72,7 +70,7 @@ export async function generateCertForHost(
 
   const attrs = [{ name: "commonName", value: host }]
   const pems = await selfsigned.generate(attrs, {
-    days: 365,
+    notAfterDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     keySize: 2048,
     extensions: [
       {
@@ -82,8 +80,7 @@ export async function generateCertForHost(
     ],
     // Sign with our CA
     ca: { key: ca.key, cert: ca.cert },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selfsigned types don't include the ca signing option that the runtime API supports
-  } as any)
+  })
 
   const pair = { cert: pems.cert, key: pems.private }
   touchLru(host, pair)

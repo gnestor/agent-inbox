@@ -18,10 +18,10 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = []
 
   readyState = FakeWebSocket.OPEN
-  onopen: ((e: any) => void) | null = null
-  onmessage: ((e: any) => void) | null = null
-  onerror: ((e: any) => void) | null = null
-  onclose: ((e: any) => void) | null = null
+  onopen: ((e: unknown) => void) | null = null
+  onmessage: ((e: unknown) => void) | null = null
+  onerror: ((e: unknown) => void) | null = null
+  onclose: ((e: unknown) => void) | null = null
   sent: string[] = []
   closeCalls = 0
 
@@ -56,7 +56,7 @@ beforeEach(() => {
   FakeWebSocket.instances = []
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
   // Also stash the static constants consumed by the hook
-  ;(globalThis.WebSocket as any).OPEN = FakeWebSocket.OPEN
+  ;(globalThis.WebSocket as unknown).OPEN = FakeWebSocket.OPEN
   vi.useFakeTimers()
 })
 

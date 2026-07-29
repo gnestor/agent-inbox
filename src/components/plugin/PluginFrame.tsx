@@ -4,6 +4,11 @@ import { useActiveTab, useNavActions } from "@/lib/navigation-store"
 import { pluginIdFromTab } from "@/types/navigation"
 import type { TabId } from "@/types/navigation"
 import { createLogger } from "@/lib/logger"
+import {
+  PluginFrameToHostMessageSchema,
+  decodeIframeMessage,
+} from "@hammies/contracts/iframe"
+import { InboxTabIdSchema } from "@hammies/contracts/url"
 
 const log = createLogger("plugin-frame")
 
@@ -51,22 +56,23 @@ export function PluginFrame({
   const handleMessage = useCallback(
     (event: MessageEvent) => {
       const iframe = iframeRef.current
-      if (!iframe || event.source !== iframe.contentWindow) return
-
-      const data = event.data
-      if (!data || typeof data !== "object") return
+      if (!iframe?.contentWindow) return
+      const decoded = decodeIframeMessage(
+        event,
+        { source: iframe.contentWindow, origin: window.location.origin },
+        PluginFrameToHostMessageSchema,
+        "plugin-frame-to-host@1",
+      )
+      if (!decoded.success) return
+      const data = decoded.data
 
       switch (data.type) {
         case "navigate":
-          if (typeof data.path === "string") {
-            // path is a tab ID like "plugin:gmail"
-            switchTab(data.path as TabId)
-          }
+          // path is a tab ID like "plugin:gmail"
+          switchTab(InboxTabIdSchema.parse(data.path))
           break
         case "selectItem":
-          if (typeof data.id === "string") {
-            selectItem(data.id)
-          }
+          selectItem(data.id)
           break
         case "pushPanel":
           // Panel push handled by navigation — future enhancement
@@ -74,9 +80,7 @@ export function PluginFrame({
           break
         case "height":
           // Auto-resize iframe to content height (capped at viewport height)
-          if (iframe && typeof data.height === "number") {
-            iframe.style.height = `${Math.min(data.height, window.innerHeight)}px`
-          }
+          iframe.style.height = `${Math.min(data.height, window.innerHeight)}px`
           break
         case "error":
           log.error("Plugin error", { pluginId, componentName, message: data.message })

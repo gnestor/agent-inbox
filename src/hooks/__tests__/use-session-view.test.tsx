@@ -33,7 +33,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useSessionView>[0]> = 
     sessionId: "s1",
     panelId: "detail:s1",
     title: undefined,
-    session: { id: "s1", status: "complete", summary: "My Session" } as any,
+    session: { id: "s1", status: "complete", summary: "My Session" } as unknown,
     phase: { status: "idle" } as SessionPhase,
     mutations: makeMutations(),
     ...overrides,
@@ -63,7 +63,7 @@ describe("useSessionView", () => {
     // linkedItemTitle wins
     const r1 = renderHook(() =>
       useSessionView(makeOptions({
-        session: { id: "s1", linkedItemTitle: "Linked", summary: "Sum", prompt: "Do stuff" } as any,
+        session: { id: "s1", linkedItemTitle: "Linked", summary: "Sum", prompt: "Do stuff" } as unknown,
         title: "Title prop",
       })),
     )
@@ -72,7 +72,7 @@ describe("useSessionView", () => {
     // summary next
     const r2 = renderHook(() =>
       useSessionView(makeOptions({
-        session: { id: "s1", summary: "Sum", prompt: "Do stuff" } as any,
+        session: { id: "s1", summary: "Sum", prompt: "Do stuff" } as unknown,
         title: "Title prop",
       })),
     )
@@ -81,7 +81,7 @@ describe("useSessionView", () => {
     // title prop next
     const r3 = renderHook(() =>
       useSessionView(makeOptions({
-        session: { id: "s1", prompt: "Do stuff" } as any,
+        session: { id: "s1", prompt: "Do stuff" } as unknown,
         title: "Title prop",
       })),
     )
@@ -90,7 +90,7 @@ describe("useSessionView", () => {
     // prompt last
     const r4 = renderHook(() =>
       useSessionView(makeOptions({
-        session: { id: "s1", prompt: "Do stuff" } as any,
+        session: { id: "s1", prompt: "Do stuff" } as unknown,
         title: undefined,
       })),
     )
@@ -107,7 +107,7 @@ describe("useSessionView", () => {
 
   it("handleStartEdit enables editing with current summary", () => {
     const opts = makeOptions({
-      session: { id: "s1", summary: "Current Summary" } as any,
+      session: { id: "s1", summary: "Current Summary" } as unknown,
     })
     const { result } = renderHook(() => useSessionView(opts))
 
@@ -119,7 +119,7 @@ describe("useSessionView", () => {
   it("handleFinishEdit calls rename.mutate when title changed", () => {
     const mutations = makeMutations()
     const opts = makeOptions({
-      session: { id: "s1", summary: "Old" } as any,
+      session: { id: "s1", summary: "Old" } as unknown,
       mutations,
     })
     const { result } = renderHook(() => useSessionView(opts))
@@ -135,7 +135,7 @@ describe("useSessionView", () => {
   it("handleFinishEdit does not call rename.mutate when title unchanged", () => {
     const mutations = makeMutations()
     const opts = makeOptions({
-      session: { id: "s1", summary: "Same" } as any,
+      session: { id: "s1", summary: "Same" } as unknown,
       mutations,
     })
     const { result } = renderHook(() => useSessionView(opts))
@@ -149,7 +149,7 @@ describe("useSessionView", () => {
   it("handleFinishEdit does not call rename.mutate when title is empty", () => {
     const mutations = makeMutations()
     const opts = makeOptions({
-      session: { id: "s1", summary: "Old" } as any,
+      session: { id: "s1", summary: "Old" } as unknown,
       mutations,
     })
     const { result } = renderHook(() => useSessionView(opts))
@@ -164,7 +164,7 @@ describe("useSessionView", () => {
   it("handleEditKeyDown: Enter finishes edit, Escape cancels", () => {
     const mutations = makeMutations()
     const opts = makeOptions({
-      session: { id: "s1", summary: "Old" } as any,
+      session: { id: "s1", summary: "Old" } as unknown,
       mutations,
     })
     const { result } = renderHook(() => useSessionView(opts))
@@ -172,7 +172,7 @@ describe("useSessionView", () => {
     act(() => result.current.handleStartEdit())
     act(() => result.current.setEditTitle("Pressed Enter"))
 
-    const enterEvent = { key: "Enter", preventDefault: vi.fn() } as any
+    const enterEvent = { key: "Enter", preventDefault: vi.fn() } as unknown
     act(() => result.current.handleEditKeyDown(enterEvent))
 
     expect(enterEvent.preventDefault).toHaveBeenCalled()
@@ -181,14 +181,14 @@ describe("useSessionView", () => {
 
     // Now test Escape
     act(() => result.current.handleStartEdit())
-    const escEvent = { key: "Escape", preventDefault: vi.fn() } as any
+    const escEvent = { key: "Escape", preventDefault: vi.fn() } as unknown
     act(() => result.current.handleEditKeyDown(escEvent))
     expect(result.current.isEditing).toBe(false)
   })
 
   it("Scenario: `useSessionView` opens output panels via the navigation store — handleOpenPanel pushes an output panel", () => {
     const { result } = renderHook(() => useSessionView(makeOptions()))
-    const spec = { type: "code", content: "x" } as any
+    const spec = { type: "code", content: "x" } as unknown
     act(() => result.current.handleOpenPanel(spec, 42))
 
     expect(navActionsMock.pushPanel).toHaveBeenCalledWith({

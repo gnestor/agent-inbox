@@ -44,7 +44,12 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
   const { thread, loading, error } = useEmailThread(threadId)
   const { deselectItem } = useNavigation()
   const location = useLocation()
-  const isFromSidebar = !!(location.state as { fromSidebar?: boolean } | null)?.fromSidebar
+  const navigationState = Reflect.get(location, "state") as unknown
+  const isFromSidebar =
+    navigationState !== null &&
+    typeof navigationState === "object" &&
+    !Array.isArray(navigationState) &&
+    Reflect.get(navigationState, "fromSidebar") === true
   const { data: linkedData } = useQuery({
     queryKey: ["linked-session", "gmail", threadId],
     queryFn: () => getLinkedSession(threadId, "gmail"),

@@ -1,22 +1,27 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import type { Editor, Range } from "@tiptap/core"
 
 export interface SlashCommandItem {
   title: string
   description: string
   icon: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TipTap Editor and Range types are not exported as standalone types from @tiptap/core
-  command: (props: { editor: any; range: any }) => void
+  command: (props: { editor: Editor; range: Range }) => void
 }
 
-interface SlashCommandMenuProps {
+export interface SlashCommandMenuProps {
   items: SlashCommandItem[]
   command: (item: SlashCommandItem) => void
   clientRect: (() => DOMRect | null) | null
 }
 
+export interface SlashCommandMenuHandle {
+  onKeyDown: (event: KeyboardEvent) => boolean
+}
+
 export const SlashCommandMenu = forwardRef<
-  { onKeyDown: (e: KeyboardEvent) => boolean },
+  SlashCommandMenuHandle,
   SlashCommandMenuProps
 >(({ items, command, clientRect }, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0)

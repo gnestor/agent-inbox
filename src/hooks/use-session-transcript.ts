@@ -5,6 +5,7 @@ import {
   useSessionStore,
   type SessionSlice,
 } from "@/stores/session-store"
+import { isServerEvent } from "@/stores/session-reducer"
 import type { SessionRecoveryReason } from "@/stores/session-recovery"
 import { createLogger } from "@/lib/logger"
 import type { ServerEvent } from "@/stores/session-reducer"
@@ -54,6 +55,10 @@ export function useSessionTranscript(
     const unsubEvents = subscribe(
       sessionId,
       (event) => {
+        if (!isServerEvent(event)) {
+          log.error("discarding malformed session event", { sessionId, event })
+          return
+        }
         queue.push(event)
         if (rafHandle === null) {
           rafHandle = typeof requestAnimationFrame === "function"

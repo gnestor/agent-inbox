@@ -1,5 +1,6 @@
 import { config } from "dotenv"
 import { resolve } from "path"
+import { GoogleTokenResponse } from "../lib/schemas.js"
 
 // Per-workspace credential stores keyed by workspace ID
 const workspaceCredentials = new Map<string, Record<string, string>>()
@@ -77,7 +78,7 @@ export async function refreshGoogleToken(refreshToken: string, workspaceId?: str
     throw new Error(`Google token refresh failed: ${text}`)
   }
 
-  const data = await res.json()
+  const data = GoogleTokenResponse.parse(await res.json())
   const entry = {
     token: data.access_token,
     expiry: Date.now() + (data.expires_in || 3600) * 1000,
@@ -93,4 +94,3 @@ export async function getGoogleAccessToken(workspaceId?: string): Promise<string
   const refreshToken = getCredential("GOOGLE_REFRESH_TOKEN", workspaceId)
   return refreshGoogleToken(refreshToken, workspaceId)
 }
-

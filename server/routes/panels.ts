@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { getPanelSchemas, executeMutation } from "../lib/panel-registry.js"
+import { isRecord } from "../lib/schemas.js"
 
 export const panelRoutes = new Hono()
 
@@ -12,7 +13,8 @@ panelRoutes.get("/", (c) => {
 /** POST /api/panels/mutate/:action — execute a workflow panel mutation */
 panelRoutes.post("/mutate/:action", async (c) => {
   const { action } = c.req.param()
-  const { payload } = await c.req.json().catch(() => ({ payload: undefined }))
+  const raw: unknown = await c.req.json().catch((): unknown => undefined)
+  const payload = isRecord(raw) ? raw.payload : undefined
 
   // Build context from server environment
   const ctx = {

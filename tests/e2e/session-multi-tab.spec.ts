@@ -73,7 +73,7 @@ async function openSession(context: BrowserContext): Promise<Page> {
     if (msg.type() === "error") consoleErrors.push(msg.text())
   })
   // Stash for later inspection
-  ;(page as any)._consoleErrors = consoleErrors
+  ;(page as unknown)._consoleErrors = consoleErrors
   await page.goto("/recent/multi-tab-1")
   return page
 }
@@ -90,8 +90,8 @@ test.describe("Session multi-tab rendering", () => {
     await expect(pageB.getByText("A response shared across both tabs.")).toBeVisible({ timeout: 10_000 })
 
     // No "stuck tab" regressions: neither context threw a console error at load.
-    expect((pageA as any)._consoleErrors).toEqual([])
-    expect((pageB as any)._consoleErrors).toEqual([])
+    expect((pageA as unknown)._consoleErrors).toEqual([])
+    expect((pageB as unknown)._consoleErrors).toEqual([])
 
     await contextA.close()
     await contextB.close()

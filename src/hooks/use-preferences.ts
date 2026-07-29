@@ -22,7 +22,7 @@ export function usePreference<T>(key: string, defaultValue: T): [T, (value: T) =
         ...old,
         [key]: newValue,
       }))
-      setPreference(key, newValue).catch((err) => console.warn("[preferences] Failed to persist preference:", err))
+      setPreference(key, newValue).catch((err: unknown) => console.warn("[preferences] Failed to persist preference:", err))
     },
     [key, qc],
   )

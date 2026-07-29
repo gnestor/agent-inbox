@@ -433,8 +433,8 @@ export function scheduleContextBackfill(
   log.info("Scheduling context backfill", { intervalMs: INTERVAL_MS })
 
   const timer = setInterval(() => {
-    runContextBackfill(workspacePath, workspaceId).catch((err) => {
-      log.error("Scheduled backfill failed", { error: (err as Error).message })
+    runContextBackfill(workspacePath, workspaceId).catch((err: unknown) => {
+      log.error("Scheduled backfill failed", { error: err instanceof Error ? err.message : String(err) })
     })
   }, INTERVAL_MS)
   timer.unref()
@@ -448,7 +448,7 @@ export function scheduleContextBackfill(
       .then((cleared) => {
         if (cleared > 0) log.info("Cleared stale curation locks", { count: cleared })
       })
-      .catch((err) => log.error("Stale lock sweep failed", { error: (err as Error).message }))
+      .catch((err: unknown) => log.error("Stale lock sweep failed", { error: err instanceof Error ? err.message : String(err) }))
   }, STALE_LOCK_SWEEP_MS)
   lockSweep.unref()
 
@@ -459,13 +459,13 @@ export function scheduleContextBackfill(
   // when the curator's prompt-based `qmd update && qmd embed` instruction
   // turned out to be unreliable.
   const qmdRefresh = setInterval(() => {
-    refreshQmd().catch((err) => log.error("qmd refresh failed", { error: (err as Error).message }))
+    refreshQmd().catch((err: unknown) => log.error("qmd refresh failed", { error: err instanceof Error ? err.message : String(err) }))
   }, QMD_REFRESH_MS)
   qmdRefresh.unref()
   // Kick off an initial refresh ~30s after startup so the index is fresh
   // without slowing boot.
   setTimeout(() => {
-    refreshQmd().catch((err) => log.error("initial qmd refresh failed", { error: (err as Error).message }))
+    refreshQmd().catch((err: unknown) => log.error("initial qmd refresh failed", { error: err instanceof Error ? err.message : String(err) }))
   }, 30_000).unref()
 
   // Server-driven entity extraction + curate-loop. Replaces the shell loops
@@ -473,24 +473,24 @@ export function scheduleContextBackfill(
   // exits and isn't tied to a single terminal session.
   const wsId = workspaceId ?? "agent"
   setInterval(() => {
-    runServerExtractEntities(workspacePath, wsId).catch((err) =>
-      log.error("Scheduled extract-entities failed", { error: (err as Error).message }),
+    runServerExtractEntities(workspacePath, wsId).catch((err: unknown) =>
+      log.error("Scheduled extract-entities failed", { error: err instanceof Error ? err.message : String(err) }),
     )
   }, EXTRACT_ENTITIES_MS).unref()
   setTimeout(() => {
-    runServerExtractEntities(workspacePath, wsId).catch((err) =>
-      log.error("Initial extract-entities failed", { error: (err as Error).message }),
+    runServerExtractEntities(workspacePath, wsId).catch((err: unknown) =>
+      log.error("Initial extract-entities failed", { error: err instanceof Error ? err.message : String(err) }),
     )
   }, 60_000).unref()
 
   setInterval(() => {
-    runServerCurateNext(workspacePath, wsId).catch((err) =>
-      log.error("Scheduled curate-next failed", { error: (err as Error).message }),
+    runServerCurateNext(workspacePath, wsId).catch((err: unknown) =>
+      log.error("Scheduled curate-next failed", { error: err instanceof Error ? err.message : String(err) }),
     )
   }, CURATE_LOOP_MS).unref()
   setTimeout(() => {
-    runServerCurateNext(workspacePath, wsId).catch((err) =>
-      log.error("Initial curate-next failed", { error: (err as Error).message }),
+    runServerCurateNext(workspacePath, wsId).catch((err: unknown) =>
+      log.error("Initial curate-next failed", { error: err instanceof Error ? err.message : String(err) }),
     )
   }, 90_000).unref()
 }

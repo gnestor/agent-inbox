@@ -19,7 +19,7 @@ export function useLocalDraft(key: string): [string, (value: string) => void] {
     keyRef.current = key
     get<string>(PREFIX + key).then((val) => {
       if (keyRef.current === key) setDraftState(val ?? "")
-    }).catch((err) => console.warn("[draft] Failed to load draft:", err))
+    }).catch((err: unknown) => console.warn("[draft] Failed to load draft:", err))
   }, [key])
 
   // Flush pending write on unmount (don't lose typed drafts)
@@ -44,8 +44,8 @@ export function useLocalDraft(key: string): [string, (value: string) => void] {
     timerRef.current = setTimeout(() => {
       pendingRef.current = null
       const k = PREFIX + keyRef.current
-      if (value.trim()) set(k, value).catch((err) => console.warn("[draft] Failed to save draft:", err))
-      else del(k).catch((err) => console.warn("[draft] Failed to delete draft:", err))
+      if (value.trim()) set(k, value).catch((err: unknown) => console.warn("[draft] Failed to save draft:", err))
+      else del(k).catch((err: unknown) => console.warn("[draft] Failed to delete draft:", err))
     }, DEBOUNCE_MS)
   }, [])
 

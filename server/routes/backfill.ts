@@ -191,11 +191,12 @@ backfillRoutes.post("/extract-bodies", async (c) => {
   if (!plugin || !plugin.itemToContext) {
     throw new HTTPException(400, { message: `unknown or unsupported source '${sourceFilter}'` })
   }
+  const activePlugin = plugin
 
   const { readdir, readFile } = await import("fs/promises")
   const { extractBodyEntities } = await import("../lib/body-extractor.js")
 
-  const relDir = plugin.backfillDir ?? `context/${plugin.id}`
+  const relDir = activePlugin.backfillDir ?? `context/${activePlugin.id}`
   const absDir = join(workspacePath, relDir)
 
   let files: string[]
@@ -209,7 +210,7 @@ backfillRoutes.post("/extract-bodies", async (c) => {
   const done = new Set<string>()
   const doneRows = await (await import("../db/pool.js")).query<{ source_path: string }>(
     `SELECT source_path FROM body_extraction_log WHERE workspace_id = $1 AND plugin_id = $2`,
-    [wsId, plugin.id],
+    [wsId, activePlugin.id],
   )
   for (const r of doneRows) done.add(r.source_path)
 
@@ -251,7 +252,7 @@ backfillRoutes.post("/extract-bodies", async (c) => {
           `INSERT INTO source_entities (source_path, plugin_id, workspace_id, entity_type, entity_value, source_added_at, processed_for_entity)
            VALUES ($1, $2, $3, $4, $5, $6, 0)
            ON CONFLICT (source_path, entity_type, entity_value) DO NOTHING`,
-          [sourcePath, plugin.id, wsId, e.type, e.value, now],
+          [sourcePath, activePlugin.id, wsId, e.type, e.value, now],
         )
         totalEntities++
       }
@@ -261,7 +262,7 @@ backfillRoutes.post("/extract-bodies", async (c) => {
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (source_path, workspace_id) DO UPDATE
            SET extracted_at = EXCLUDED.extracted_at, entity_count = EXCLUDED.entity_count`,
-        [sourcePath, wsId, plugin.id, now, entities.length],
+        [sourcePath, wsId, activePlugin.id, now, entities.length],
       )
       extracted++
     }

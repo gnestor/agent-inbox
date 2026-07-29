@@ -45,6 +45,22 @@ export function isMessageEvent(event: ServerEvent): event is MessageEvent {
   return "sequence" in event && "message" in event
 }
 
+export function isServerEvent(value: unknown): value is ServerEvent {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false
+  const event = value as Record<string, unknown>
+  if (typeof event.sequence === "number" && Object.prototype.hasOwnProperty.call(event, "message")) return true
+  if (event.type === "session_complete") return event.status === undefined || typeof event.status === "string"
+  if (event.type === "session_error") {
+    return (
+      (event.error === undefined || typeof event.error === "string") &&
+      (event.status === undefined || typeof event.status === "string")
+    )
+  }
+  if (event.type === "ask_user_question") return Array.isArray(event.questions)
+  if (event.type === "presence") return Array.isArray(event.users)
+  return false
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot reducer — wholesale replace from REST
 // ---------------------------------------------------------------------------
@@ -193,7 +209,8 @@ function extractUserText(msg: SessionMessage | undefined): string | null {
   if (typeof content === "string") {
     raw = content
   } else if (Array.isArray(content)) {
-    raw = content
+    const blocks: unknown[] = [...content]
+    raw = blocks
       .filter((b): b is { type: "text"; text: string } => !!b && typeof b === "object" && (b as { type?: unknown }).type === "text")
       .map((b) => b.text)
       .join("")

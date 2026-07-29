@@ -7,6 +7,7 @@ import { build } from "esbuild"
 import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
 import { buildPluginContext, getWorkspaceId } from "../lib/plugin-context.js"
 import type { AppBindings } from "../lib/workspace-context.js"
+import { PluginMutateBody } from "../lib/schemas.js"
 
 // ---------------------------------------------------------------------------
 // Auto-generated routes for all plugins, mounted at /api/:pluginId/*
@@ -174,11 +175,7 @@ pluginRoutes.post("/:pluginId/items/:itemId/mutate", async (c) => {
 
   let body: { action: string; payload?: unknown }
   try {
-    const raw = await c.req.json()
-    if (!raw?.action || typeof raw.action !== "string") {
-      throw new HTTPException(400, { message: "action is required" })
-    }
-    body = raw as { action: string; payload?: unknown }
+    body = PluginMutateBody.parse(await c.req.json())
   } catch (err) {
     if (err instanceof HTTPException) throw err
     throw new HTTPException(400, { message: "Invalid request body" })

@@ -290,7 +290,14 @@ export const gmailPlugin: Plugin = {
     app.post("/send", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json()
+      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json<{
+        to: string
+        subject: string
+        body: string
+        threadId?: string
+        inReplyTo?: string
+        references?: string
+      }>()
       const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
@@ -299,7 +306,14 @@ export const gmailPlugin: Plugin = {
     app.post("/drafts", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json()
+      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json<{
+        to: string
+        subject: string
+        body: string
+        threadId?: string
+        inReplyTo?: string
+        references?: string
+      }>()
       const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
@@ -318,7 +332,10 @@ export const gmailPlugin: Plugin = {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
       const id = c.req.param("id")
-      const { addLabelIds, removeLabelIds } = await c.req.json()
+      const { addLabelIds, removeLabelIds } = await c.req.json<{
+        addLabelIds?: string[]
+        removeLabelIds?: string[]
+      }>()
       await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
       return c.json({ ok: true })
     })
@@ -327,7 +344,10 @@ export const gmailPlugin: Plugin = {
     app.patch("/messages/:id/labels", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { addLabelIds, removeLabelIds } = await c.req.json()
+      const { addLabelIds, removeLabelIds } = await c.req.json<{
+        addLabelIds?: string[]
+        removeLabelIds?: string[]
+      }>()
       await gmail.modifyLabels(accessToken, c.req.param("id"), addLabelIds || [], removeLabelIds || [])
       return c.json({ ok: true })
     })

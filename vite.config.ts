@@ -26,8 +26,8 @@ function serveArtifactAssets() {
   const distDir = path.resolve(__dirname, "../frontend/dist")
   return {
     name: "serve-artifact-assets",
-    configureServer(server: any) {
-      server.middlewares.use((req: any, res: any, next: any) => {
+    configureServer(server: unknown) {
+      server.middlewares.use((req: unknown, res: unknown, next: unknown) => {
         if (!req.url?.startsWith("/@hammies/")) return next()
         const filename = req.url.replace("/@hammies/", "")
         const filePath = path.join(distDir, filename)

@@ -2,6 +2,11 @@ import { resolve, join, dirname } from "path"
 import * as fs from "fs"
 import { homedir } from "os"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import {
+  CONTRACT_VERSION,
+  SessionEventSchema,
+  decodeContract,
+} from "@hammies/contracts/session"
 
 const log = createLogger("session")
 
@@ -31,6 +36,7 @@ import { buildRenderOutputMcpServer } from "./render-output-tool.js"
 import { buildArtifactMcpServer } from "./artifact-tools.js"
 import { RENDER_OUTPUT_NAMES, CREATE_FILE_NAMES } from "@hammies/session-core"
 import { readTranscript } from "@hammies/session-core/reader"
+import { isRecord, parseJson } from "../lib/schemas.js"
 import { SESSION_INSTRUCTIONS } from "./session-instructions.js"
 
 let credentialProxy: CredentialProxy | null = null
@@ -92,7 +98,7 @@ function drainQueuedPrompt(sessionId: string): void {
   // the next resume reads runningQueries.
   queueMicrotask(() => {
     resumeSessionQuery(sessionId, next.prompt, next.userSessionToken, next.userProfile).catch(
-      (err) => {
+      (err: unknown) => {
         log.error("Failed to drain queued prompt", {
           sessionId,
           error: err instanceof Error ? err.message : String(err),
@@ -312,7 +318,7 @@ export function setWorkspacePath(path: string) {
   defaultWorkspacePath = resolve(path)
   import("./workspace-scanner.js").then(({ deriveWorkspaceName }) => {
     defaultWorkspaceName = deriveWorkspaceName(path)
-  }).catch((err) => {
+  }).catch((err: unknown) => {
     console.debug("[session] Failed to derive workspace name, using fallback:", err)
     defaultWorkspaceName = path.split("/").pop() || path
   })
@@ -362,10 +368,20 @@ export async function createSessionRecord(
 }
 
 /** Extract content array from a nested or flat message shape. */
-function extractMessageContent(msg: Record<string, unknown>): unknown[] | null {
-  const m = msg.message as Record<string, unknown> | undefined
-  const nested = m?.message as Record<string, unknown> | undefined
-  const content = nested?.content ?? m?.content ?? msg.content
+function extractMessageContent(msg: unknown): unknown[] | null {
+  if (typeof msg !== "object" || msg === null) return null
+  const messageValue = Reflect.get(msg, "message") as unknown
+  const m = typeof messageValue === "object" && messageValue !== null
+    ? messageValue
+    : undefined
+  const nestedValue = m ? Reflect.get(m, "message") as unknown : undefined
+  const nested = typeof nestedValue === "object" && nestedValue !== null
+    ? nestedValue
+    : undefined
+  const nestedContent = nested ? Reflect.get(nested, "content") as unknown : undefined
+  const messageContent = m ? Reflect.get(m, "content") as unknown : undefined
+  const rootContent = Reflect.get(msg, "content") as unknown
+  const content = nestedContent ?? messageContent ?? rootContent
   return Array.isArray(content) ? content : null
 }
 
@@ -395,7 +411,7 @@ export async function getLastAskUserQuestions(sessionId: string): Promise<unknow
     for (let i = transcript.length - 1; i >= 0; i--) {
       const msg = transcript[i]!
       if (msg.type !== "assistant") continue
-      const content = extractMessageContent(msg as Record<string, unknown>)
+      const content = extractMessageContent(msg)
       if (!Array.isArray(content)) continue
       for (const rawBlock of content) {
         const block = rawBlock as Record<string, unknown>
@@ -789,12 +805,21 @@ export function clearBroadcastBuffer(sessionId: string) {
 }
 
 export function broadcastToSession(sessionId: string, data: unknown) {
-  if (isSequencedBroadcast(data)) {
-    pushBroadcastBuffer(sessionId, data)
+  const event = decodeContract(SessionEventSchema, data, {
+    contract: "inbox-session-event@1",
+    source: sessionId,
+  })
+  if (isSequencedBroadcast(event)) {
+    pushBroadcastBuffer(sessionId, event)
   }
   for (const client of wsClients.values()) {
     if (client.sessions.has(sessionId)) {
-      client.send({ type: "session_event", sessionId, data })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: event,
+      })
     }
   }
 }
@@ -840,10 +865,19 @@ export async function wsSubscribe(clientId: string, sessions: readonly WsSubscri
     if (typeof fromSequence === "number") {
       const replay = readBroadcastBufferSince(sessionId, fromSequence)
       if (replay === null) {
-        client.send({ type: "cursor_miss", sessionId })
+        client.send({
+          contractVersion: CONTRACT_VERSION,
+          type: "cursor_miss",
+          sessionId,
+        })
       } else {
         for (const entry of replay) {
-          client.send({ type: "session_event", sessionId, data: entry.data })
+          client.send({
+            contractVersion: CONTRACT_VERSION,
+            type: "session_event",
+            sessionId,
+            data: entry.data,
+          })
         }
       }
     }
@@ -852,22 +886,59 @@ export async function wsSubscribe(clientId: string, sessions: readonly WsSubscri
     // apply before the status transition they describe.
     const session = await getSessionRecord(sessionId)
     if (session?.status === "complete") {
-      client.send({ type: "session_event", sessionId, data: { type: "session_complete", status: "complete" } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "session_complete",
+          status: "complete",
+        },
+      })
     } else if (session?.status === "errored") {
-      client.send({ type: "session_event", sessionId, data: { type: "session_error", status: "errored" } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "session_error",
+          status: "errored",
+          error: "session error",
+        },
+      })
     } else if (session?.status === "awaiting_user_input" || session?.status === "needs_attention") {
       // awaiting_user_input = live agent parked on a question.
       // needs_attention    = agent process exited mid-question; answer triggers a fresh resume.
       // Both render the same inline form, so we replay the question identically.
       const questions = await getLastAskUserQuestions(sessionId)
       if (questions) {
-        client.send({ type: "session_event", sessionId, data: { type: "ask_user_question", questions } })
+        client.send({
+          contractVersion: CONTRACT_VERSION,
+          type: "session_event",
+          sessionId,
+          data: {
+            contractVersion: CONTRACT_VERSION,
+            type: "ask_user_question",
+            questions,
+          },
+        })
       }
     }
 
     const users = getPresenceUsers(sessionId)
     if (users.length > 0) {
-      client.send({ type: "session_event", sessionId, data: { type: "presence", users } })
+      client.send({
+        contractVersion: CONTRACT_VERSION,
+        type: "session_event",
+        sessionId,
+        data: {
+          contractVersion: CONTRACT_VERSION,
+          type: "presence",
+          users,
+        },
+      })
     }
   }))
 }
@@ -933,7 +1004,8 @@ export function collectPendingAttachments(
     const line = lines[i]
     if (!line) continue
     try {
-      const msg = JSON.parse(line)
+      const msg = parseJson(line)
+      if (!isRecord(msg)) continue
       if (msg.type === "user" || msg.type === "assistant") break
       if (msg.type === "system" && msg.subtype === "attached_context" && typeof msg.content === "string") {
         pending.unshift({
@@ -1123,7 +1195,7 @@ export async function startSession(
       if (sessionId) {
         if (!options?.skipDbRecord) {
           await updateSessionStatus(sessionId, "complete")
-          autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
+          autoNameSession(sessionId).catch((err: unknown) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
         }
         runningQueries.delete(sessionId)
         pendingQuestions.delete(sessionId)
@@ -1310,7 +1382,7 @@ export async function resumeSessionQuery(
 
       await updateSessionStatus(sessionId, "complete")
       broadcastToSession(sessionId, { type: "session_complete", status: "complete" })
-      autoNameSession(sessionId).catch((err) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
+      autoNameSession(sessionId).catch((err: unknown) => log.warn("Failed to auto-name session", { sessionId, error: err instanceof Error ? err.message : String(err) }))
       releaseRunningQuery(sessionId, abortController)
       drainQueuedPrompt(sessionId)
     } catch (err: unknown) {
@@ -1457,9 +1529,10 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
     }),
   )
   for (let i = 0; i < results.length; i++) {
-    if (results[i]!.status === "rejected") {
+    const result: unknown = results[i]
+    if (isRecord(result) && result.status === "rejected") {
       const session = toResume[i]!
-      const reason = (results[i] as PromiseRejectedResult).reason
+      const reason = result.reason
       log.error("Failed to recover session", { sessionId: session.id, error: reason instanceof Error ? reason.message : String(reason) })
       await updateSessionStatus(session.id, "errored", "Server restart recovery failed")
     }
@@ -1709,8 +1782,9 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
     for (const line of lines) {
       if (!line.trim()) continue
       try {
-        const msg = JSON.parse(line)
-        if (!cwd && msg.cwd) cwd = msg.cwd
+        const msg = parseJson(line)
+        if (!isRecord(msg)) continue
+        if (!cwd && typeof msg.cwd === "string") cwd = msg.cwd
         if (msg.type === "custom-title" && typeof msg.customTitle === "string" && msg.customTitle.trim()) {
           customTitle = msg.customTitle.trim().slice(0, 200)
           continue
@@ -1731,13 +1805,16 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
         const isAssistant = msg.type === "assistant" || msg.role === "assistant"
         if (isUser || isAssistant) hasContent = true
         if (!firstPrompt && isUser) {
-          const content = msg.message?.content ?? msg.content
+          const message = isRecord(msg.message) ? msg.message : null
+          const content = message?.content ?? msg.content
           if (typeof content === "string") {
             firstPrompt = promptTitle(content)
           } else if (Array.isArray(content)) {
-            const joined = content
-              .filter((b: Record<string, unknown>) => b.type === "text" && !isNonPromptText((b.text as string) ?? ""))
-              .map((b: Record<string, unknown>) => b.text as string)
+            const contentItems: unknown[] = content
+            const joined = contentItems
+              .filter((block): block is Record<string, unknown> => isRecord(block))
+              .map((block) => block.type === "text" && typeof block.text === "string" ? block.text : "")
+              .filter((text) => text !== "" && !isNonPromptText(text))
               .join(" ")
             if (joined) firstPrompt = promptTitle(joined)
           }
@@ -1755,7 +1832,8 @@ export function extractSessionMeta(headLines: string[], tailLines: string[]) {
     const line = tailLines[i]!
     if (!line.trim()) continue
     try {
-      const msg = JSON.parse(line)
+      const msg = parseJson(line)
+      if (!isRecord(msg)) continue
       if ("result" in msg && typeof msg.result === "string") {
         summary = msg.result.slice(0, 200)
         break
@@ -2050,7 +2128,9 @@ function patchArtifactInFile(filePath: string, toolUseId: string, code: string):
     if (!lines[i]!.includes(toolUseId)) continue
     let msg: Record<string, unknown>
     try {
-      msg = JSON.parse(lines[i]!)
+      const parsed = parseJson(lines[i]!)
+      if (!isRecord(parsed)) continue
+      msg = parsed
     } catch {
       continue
     }

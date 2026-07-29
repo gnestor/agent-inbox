@@ -132,7 +132,7 @@ export function useSessionController({
         sessionId,
         sequence: seq,
         type: "user",
-        message: { type: "user", content: p.prompt } as any,
+        message: { type: "user", content: p.prompt },
         createdAt: p.createdAt,
       }
     })

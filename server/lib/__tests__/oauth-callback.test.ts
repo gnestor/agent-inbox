@@ -6,10 +6,10 @@ import { _getDefaultStore } from "../rate-limit.js"
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
 // In-memory stores to simulate DB tables
-const users = new Map<string, any>()
-const userCredentials = new Map<string, any>()
-const workspaceCredentials = new Map<string, any>()
-const authSessions = new Map<string, any>()
+const users = new Map<string, unknown>()
+const userCredentials = new Map<string, unknown>()
+const workspaceCredentials = new Map<string, unknown>()
+const authSessions = new Map<string, unknown>()
 
 // We need the real encrypt/decrypt from vault, so we use a functional mock
 // that acts like a real DB
@@ -17,7 +17,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes("FROM user_credentials") && sql.includes("WHERE user_email") && !params?.[1]) {
       const email = params![0] as string
-      const results: any[] = []
+      const results: unknown[] = []
       for (const [key, row] of userCredentials.entries()) {
         if (key.startsWith(email + ":")) results.push(row)
       }
@@ -25,7 +25,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     if (sql.includes("FROM workspace_credentials")) {
       const workspace = params![0] as string
-      const results: any[] = []
+      const results: unknown[] = []
       for (const [key, row] of workspaceCredentials.entries()) {
         if (key.startsWith(workspace + ":")) results.push(row)
       }
@@ -73,7 +73,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     return { rowCount: 0 }
   }),
-  withTransaction: vi.fn(async (fn: any) => fn({
+  withTransaction: vi.fn(async (fn: unknown) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))

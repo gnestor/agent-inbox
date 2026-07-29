@@ -8,7 +8,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
   queryOne: vi.fn(async () => undefined),
   execute: vi.fn(async () => ({ rowCount: 0 })),
-  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -92,7 +92,7 @@ describe("session transcript and artifact patching", () => {
     // All assistant entries with real content render — including streaming
     // deltas where stop_reason is null. Each delta has its own content blocks,
     // so dropping them loses text preambles and split tool_use sequences.
-    const types = messages.map((m: any) => `${m.type}@seq${m.sequence}`)
+    const types = messages.map((m: unknown) => `${m.type}@seq${m.sequence}`)
     expect(types).toContain("user@seq2")
     expect(types).toContain("assistant@seq3")
     expect(types).toContain("assistant@seq4")
@@ -101,8 +101,8 @@ describe("session transcript and artifact patching", () => {
     expect(types).toContain("assistant@seq8")
 
     // Non-display types should be filtered
-    expect(messages.every((m: any) => m.type !== "queue-operation")).toBe(true)
-    expect(messages.every((m: any) => m.type !== "tool_result")).toBe(true)
+    expect(messages.every((m: unknown) => m.type !== "queue-operation")).toBe(true)
+    expect(messages.every((m: unknown) => m.type !== "tool_result")).toBe(true)
   })
 
   it("getAgentSessionTranscript emits thinking blocks standalone and defers Agent tool_use", async () => {
@@ -123,32 +123,32 @@ describe("session transcript and artifact patching", () => {
 
     // Thinking is emitted as a standalone assistant message with fractional
     // sequence so it sorts between lines.
-    const thinkingMsg = messages.find((m: any) => {
+    const thinkingMsg = messages.find((m: unknown) => {
       const blocks = m.message?.message?.content ?? []
-      return Array.isArray(blocks) && blocks.some((b: any) => b.type === "thinking")
-    }) as any
+      return Array.isArray(blocks) && blocks.some((b: unknown) => b.type === "thinking")
+    }) as unknown
     expect(thinkingMsg).toBeDefined()
 
     // The complete text message gets the Agent tool_use prepended.
-    const textWithAgent = messages.find((m: any) => {
+    const textWithAgent = messages.find((m: unknown) => {
       const blocks = m.message?.message?.content ?? []
       if (!Array.isArray(blocks)) return false
-      return blocks.some((b: any) => b.type === "tool_use" && b.name === "Agent")
-        && blocks.some((b: any) => b.type === "text" && b.text === "Launched.")
+      return blocks.some((b: unknown) => b.type === "tool_use" && b.name === "Agent")
+        && blocks.some((b: unknown) => b.type === "text" && b.text === "Launched.")
     })
     expect(textWithAgent).toBeDefined()
   })
 
   it("patchArtifactInJsonl patches the correct line by sequence (line index)", async () => {
     // Import the internal patchArtifactInJsonl via the module
-    const mod = await import("../session-manager.js") as any
+    const mod = await import("../session-manager.js") as unknown
     const { getAgentSessionTranscript } = mod
 
     // Find the render_output sequence from the transcript
     const messages = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
-    const renderMsg = messages.find((m: any) => {
+    const renderMsg = messages.find((m: unknown) => {
       const content = m.message?.message?.content ?? m.message?.content ?? []
-      return Array.isArray(content) && content.some((b: any) => b.name?.includes("render_output"))
+      return Array.isArray(content) && content.some((b: unknown) => b.name?.includes("render_output"))
     })
     expect(renderMsg).toBeDefined()
     const seq = renderMsg!.sequence as number
@@ -166,7 +166,7 @@ describe("session transcript and artifact patching", () => {
     const msg = JSON.parse(lines[seq]!)
     expect(msg.type).toBe("assistant")
     const blocks = msg.message?.content ?? []
-    const toolBlock = blocks.find((b: any) => b.name?.includes("render_output"))
+    const toolBlock = blocks.find((b: unknown) => b.name?.includes("render_output"))
     expect(toolBlock).toBeDefined()
     expect(toolBlock.input.data.code).toBe("original code")
 
@@ -177,9 +177,9 @@ describe("session transcript and artifact patching", () => {
 
     // Verify via transcript
     const updated = await getAgentSessionTranscript(SESSION_ID, JSONL_PATH)
-    const patchedMsg = updated.find((m: any) => m.sequence === seq) as any
+    const patchedMsg = updated.find((m: unknown) => m.sequence === seq) as unknown
     const updatedContent = patchedMsg?.message?.message?.content ?? patchedMsg?.message?.content
-    const updatedBlock = updatedContent?.find((b: any) => b.name?.includes("render_output"))
+    const updatedBlock = updatedContent?.find((b: unknown) => b.name?.includes("render_output"))
     expect(updatedBlock.input.data.code).toBe("new patched code")
   })
 
@@ -191,9 +191,9 @@ describe("session transcript and artifact patching", () => {
     // Line 3 is a partial (filtered), line 6 is a partial (filtered)
     // The render_output at line 7 should still have sequence=7 (line index)
     // NOT sequence=5 (which it would be with filtered counting)
-    const renderMsg = messages.find((m: any) => {
+    const renderMsg = messages.find((m: unknown) => {
       const content = m.message?.message?.content ?? m.message?.content ?? []
-      return Array.isArray(content) && content.some((b: any) => b.name?.includes("render_output"))
+      return Array.isArray(content) && content.some((b: unknown) => b.name?.includes("render_output"))
     })
     expect(renderMsg).toBeDefined()
     expect(renderMsg!.sequence).toBe(7)  // Line index, not filtered count

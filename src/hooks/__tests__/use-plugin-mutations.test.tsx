@@ -45,11 +45,11 @@ describe("usePluginMutations", () => {
     await act(() => result.current.mutate("update-status", { status: "done" }))
 
     // Check list cache was updated optimistically
-    const listData = qc.getQueryData<any>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
+    const listData = qc.getQueryData<unknown>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
     expect(listData.items[0].status).toBe("done")
 
     // Check detail cache was updated optimistically
-    const detailData = qc.getQueryData<any>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
+    const detailData = qc.getQueryData<unknown>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
     expect(detailData.status).toBe("done")
   })
 
@@ -69,7 +69,7 @@ describe("usePluginMutations", () => {
 
     await act(() => result.current.mutate("delete", undefined))
 
-    const listData = qc.getQueryData<any>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
+    const listData = qc.getQueryData<unknown>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
     expect(listData.items).toHaveLength(1)
     expect(listData.items[0].id).toBe("item-2")
   })
@@ -91,10 +91,10 @@ describe("usePluginMutations", () => {
     await act(() => result.current.mutate("update-status", { status: "done" }))
 
     // Should rollback to original values
-    const listData = qc.getQueryData<any>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
+    const listData = qc.getQueryData<unknown>(["plugin-items", "ws1", PLUGIN_ID, {}, undefined])
     expect(listData.items[0].status).toBe("open")
 
-    const detailData = qc.getQueryData<any>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
+    const detailData = qc.getQueryData<unknown>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
     expect(detailData.status).toBe("open")
   })
 
@@ -111,7 +111,7 @@ describe("usePluginMutations", () => {
 
     await act(() => result.current.mutate("update-tags", { tags: ["bug", "urgent"] }))
 
-    const detailData = qc.getQueryData<any>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
+    const detailData = qc.getQueryData<unknown>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
     expect(detailData.tags).toEqual(["bug", "urgent"])
   })
 
@@ -128,7 +128,7 @@ describe("usePluginMutations", () => {
 
     await act(() => result.current.mutate("archive", undefined))
 
-    const detailData = qc.getQueryData<any>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
+    const detailData = qc.getQueryData<unknown>(["plugin-item", "ws1", PLUGIN_ID, ITEM_ID])
     expect(detailData.status).toBe("closed")
   })
 })

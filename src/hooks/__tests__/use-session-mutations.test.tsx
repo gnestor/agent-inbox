@@ -64,7 +64,7 @@ describe("useSessionMutations", () => {
 
   it("Scenario: Controller exposes mutations bag — resume mutation calls resumeSession API and triggers onResume", async () => {
     const onResume = vi.fn()
-    vi.mocked(client.resumeSession).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.resumeSession).mockResolvedValueOnce(undefined as unknown)
 
     const { result } = renderHook(
       () => useSessionMutations({ sessionId: "s1", onResume }),
@@ -95,12 +95,12 @@ describe("useSessionMutations", () => {
       result.current.resume.mutate("go")
     })
 
-    const listCache = queryClient.getQueryData<any>(["sessions"])
+    const listCache = queryClient.getQueryData<unknown>(["sessions"])
     expect(listCache.sessions[0].status).toBe("running")
   })
 
   it("abort mutation calls abortSession API", async () => {
-    vi.mocked(client.abortSession).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.abortSession).mockResolvedValueOnce(undefined as unknown)
 
     const { result } = renderHook(
       () => useSessionMutations({ sessionId: "s1" }),
@@ -135,7 +135,7 @@ describe("useSessionMutations", () => {
 
   it("archive mutation calls archiveSession and triggers onArchive", async () => {
     const onArchive = vi.fn()
-    vi.mocked(client.archiveSession).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.archiveSession).mockResolvedValueOnce(undefined as unknown)
     seedSlice("s1", { status: "complete" })
 
     const { result } = renderHook(
@@ -173,7 +173,7 @@ describe("useSessionMutations", () => {
   })
 
   it("unarchive mutation calls unarchiveSession API", async () => {
-    vi.mocked(client.unarchiveSession).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.unarchiveSession).mockResolvedValueOnce(undefined as unknown)
     seedSlice("s1", { status: "archived" })
 
     const { result } = renderHook(
@@ -210,7 +210,7 @@ describe("useSessionMutations", () => {
   })
 
   it("rename mutation calls updateSession with new title", async () => {
-    vi.mocked(client.updateSession).mockResolvedValueOnce(undefined as any)
+    vi.mocked(client.updateSession).mockResolvedValueOnce(undefined as unknown)
     seedSlice("s1", { summary: "Old Title" })
 
     const { result } = renderHook(
@@ -287,13 +287,13 @@ describe("useSessionMutations", () => {
     })
 
     await waitFor(() => {
-      const listCache = queryClient.getQueryData<any>(["sessions"])
-      const s1 = listCache.sessions.find((s: any) => s.id === "s1")
+      const listCache = queryClient.getQueryData<unknown>(["sessions"])
+      const s1 = listCache.sessions.find((s: unknown) => s.id === "s1")
       expect(s1.status).toBe("archived")
     })
 
-    const listCache = queryClient.getQueryData<any>(["sessions"])
-    const s2 = listCache.sessions.find((s: any) => s.id === "s2")
+    const listCache = queryClient.getQueryData<unknown>(["sessions"])
+    const s2 = listCache.sessions.find((s: unknown) => s.id === "s2")
     expect(s2.status).toBe("running")
   })
 })

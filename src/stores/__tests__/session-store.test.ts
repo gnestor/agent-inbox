@@ -28,8 +28,8 @@ function makeMsg(sequence: number, type: string, content: unknown = ""): Session
     sequence,
     type,
     message: type === "user"
-      ? { type: "user", content: content as string } as any
-      : { type: "assistant", content: content as any[] } as any,
+      ? { type: "user", content: content as string } as unknown
+      : { type: "assistant", content: content as unknown[] } as unknown,
     createdAt: "2026-04-22T00:00:00Z",
   }
 }

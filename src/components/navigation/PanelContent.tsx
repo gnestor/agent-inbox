@@ -52,7 +52,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   )
 
   const handleAction = useCallback(
-    (intent: string) => { resumeSession(sessionId, intent).catch((err) => log.error("Resume session failed", { sessionId, error: err instanceof Error ? err.message : String(err) })) },
+    (intent: string) => { resumeSession(sessionId, intent).catch((err: unknown) => log.error("Resume session failed", { sessionId, error: err instanceof Error ? err.message : String(err) })) },
     [sessionId],
   )
 

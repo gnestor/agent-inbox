@@ -9,6 +9,7 @@ import { dirname, resolve } from "path"
 import { fileURLToPath } from "url"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { getClientIp } from "../lib/rate-limit.js"
+import { isRecord } from "../lib/schemas.js"
 
 const log = createLogger("telemetry")
 
@@ -37,7 +38,8 @@ async function appendLine(file: string, payload: object): Promise<void> {
 function makeHandler(file: string, kind: "heartbeat" | "crash") {
   return async (c: Context) => {
     try {
-      const body = await c.req.json()
+      const raw: unknown = await c.req.json()
+      const body = isRecord(raw) ? raw : {}
       await appendLine(file, {
         receivedAt: new Date().toISOString(),
         ip: getClientIp(c),

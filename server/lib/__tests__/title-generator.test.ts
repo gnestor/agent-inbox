@@ -8,7 +8,7 @@ describe("title-generator", () => {
         { type: "user", message: JSON.stringify({ type: "user", content: "Draft an email to Kevin about Q1 results" }) },
         { type: "assistant", message: JSON.stringify({ type: "assistant", content: "I've drafted the email..." }) },
       ]
-      const result = buildTitlePrompt(messages as any)
+      const result = buildTitlePrompt(messages as unknown)
       expect(result).toContain("Q1 results")
     })
 
@@ -19,7 +19,7 @@ describe("title-generator", () => {
         { type: "user", message: JSON.stringify({ type: "user", content: [{ type: "tool_result", tool_use_id: "t1" }] }) },
         { type: "assistant", message: JSON.stringify({ type: "assistant", content: [{ type: "tool_use", name: "Bash" }] }) },
       ]
-      const result = buildTitlePrompt(messages as any)
+      const result = buildTitlePrompt(messages as unknown)
       expect(result).toContain("Real prompt")
       // The tool-only turns contribute no text — only the one user line survives
       expect(result.split("\n\n").filter((l) => l.trim()).length).toBe(1)
@@ -34,7 +34,7 @@ describe("title-generator", () => {
         { type: "assistant", message: JSON.stringify({ type: "assistant", content: "First assistant" }) },
         { type: "assistant", message: JSON.stringify({ type: "assistant", content: "Last assistant reply" }) },
       ]
-      const result = buildTitlePrompt(messages as any)
+      const result = buildTitlePrompt(messages as unknown)
       const userLines = result.split("\n\n").filter((l) => l.startsWith("User:"))
       expect(userLines).toHaveLength(3)
       expect(result).toContain("Last assistant reply")
@@ -48,7 +48,7 @@ describe("title-generator", () => {
         { type: "system", message: JSON.stringify({ type: "system", content: "init" }) },
         { type: "user", message: "not-json{" },
       ]
-      expect(buildTitlePrompt(messages as any)).toBe("")
+      expect(buildTitlePrompt(messages as unknown)).toBe("")
     })
 
     it("truncates long transcripts to fit context", () => {
@@ -56,7 +56,7 @@ describe("title-generator", () => {
         type: "user",
         message: JSON.stringify({ type: "user", content: `Message ${i} with lots of content `.repeat(50) }),
       }))
-      const result = buildTitlePrompt(messages as any)
+      const result = buildTitlePrompt(messages as unknown)
       expect(result.length).toBeLessThan(6000)
     })
   })
@@ -108,7 +108,7 @@ describe("title-generator", () => {
       const messages = [
         { type: "user", message: JSON.stringify({ type: "user", content: "Do a thing" }) },
       ]
-      const result = await gen(messages as any)
+      const result = await gen(messages as unknown)
       expect(result).toBeNull()
       expect(errSpy).toHaveBeenCalled()
       vi.doUnmock("@anthropic-ai/sdk")

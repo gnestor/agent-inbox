@@ -12,13 +12,13 @@ import type { Session, SessionMessage } from "@/types"
 // WsStream mock — we drive subscribe/onConnect callbacks directly from tests
 // ---------------------------------------------------------------------------
 
-let mostRecentEventCallback: ((event: any) => void) | null = null
+let mostRecentEventCallback: ((event: unknown) => void) | null = null
 let mostRecentConnectCallback: (() => void) | null = null
-let mostRecentSubscribeOptions: any = null
+let mostRecentSubscribeOptions: unknown = null
 
 vi.mock("@/hooks/use-ws-stream", () => ({
   useWsStream: () => ({
-    subscribe: (_sessionId: string, cb: (e: any) => void, options?: any) => {
+    subscribe: (_sessionId: string, cb: (e: unknown) => void, options?: unknown) => {
       mostRecentEventCallback = cb
       mostRecentSubscribeOptions = options ?? null
       return () => {
@@ -36,7 +36,7 @@ vi.mock("@/hooks/use-ws-stream", () => ({
 }))
 
 vi.mock("@/api/client", async (orig) => {
-  const actual = await (orig as any)()
+  const actual = await (orig as unknown)()
   return { ...actual, getSession: vi.fn() }
 })
 
@@ -69,8 +69,8 @@ function makeMsg(sequence: number, type: string, content: unknown = ""): Session
     sequence,
     type,
     message: type === "user"
-      ? { type: "user", content: content as string } as any
-      : { type: "assistant", content: content as any[] } as any,
+      ? { type: "user", content: content as string } as unknown
+      : { type: "assistant", content: content as unknown[] } as unknown,
     createdAt: "2026-04-22T00:00:00Z",
   }
 }
@@ -139,10 +139,10 @@ describe("useSessionTranscript", () => {
     // coordinator's inFlight must be cleared, and subsequent live events
     // must apply rather than deferring forever.
 
-    let resolveFetch1: (data: any) => void = () => {}
-    const firstFetch = new Promise<any>((resolve) => { resolveFetch1 = resolve })
-    let resolveFetch2: (data: any) => void = () => {}
-    const secondFetch = new Promise<any>((resolve) => { resolveFetch2 = resolve })
+    let resolveFetch1: (data: unknown) => void = () => {}
+    const firstFetch = new Promise<unknown>((resolve) => { resolveFetch1 = resolve })
+    let resolveFetch2: (data: unknown) => void = () => {}
+    const secondFetch = new Promise<unknown>((resolve) => { resolveFetch2 = resolve })
 
     vi.mocked(client.getSession)
       .mockImplementationOnce(() => firstFetch)

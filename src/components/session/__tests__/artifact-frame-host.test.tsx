@@ -27,7 +27,10 @@ function makeWrapper() {
 /** Post a message that appears to originate from the artifact iframe's contentWindow. */
 function postFromIframe(iframe: HTMLIFrameElement, data: unknown) {
   act(() => {
-    const event = new MessageEvent("message", { data })
+    const event = new MessageEvent("message", {
+      data,
+      origin: window.location.origin,
+    })
     Object.defineProperty(event, "source", { value: iframe.contentWindow })
     window.dispatchEvent(event)
   })

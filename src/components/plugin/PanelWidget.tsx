@@ -80,7 +80,7 @@ export function PanelWidget({ widgets, data, onMutate }: PanelWidgetProps) {
         }
         if (widget.type === "badge-row") {
           const val = getNestedValue(data, widget.field)
-          const values = Array.isArray(val) ? val : val ? [val] : []
+          const values: unknown[] = Array.isArray(val) ? [...val] : val ? [val] : []
           return (
             <div key={i} className="flex flex-wrap gap-1">
               {values.map((v, j) => (

@@ -3,6 +3,10 @@ import {
   useWsConnectionStore,
   getWsConnectionStatus,
 } from "@/stores/ws-connection-store"
+import {
+  CONTRACT_VERSION,
+  decodeInboxServerMessage,
+} from "@hammies/contracts/session"
 
 // Keepalive: detect zombie connections (laptop sleep, NAT drop) that would
 // otherwise leave us on a silently-dead socket for minutes before ws.onclose
@@ -16,7 +20,7 @@ export const ALIVE_TIMEOUT_MS = 45_000
 // Types
 // ---------------------------------------------------------------------------
 
-type SessionEventCallback = (data: any) => void
+type SessionEventCallback = (data: unknown) => void
 type ConnectCallback = () => void
 type CursorMissCallback = () => void
 
@@ -129,13 +133,18 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
 
     if (pendingSubscribe.current.size > 0) {
       ws.send(JSON.stringify({
+        contractVersion: CONTRACT_VERSION,
         type: "subscribe",
         sessions: buildSubscribePayload(pendingSubscribe.current),
       }))
       pendingSubscribe.current.clear()
     }
     if (pendingUnsubscribe.current.size > 0) {
-      ws.send(JSON.stringify({ type: "unsubscribe", sessionIds: [...pendingUnsubscribe.current] }))
+      ws.send(JSON.stringify({
+        contractVersion: CONTRACT_VERSION,
+        type: "unsubscribe",
+        sessionIds: [...pendingUnsubscribe.current],
+      }))
       pendingUnsubscribe.current.clear()
     }
   }, [buildSubscribePayload])
@@ -163,7 +172,10 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       resetAliveTimeout()
       pingIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "ping" }))
+          ws.send(JSON.stringify({
+            contractVersion: CONTRACT_VERSION,
+            type: "ping",
+          }))
         }
       }, PING_INTERVAL_MS)
 
@@ -179,13 +191,16 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       // Any message proves the connection is alive — reset the watchdog.
       resetAliveTimeout()
 
-      let msg: any
+      let msg: ReturnType<typeof decodeInboxServerMessage>
       try {
-        msg = JSON.parse(evt.data)
+        const rawData = Reflect.get(evt, "data") as unknown
+        const parsed: unknown = JSON.parse(typeof rawData === "string" ? rawData : String(rawData))
+        msg = decodeInboxServerMessage(parsed)
       } catch (err) {
-        console.error("[ws] failed to parse message", err, evt.data)
+        console.error("[ws] failed to parse message", err)
         return
       }
+      if (msg.type === "unknown_event") return
 
       // Drop pong frames early — no further handling needed.
       if (msg.type === "pong") return
@@ -196,6 +211,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         const ids = [...listenersRef.current.keys()]
         if (ids.length > 0) {
           ws.send(JSON.stringify({
+            contractVersion: CONTRACT_VERSION,
             type: "subscribe",
             sessions: buildSubscribePayload(ids),
           }))
@@ -203,7 +219,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (msg.type === "cursor_miss" && msg.sessionId) {
+      if (msg.type === "cursor_miss") {
         const opts = optionsRef.current.get(msg.sessionId)
         try { opts?.onCursorMiss?.() } catch (err) {
           console.error("[ws] onCursorMiss threw", err, msg)
@@ -211,7 +227,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (msg.type === "session_event" && msg.sessionId) {
+      if (msg.type === "session_event") {
         const callbacks = listenersRef.current.get(msg.sessionId)
         if (callbacks) {
           for (const cb of callbacks) {

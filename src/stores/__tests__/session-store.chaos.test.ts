@@ -112,7 +112,7 @@ describe("session store chaos / fuzz", () => {
           const sequence = Math.max(1, Math.floor(rng() * 200))
           const type = rng() < 0.3 ? "user" : "assistant"
           const content = type === "user" ? `msg-${step}` : [{ type: "text", text: `t-${step}` }]
-          store.ingestEvent(sessionId, { sequence, message: { type, content } } as any)
+          store.ingestEvent(sessionId, { sequence, message: { type, content } } as unknown)
         } else if (roll < 0.55) {
           // Snapshot cycle
           const accepted = store.beginSnapshot(sessionId, "bootstrap")
@@ -130,7 +130,7 @@ describe("session store chaos / fuzz", () => {
                   ? { type: "user", content: `s-${step}-${i}` }
                   : { type: "assistant", content: [] },
                 createdAt: "t",
-              })) as any
+              })) as unknown
               store.applySnapshot(sessionId, { session: makeSession(sessionId), messages })
             } else {
               store.failSnapshot(sessionId)
@@ -141,17 +141,17 @@ describe("session store chaos / fuzz", () => {
           // Lifecycle event
           const pick = rng()
           if (pick < 0.33) {
-            store.ingestEvent(sessionId, { type: "session_complete" } as any)
+            store.ingestEvent(sessionId, { type: "session_complete" } as unknown)
           } else if (pick < 0.66) {
             store.ingestEvent(sessionId, {
               type: "ask_user_question",
               questions: [{ question: "?", header: "Q", options: [], multiSelect: false }],
-            } as any)
+            } as unknown)
           } else {
             store.ingestEvent(sessionId, {
               type: "presence",
               users: [{ email: "a@b", name: "A" }],
-            } as any)
+            } as unknown)
           }
         } else if (roll < 0.8) {
           // Optimistic prompt — sometimes echoed, sometimes not.
@@ -164,7 +164,7 @@ describe("session store chaos / fuzz", () => {
             store.ingestEvent(sessionId, {
               sequence: Math.max(1, Math.floor(rng() * 200)),
               message: { type: "user", content: text },
-            } as any)
+            } as unknown)
           }
         } else if (roll < 0.85) {
           store.handleCursorMiss(sessionId)
@@ -201,7 +201,7 @@ describe("session store reliability invariants", () => {
       type: "user",
       message: { type: "user", content: "hi" },
       createdAt: "t",
-    } as any
+    } as unknown
   }
 
   function bootstrap(id: string, upTo: number) {
@@ -214,7 +214,7 @@ describe("session store reliability invariants", () => {
       type: i === 0 ? "user" : "assistant",
       message: i === 0 ? { type: "user", content: "hi" } : { type: "assistant", content: [] },
       createdAt: "t",
-    })) as any
+    })) as unknown
     store.applySnapshot(id, { session: makeSession(id), messages })
   }
 
@@ -224,7 +224,7 @@ describe("session store reliability invariants", () => {
     // Ingest in non-monotonic order; recovery may defer some, but whatever
     // lands in messageIds must stay sorted and unique.
     for (const seq of [1, 2, 2, 3, 1]) {
-      store.ingestEvent("inv-1", { sequence: seq, message: { type: "assistant", content: [] } } as any)
+      store.ingestEvent("inv-1", { sequence: seq, message: { type: "assistant", content: [] } } as unknown)
     }
     const slice = useSessionStore.getState().sessions["inv-1"]!
     for (let i = 1; i < slice.messageIds.length; i++) {
@@ -236,8 +236,8 @@ describe("session store reliability invariants", () => {
   it("Scenario: messageById matches messageIds — the key set of messageById is exactly messageIds", () => {
     const store = useSessionStore.getState()
     bootstrap("inv-2", 0)
-    store.ingestEvent("inv-2", { sequence: 1, message: { type: "assistant", content: [] } } as any)
-    store.ingestEvent("inv-2", { sequence: 2, message: { type: "assistant", content: [] } } as any)
+    store.ingestEvent("inv-2", { sequence: 1, message: { type: "assistant", content: [] } } as unknown)
+    store.ingestEvent("inv-2", { sequence: 2, message: { type: "assistant", content: [] } } as unknown)
     const slice = useSessionStore.getState().sessions["inv-2"]!
     const keys = Object.keys(slice.messageById).map(Number).sort((a, b) => a - b)
     expect(keys).toEqual([...slice.messageIds])
@@ -246,11 +246,11 @@ describe("session store reliability invariants", () => {
   it("Scenario: latestSequence never decreases — applying lower-sequence events after a higher one cannot regress the cursor", () => {
     const store = useSessionStore.getState()
     bootstrap("inv-3", 0)
-    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as any)
-    store.ingestEvent("inv-3", { sequence: 2, message: { type: "assistant", content: [] } } as any)
+    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as unknown)
+    store.ingestEvent("inv-3", { sequence: 2, message: { type: "assistant", content: [] } } as unknown)
     const high = useSessionStore.getState().sessions["inv-3"]!.recovery.latestSequence
     // Re-ingest an already-seen lower sequence — duplicate, must not regress.
-    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as any)
+    store.ingestEvent("inv-3", { sequence: 1, message: { type: "assistant", content: [] } } as unknown)
     expect(useSessionStore.getState().sessions["inv-3"]!.recovery.latestSequence).toBeGreaterThanOrEqual(high)
   })
 

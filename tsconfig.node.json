@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -16,5 +17,6 @@
       "@plugins/*": ["./plugins/*"]
     }
   },
-  "include": ["server", "plugins", "src/types"]
+  "include": ["server", "plugins", "src/types"],
+  "exclude": ["**/__tests__/**", "**/*.test.*"]
 }

@@ -205,7 +205,7 @@ function ListViewBody({
         continue
       }
 
-      const values = Array.isArray(value) ? value : [value]
+      const values: unknown[] = Array.isArray(value) ? [...value] : [value]
       for (const v of values) {
         const raw = String(v)
         const label = field.badge?.labelFn?.(raw) ?? raw

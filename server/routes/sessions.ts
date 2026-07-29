@@ -17,6 +17,7 @@ import {
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import type { TranscriptEntry } from "@hammies/session-core/reader"
 import { rateLimit, getClientIp } from "../lib/rate-limit.js"
 
 const log = createLogger("routes:sessions")
@@ -29,15 +30,15 @@ type UserProfile = { name: string; email: string; picture?: string }
  * user message so REST responses match what the WS broadcast emits at seq 0.
  */
 function withInitialUserPrompt(
-  transcript: Array<Record<string, unknown>>,
+  transcript: TranscriptEntry[],
   sessionId: string,
   prompt: string,
   createdAt: string,
-) {
+): TranscriptEntry[] {
   if (transcript.length > 0 && transcript[0]!.type === "user") return transcript
   return [
     {
-      id: 0,
+      id: "0",
       sessionId,
       sequence: 0,
       type: "user",
@@ -222,7 +223,7 @@ sessionRoutes.get("/:id", async (c) => {
     let status = session.status
     if ((status === "running" || status === "awaiting_user_input") && !sessions.isSessionRunning(session.id)) {
       status = "complete"
-      sessions.updateSessionStatus(session.id, "complete").catch((err) => log.warn("Failed to update stale session status", { sessionId: session.id, error: String(err) }))
+      sessions.updateSessionStatus(session.id, "complete").catch((err: unknown) => log.warn("Failed to update stale session status", { sessionId: session.id, error: String(err) }))
     }
 
     const wsPathForSeq = c.get("workspace")?.path || sessions.getWorkspacePath()

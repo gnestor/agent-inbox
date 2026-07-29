@@ -7,7 +7,7 @@ vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
   queryOne: vi.fn(async () => undefined),
   execute: (...args: unknown[]) => executeMock(...(args as [])),
-  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({

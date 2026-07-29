@@ -10,8 +10,8 @@ vi.mock("os", async (importOriginal) => {
   return { ...actual, homedir: () => _tmpDir || actual.homedir() }
 })
 
-const iteratorMessages = vi.hoisted(() => ({ current: [] as any[] }))
-const sessionRecord = vi.hoisted(() => ({ current: null as any }))
+const iteratorMessages = vi.hoisted(() => ({ current: [] as unknown[] }))
+const sessionRecord = vi.hoisted(() => ({ current: null as unknown }))
 const summaryUpdates = vi.hoisted(() => ({ list: [] as { id: string; summary: string }[] }))
 const generateTitle = vi.hoisted(() => ({ current: null as string | null }))
 
@@ -28,7 +28,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     return { rowCount: 1 }
   }),
-  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({ getAgentEnv: () => ({}) }))

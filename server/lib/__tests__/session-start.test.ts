@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 // Capture the options the SDK's query() was called with.
-const lastQueryOptions = vi.hoisted(() => ({ current: null as any }))
+const lastQueryOptions = vi.hoisted(() => ({ current: null as unknown }))
 // Control which messages the iterator yields.
-const iteratorMessages = vi.hoisted(() => ({ current: [] as any[] }))
+const iteratorMessages = vi.hoisted(() => ({ current: [] as unknown[] }))
 
 const executeCalls = vi.hoisted(() => ({ list: [] as { sql: string; params: unknown[] }[] }))
 
@@ -14,7 +14,7 @@ vi.mock("../../db/pool.js", () => ({
     executeCalls.list.push({ sql, params })
     return { rowCount: 1 }
   }),
-  withTransaction: vi.fn(async (fn: any) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({
@@ -26,7 +26,7 @@ vi.mock("../../lib/title-generator.js", () => ({
 }))
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: vi.fn((args: any) => {
+  query: vi.fn((args: unknown) => {
     lastQueryOptions.current = args.options
     return {
       [Symbol.asyncIterator]: async function* () {

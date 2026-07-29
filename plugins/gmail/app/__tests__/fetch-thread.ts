@@ -76,7 +76,7 @@ export async function fetchThread(threadId: string): Promise<ThreadData> {
   const thread = await gmailRequest(`/threads/${threadId}?format=full`)
   const rawMessages = thread.messages || []
 
-  const messages: ThreadMessage[] = rawMessages.map((msg: any, index: number) => {
+  const messages: ThreadMessage[] = rawMessages.map((msg: unknown, index: number) => {
     const { body: rawBody, bodyIsHtml } = getEmailBody(msg)
     const isLast = index === rawMessages.length - 1
     const body = bodyIsHtml
