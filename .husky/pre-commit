@@ -5,4 +5,4 @@ STRICT_ORPHANS=1 node ../../scripts/check-docs-coverage.mjs || exit 1
 
 # Inbox commits check only Inbox. The authoritative all-repository gate runs
 # once at pre-push.
-npm --prefix ../.. run typecheck -- --scope inbox-staged --quick || exit 1
+npm --prefix ../.. run typecheck -- --scope inbox-staged --syntax-only || exit 1
