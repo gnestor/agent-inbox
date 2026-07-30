@@ -4,7 +4,11 @@
 // one of these functions. Tests can exercise them directly.
 
 import type { Session, SessionMessage, PendingQuestion, PresenceUser } from "@/types"
-import { normalizeMessagePayload, getMessageType } from "@hammies/session-core"
+import {
+  normalizeMessagePayload,
+  getMessageType,
+  transcriptEntryKey,
+} from "@hammies/session-core"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,15 +73,23 @@ export function reduceSnapshot(
   prev: SessionSlice | undefined,
   snapshot: { session: Session; messages: SessionMessage[] },
 ): SessionSlice {
-  const messageById: Record<number, SessionMessage> = {}
-  const messageIds: number[] = []
+  const messageByKey = new Map<string, SessionMessage>()
   for (const raw of snapshot.messages) {
-    const msg: SessionMessage = {
+    const message: SessionMessage = {
       ...raw,
       message: normalizeMessagePayload(raw.message),
     }
-    messageById[msg.sequence] = msg
-    messageIds.push(msg.sequence)
+    // A recovered JSONL can contain an earlier and a later enriched copy of
+    // the same intrinsic message UUID at different line sequences. Keep the
+    // later copy so the reducer and React use the same identity contract.
+    messageByKey.set(transcriptEntryKey(message), message)
+  }
+
+  const messageById: Record<number, SessionMessage> = {}
+  const messageIds: number[] = []
+  for (const message of messageByKey.values()) {
+    messageById[message.sequence] = message
+    messageIds.push(message.sequence)
   }
   messageIds.sort((a, b) => a - b)
 

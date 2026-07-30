@@ -14,7 +14,7 @@ import type {
 } from "@/types/plugin"
 import type { WidgetDef } from "@/types/panels"
 
-export const OkSchema = z.object({ ok: z.boolean() })
+export const OkSchema: z.ZodType<{ ok: boolean }> = z.object({ ok: z.boolean() })
 export const UserProfileSchema: z.ZodType<UserProfile> = z.object({
   name: z.string(),
   email: z.email(),
@@ -175,14 +175,29 @@ export interface PluginManifestTransport {
   hasFilterOptions?: boolean
 }
 
-export const SessionSummarySchema = z.object({
+export interface SessionSummary {
+  id: string
+  status: string
+  prompt: string
+  summary: string | null
+  updatedAt: string
+}
+
+export const SessionSummarySchema: z.ZodType<SessionSummary> = z.object({
   id: z.string(),
   status: z.string(),
   prompt: z.string(),
   summary: z.string().nullable(),
   updatedAt: z.string(),
 })
-export const UploadFileResultSchema = z.object({
+export interface UploadFileResult {
+  name: string
+  path: string
+  size: number
+  mimeType: string
+}
+
+export const UploadFileResultSchema: z.ZodType<UploadFileResult> = z.object({
   name: z.string(),
   path: z.string(),
   size: z.number().int().nonnegative(),
@@ -209,14 +224,35 @@ export const WidgetRegistrySchema: z.ZodType<Record<string, WidgetDef[]>> = z.re
   z.string(),
   z.array(WidgetSchema),
 )
-export const PreferencesSchema = z.record(z.string(), z.unknown())
-export const GitStatusSchema = z.object({
+export const PreferencesSchema: z.ZodType<Record<string, unknown>> = z.record(
+  z.string(),
+  z.unknown(),
+)
+export interface GitStatus {
+  branch: string | null
+  remote: string | null
+  remoteUrl: string | null
+  status: string[]
+}
+
+export const GitStatusSchema: z.ZodType<GitStatus> = z.object({
   branch: z.string().nullable(),
   remote: z.string().nullable(),
   remoteUrl: z.string().nullable(),
   status: z.array(z.string()),
 })
-export const WorkspaceDetailsSchema = z.object({
+export interface WorkspaceDetails {
+  workspace: {
+    id: string
+    name: string
+    path: string
+    created_at: string
+    updated_at: string
+  }
+  members: WorkspaceMember[]
+}
+
+export const WorkspaceDetailsSchema: z.ZodType<WorkspaceDetails> = z.object({
   workspace: z.object({
     id: z.string(),
     name: z.string(),
@@ -225,4 +261,77 @@ export const WorkspaceDetailsSchema = z.object({
     updated_at: z.string(),
   }),
   members: z.array(WorkspaceMemberSchema),
+})
+
+export const AuthClientIdResponseSchema: z.ZodType<{ clientId: string }> = z.object({
+  clientId: z.string(),
+})
+export const AuthSessionResponseSchema: z.ZodType<{
+  user: UserProfile | null
+  workspaces?: Workspace[]
+  activeWorkspace?: Workspace | null
+}> = z.object({
+  user: UserProfileSchema.nullable(),
+  workspaces: z.array(WorkspaceSchema).optional(),
+  activeWorkspace: WorkspaceSchema.nullable().optional(),
+})
+export const SessionsResponseSchema: z.ZodType<{ sessions: Session[] }> = z.object({
+  sessions: z.array(SessionSchema),
+})
+export const SessionProjectsResponseSchema: z.ZodType<{ projects: string[] }> = z.object({
+  projects: z.array(z.string()),
+})
+export const SessionSnapshotResponseSchema: z.ZodType<{
+  session: Session
+  messages: SessionMessage[]
+  latestSequence?: number
+}> = z.object({
+  session: SessionSchema,
+  messages: z.array(SessionMessageSchema),
+  latestSequence: z.number().finite().optional(),
+})
+export const CreateSessionResponseSchema: z.ZodType<{ sessionId: string }> = z.object({
+  sessionId: z.string(),
+})
+export const ResumeSessionResponseSchema: z.ZodType<{
+  ok: boolean
+  queued?: boolean
+}> = z.object({
+  ok: z.boolean(),
+  queued: z.boolean().optional(),
+})
+export const LinkedSessionResponseSchema: z.ZodType<{
+  session: SessionSummary | null
+}> = z.object({
+  session: SessionSummarySchema.nullable(),
+})
+export const PluginItemsResponseSchema: z.ZodType<{
+  items: PluginItem[]
+  nextCursor?: string
+}> = z.object({
+  items: z.array(PluginItemSchema),
+  nextCursor: z.string().optional(),
+})
+export const FieldOptionsResponseSchema: z.ZodType<{ options: string[] }> = z.object({
+  options: z.array(z.string()),
+})
+export const ConnectionsResponseSchema: z.ZodType<{ integrations: Integration[] }> = z.object({
+  integrations: z.array(IntegrationSchema),
+})
+export const UserProfilesResponseSchema: z.ZodType<{ users: UserProfile[] }> = z.object({
+  users: z.array(UserProfileSchema),
+})
+export const WorkspacesResponseSchema: z.ZodType<{
+  workspaces: Workspace[]
+  activeWorkspaceId: string | null
+}> = z.object({
+  workspaces: z.array(WorkspaceSchema),
+  activeWorkspaceId: z.string().nullable(),
+})
+export const ActiveWorkspaceResponseSchema: z.ZodType<{
+  id: string
+  name: string
+}> = z.object({
+  id: z.string(),
+  name: z.string(),
 })

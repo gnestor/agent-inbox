@@ -70,6 +70,14 @@ Two behaviors changed with the move, both deliberate. The transcript no longer v
   `string | null`, never omitted.
 - **WHY:** the WS broadcast emits a seq-0 user turn for the initial prompt; REST has to mirror that shape or first paint and live state diverge.
 
+#### Scenario: Snapshot recovery reconciles duplicate intrinsic message identities
+- **WHEN** a recovered transcript contains multiple JSONL entries with the same
+  message UUID at different line sequences
+- **THEN** the snapshot reducer retains only the later, enriched copy before
+  exposing ordered transcript messages
+- **AND** the reducer uses the same intrinsic UUID identity as the transcript's
+  React key, preventing duplicated content and duplicate-key errors.
+
 #### Scenario: `PATCH /api/sessions/:id` renames or marks-manually-titled
 - **WHEN** the body contains `{ summary }` (and/or `manuallyTitled: true`)
 - **THEN** the route updates the DB row and `autoNameSession` will skip future auto-naming.
@@ -192,3 +200,5 @@ Two behaviors changed with the move, both deliberate. The transcript no longer v
 - The `readySessions` Set acquired its 100-cap after a memory profile of a long-lived SPA tab showed it growing unboundedly during a multi-hour debugging session.
 - The list view stopped showing an inline red error banner after UX feedback that the global toast plus a stale-but-usable list was strictly better than a wiped list with a banner.
 - `PATCH /api/sessions/:id/artifact` replaced an earlier "edit artifact in IndexedDB" client-only path after the project_inbox_artifact_source_of_truth doctrine landed: JSONL is the only authoritative source, so artifact edits must rewrite JSONL.
+- 2026-07-30: Snapshot recovery now de-duplicates repeated JSONL entries by
+  intrinsic message UUID and keeps the later enriched copy.

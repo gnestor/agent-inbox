@@ -77,6 +77,13 @@ The client exposes one function per endpoint, grouped into sections by domain. E
 - **THEN** the corresponding client function's typed signature is updated in the same commit.
 - **WHY:** the client is the only typed contract on the wire — drift here breaks every hook that consumes it without a TS error.
 
+#### Scenario: Large session snapshots use a bounded endpoint-specific budget
+
+- **WHEN** `getSession` decodes a transcript larger than the generic 5 MB API
+  response limit
+- **THEN** it accepts a valid snapshot up to 50 MB
+- **AND** all other API requests retain the generic 5 MB limit.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -93,3 +100,6 @@ The client exposes one function per endpoint, grouped into sections by domain. E
 - Error shape standardized on `API ${status}: ${text}` after several hooks invented their own message formats and React Query's retry logic couldn't tell auth errors from server errors.
 - 2026-07-27: Replaced generic JSON assertions with required runtime schemas
   and canonical contract errors.
+- 2026-07-30: Named and explicitly typed response schemas keep Zod inference
+  out of the API client hot path; session snapshots retain a bounded 50 MB
+  endpoint-specific response budget.

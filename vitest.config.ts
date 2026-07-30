@@ -8,7 +8,28 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@plugins": path.resolve(__dirname, "./plugins"),
+      react: path.resolve(__dirname, "./node_modules/react"),
+      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
+      "@tanstack/react-query": path.resolve(
+        __dirname,
+        "./node_modules/@tanstack/react-query",
+      ),
+      "@tanstack/react-table": path.resolve(
+        __dirname,
+        "./node_modules/@tanstack/react-table",
+      ),
+      "@base-ui/react": path.resolve(
+        __dirname,
+        "./node_modules/@base-ui/react",
+      ),
+      "@base-ui/utils": path.resolve(
+        __dirname,
+        "./node_modules/@base-ui/utils",
+      ),
     },
+    // Linked workspace packages otherwise resolve their own React copy when
+    // Vitest externalizes them through Node.
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
   test: {
     globals: true,
@@ -23,6 +44,11 @@ export default defineConfig({
       ["server/**/*.test.ts", "node"],
       ["plugins/**/*.test.{ts,tsx}", "jsdom"],
     ],
+    server: {
+      deps: {
+        inline: [/@hammies\/frontend/, /@base-ui/],
+      },
+    },
     coverage: {
       provider: "v8",
       // Scope coverage to files that have tests — thresholds only apply here.

@@ -83,6 +83,43 @@ describe("api client", () => {
     expect(client.getSessionFileUrl("s1", "a.png")).toBe("/api/sessions/s1/files/a.png")
   })
 
+  it("Scenario: Large session snapshots use a bounded endpoint-specific budget", async () => {
+    const largeText = "x".repeat(5_100_000)
+    mockFetch.mockResolvedValueOnce(jsonResponse({
+      session: {
+        id: "large-session",
+        status: "complete",
+        prompt: "Large transcript",
+        summary: null,
+        startedAt: "2026-07-30T00:00:00.000Z",
+        updatedAt: "2026-07-30T00:00:00.000Z",
+        completedAt: "2026-07-30T00:00:00.000Z",
+        linkedSourceType: null,
+        linkedSourceId: null,
+        linkedItemTitle: null,
+        triggerSource: "manual",
+        project: "agent",
+      },
+      messages: [{
+        id: "message-1",
+        sessionId: "large-session",
+        sequence: 1,
+        type: "assistant",
+        message: { content: largeText },
+        createdAt: "2026-07-30T00:00:00.000Z",
+      }],
+      latestSequence: 1,
+    }))
+
+    const result = await client.getSession("large-session")
+
+    expect(result.messages).toHaveLength(1)
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/sessions/large-session",
+      expect.any(Object),
+    )
+  })
+
   it("Scenario: Plugins section covers `/api/plugins` and `/api/:pluginId/*` — plugin functions exported", () => {
     for (const name of [
       "getPlugins", "queryPluginItems", "getPluginItem", "queryPluginSubItems",

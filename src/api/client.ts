@@ -1,29 +1,42 @@
-import { z } from "zod"
+import type { ContractSchema } from "@hammies/contracts"
 import { decodeJsonResponse } from "@hammies/contracts/http"
 import {
+  ActiveWorkspaceResponseSchema,
+  AuthClientIdResponseSchema,
+  AuthSessionResponseSchema,
+  ConnectionsResponseSchema,
+  CreateSessionResponseSchema,
+  FieldOptionsResponseSchema,
   GitStatusSchema,
-  IntegrationSchema,
+  LinkedSessionResponseSchema,
   OkSchema,
+  PluginItemsResponseSchema,
   PluginItemSchema,
   PluginManifestTransportSchema,
   PreferencesSchema,
-  SessionSchema,
-  SessionMessageSchema,
-  SessionSummarySchema,
+  ResumeSessionResponseSchema,
+  SessionProjectsResponseSchema,
+  SessionSnapshotResponseSchema,
+  SessionsResponseSchema,
   UploadFileResultSchema,
+  UserProfilesResponseSchema,
   UserProfileSchema,
   WidgetRegistrySchema,
-  WorkspaceSchema,
+  WorkspacesResponseSchema,
   WorkspaceDetailsSchema,
   type PluginManifestTransport,
 } from "./contracts"
 
 const BASE = "/api"
+const SESSION_SNAPSHOT_MAX_BYTES = 50_000_000
 
 async function request<T>(
   path: string,
-  schema: z.ZodType<T>,
+  schema: ContractSchema<T>,
   options?: RequestInit,
+  contractOptions?: {
+    maxBytes?: number
+  },
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -32,9 +45,10 @@ async function request<T>(
   if (res.status === 401) {
     window.dispatchEvent(new CustomEvent("session-expired"))
   }
-  return decodeJsonResponse(res, schema, {
+  return decodeJsonResponse<T>(res, schema, {
     contract: `inbox-api:${path.split("?")[0]}@1`,
     source: path,
+    maxBytes: contractOptions?.maxBytes,
   })
 }
 
@@ -43,7 +57,7 @@ async function request<T>(
 // ---------------------------------------------------------------------------
 
 export async function getAuthClientId() {
-  return request(`/auth/client-id`, z.object({ clientId: z.string() }))
+  return request(`/auth/client-id`, AuthClientIdResponseSchema)
 }
 
 export async function authCallback(credential: string) {
@@ -54,11 +68,7 @@ export async function authCallback(credential: string) {
 }
 
 export async function getAuthSession() {
-  return request(`/auth/session`, z.object({
-    user: UserProfileSchema.nullable(),
-    workspaces: z.array(WorkspaceSchema).optional(),
-    activeWorkspace: WorkspaceSchema.nullable().optional(),
-  }))
+  return request(`/auth/session`, AuthSessionResponseSchema)
 }
 
 export async function logout() {
@@ -83,20 +93,18 @@ export async function getSessions(filters?: {
   const qs = params.toString()
   return request(
     `/sessions${qs ? `?${qs}` : ""}`,
-    z.object({ sessions: z.array(SessionSchema) }),
+    SessionsResponseSchema,
   )
 }
 
 export async function getSessionProjects() {
-  return request(`/sessions/projects`, z.object({ projects: z.array(z.string()) }))
+  return request(`/sessions/projects`, SessionProjectsResponseSchema)
 }
 
 export async function getSession(sessionId: string) {
-  return request(`/sessions/${sessionId}`, z.object({
-    session: SessionSchema,
-    messages: z.array(SessionMessageSchema),
-    latestSequence: z.number().finite().optional(),
-  }))
+  return request(`/sessions/${sessionId}`, SessionSnapshotResponseSchema, undefined, {
+    maxBytes: SESSION_SNAPSHOT_MAX_BYTES,
+  })
 }
 
 export async function updateSession(sessionId: string, body: { summary: string }) {
@@ -113,7 +121,7 @@ export async function createSession(body: {
   linkedSourceContent?: string
   linkedItemTitle?: string
 }) {
-  return request(`/sessions`, z.object({ sessionId: z.string() }), {
+  return request(`/sessions`, CreateSessionResponseSchema, {
     method: "POST",
     body: JSON.stringify(body),
   })
@@ -122,7 +130,7 @@ export async function createSession(body: {
 export async function resumeSession(sessionId: string, prompt: string) {
   return request(
     `/sessions/${sessionId}/resume`,
-    z.object({ ok: z.boolean(), queued: z.boolean().optional() }),
+    ResumeSessionResponseSchema,
     {
     method: "POST",
     body: JSON.stringify({ prompt }),
@@ -197,7 +205,7 @@ export async function getLinkedSession(sourceId: string, sourceType: string) {
   const params = new URLSearchParams({ sourceId, sourceType })
   return request(
     `/sessions/linked?${params}`,
-    z.object({ session: SessionSummarySchema.nullable() }),
+    LinkedSessionResponseSchema,
   )
 }
 
@@ -221,10 +229,7 @@ export async function queryPluginItems(
   const qs = params.toString()
   return request(
     `/${pluginId}/items${qs ? `?${qs}` : ""}`,
-    z.object({
-      items: z.array(PluginItemSchema),
-      nextCursor: z.string().optional(),
-    }),
+    PluginItemsResponseSchema,
   )
 }
 
@@ -249,10 +254,7 @@ export async function queryPluginSubItems(
   const qs = params.toString()
   return request(
     `/${pluginId}/items/${itemId}/subitems${qs ? `?${qs}` : ""}`,
-    z.object({
-      items: z.array(PluginItemSchema),
-      nextCursor: z.string().optional(),
-    }),
+    PluginItemsResponseSchema,
   )
 }
 
@@ -262,7 +264,7 @@ export async function getFieldOptions(
 ) {
   return request(
     `/${pluginId}/fields/${fieldId}/options`,
-    z.object({ options: z.array(z.string()) }),
+    FieldOptionsResponseSchema,
   )
 }
 
@@ -287,7 +289,7 @@ export async function mutatePluginItem(
 // ---------------------------------------------------------------------------
 
 export async function getConnections() {
-  return request(`/connections`, z.object({ integrations: z.array(IntegrationSchema) }))
+  return request(`/connections`, ConnectionsResponseSchema)
 }
 
 export async function disconnectIntegration(integration: string) {
@@ -318,7 +320,7 @@ export async function setPreference(key: string, value: unknown) {
 export async function getUserProfiles(emails: string[]): Promise<{ users: { email: string; name: string; picture?: string }[] }> {
   return request(
     `/users?emails=${emails.map(encodeURIComponent).join(",")}`,
-    z.object({ users: z.array(UserProfileSchema) }),
+    UserProfilesResponseSchema,
   )
 }
 
@@ -327,14 +329,11 @@ export async function getUserProfiles(emails: string[]): Promise<{ users: { emai
 // ---------------------------------------------------------------------------
 
 export async function getWorkspaces() {
-  return request(`/workspaces`, z.object({
-    workspaces: z.array(WorkspaceSchema),
-    activeWorkspaceId: z.string().nullable(),
-  }))
+  return request(`/workspaces`, WorkspacesResponseSchema)
 }
 
 export async function setActiveWorkspace(workspaceId: string) {
-  return request(`/workspaces/active`, z.object({ id: z.string(), name: z.string() }), {
+  return request(`/workspaces/active`, ActiveWorkspaceResponseSchema, {
     method: "PUT",
     body: JSON.stringify({ workspaceId }),
   })
@@ -381,6 +380,6 @@ export async function updateMemberRole(workspaceId: string, email: string, role:
 export async function getAvailableUsers(workspaceId: string) {
   return request(
     `/workspaces/${workspaceId}/available-users`,
-    z.object({ users: z.array(UserProfileSchema) }),
+    UserProfilesResponseSchema,
   )
 }

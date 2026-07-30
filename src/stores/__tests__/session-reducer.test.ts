@@ -68,6 +68,34 @@ describe("reduceSnapshot", () => {
     expect(next.messageIds).toEqual([0, 3, 5])
   })
 
+  it("Scenario: Snapshot recovery reconciles duplicate intrinsic message identities", () => {
+    const earlier: SessionMessage = {
+      ...makeMsg(2, "assistant"),
+      message: { type: "assistant", uuid: "same-message", marker: "earlier" },
+    }
+    const later: SessionMessage = {
+      ...makeMsg(8, "assistant"),
+      message: {
+        type: "assistant",
+        uuid: "same-message",
+        marker: "later",
+        slug: "enriched",
+      },
+    }
+
+    const next = reduceSnapshot(undefined, {
+      session: makeSession(),
+      messages: [earlier, later],
+    })
+
+    expect(next.messageIds).toEqual([8])
+    expect(next.messageById[2]).toBeUndefined()
+    expect(next.messageById[8]!.message).toMatchObject({
+      marker: "later",
+      slug: "enriched",
+    })
+  })
+
   it("preserves pendingQuestion and presence from previous slice", () => {
     const prev: SessionSlice = {
       session: makeSession(),
