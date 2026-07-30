@@ -191,6 +191,7 @@ function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user
 const EMPTY_LOOKUPS = {
   toolResults: new Map<string, string>(),
   resolvedToolUseIDs: new Set<string>(),
+  erroredToolUseIDs: new Set<string>(),
   agentDescriptions: new Map<string, string>(),
   authorEmails: [] as string[],
   fileMap: new Map<string, string>(),

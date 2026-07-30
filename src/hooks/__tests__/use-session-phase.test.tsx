@@ -31,7 +31,7 @@ vi.mock("../use-session-mutations", () => ({
 vi.mock("@hammies/session-core", () => ({
   processTranscript: vi.fn((msgs: unknown[]) => ({
     classified: msgs,
-    lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), authorEmails: [], fileMap: new Map(), fileIdMap: new Map() },
+    lookups: { toolResults: new Map(), resolvedToolUseIDs: new Set(), erroredToolUseIDs: new Set(), authorEmails: [], fileMap: new Map(), fileIdMap: new Map() },
   })),
   filterVisible: vi.fn((msgs: unknown[]) => msgs),
 }))
