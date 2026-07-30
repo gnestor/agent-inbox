@@ -243,6 +243,7 @@ sessionRoutes.get("/:id", async (c) => {
         completedAt: session.completed_at,
         linkedSourceType: session.linked_source_type || null,
         linkedSourceId: session.linked_source_id || null,
+        linkedItemTitle: session.linked_item_title || null,
         triggerSource: session.trigger_source,
         project: sessions.projectLabel(wsPathForSeq),
         hasActiveProcess: sessions.isSessionRunning(session.id),

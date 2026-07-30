@@ -278,6 +278,7 @@ describe("session routes", () => {
         completed_at: "2026-01-01T00:00:00Z",
         linked_source_type: null,
         linked_source_id: null,
+        linked_item_title: null,
         trigger_source: "manual",
       })
       mockFindAgentSession.mockResolvedValue({
@@ -292,6 +293,7 @@ describe("session routes", () => {
       const data = await res.json()
       expect(data.session.id).toBe("s1")
       expect(data.session.status).toBe("complete")
+      expect(data.session.linkedItemTitle).toBeNull()
       expect(data.messages).toHaveLength(1)
     })
 

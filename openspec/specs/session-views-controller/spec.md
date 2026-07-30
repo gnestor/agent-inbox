@@ -66,6 +66,8 @@ Two behaviors changed with the move, both deliberate. The transcript no longer v
 #### Scenario: `GET /api/sessions/:id` returns session metadata + transcript with synthetic seq-0
 - **WHEN** the route serves a session detail
 - **THEN** it returns the DB session row plus the JSONL transcript transformed by `withInitialUserPrompt(transcript, sessionId, prompt, createdAt)` — prepending a synthetic user turn at sequence 0 if the transcript doesn't already start with `type: "user"`.
+- **AND** required nullable metadata such as `linkedItemTitle` is serialized as
+  `string | null`, never omitted.
 - **WHY:** the WS broadcast emits a seq-0 user turn for the initial prompt; REST has to mirror that shape or first paint and live state diverge.
 
 #### Scenario: `PATCH /api/sessions/:id` renames or marks-manually-titled

@@ -75,7 +75,11 @@ describe("plugin-loader", () => {
 
     it("Scenario: A plugin is a default export with `id` plus at least one of `query`/`hasSkills`/`itemToContext` — loads a valid query plugin", async () => {
       mockInboxPlugins(["q.ts"])
-      const plugin = makePlugin({ id: "q-plugin", name: "Q" })
+      const plugin = makePlugin({
+        id: "q-plugin",
+        name: "Q",
+        hasSkills: false,
+      })
       await loadPlugins("/fake/workspace", undefined, makeImporter({ "q.ts": plugin }))
       expect(getPlugin("q-plugin")).toBe(plugin)
 
