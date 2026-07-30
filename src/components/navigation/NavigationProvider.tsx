@@ -7,7 +7,7 @@
 //   4. Debounced IndexedDB persistence
 
 import { useEffect, useRef, type ReactNode } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router"
 import type { TabState, TabId } from "@/types/navigation"
 import { createDefaultNavigationState, createDefaultTabState, pluginIdFromTab } from "@/types/navigation"
 import { saveNavigationState, loadNavigationState } from "@/lib/navigation-storage"

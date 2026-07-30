@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, waitFor } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter } from "react-router"
 import { buildUrl, parseUrl, NavigationProvider } from "../NavigationProvider"
 import { useNavigationStore } from "@/lib/navigation-store"
 import { createDefaultNavigationState } from "@/types/navigation"

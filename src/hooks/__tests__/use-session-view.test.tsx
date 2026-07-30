@@ -11,7 +11,7 @@ const navActionsMock = {
 
 let currentLocation = { pathname: "/recent/s1" }
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useLocation: () => currentLocation,
 }))
 

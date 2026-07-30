@@ -251,7 +251,7 @@ describe("InboxResultPanel — draft", () => {
 
 import { ContextPanel } from "../ContextPanel.js"
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useNavigate: () => vi.fn(),
 }))
 

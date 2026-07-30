@@ -1,6 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { BrowserRouter } from "react-router-dom"
+import { BrowserRouter } from "react-router"
 import { ThemeProvider } from "@hammies/frontend"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
 import type { PersistedClient } from "@tanstack/query-persist-client-core"

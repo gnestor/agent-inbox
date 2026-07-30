@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest"
 import { renderHook, act } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter } from "react-router"
 import { NavigationProvider } from "@/components/navigation/NavigationProvider"
 import { useNavigation } from "../use-navigation"
 

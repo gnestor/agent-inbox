@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import type { ClassifiedMessage } from "@hammies/session-core"
-import { useLocation } from "react-router-dom"
+import { useLocation } from "react-router"
 import { useNavActions } from "@/lib/navigation-store"
 import { useFileAttachments } from "@hammies/frontend/components/session"
 import { uploadSessionFile } from "@/api/client"

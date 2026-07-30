@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useConnections } from "@/hooks/use-connections"
 import { IntegrationCard } from "./IntegrationCard"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { PanelHeader, SidebarButton } from "@/components/shared/PanelHeader"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
