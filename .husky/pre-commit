@@ -3,7 +3,6 @@
 # Set STRICT_ORPHANS=1 in the environment to also fail on uncovered source files.
 STRICT_ORPHANS=1 node ../../scripts/check-docs-coverage.mjs || exit 1
 
-# Inbox is an independent repository, so its own hook must invoke the
-# authoritative workspace gate. The gate includes both Inbox tsconfigs and
-# prevents regressions below 100% coverage or the introduction of `any`.
-npm run typecheck || exit 1
+# Inbox commits check only Inbox. The authoritative all-repository gate runs
+# once at pre-push.
+npm --prefix ../.. run typecheck -- --scope inbox-staged --quick || exit 1

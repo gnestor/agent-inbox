@@ -21,7 +21,8 @@
   },
   "scripts": {
     "prepare": "git config core.hooksPath .husky",
-    "typecheck": "npm --prefix ../.. run typecheck",
+    "typecheck": "npm --prefix ../.. run typecheck -- --scope inbox --quick",
+    "typecheck:all": "npm --prefix ../.. run typecheck",
     "dev": "concurrently --kill-others -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
     "dev:server": "bash scripts/with-node22.sh tsx watch --ignore '../agent/**/*' --ignore '../personal-agent/**/*' server/index.ts",
