@@ -3,6 +3,6 @@
 # Set STRICT_ORPHANS=1 in the environment to also fail on uncovered source files.
 STRICT_ORPHANS=1 node ../../scripts/check-docs-coverage.mjs || exit 1
 
-# Inbox commits check only Inbox. The authoritative all-repository gate runs
-# once at pre-push.
-npm --prefix ../.. run typecheck -- --scope inbox-staged --syntax-only || exit 1
+# Inbox commits semantically typecheck only staged files and reject their
+# explicit any types. Project-wide checks never run from a Git hook.
+npm --prefix ../.. run typecheck -- --scope inbox-staged || exit 1

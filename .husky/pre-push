@@ -1,3 +1,0 @@
-#!/bin/sh
-# Run the authoritative all-repository type-safety gate once per push.
-npm --prefix ../.. run typecheck || exit 1
