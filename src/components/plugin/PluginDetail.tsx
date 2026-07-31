@@ -155,7 +155,7 @@ function MessageRow({ item }: { item: PluginItem }) {
             </div>
           )}
           {markdown ? (
-            <Markdown className="prose prose-sm dark:prose-invert max-w-none text-sm">
+            <Markdown size="sm">
               {markdown}
             </Markdown>
           ) : (
@@ -202,7 +202,7 @@ function EmbeddedMessage({ msg }: { msg: Record<string, unknown> }) {
       {bodyFormat === "html" || body.startsWith("<") ? (
         <HtmlMessageBody html={body} />
       ) : bodyFormat === "markdown" ? (
-        <Markdown className="prose prose-sm dark:prose-invert max-w-none text-sm">
+        <Markdown size="sm">
           {body}
         </Markdown>
       ) : (
@@ -533,7 +533,7 @@ export function PluginDetail({
       />
       <div className="flex-1 overflow-y-auto p-4">
         {bodyContent && bodyFormat === "markdown" ? (
-          <Markdown className="prose prose-sm dark:prose-invert max-w-none">
+          <Markdown size="sm">
             {bodyContent}
           </Markdown>
         ) : bodyContent && (bodyFormat === "html" || bodyContent.startsWith("<")) ? (

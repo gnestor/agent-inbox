@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { Markdown } from "@hammies/frontend/components/Markdown"
 import { useLocation } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { getLinkedSession } from "@/api/client"
@@ -269,33 +268,15 @@ export function EmailThread({ threadId, title, sessionOpen }: EmailThreadProps) 
 }
 
 
-const REMARK_PLUGINS = [remarkGfm]
-
-const emailMarkdownComponents = {
-  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="break-all"
-    >
-      {children}
-    </a>
-  ),
-  img: ({ src, alt }: { src?: string; alt?: string }) => (
-    <img src={src} alt={alt ?? ""} className="max-w-full h-auto" />
-  ),
-}
-
+/** Email bodies render exactly like the Studio Email app's thread panel — same
+ *  shared component, same prose theme, same small type scale. Links open in a
+ *  new tab (this is content authored elsewhere) and `break-all` keeps long URLs
+ *  inside the panel. */
 function MarkdownBody({ markdown }: { markdown: string }) {
   return (
-    <ReactMarkdown
-      className="prose prose-sm max-w-none dark:prose-invert"
-      remarkPlugins={REMARK_PLUGINS}
-      components={emailMarkdownComponents}
-    >
+    <Markdown size="sm" linkTarget="_blank" className="prose-a:break-all">
       {markdown}
-    </ReactMarkdown>
+    </Markdown>
   )
 }
 

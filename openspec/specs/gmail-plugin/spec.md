@@ -39,6 +39,11 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 ### List row presentation
 `EmailListView` derives `fromDisplay` via `formatEmailAddress` (the sender's display name with the ` <addr>` stripped, falling back to the bare address). The date column uses `ListView`'s shared relative format (`formatRelativeDate`), consistent with every other list view.
 
+### Message bodies render through the shared platform `Markdown`
+A message body renders as markdown when `bodyFormat === "markdown"`, or when it is `plain` and `looksLikeMarkdown` finds bold/underline/heading markers; otherwise it is plain text in `whitespace-pre-wrap text-sm leading-relaxed`. The markdown path goes through `@hammies/frontend/components/Markdown` with `size="sm" linkTarget="_blank"` and `prose-a:break-all` — the same component and the same props the Studio Email app's thread panel uses, so the same thread looks identical in both apps.
+
+`EmailThread` previously held its own `ReactMarkdown` instance with bespoke `a`/`img` renderers and its own `prose prose-sm` classes. That copy is what let the two threads drift: Studio's picked up a responsive type scale (16px from `md` up) while this one stayed at 14px. Rendering is not this plugin's contract to define — do not reintroduce a local renderer here. The `img` override went away with it because Tailwind preflight already caps images at the container width, and links now open in a new tab through the shared `linkTarget` prop rather than a hand-written anchor.
+
 ### What is NOT in scope
 - The OAuth flow that produces the Google credential → `auth-and-sessions` and `credentials-vault`.
 - The HTML email sanitiser called inside `gmail.parseMessage` → `email-sanitizer`.
@@ -160,6 +165,7 @@ Labels are text — three is the empirical cap before list rows become unreadabl
 
 ## History
 
+- `EmailThread`'s local `ReactMarkdown` instance was replaced by the shared `@hammies/frontend/components/Markdown` (`size="sm" linkTarget="_blank"`, `prose-a:break-all`), the same component and props the Studio Email app's thread panel uses. The two copies had drifted — Studio's picked up a responsive type scale that rendered bodies at 16px from `md` up while this one stayed at 14px — which is what prompted consolidating both onto one renderer.
 - `searchThreads` now sorts each fetched page newest-first by the latest message's date. Gmail's `threads.list?q=` returns results in a search-relevance order (not by date — a thread with a message from today could land below week-old ones, and the order even differed between `is:starred` and `label:Starred`), so the list disagreed with Gmail's web UI and with Studio. Same fix applied to the Studio Email app.
 - The Gmail plugin was originally a server route (`server/routes/gmail.ts`) plus a frontend hook; collapsed into a plugin once the `Plugin` interface gained enough surface (`routes`, `components`, `itemToContext`) to express it without a special case.
 - The 5-minute thread cache was added after a profile of the SessionView's email-attachment widget showed every render hitting `users.threads.get` for the same thread; the same key (`gmail:thread:<id>`) is shared with the email-sanitizer's cached output.

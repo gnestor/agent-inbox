@@ -40,7 +40,7 @@ function ProseWidget({
   const content = getNestedValue(data, field)
   if (!content) return null
   return (
-    <Markdown className="prose prose-sm dark:prose-invert max-w-none">
+    <Markdown size="sm">
       {String(content)}
     </Markdown>
   )
