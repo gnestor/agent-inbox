@@ -23,11 +23,18 @@ vi.mock("child_process", () => ({
   }),
 }))
 
+// Paths the registration guard should treat as still present on disk.
+const existingPaths = new Set<string>()
+vi.mock("fs", () => ({
+  existsSync: (p: string) => existingPaths.has(p),
+}))
+
 beforeEach(() => {
   vi.clearAllMocks()
   workspacesStore = {}
   membersStore = []
   usersStore = []
+  existingPaths.clear()
 
   // Reset module-level `claimedUsers` set between tests
   vi.resetModules()
@@ -372,6 +379,66 @@ describe("registerWorkspaces", () => {
     expect(result).toEqual([])
     // No upserts, no deletes, just the final query
     expect(mockExecute).not.toHaveBeenCalled()
+  })
+
+  it("Scenario: A second live checkout cannot take over a workspace id — refuses and writes nothing", async () => {
+    // The shared row points at the main checkout, which still exists on disk.
+    mockQueryOne.mockResolvedValueOnce({
+      id: "agent",
+      name: "agent",
+      path: "/repos/hammies-workspace/packages/agent",
+      created_at: "2026-01-01",
+      updated_at: "2026-01-01",
+    })
+    existingPaths.add("/repos/hammies-workspace/packages/agent")
+
+    const { registerWorkspaces } = await importModule()
+
+    await expect(
+      registerWorkspaces(["/repos/.worktrees/wt-1/packages/agent"]),
+    ).rejects.toThrow(/already registered to \/repos\/hammies-workspace\/packages\/agent/)
+
+    // The guard runs before any write, so the shared row and its members survive.
+    expect(mockExecute).not.toHaveBeenCalled()
+  })
+
+  it("Scenario: A relocated workspace keeps its id — the old path is gone, so the row follows the directory", async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: "agent",
+      name: "agent",
+      path: "/old/location/packages/agent",
+      created_at: "2026-01-01",
+      updated_at: "2026-01-01",
+    })
+    // `existingPaths` deliberately does NOT contain the old path.
+    mockExecute.mockResolvedValue({ rowCount: 1 })
+    mockQuery.mockResolvedValueOnce([
+      { id: "agent", name: "agent", path: "/new/location/packages/agent", created_at: "2026-01-01", updated_at: "2026-01-01" },
+    ])
+
+    const { registerWorkspaces } = await importModule()
+    const result = await registerWorkspaces(["/new/location/packages/agent"])
+
+    expect(result[0]!.path).toBe("/new/location/packages/agent")
+    expect(mockExecute.mock.calls[0]![0]).toContain("INSERT INTO workspaces")
+  })
+
+  it("Scenario: Re-registering the same path is not a collision — the recorded path is unchanged", async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: "agent",
+      name: "agent",
+      path: "/repos/hammies-workspace/packages/agent",
+      created_at: "2026-01-01",
+      updated_at: "2026-01-01",
+    })
+    existingPaths.add("/repos/hammies-workspace/packages/agent")
+    mockExecute.mockResolvedValue({ rowCount: 1 })
+    mockQuery.mockResolvedValueOnce([])
+
+    const { registerWorkspaces } = await importModule()
+    await registerWorkspaces(["/repos/hammies-workspace/packages/agent"])
+
+    expect(mockExecute.mock.calls[0]![0]).toContain("INSERT INTO workspaces")
   })
 })
 

@@ -10,7 +10,9 @@ Register the directory paths that the inbox can act in, persist them in Postgres
 The server is launched with `--workspace <path>` (or repeated, defaulting to `../agent`). On boot `registerWorkspaces(paths)` reconciles the DB to that exact list — workspaces present in the DB but not in the boot args are deleted along with their `workspace_members` rows. The DB is the long-lived registry; the CLI args are the source of truth for *which subset is currently mounted*.
 
 ### Workspace ID = directory basename
-The `workspaces.id` column is `basename(path)`. This is intentional, not an oversight: the same directory mounted at a different path keeps its identity, sessions/credentials/members keyed by ID stay valid, and the ID is human-readable in logs. Two workspaces with colliding basenames cannot be registered simultaneously — `path` has a UNIQUE constraint that surfaces the collision at register time.
+The `workspaces.id` column is `basename(path)`. This is intentional, not an oversight: the same directory mounted at a different path keeps its identity, sessions/credentials/members keyed by ID stay valid, and the ID is human-readable in logs.
+
+The cost of basename identity is that two *different checkouts* of the same directory collide — a worktree's `…/<wt>/packages/agent` and the main checkout's `…/hammies-workspace/packages/agent` are both `agent`. A UNIQUE constraint on `path` does **not** surface this: the upsert conflicts on `id`, so it takes the `DO UPDATE SET path` branch and silently repoints the existing row, after which the reconcile step deletes every workspace the second instance did not list. That is how a worktree Inbox pointed at the shared database twice emptied the main Inbox's session list. `registerWorkspaces` therefore guards the collision explicitly (see the scenario below) rather than relying on a constraint that never fires.
 
 ### Auto-claim policy
 A workspace with zero members is "unclaimed" and the first authenticated user to touch it becomes admin. `claimUnclaimedWorkspaces(email)` runs on every active-workspace resolution but is gated by an in-process `claimedUsers: Set<string>` so it only runs once per user per process lifetime. The cache is cleared on `registerWorkspaces` (new workspaces may need claiming) and exposed via `resetClaimCache()`.
@@ -38,6 +40,23 @@ Demoting or removing the last admin would orphan the workspace. Both `DELETE /:i
 - **THEN** the cleanup DELETE statements are skipped (placeholder list would be empty SQL).
 - **AND** existing rows remain untouched.
 - **WHY:** prevents an accidental boot with no `--workspace` arg from wiping the registry.
+
+#### Scenario: A second live checkout cannot take over a workspace id
+- **WHEN** `registerWorkspaces(paths)` is called with a path whose `basename` matches an existing row
+- **AND** that row's recorded `path` is different AND still exists on disk
+- **THEN** registration throws before executing any statement, naming both paths and directing the caller to a scratch `DATABASE_URL`.
+- **AND** no upsert or reconcile DELETE runs, so the existing row and its `workspace_members` survive.
+- **WHY:** a worktree Inbox booted against the shared database would otherwise repoint the shared row at a path that vanishes with the worktree, then delete every workspace it did not itself list.
+
+#### Scenario: A relocated workspace keeps its id
+- **WHEN** an existing row's recorded `path` no longer exists on disk
+- **AND** a path with the same `basename` is registered from a new location
+- **THEN** the upsert proceeds and the row follows the directory to its new path.
+- **WHY:** the guard targets two *live* checkouts; a genuine move is the case basename identity exists to support.
+
+#### Scenario: Re-registering the same path is not a collision
+- **WHEN** the registered path equals the row's recorded path
+- **THEN** the upsert proceeds normally, so an ordinary restart is unaffected.
 
 #### Scenario: Display name comes from git remote, falls back to basename
 - **WHEN** `deriveWorkspaceName(path)` runs against a directory with `git remote get-url origin` succeeding

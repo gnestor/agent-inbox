@@ -1,4 +1,5 @@
 import { basename } from "path"
+import { existsSync } from "fs"
 import { execFileSync } from "child_process"
 import { query, queryOne, execute } from "../db/pool.js"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
@@ -37,9 +38,35 @@ export function deriveWorkspaceName(dirPath: string): string {
  * Register an explicit list of workspace directory paths.
  * Each path is upserted into the workspaces table.
  * Returns the list of registered workspaces.
+ *
+ * Refuses to run when an incoming path would take over the id of a workspace
+ * whose recorded path STILL EXISTS on disk. `id` is `basename(path)` by design
+ * (see openspec/specs/workspace/spec.md), so a worktree's `…/<wt>/packages/agent`
+ * and the main checkout's `…/hammies-workspace/packages/agent` both hash to
+ * `agent`. Without this guard the `ON CONFLICT(id) DO UPDATE SET path` below
+ * silently repoints the shared row at the worktree, and the reconcile step then
+ * DELETEs whatever the second instance did not register — which is how a
+ * worktree Inbox booted against the shared DB has twice emptied the main
+ * Inbox's session list.
+ *
+ * Relocating a workspace is still fine: the old path no longer exists, so the
+ * id legitimately follows the directory to its new home.
  */
 export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[]> {
   const now = new Date().toISOString()
+
+  for (const wsPath of paths) {
+    const id = basename(wsPath)
+    const existing = await queryOne<WorkspaceRow>("SELECT * FROM workspaces WHERE id = $1", [id])
+    if (existing && existing.path !== wsPath && existsSync(existing.path)) {
+      throw new Error(
+        `Workspace id "${id}" is already registered to ${existing.path}, which still exists. ` +
+          `Registering ${wsPath} would repoint that row and delete workspaces this boot does not list. ` +
+          `Two checkouts of the same directory cannot share one database — point this instance at a ` +
+          `scratch DATABASE_URL, or run against the main checkout instead.`,
+      )
+    }
+  }
 
   const upsertSql = `
     INSERT INTO workspaces (id, name, path, created_at, updated_at)
