@@ -1,13 +1,1 @@
-{
-  "extraKnownMarketplaces": {
-    "agent": {
-      "source": {
-        "source": "directory",
-        "path": "../agent/plugins"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "notion@agent": true
-  }
-}
+{}
