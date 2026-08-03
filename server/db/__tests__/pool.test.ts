@@ -21,10 +21,10 @@ const mockExecute = vi.fn(async () => ({ rowCount: 3 }))
 const mockWithTransaction = vi.fn(async (_pool: unknown, fn: (c: unknown) => unknown) => fn({}))
 
 vi.mock("@hammies/db", () => ({
-  getPool: (...args: unknown[]) => mockGetPool(...args),
-  query: (...args: unknown[]) => mockQuery(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args),
-  execute: (...args: unknown[]) => mockExecute(...args),
+  getPool: mockGetPool,
+  query: mockQuery,
+  queryOne: mockQueryOne,
+  execute: mockExecute,
   withTransaction: (...args: unknown[]) => mockWithTransaction(...(args as [unknown, (c: unknown) => unknown])),
 }))
 
@@ -37,6 +37,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   process.env.DATABASE_URL = OLD_ENV
 })
 
@@ -104,6 +105,40 @@ describe("query helpers", () => {
 })
 
 describe("initializeDatabase", () => {
+  it("Scenario: Transient database network failures retry without terminating startup", async () => {
+    vi.useFakeTimers()
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const transient = Object.assign(new Error("route unavailable"), {
+      code: "EHOSTUNREACH",
+    })
+    fakePool.query
+      .mockRejectedValueOnce(transient)
+      .mockResolvedValue({ rows: [], rowCount: 0 } as never)
+
+    const { initializeDatabase } = await import("../pool.js")
+    const initialization = initializeDatabase()
+    const result = expect(initialization).resolves.toBeUndefined()
+    await vi.runAllTimersAsync()
+    await result
+
+    expect(fakePool.query).toHaveBeenCalledTimes(9)
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("EHOSTUNREACH"),
+    )
+    warning.mockRestore()
+  })
+
+  it("Scenario: Non-transient migration failures still fail startup immediately", async () => {
+    const fatal = Object.assign(new Error("password authentication failed"), {
+      code: "28P01",
+    })
+    fakePool.query.mockRejectedValueOnce(fatal)
+
+    const { initializeDatabase } = await import("../pool.js")
+    await expect(initializeDatabase()).rejects.toBe(fatal)
+    expect(fakePool.query).toHaveBeenCalledTimes(1)
+  })
+
   it("Scenario: `initializeDatabase()` runs the migration list in order — reads each .sql and runs it on the pool in declared order", async () => {
     const { initializeDatabase } = await import("../pool.js")
     await initializeDatabase()

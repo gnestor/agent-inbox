@@ -12,6 +12,8 @@ The app started on SQLite (`better-sqlite3`) and migrated to Postgres. The migra
 ### Why a hand-rolled migration list, not a tool
 Migrations are an append-only array of `.sql` filenames in `pool.ts`. Each file is run on every `initializeDatabase()` call; every statement uses `IF NOT EXISTS` / `IF EXISTS` / column-presence guards (`information_schema.columns`) so re-running is a no-op. There is no migrations table, no version tracking, no down migrations. The trade-off: we cannot reorder or hot-fix a shipped migration — once a file is in the list and running in prod, it must stay idempotent forever.
 
+Startup treats network and PostgreSQL connection-class failures as recoverable. The database is hosted on the Mac Mini over Tailscale, so a route flap must leave the server process alive and retrying rather than strand `tsx watch` with no backend child. Authentication, configuration, and migration errors remain fatal.
+
 ### Why no server-side cache
 Migration `004_drop_api_cache.sql` removed the `api_cache` table. React Query handles caching client-side; the server returns fresh data on every request. Anything that *looks* like server caching (e.g. `backfill_state`, `body_extraction_log`) is **progress tracking**, not result memoization — it lets long-running batch jobs resume, not skip work that's still semantically required.
 
@@ -65,6 +67,15 @@ Migration `005_drop_session_messages.sql` removed the `session_messages` table. 
 - **THEN** every file in the migrations array is read from `server/db/migrations/` and executed in declared order.
 - **AND** the array is the source of truth — files added to the directory but not the array are ignored.
 
+#### Scenario: Transient database network failures retry without terminating startup
+- **WHEN** a migration query fails with a network or PostgreSQL connection-class error such as `EHOSTUNREACH`, `ECONNRESET`, `08006`, or `57P03`
+- **THEN** the same idempotent migration is retried with exponential backoff capped at five seconds.
+- **AND** startup remains alive until the database route recovers.
+
+#### Scenario: Non-transient migration failures still fail startup immediately
+- **WHEN** a migration fails with an authentication, SQL, schema, or other non-connection error
+- **THEN** `initializeDatabase()` rejects with the original error without retrying.
+
 #### Scenario: Re-running migrations is a no-op
 - **WHEN** `initializeDatabase()` runs against an already-initialized database
 - **THEN** every statement succeeds without altering schema or data, because each migration uses idempotent guards (`IF NOT EXISTS`, `IF EXISTS`, `information_schema.columns` checks).
@@ -106,12 +117,13 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 
 | Concern | Location |
 |---|---|
-| Pool construction, query helpers, transaction wrapper | [server/db/pool.ts:9-94](../../../server/db/pool.ts) |
-| Migration list (source of truth for which files run) | [server/db/pool.ts:71-80](../../../server/db/pool.ts) |
+| Pool construction, query helpers, transaction wrapper | [server/db/pool.ts](../../../server/db/pool.ts) |
+| Migration retry policy and ordered migration list | [server/db/pool.ts](../../../server/db/pool.ts) |
 | Migration files | [server/db/migrations/](../../../server/db/migrations/) |
 
 ## History
 
+- 2026-07-31: transient Tailscale/Postgres connection failures now retry with capped exponential backoff during migration startup; non-transient errors still fail immediately.
 - Initial Postgres pool + migration runner translated from SQLite (`001_initial_schema.sql`).
 - 002: workspaces + workspace_members.
 - 003: dropped legacy plugin-specific `linked_*` columns on `sessions` after backfill into `linked_source_type`/`linked_source_id`; dropped `notion_options` (Notion plugin now reads option metadata from the API directly).

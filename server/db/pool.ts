@@ -5,6 +5,64 @@ import { getPool as _getPool, query as _query, queryOne as _queryOne, execute as
 import type pg from "pg"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const TRANSIENT_DATABASE_ERROR_CODES = new Set([
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "08000",
+  "08001",
+  "08003",
+  "08004",
+  "08006",
+  "08007",
+  "08P01",
+  "57P01",
+  "57P02",
+  "57P03",
+])
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined
+  }
+  return typeof error.code === "string" ? error.code : undefined
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(250 * 2 ** Math.min(attempt - 1, 5), 5_000)
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
+}
+
+async function runMigration(
+  databasePool: pg.Pool,
+  file: string,
+  sql: string,
+): Promise<void> {
+  let attempt = 0
+  while (true) {
+    try {
+      await databasePool.query(sql)
+      return
+    } catch (error) {
+      const code = databaseErrorCode(error)
+      if (code === undefined || !TRANSIENT_DATABASE_ERROR_CODES.has(code)) {
+        throw error
+      }
+      attempt += 1
+      const retryInMs = retryDelayMs(attempt)
+      console.warn(
+        `[database] ${file} failed with ${code}; retrying in ${retryInMs}ms`,
+      )
+      await delay(retryInMs)
+    }
+  }
+}
 
 function pool(): pg.Pool {
   const connectionString = process.env.DATABASE_URL
@@ -105,7 +163,7 @@ export async function initializeDatabase(): Promise<void> {
   const p = pool()
   for (const file of migrations) {
     const sql = readFileSync(resolve(__dirname, "migrations", file), "utf-8")
-    await p.query(sql)
+    await runMigration(p, file, sql)
   }
   console.log("Database initialized (PostgreSQL)")
 }
