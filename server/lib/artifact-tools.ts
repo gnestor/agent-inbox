@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
+import { ARTIFACT_CODE_GUIDANCE } from "@hammies/frontend/lib/artifact-guidance"
 
 /**
  * Builds an in-process MCP server with `create_file` and `present_files` tools.
@@ -23,26 +24,14 @@ Supported renderable extensions:
 - .md → Markdown with syntax highlighting
 - .svg → SVG image
 
-For React (.jsx):
-- Use Tailwind utility classes for all styling
-- Import components from '@hammies/frontend/components/ui': Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Input, Textarea, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Separator, Switch, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell, TableCaption, Skeleton, Progress, Avatar, AvatarImage, AvatarFallback, Accordion, AccordionItem, AccordionTrigger, AccordionContent, Alert, AlertTitle, AlertDescription, Toggle, ToggleGroup, ToggleGroupItem, RadioGroup, RadioGroupItem, Spinner
-- Import 'cn' from '@hammies/frontend/lib/utils' ONLY. It is also re-exported from '@hammies/frontend/components/ui' but importing from both paths produces a duplicate-identifier compile error.
-- Import hooks from 'react': useState, useEffect, useRef, useCallback, useMemo
-- Import charts from 'recharts': LineChart, BarChart, AreaChart, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer
-- Import icons from 'lucide-react': any icon e.g. Search, Mail, Check, X, ChevronRight, etc.
-- NOTHING else resolves — not d3, lodash, framer-motion, date-fns, or any other package. The sandbox loads every module from the app origin and there is no CDN. Write the helper inline.
-- Export default your root component (or name it App)
-- NEVER use localStorage or sessionStorage — use React state instead
+For React (.jsx) — handle loading/error states with Skeleton and
+Alert variant="destructive", and otherwise follow this contract exactly:
 
-CRITICAL STYLE RULES:
-- Root element: NO bg-background, bg-card, text-foreground, or padding. The app provides these.
-- Typography: text-sm font-semibold (headings), text-xs text-muted-foreground (secondary). Never text-base or text-lg.
-- Colors: text-muted-foreground, hover:bg-secondary, bg-primary text-primary-foreground, bg-accent text-accent-foreground
-- Spacing: p-4, gap-2 (default), gap-4 (sections)
+${ARTIFACT_CODE_GUIDANCE}
 
-GLOBALS (do not import):
-- sendAction(intent, data?) — Send action to the agent. Agent receives: <artifact_action intent="...">data</artifact_action>
-- saveState(state) — Persist UI state across reloads. Restored via window.__onStateRestored.`,
+The root-element, typography, and globals rules above apply to .html artifacts too.
+Colours: text-muted-foreground, hover:bg-secondary, bg-primary text-primary-foreground,
+bg-accent text-accent-foreground. Spacing: p-4, gap-2 (default), gap-4 (sections).`,
     {
       description: z.string().describe("Why you are creating this file"),
       path: z.string().describe("File path — use /mnt/user-data/outputs/<name>.<ext>"),
