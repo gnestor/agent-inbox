@@ -21,8 +21,10 @@ Models often forget `import { useState } from 'react'` or destructure components
 ### Why a bare top-level `return` is wrapped in `App`
 The model frequently writes `return <div>...</div>` at column 0 instead of declaring a component. The transform detects this (unindented `return` keyword) and synthesizes `export default function App() { ...body... }` so mounting succeeds. Imports stay at top level — the wrapper only encloses the body.
 
-### Why iframe sandbox is `allow-scripts allow-same-origin`
+### Why iframe sandbox is `allow-scripts allow-same-origin allow-popups allow-downloads`
 The artifact must execute JS (`allow-scripts`) and load ES modules from the parent origin via the import map (`allow-same-origin`). CSP restricts `connect-src` to the host origin.
+
+`allow-downloads` is what lets an artifact hand the user a file. Without it Chrome refuses every download the frame initiates and reports it only to the console, so a download button silently does nothing and nothing surfaces to the agent — in Studio that cost a session three turns of working around a cause it could not observe. It grants nothing over the parent: with `allow-same-origin` this code already runs with the signed-in user's authority, and a download is visible in the browser's own UI. The same flag is on the `html` output and presented-`.html` frames, which are the same surface.
 
 **Correction (2026-07, on adopting the shared builder):** this section used to claim `srcDoc` gives the iframe a *null* origin, so the artifact could not reach parent cookies or `localStorage`, and that `connect-src` excluded our own API. Both were wrong. With `allow-same-origin` the frame **inherits the host origin** — the sandbox attribute is not a boundary against the parent, and same-origin requests carry the session cookie. Studio depends on that deliberately (artifacts call plugin API routes), which is why the shared `build-artifact-html.ts` lists the host origin in `connect-src`; Inbox now inherits the same policy. The real containment boundary is the `connect-src` allowlist, which is what stops artifact code exfiltrating to an arbitrary host. Treat artifact code as running with the signed-in user's authority.
 

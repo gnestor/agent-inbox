@@ -36,9 +36,17 @@ interface ArtifactFrameProps {
  * Sandboxed iframe that runs React artifacts written by the agent.
  *
  * Security model:
- * - sandbox="allow-scripts allow-same-origin" — enables ES module imports via import map
- * - CSP restricts connect-src to 'none' — no fetch/XHR from artifact code
- * - srcDoc gives the iframe a null origin — no access to parent cookies/localStorage
+ * - sandbox="allow-scripts allow-same-origin allow-popups allow-downloads" — allow-same-origin
+ *   enables ES module imports via import map; allow-downloads lets an artifact offer a file.
+ *   Without it Chrome refuses every download from here ("the frame initiating or instantiating
+ *   the download is sandboxed"), and says so only in the console — so a download button simply
+ *   does nothing, with nothing to tell the agent why.
+ * - CSP restricts connect-src to the host origin — see build-artifact-html.ts
+ * - With allow-same-origin the srcDoc iframe INHERITS the host origin: the sandbox attribute is
+ *   not a boundary against the parent, and same-origin requests carry the session cookie. Treat
+ *   artifact code as running with the signed-in user's authority; the connect-src allowlist is
+ *   the real containment. (This block used to claim a null origin and no cookie access — both
+ *   were wrong, and the spec was corrected in 2026-07 while this comment was not.)
  * - Action intents flow out via postMessage and are translated to session resumes
  *
  * State persistence:
@@ -181,7 +189,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         <iframe
           ref={iframeRef}
           srcDoc={srcDoc}
-          sandbox="allow-scripts allow-same-origin allow-popups"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-downloads"
           className={className ?? `w-full border-0 rounded-md ${showIframe ? "" : "opacity-0 absolute inset-0"}`}
           style={!className ? { height: iframeHeight } : undefined}
           title={title || "React Artifact"}

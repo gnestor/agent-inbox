@@ -159,7 +159,7 @@ function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) 
     <iframe
       ref={iframeRef}
       srcDoc={srcDoc}
-      sandbox="allow-scripts allow-popups"
+      sandbox="allow-scripts allow-popups allow-downloads"
       className={cn("w-full border-0 transition-[height]", fillPanel ? "h-full" : "")}
       style={!fillPanel ? { height } : undefined}
       title="HTML output"
@@ -424,7 +424,7 @@ function FileOutput({ data, sessionId, fillPanel }: { data: FileData; sessionId:
         <iframe
           ref={htmlRef}
           srcDoc={htmlSrcDoc}
-          sandbox="allow-scripts allow-popups"
+          sandbox="allow-scripts allow-popups allow-downloads"
           className={cn("w-full border-0 transition-[height]", fillPanel ? "flex-1 min-h-0" : "")}
           style={!fillPanel ? { height: htmlHeight } : undefined}
           title={name}
