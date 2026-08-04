@@ -18,7 +18,7 @@ export function buildArtifactMcpServer() {
     `Create a file that renders in the UI. After creating, call present_files to display it.
 
 Supported renderable extensions:
-- .jsx → React component (Tailwind CSS, shadcn/ui, recharts, lucide-react, d3, lodash available)
+- .jsx → React component (Tailwind CSS, shadcn/ui, recharts, lucide-react available)
 - .html → HTML page (JS/CSS inline in single file)
 - .md → Markdown with syntax highlighting
 - .svg → SVG image
@@ -30,7 +30,7 @@ For React (.jsx):
 - Import hooks from 'react': useState, useEffect, useRef, useCallback, useMemo
 - Import charts from 'recharts': LineChart, BarChart, AreaChart, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer
 - Import icons from 'lucide-react': any icon e.g. Search, Mail, Check, X, ChevronRight, etc.
-- Import from 'd3' or 'lodash' as needed
+- NOTHING else resolves — not d3, lodash, framer-motion, date-fns, or any other package. The sandbox loads every module from the app origin and there is no CDN. Write the helper inline.
 - Export default your root component (or name it App)
 - NEVER use localStorage or sessionStorage — use React state instead
 

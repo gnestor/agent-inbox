@@ -13,7 +13,7 @@ The agent has been trained on `create_file` + `present_files` as the artifact au
 `@babel/standalone` is ~37 MB. Loading it once in the parent (lazily, on first artifact view) lets every subsequent artifact reuse the same module; loading it per-iframe would multiply that cost by every artifact in a session. The transform runs through React Query keyed by source code so identical artifacts hit the cache instantly.
 
 ### Why imports are filtered to a tiny allowlist
-The iframe has no bundler — packages must resolve through the import map (`react`, `react-dom`, `@hammies/frontend/*`, `recharts`, `lucide-react`, `d3`, `lodash`). LLMs routinely hallucinate imports (`from 'antd'`, `from 'classnames'`); silently dropping non-allowlisted imports keeps the artifact runnable instead of throwing `Failed to resolve module specifier`.
+The iframe has no bundler — packages must resolve through the import map (`react`, `react-dom`, `react-dom/client`, `@hammies/frontend/components/ui`, `@hammies/frontend/lib/utils`, `recharts`, `lucide-react`), every entry served from the app origin. LLMs routinely hallucinate imports (`from 'antd'`, `from 'classnames'`); silently dropping non-allowlisted imports keeps the artifact runnable instead of throwing `Failed to resolve module specifier`.
 
 ### Why React/`@hammies/frontend`/`cn` imports are auto-injected
 Models often forget `import { useState } from 'react'` or destructure components from a hallucinated `Components` global. Rather than fail, the transform scans the body for known React APIs and `@hammies/frontend` component names and prepends a single consolidated import line. Side-effect: artifacts can be written as bare JSX with no imports at all and still work.
@@ -22,7 +22,7 @@ Models often forget `import { useState } from 'react'` or destructure components
 The model frequently writes `return <div>...</div>` at column 0 instead of declaring a component. The transform detects this (unindented `return` keyword) and synthesizes `export default function App() { ...body... }` so mounting succeeds. Imports stay at top level — the wrapper only encloses the body.
 
 ### Why iframe sandbox is `allow-scripts allow-same-origin`
-The artifact must execute JS (`allow-scripts`) and load ES modules from the parent origin via the import map (`allow-same-origin`). CSP restricts `connect-src` to the host origin plus esm.sh/jsdelivr.
+The artifact must execute JS (`allow-scripts`) and load ES modules from the parent origin via the import map (`allow-same-origin`). CSP restricts `connect-src` to the host origin.
 
 **Correction (2026-07, on adopting the shared builder):** this section used to claim `srcDoc` gives the iframe a *null* origin, so the artifact could not reach parent cookies or `localStorage`, and that `connect-src` excluded our own API. Both were wrong. With `allow-same-origin` the frame **inherits the host origin** — the sandbox attribute is not a boundary against the parent, and same-origin requests carry the session cookie. Studio depends on that deliberately (artifacts call plugin API routes), which is why the shared `build-artifact-html.ts` lists the host origin in `connect-src`; Inbox now inherits the same policy. The real containment boundary is the `connect-src` allowlist, which is what stops artifact code exfiltrating to an arbitrary host. Treat artifact code as running with the signed-in user's authority.
 
@@ -55,7 +55,7 @@ The code editor panel (producer) writes raw JSX as the user types; the artifact 
 
 #### Scenario: Tool descriptions ship the entire artifact authoring contract
 - **WHEN** the agent reads `create_file`'s tool description
-- **THEN** the description enumerates supported extensions (`.jsx`, `.html`, `.md`, `.svg`), the available React imports (Tailwind classes, shadcn/ui component list, recharts/lucide/d3/lodash), the project style rules (no `bg-background` on root, `text-sm`/`text-xs` only), and the `sendAction` / `saveState` globals.
+- **THEN** the description enumerates supported extensions (`.jsx`, `.html`, `.md`, `.svg`), the available React imports (Tailwind classes, shadcn/ui component list, recharts/lucide-react, and that nothing else resolves), the project style rules (no `bg-background` on root, `text-sm`/`text-xs` only), and the `sendAction` / `saveState` globals.
 - **WHY:** the model writes artifacts purely from the tool description — there is no parent prompt augmenting it.
 
 #### Scenario: Tool handlers return acknowledgement, not the file contents
@@ -79,13 +79,13 @@ that Inbox's copy never received; that drift is what forced the consolidation.
 
 #### Scenario: Document includes import map, Tailwind CDN, theme @theme block
 - **WHEN** `buildArtifactHtml(code, title, exportedName, transformError)` runs
-- **THEN** the returned HTML contains an `<script type="importmap">` mapping `react`, `react-dom`, `@hammies/frontend/*` to same-origin `/@hammies/*.mjs` URLs and `recharts`/`lucide-react`/`d3`/`lodash` to esm.sh URLs.
-- **AND** Tailwind CDN is loaded via `<script src="${origin}/@hammies/tailwindcss.js">` and a `@theme inline { ... }` block declares colour/radius/font tokens that mirror parent CSS variables.
+- **THEN** the returned HTML contains a `<script type="importmap">` mapping `react`, `react-dom`, `react-dom/client`, `@hammies/frontend/components/ui`, `@hammies/frontend/lib/utils`, `recharts`, and `lucide-react` — all of them to same-origin `/@hammies/*.mjs` URLs.
+- **AND** Tailwind is loaded via `<script src="${origin}/@hammies/tailwindcss.js">` and a `@theme inline { ... }` block declares colour/radius/font tokens that mirror parent CSS variables.
 
 #### Scenario: CSP restricts code execution and network
 - **WHEN** the document is rendered
-- **THEN** the meta CSP allows scripts only from same-origin + esm.sh + jsdelivr; styles inline + same-origin; `connect-src` limited to esm.sh / jsdelivr; `default-src 'none'`.
-- **WHY:** without an explicit CSP the iframe could `fetch('/api/...')` and exfiltrate session data via `allow-same-origin`.
+- **THEN** the meta CSP allows scripts and `connect-src` from the host origin only; styles inline + same-origin; `default-src 'none'`.
+- **WHY:** without an explicit CSP the iframe could `fetch('/api/...')` and exfiltrate session data via `allow-same-origin`. Naming a CDN here was strictly harmful: a `srcdoc` iframe inherits the embedding page's CSP, which lists no CDN, so the entry advertised a capability that silently failed — and a module-resolution failure fires no `error` event, so the artifact rendered blank with nothing in the console. See [artifact-runtime](../../../../frontend/openspec/specs/artifact-runtime/spec.md); `recharts` and `lucide-react` are now bundled same-origin and `d3`/`lodash` are gone.
 
 #### Scenario: Theme vars sync from parent on load and on theme change
 - **WHEN** the iframe loads

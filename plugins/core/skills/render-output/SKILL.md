@@ -69,8 +69,7 @@ Single tool call with `type` and `data`. Best for non-interactive output:
 - **`cn` utility** — `import { cn } from "@hammies/frontend/lib/utils"` ONLY. Do NOT also import `cn` from `@hammies/frontend/components/ui` — it's re-exported there for convenience but importing from both paths produces a duplicate-identifier compile error.
 - **Charts** — `import { LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, Pie, Cell, ResponsiveContainer } from "recharts"`
 - **Icons** — `import { Search, Mail, Check, X, ... } from "lucide-react"`
-- **Data viz** — `import * as d3 from "d3"`
-- **Lodash** — `import _ from "lodash"`
+- **Nothing else** — d3, lodash, framer-motion, date-fns and every other package are unavailable. The sandbox resolves every module from the app origin and there is no CDN, so an import of anything not listed above is dropped and leaves an undefined identifier. Write the helper inline.
 
 **IMPORTANT:** Always use ES module `import` syntax. NEVER use `require()` or `window["..."]`.
 
