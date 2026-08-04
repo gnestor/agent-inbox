@@ -169,15 +169,22 @@ function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) 
 
 // --- Table ---
 
+/**
+ * `searchable` tracks `fillPanel`: the filter belongs to the EXPANDED grid, not
+ * to the inline one. Inline, a table is one block in a scrolling transcript —
+ * a search field there is chrome on a preview, and a row of them down a long
+ * transcript reads as noise. Expanded into its own panel the grid IS the view,
+ * and filtering it is the point of having opened it.
+ */
 function TableOutput({ data, fillPanel }: { data: TableData; fillPanel?: boolean }) {
   if (fillPanel) {
     return (
       <div className="h-full">
-        <DataTable columns={data.columns} rows={data.rows} paginated={false} />
+        <DataTable columns={data.columns} rows={data.rows} paginated={false} searchable />
       </div>
     )
   }
-  return <DataTable columns={data.columns} rows={data.rows} pageSize={20} />
+  return <DataTable columns={data.columns} rows={data.rows} pageSize={20} searchable={false} />
 }
 
 // --- JSON tree ---
