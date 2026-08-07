@@ -8,7 +8,7 @@ sources:
   - server/routes/connections.ts
 spec: openspec/specs/credentials-vault/spec.md
 status: generated
-sources_hash: "2eadb2cd106567e8a2d96a87bf8f70371bb866e13dfdbbb34a11a04fecb9d1c1"
+sources_hash: "1f584bc1c51962691ab18f9ac0f31ed86f82a4789672af150cf8cd720bd0953c"
 ---
 
 # Credentials Vault
@@ -46,9 +46,15 @@ The callback endpoint looks up the state, deletes it, and checks that it has not
 
 ## Refreshing tokens
 
-Token refresh and expiry logic live in `@hammies/auth`. Inbox's job is wiring, not policy. The credential proxy's `resolveCredential` callback calls `maybeRefreshToken` first, then falls back to a plain lookup if no refresh happened. See [Credential Proxy](credential-proxy.md) for how outbound agent traffic uses the resolved token.
+Token refresh and expiry logic live in `@hammies/auth`. Inbox's job is wiring, not policy. The credential proxy's `resolveCredential` callback branches on the integration's scope, and the vault re-exports both paths.
+
+A workspace-scope integration resolves through `resolveWorkspaceAccessToken`, which is type-aware. It mints a short-lived scoped access token from a stored service-account key, refreshes a stored OAuth token, or returns a static key, so the proxy never branches on auth type itself. That distinction matters most for `google`: its stored value is a service-account JSON blob, which is never a usable bearer token on its own.
+
+A user-scope integration — Gmail, QuickBooks — stays on the per-user OAuth path. It calls `maybeRefreshToken` first, then falls back to a plain lookup for a credential that cannot be refreshed. `resolveConfigVar` supplies config-backed extra headers, such as Google Ads' `developer-token`, resolved inside this trusted process so the raw value never rides in an agent's environment.
 
 Inbox supplies the lock primitive, `pgAdvisoryLockAdapter(getVaultPool())`, the same helper studio uses. Both processes hash their lock key against the identical vault pool, so a refresh in one process blocks a concurrent refresh in the other. That serialization is what stopped the QuickBooks refresh-token chain from forking a second time.
+
+See [Credential Proxy](credential-proxy.md) for how outbound agent traffic uses the resolved token.
 
 ## Checking and removing connections
 

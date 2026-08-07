@@ -11,7 +11,7 @@ sources:
   - src/lib/crash-telemetry.ts
 spec: openspec/specs/health-rate-limit-logging/spec.md
 status: generated
-sources_hash: "56597ff6adf267eb10d7117e748fca13e87ad4d7e82469241e32f45fa18ac117"
+sources_hash: "4d8d1d867df3a9600cc237195539ce37e232996f8c9031dc8770fe6db4bd25d1"
 ---
 
 # Health, Rate Limit, Logging

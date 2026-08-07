@@ -15,7 +15,7 @@ sources:
   - tests/e2e/session-multi-tab.spec.ts
 spec: openspec/specs/session-streaming/spec.md
 status: generated
-sources_hash: "2333e86002965782f819a4ef32aab10005f5e14919dd8b40c7301b7462618a82"
+sources_hash: "f8283774039d946617707c44462a1aec0d3c4d7a5940731cd1e91adcf72a0046"
 ---
 
 # Session Streaming Protocol

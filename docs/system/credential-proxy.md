@@ -10,7 +10,7 @@ sources:
   - server/lib/__tests__/credential-proxy-integration.test.ts
 spec: openspec/specs/credential-proxy/spec.md
 status: generated
-sources_hash: "078056305dc63a9661508b1ce5bdb043cc55bc640001b759d1d109666fbedde6"
+sources_hash: "54951858900cc72e96f12685e00df9f3c02934c816760cda7072a20937bbced6"
 ---
 
 # Credential Proxy
@@ -42,18 +42,20 @@ Agent-emitted skills are arbitrary code. Handing a skill a raw token in `process
 
 ## Deciding which hosts to intercept
 
-`shouldIntercept(host)` checks the host against `INTERCEPTED_HOSTS`, a fixed allowlist in `credential-proxy.ts`. A host matches on exact equality or as a subdomain (`mystore.shopify.com` matches `shopify.com`). `hostToIntegration(host)` then maps the matched host to the vault's integration key. Order matters here: the mapper checks specific subdomains like `generativelanguage.googleapis.com` before the catch-all `googleapis.com` pattern. Gemini traffic therefore does not fall through to the generic Google credential.
+Neither the host list nor the host-to-integration map lives in this package. Both derive from the live `@hammies/auth` integration registry, which each plugin populates through its `studio.integrations[].proxy` declaration. `shouldIntercept` and `hostToIntegration` delegate to the shared `resolveHostRule`, the same resolver Studio's own proxy uses. The most specific matching pattern wins: an exact host beats a subdomain match, and a deeper subdomain beats a shallower one.
+
+The map used to be hardcoded here, and it drifted the moment a plugin added or narrowed a host pattern. Its `googleapis.com` catch-all absorbed every Google host into one `google` integration. `googleads.googleapis.com` needs its own credential plus a `developer-token` header; BigQuery, Analytics Data, Gmail, Calendar, and Sheets each belong to a distinct integration. All of them received the `google` service-account row's raw stored value, which is a JSON key blob — unmintable and unusable as a bearer token.
 
 ## Injecting a credential
 
-Once the proxy resolves an integration name, `INTEGRATION_AUTH` picks one of four injection strategies:
+The matched rule carries its own `inject` shape, so the proxy reads the strategy from the registry rather than from a table of its own. `formatAuthHeader` builds the line. Four strategies exist:
 
 - **Bearer** — most integrations (Notion, GitHub, Slack, Google, Air, QuickBooks, Pinterest) get `Authorization: Bearer <token>`.
 - **Header** — Shopify and Klaviyo want the token in a named header instead (`X-Shopify-Access-Token`, `Klaviyo-API-Key`).
 - **Basic** — Gorgias encodes an email from the credential's `extras` alongside the token as `Basic base64(email:token)`.
 - **Query** — Meta, Instagram, and Gemini accept a token only in the URL. The proxy rewrites the request line's query string, not a header.
 
-The proxy replaces an existing `Authorization` (or integration-specific) header rather than sending two. When `resolveCredential` returns null, the proxy forwards the request unchanged and lets the upstream API return its own 401.
+The proxy replaces an existing `Authorization` (or integration-specific) header rather than sending two. A rule may also declare config-backed extra headers, such as Google Ads' `developer-token`. The proxy drops whatever the caller sent under those names and pushes the resolved value, so a placeholder in an agent's environment cannot survive into the upstream request. When `resolveCredential` returns null, the proxy forwards the request unchanged and lets the upstream API return its own 401.
 
 ## Terminating TLS for an intercepted host
 
