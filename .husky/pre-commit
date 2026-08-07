@@ -3,6 +3,13 @@
 # Set STRICT_ORPHANS=1 in the environment to also fail on uncovered source files.
 STRICT_ORPHANS=1 node ../../scripts/check-docs-coverage.mjs || exit 1
 
+# System-docs structural gate over this repo's docs/system tree: frontmatter,
+# source claims, relative links, index-pages-link. STRICT_DOC_HOLES=1 — the
+# tree is seeded, so a new source file no page claims fails the commit. Claim
+# it on the page that explains it. Hash-staleness stays advisory (the render
+# queue). See ../../docs/docs-pipeline.md.
+STRICT_DOC_HOLES=1 node ../../scripts/check-system-docs.mjs || exit 1
+
 # Inbox commits semantically typecheck only staged files and reject their
 # explicit any types. Project-wide checks never run from a Git hook.
 npm --prefix ../.. run typecheck -- --scope inbox-staged || exit 1
