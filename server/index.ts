@@ -46,8 +46,15 @@ import { registerWorkspaces, resolveActiveWorkspace } from "./lib/workspace-scan
 import type { WorkspaceContext } from "./lib/workspace-context.js" // used in AppBindings below
 import { workspaceRoutes, WORKSPACE_COOKIE } from "./routes/workspaces.js"
 import { createCredentialProxy, type ResolvedCredential } from "./lib/credential-proxy.js"
-import { resolveCredential, seedWorkspaceCredentials, configureCredentialStore, maybeRefreshToken } from "./lib/vault.js"
-import { registerPluginIntegrations, discoverWorkspacePluginIntegrations } from "./lib/integrations.js"
+import {
+  resolveCredential,
+  seedWorkspaceCredentials,
+  configureCredentialStore,
+  maybeRefreshToken,
+  resolveWorkspaceAccessToken,
+  resolveConfigVar,
+} from "./lib/vault.js"
+import { registerPluginIntegrations, discoverWorkspacePluginIntegrations, getIntegration } from "./lib/integrations.js"
 import { pluginAssetRoutes, inboxPluginAssetUrl } from "./routes/plugin-assets.js"
 import { startCredentialKeepAlive, pgAdvisoryLockAdapter } from "@hammies/auth/server"
 import { getSession } from "./lib/auth.js"
@@ -208,14 +215,43 @@ createCredentialProxy({
     const session = await getSession(sessionToken)
     if (!session) return null
 
-    const refreshed = await maybeRefreshToken(session.user.email, integration)
-    const token = refreshed ?? await resolveCredential(session.user.email, workspacePaths[0]!, integration)
+    const config = getIntegration(integration)
+    const workspaceId = registeredWorkspaces[0]?.id ?? ""
+
+    // Workspace-scope integrations resolve through resolveWorkspaceAccessToken,
+    // which is type-aware: it mints a short-lived scoped access token from the
+    // stored service-account key for a `service_account` row (e.g. `google`'s
+    // Analytics/Search Console SA — the raw stored value there is a JSON blob,
+    // never a usable Bearer token), refreshes a stored OAuth token, or returns
+    // a static key — the proxy never has to branch on auth type itself. This
+    // mirrors Studio's own credential proxy (packages/studio/src/server/
+    // credentials/proxy.ts `resolveForProxy`). User-scope integrations (Gmail,
+    // QuickBooks, …) stay on the per-user OAuth refresh path, falling back to
+    // the legacy vault lookup for a non-OAuth-refreshable user credential.
+    const token =
+      config?.scope === "workspace"
+        ? await resolveWorkspaceAccessToken(workspaceId, integration)
+        : (await maybeRefreshToken(session.user.email, integration)) ??
+          (await resolveCredential(session.user.email, workspaceId, integration))
     if (!token) return null
 
     // Gorgias Basic auth needs the email alongside the API token
     if (integration === "gorgias") {
       const email = getCredentials().GORGIAS_EMAIL
       if (email) return { token, extras: { email } }
+    }
+
+    // Config-backed extra headers (e.g. Google Ads' `developer-token`),
+    // resolved inside this trusted process so the raw value never rides in
+    // the agent's environment.
+    const proxyHeaders = config?.proxy?.headers
+    if (proxyHeaders?.length) {
+      const extras: Record<string, string> = {}
+      for (const { valueEnv } of proxyHeaders) {
+        const value = await resolveConfigVar(session.user.email, workspaceId, integration, valueEnv)
+        if (value) extras[valueEnv] = value
+      }
+      return { token, extras }
     }
 
     return { token }

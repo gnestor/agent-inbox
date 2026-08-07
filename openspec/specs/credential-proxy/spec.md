@@ -4,6 +4,8 @@
 
 A localhost MITM HTTPS proxy that lets agent subprocesses make authenticated calls to third-party APIs (Notion, GitHub, Slack, Google, Shopify, Klaviyo, Meta, etc.) without ever seeing user credentials. The proxy authenticates the agent by a session token carried in `Proxy-Authorization`, looks up the matching credential from the vault, and rewrites the request — Bearer header, custom header, Basic auth, or query param — based on a per-[integration](../integrations/spec.md) policy. Agent subprocesses opt in by inheriting `HTTPS_PROXY`, `NO_PROXY` (bypass list for hosts the proxy doesn't intercept), `NODE_EXTRA_CA_CERTS`, and a `NODE_OPTIONS --import` preload that wires `undici`'s global dispatcher.
 
+The host→integration map and the per-integration injection rule are **not** hardcoded here — they are derived, per CONNECT, from the live `@hammies/auth` integration registry via `resolveHostRule` (`packages/auth/src/server/proxy/rules.ts`), the same function Studio's own credential proxy resolves. This package's `hostToIntegration`/`shouldIntercept`/`interceptedProxyHosts` are thin wrappers over that shared resolver, parameterized by an optional `rules` array for hermetic tests.
+
 ## Context
 
 ### Why a MITM proxy and not a per-skill SDK
@@ -13,7 +15,10 @@ Skills emitted by the agent are arbitrary code. If each skill had to load a cred
 HTTPS clients send `CONNECT api.notion.com:443` to the proxy, expecting a tunnel. To rewrite headers we have to terminate TLS — which means we need a cert for `api.notion.com` that the agent trusts. We generate a self-signed CA at startup, sign a per-host cert on demand, and feed the CA bundle into the agent via `NODE_EXTRA_CA_CERTS`. Hosts not on the intercept allowlist get a transparent socket-pipe tunnel — no decryption, no rewrite.
 
 ### Why per-integration auth methods
-Real APIs use four flavours of credential injection: standard Bearer (`Authorization: Bearer ...`), custom header (Shopify's `X-Shopify-Access-Token`, Klaviyo's `Klaviyo-API-Key`), Basic auth where one side comes from `extras` (Gorgias uses `email:token`), and query param (Meta `access_token=...`, Gemini `key=...`). A single `INTEGRATION_AUTH` map drives all four — adding a new integration is one line, not a new code path.
+Real APIs use four flavours of credential injection: standard Bearer (`Authorization: Bearer ...`), custom header (Shopify's `X-Shopify-Access-Token`, Klaviyo's `Klaviyo-API-Key`), Basic auth where one side comes from `extras` (Gorgias uses `email:token`), and query param (Meta `access_token=...`, Gemini `key=...`). Each integration declares its `inject` rule (and, if it needs one, additional config-backed `headers` — Google Ads' `developer-token`) in its own plugin's `studio.integrations[].proxy` manifest; the shared `@hammies/auth` registry aggregates every plugin's declaration into one `ProxyRule[]`, and `formatAuthHeader`/`formatAdditionalHeaders` (`packages/auth/src/server/proxy/rules.ts`) drive all four from that one rule — adding a new integration is a plugin manifest entry, not a new code path here.
+
+### Why the host map is registry-driven, not a local hardcoded list
+An early version of this proxy carried its own `INTERCEPTED_HOSTS` array and a `hostToIntegration` function with a catch-all `*.googleapis.com → "google"` branch. That one catch-all silently absorbed every Google host regardless of which plugin actually owned it: `googleads.googleapis.com` (the `google-ads` integration's own OAuth credential, plus a `developer-token` header this proxy had no way to attach) and `gmail.googleapis.com`/`sheets.googleapis.com`/etc. (the `google-workspace` integration's user-OAuth credential) all got the `google` service-account row's *raw stored value* injected as a Bearer token — a JSON blob, not a token, and not even the credential those APIs expect. Fixed by deleting the local map entirely and resolving every host through the same `resolveHostRule` the Studio-hosted proxy uses (packages/studio/src/server/credentials/proxy.ts): the most-specific matching host pattern across every registered integration wins, so a plugin narrowing or adding a host can't drift from what this proxy intercepts.
 
 ### Why the session token rides in `Proxy-Authorization`, not a custom header
 HTTP clients (curl, undici, Python `requests`) automatically encode the userinfo of the proxy URL into a Basic `Proxy-Authorization` header when given `HTTPS_PROXY=http://<token>@127.0.0.1:<port>`. Reusing the standard mechanism means skills don't need a custom client config — they inherit `HTTPS_PROXY` via env and the rest is automatic. We accept Bearer too for clients that support it, but Basic-with-empty-password is the universal path.
@@ -40,7 +45,8 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 - The credential vault itself (encryption, refresh) → `credentials-vault` spec.
 - Session-token issuance and validation → `auth-and-sessions` spec.
 - How the agent subprocess inherits the proxy env vars at spawn time → `session-manager` spec (`getProxyEnv` consumer).
-- Per-integration OAuth refresh logic invoked by `resolveCredential` → `integrations` spec.
+- Per-integration OAuth refresh logic, and how `resolveCredential`'s callback picks between `resolveWorkspaceAccessToken` (service-account minting, workspace OAuth/API-key) and `maybeRefreshToken` (user OAuth) by integration scope → `credentials-vault` spec.
+- The integration registry itself (`IntegrationConfig`, `proxy.hosts`/`proxy.inject`/`proxy.headers`, `resolveHostRule`) → `@hammies/auth`'s `integrations` spec.
 
 ## Requirements
 
@@ -48,15 +54,20 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 
 #### Scenario: Only allowlisted hosts are MITM-intercepted
 - **WHEN** the agent issues a CONNECT for an arbitrary host
-- **THEN** `shouldIntercept(host)` returns true iff `host === h` or `host.endsWith(\`.${h}\`)` for some `h` in `INTERCEPTED_HOSTS`.
+- **THEN** `shouldIntercept(host)` returns true iff `host` matches (exactly, or as a `.`-suffixed subdomain) one of the host patterns declared across every registered integration's `proxy.hosts` — the live `@hammies/auth` registry, unless an explicit `rules` array is passed (tests).
 - **AND** non-matching hosts get a transparent TCP pipe — the proxy never touches the bytes.
 
 #### Scenario: `hostToIntegration` maps hostnames to vault integration names
 - **WHEN** an intercepted CONNECT arrives
-- **THEN** `hostToIntegration(host)` returns the vault key — e.g. `api.notion.com → "notion"`, `*.shopify.com → "shopify"`, `generativelanguage.googleapis.com → "gemini"`, all other `*.googleapis.com → "google"`.
-- **AND** the order of checks matters: specific subdomains (`generativelanguage.googleapis.com`) are tested before catch-all patterns (`googleapis.com`).
+- **THEN** `hostToIntegration(host)` resolves the host against every registered integration's declared `proxy.hosts` and returns the id of the most-specific match — e.g. `api.notion.com → "notion"`, `*.shopify.com → "shopify"`.
+- **AND** the most-specific pattern wins regardless of registry order: an exact host match beats a subdomain match, and a deeper subdomain pattern beats a shallower one — so `generativelanguage.googleapis.com → "gemini"` even though a broader Google integration's pattern would also match it as a suffix.
 
-### Auth-method dispatch (`INTEGRATION_AUTH`)
+#### Scenario: googleapis.com hosts resolve per-integration, not to one catch-all
+- **WHEN** an intercepted CONNECT targets a `*.googleapis.com` host
+- **THEN** `hostToIntegration` resolves it to whichever Google integration actually declared that specific host, not a single shared `"google"` bucket: `analyticsdata.googleapis.com`/`analyticsadmin.googleapis.com`/`searchconsole.googleapis.com → "google"` (service-account), `bigquery.googleapis.com → "google-bigquery"` (a separate service-account row), `gmail.googleapis.com`/`calendar.googleapis.com`/`sheets.googleapis.com`/`www.googleapis.com`/`docs.googleapis.com`/`trends.googleapis.com → "google-workspace"` (user OAuth), `googleads.googleapis.com → "google-ads"` (workspace OAuth, with a `developer-token` header), `generativelanguage.googleapis.com → "gemini"` (API key via query param).
+- **WHY:** these are five distinct integrations with different credentials, different auth types (service-account vs. OAuth vs. API key), and — for `google-ads` — an additional required header. Resolving all of them to one integration id injects the wrong credential (or an unmintable raw one) for four of the five.
+
+### Auth-method dispatch (registry-driven `inject` rules)
 
 #### Scenario: Bearer integrations get `Authorization: Bearer <token>`
 - **WHEN** the integration is `notion`, `github`, `slack`, `google`, `air`, `quickbooks`, or `pinterest`
@@ -75,6 +86,11 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 - **WHEN** the integration is `meta`, `instagram`, or `gemini`
 - **THEN** the proxy parses the request line, sets `URLSearchParams[param] = cred.token` (`access_token` for Meta/Instagram, `key` for Gemini), and emits a new request line with the updated `pathname + search`.
 - **AND** no auth header is added or modified.
+
+#### Scenario: A workspace-OAuth integration's config-backed header rides alongside its bearer token
+- **WHEN** the integration is `google-ads` (a `bearer`-inject integration whose registry entry also declares `proxy.headers: [{ header: "developer-token", valueEnv: "GOOGLE_ADS_DEVELOPER_TOKEN" }]`)
+- **THEN** the proxy adds/replaces `Authorization: Bearer <token>` **and** adds `developer-token: <value>` from `cred.extras.GOOGLE_ADS_DEVELOPER_TOKEN`, dropping any `developer-token` line the caller sent — the config-backed value always wins, never a caller-supplied placeholder.
+- **AND** `cred.extras` is populated by `resolveCredential`'s caller (`server/index.ts`, resolving each declared `valueEnv` via `resolveConfigVar` inside the trusted process — see the `credentials-vault` spec), never by the agent-facing request.
 
 #### Scenario: Existing auth header is replaced, not duplicated
 - **WHEN** the agent's request already contains an `Authorization:` (or the integration-specific) header
@@ -125,6 +141,10 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 - **THEN** the proxy opens a plain `net.Socket` to the remote, writes `200 Connection Established` to the client, and `pipe()`s in both directions — no TLS termination, no inspection.
 - **AND** errors on either side destroy the other socket, propagating the failure cleanly.
 
+#### Scenario: An ambiguous host match is refused, not guessed
+- **WHEN** `resolveHostRule(host)` returns `status: "ambiguous"` — two registered integrations declare the identical host pattern at equal specificity
+- **THEN** the proxy ends the CONNECT with `HTTP/1.1 403 Forbidden` and an `X-Credential-Proxy-Error: ambiguous` header, rather than injecting either integration's credential — matching Studio's credential proxy (`packages/studio/src/server/credentials/proxy.ts`).
+
 ### CA management (`credential-proxy-ca.ts`)
 
 #### Scenario: CA is generated once per process and cached in memory
@@ -172,10 +192,13 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 
 | Concern | Location |
 |---|---|
-| MITM proxy server, CONNECT handling, header/URL rewriting, integration auth dispatch, `getProxyEnv` | [server/lib/credential-proxy.ts](../../../server/lib/credential-proxy.ts) |
+| MITM proxy server, CONNECT handling, header/URL rewriting, `getProxyEnv` | [server/lib/credential-proxy.ts](../../../server/lib/credential-proxy.ts) |
+| `hostToIntegration`/`shouldIntercept`/`interceptedProxyHosts` — thin wrappers over the shared resolver, accepting an optional `rules` override for tests | [server/lib/credential-proxy.ts](../../../server/lib/credential-proxy.ts) |
+| Registry-driven host resolution + per-integration inject/header rules (`resolveHostRule`, `proxyRules`, `formatAuthHeader`, `formatAdditionalHeaders`, `shouldIntercept`, `interceptedHosts`) | `@hammies/auth` `src/server/proxy/rules.ts` (owned by `@hammies/auth`'s `integrations`/proxy specs) |
+| The credential-resolution callback (scope-based dispatch to `resolveWorkspaceAccessToken`/`maybeRefreshToken`, Gorgias `extras.email`, Google Ads `extras.<developer-token var>`) passed into `createCredentialProxy` | [server/index.ts](../../../server/index.ts) (owned by `credentials-vault`) |
 | Self-signed CA + per-host cert generation with LRU cache, CA file writer | [server/lib/credential-proxy-ca.ts](../../../server/lib/credential-proxy-ca.ts) |
 | Agent-subprocess preload that wires `undici`'s global dispatcher to the proxy | [server/lib/agent-proxy-preload.mjs](../../../server/lib/agent-proxy-preload.mjs) |
-| Tests: header-rewrite, query-param, Basic, missing-cred, CA caching, end-to-end through real `undici` | [server/lib/__tests__/credential-proxy.test.ts](../../../server/lib/__tests__/credential-proxy.test.ts), [server/lib/__tests__/credential-proxy-ca.test.ts](../../../server/lib/__tests__/credential-proxy-ca.test.ts), [server/lib/__tests__/credential-proxy-integration.test.ts](../../../server/lib/__tests__/credential-proxy-integration.test.ts) |
+| Tests: header-rewrite, query-param, Basic, missing-cred, CA caching, end-to-end through real `undici`, per-host Google integration split | [server/lib/__tests__/credential-proxy.test.ts](../../../server/lib/__tests__/credential-proxy.test.ts), [server/lib/__tests__/credential-proxy-ca.test.ts](../../../server/lib/__tests__/credential-proxy-ca.test.ts), [server/lib/__tests__/credential-proxy-integration.test.ts](../../../server/lib/__tests__/credential-proxy-integration.test.ts) |
 
 ## History
 
@@ -187,3 +210,4 @@ Setting `HTTPS_PROXY` makes the agent SDK build its proxy dispatcher with its *o
 - Session token extraction originally only supported `Bearer`; switched to also accept `Basic <user:>` after `undici`/curl/python all naturally encoded userinfo as Basic when given `HTTPS_PROXY=http://token@host`.
 - `NO_PROXY` added (2026-05-11) bypassing `.anthropic.com` and other non-intercepted infra hosts. Since `api.anthropic.com` was only ever transparent-tunneled (not on the intercept allowlist), skipping the pointless tunnel is the right optimization.
 - (2026-06-02) Diagnosed `API Error: Unable to connect to API (UND_ERR_INVALID_ARG)` affecting every session after the server moved to Node 26. Root cause: with `HTTPS_PROXY` set, the SDK's *bundled* `undici` builds the proxy dispatcher while the host's *built-in* `undici` (8.x on Node 26) drives `fetch`; the dispatch-handler interfaces are incompatible (`invalid onError method`). Earlier the failure was misattributed to a "Bun binary CONNECT-tunnel bug" that `NO_PROXY` supposedly fixed — that narrative was wrong; `NO_PROXY` never fixed it (the bundled-undici proxy path is built whenever `HTTPS_PROXY` is present). Fix: pin the server + agent subprocesses to Node 22 LTS via `scripts/with-node22.sh` (built-in undici then matches the bundled handler interface). Also fixed a latent bug exposed during diagnosis: `writeCACertFile()` wrote only the proxy CA, but the SDK uses `NODE_EXTRA_CA_CERTS` as the exclusive TLS `ca` (replacing public roots) — direct TLS to `api.anthropic.com` failed cert verification. Now bundles `tls.rootCertificates` alongside the proxy CA.
+- (2026-08-06) **Registry-driven host mapping, replacing the hardcoded `INTERCEPTED_HOSTS`/`hostToIntegration`/`INTEGRATION_AUTH` local map.** The old `*.googleapis.com → "google"` catch-all (with only `generativelanguage.googleapis.com` carved out for `gemini`) silently routed `googleads.googleapis.com`, `bigquery.googleapis.com`, and `gmail.googleapis.com`/`sheets.googleapis.com`/etc. to the `google` service-account integration — injecting that row's raw stored value (a service-account JSON blob, not a token) as a Bearer header on requests meant for three other integrations with their own credentials, and dropping Google Ads' required `developer-token` header entirely. A test (`hostToIntegration("sheets.googleapis.com") === "google"`) asserted the bug rather than catching it. Fixed by deleting the local map and resolving every host through `@hammies/auth`'s `resolveHostRule`/`proxyRules` — the same registry-driven resolver Studio's credential proxy uses — so a plugin's `proxy.hosts` declaration is the only place a host→integration mapping is written down. `server/index.ts`'s `resolveCredential` callback was also switched to dispatch on the integration's registry `scope`: `workspace`-scope integrations (including `google`'s service-account row) now resolve through `resolveWorkspaceAccessToken`, which mints a short-lived scoped access token from the stored SA key rather than returning it verbatim; `user`-scope integrations are unaffected. Credential-management plan, Phase A8.

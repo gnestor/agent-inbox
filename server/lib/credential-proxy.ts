@@ -5,96 +5,60 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { generateCA, generateCertForHost, writeCACertFile } from "./credential-proxy-ca.js"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import {
+  resolveHostRule,
+  shouldIntercept as sharedShouldIntercept,
+  interceptedHosts,
+  formatAuthHeader,
+  formatAdditionalHeaders,
+  type ProxyRule,
+  type ResolvedCredential,
+} from "@hammies/auth/server"
 
 const log = createLogger("credential-proxy")
 
 const PRELOAD_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "agent-proxy-preload.mjs")
 
 /**
- * Hosts where the proxy will intercept and inject credentials.
- * Requests to other hosts pass through as a transparent tunnel.
+ * Hosts where the proxy will intercept and inject credentials, plus which
+ * integration/auth-method a given host maps to, are NOT a hardcoded list here
+ * anymore — they are derived from the live `@hammies/auth` integration
+ * registry (each plugin's `studio.integrations[].proxy` declaration), the same
+ * source Studio's own credential proxy resolves via `resolveHostRule`
+ * (packages/studio/src/server/credentials/proxy.ts). A per-package host map
+ * drifts from the registry the moment a plugin adds or narrows a host pattern
+ * — the previous hardcoded `googleapis.com` catch-all here silently absorbed
+ * `googleads.googleapis.com` traffic meant for the `google-ads` integration
+ * (its own credential, plus a `developer-token` header) and `bigquery`/
+ * `analyticsdata`/`gmail`/`calendar`/`sheets` traffic meant for other, distinct
+ * Google integrations — injecting the `google` service-account row's raw
+ * stored value (unmintable, unusable JSON) for all of them.
  */
-export const INTERCEPTED_HOSTS = [
-  "api.notion.com",
-  "api.github.com",
-  "slack.com",
-  "api.slack.com",
-  "hooks.slack.com",
-  "shopify.com",                    // *.shopify.com via endsWith check
-  "googleapis.com",                 // *.googleapis.com via endsWith check
-  "api.air.inc",
-  "quickbooks.api.intuit.com",
-  "sandbox-quickbooks.api.intuit.com",
-  "a.klaviyo.com",
-  "graph.facebook.com",
-  "gorgias.com",                    // *.gorgias.com via endsWith check
-  "api.pinterest.com",
-]
+export function interceptedProxyHosts(rules?: readonly ProxyRule[]): string[] {
+  return interceptedHosts(rules)
+}
 
-export function shouldIntercept(host: string): boolean {
-  return INTERCEPTED_HOSTS.some(
-    (h) => host === h || host.endsWith(`.${h}`)
-  )
+export function shouldIntercept(host: string, rules?: readonly ProxyRule[]): boolean {
+  return sharedShouldIntercept(host, rules)
 }
 
 /**
- * Map intercepted host to the integration name used in the vault.
- * Order matters: specific subdomains must be checked before catch-all patterns.
+ * Map an intercepted host to its vault integration name via the registry's
+ * per-host proxy rules — the most specific matching pattern wins (an exact
+ * host beats a subdomain match, a deeper subdomain beats a shallower one), so
+ * `generativelanguage.googleapis.com` resolves to `gemini` and
+ * `googleads.googleapis.com` resolves to `google-ads` even though the broader
+ * `googleapis.com`-style patterns other Google integrations declare also
+ * match as a suffix. Returns the host itself when no rule matches —
+ * `shouldIntercept` gates entry into the MITM branch, so in practice this is
+ * a defensive fallback, not a real path.
  */
-export function hostToIntegration(host: string): string {
-  if (host === "api.notion.com") return "notion"
-  if (host === "api.github.com") return "github"
-  if (host.includes("slack.com")) return "slack"
-  if (host.includes("shopify.com")) return "shopify"
-  if (host === "generativelanguage.googleapis.com") return "gemini"
-  if (host.includes("googleapis.com")) return "google"
-  if (host === "api.air.inc") return "air"
-  if (host.includes("quickbooks.api.intuit.com")) return "quickbooks"
-  if (host === "a.klaviyo.com") return "klaviyo"
-  if (host === "graph.facebook.com") return "meta"
-  if (host.includes("gorgias.com")) return "gorgias"
-  if (host === "api.pinterest.com") return "pinterest"
-  return host
+export function hostToIntegration(host: string, rules?: readonly ProxyRule[]): string {
+  const resolved = resolveHostRule(host, undefined, rules)
+  return resolved.status === "matched" ? resolved.integration : host
 }
 
-// ---------------------------------------------------------------------------
-// Per-integration auth injection strategy
-// ---------------------------------------------------------------------------
-
-export type AuthMethod =
-  | { type: "bearer" }
-  | { type: "header"; name: string }
-  | { type: "basic"; extraKey: string }
-  | { type: "query"; param: string }
-
-/**
- * How each integration's credential should be injected into outgoing requests.
- * - bearer:  Authorization: Bearer {token}
- * - header:  {name}: {token}  (custom header)
- * - basic:   Authorization: Basic base64({extras[extraKey]}:{token})
- * - query:   append/replace ?{param}={token} on the request URL
- */
-export const INTEGRATION_AUTH: Record<string, AuthMethod> = {
-  notion:     { type: "bearer" },
-  github:     { type: "bearer" },
-  slack:      { type: "bearer" },
-  google:     { type: "bearer" },
-  air:        { type: "bearer" },
-  quickbooks: { type: "bearer" },
-  pinterest:  { type: "bearer" },
-  shopify:    { type: "header", name: "X-Shopify-Access-Token" },
-  klaviyo:    { type: "header", name: "Klaviyo-API-Key" },
-  gorgias:    { type: "basic", extraKey: "email" },
-  meta:       { type: "query", param: "access_token" },
-  instagram:  { type: "query", param: "access_token" },
-  gemini:     { type: "query", param: "key" },
-}
-
-export interface ResolvedCredential {
-  token: string
-  /** Additional context needed for auth injection (e.g., email for Basic auth). */
-  extras?: Record<string, string>
-}
+export type { ResolvedCredential }
 
 export interface CredentialProxyOptions {
   /**
@@ -104,26 +68,6 @@ export interface CredentialProxyOptions {
    * found.
    */
   resolveCredential: (sessionToken: string, integration: string) => Promise<ResolvedCredential | null>
-}
-
-/**
- * Format a credential into the appropriate HTTP header line for an integration.
- */
-function formatAuthHeader(method: AuthMethod, cred: ResolvedCredential): string {
-  switch (method.type) {
-    case "bearer":
-      return `Authorization: Bearer ${cred.token}`
-    case "header":
-      return `${method.name}: ${cred.token}`
-    case "basic": {
-      const user = cred.extras?.[method.extraKey] ?? ""
-      const encoded = Buffer.from(`${user}:${cred.token}`).toString("base64")
-      return `Authorization: Basic ${encoded}`
-    }
-    case "query":
-      // Query params are injected into the URL, not as a header
-      return ""
-  }
 }
 
 export interface CredentialProxy {
@@ -147,7 +91,9 @@ export async function createCredentialProxy(
     const host = parts[0] ?? ""
     const port = parseInt(parts[1] ?? "443", 10)
 
-    if (!shouldIntercept(host)) {
+    const resolution = resolveHostRule(host, undefined)
+
+    if (resolution.status === "unmatched") {
       // Transparent tunnel — connect directly to the remote server
       const remote = new Socket()
       remote.connect(port, host, () => {
@@ -161,9 +107,23 @@ export async function createCredentialProxy(
       return
     }
 
+    if (resolution.status !== "matched") {
+      // "ambiguous" — two registered integrations declare the same host at
+      // equal specificity. Refusing beats guessing which credential to
+      // inject (mirrors Studio's credential proxy, packages/studio/src/
+      // server/credentials/proxy.ts).
+      clientSocket.end(
+        "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n" +
+          `X-Credential-Proxy-Error: ${resolution.status}\r\n\r\n`,
+      )
+      return
+    }
+
     // MITM intercept — terminate TLS with a cert for this host
     const hostCert = await generateCertForHost(host, ca)
-    const integration = hostToIntegration(host)
+    const integration = resolution.integration
+    const inject = resolution.inject
+    const headerRules = resolution.headers
 
     // Extract session token from the Proxy-Authorization header.
     // HTTP clients automatically set this from the userinfo in the proxy URL
@@ -201,30 +161,40 @@ export async function createCredentialProxy(
             ? await options.resolveCredential(sessionToken, integration)
             : null
 
-          const authMethod = INTEGRATION_AUTH[integration]
           let finalRequestLine = requestLine
 
           // For query-param auth, inject/replace the param in the URL
-          if (cred && authMethod?.type === "query") {
+          if (cred && inject.kind === "query") {
             const match = requestLine.match(/^(\S+)\s+(\S+)\s+(\S+)$/)
             if (match) {
               const [, method, rawUrl, httpVersion] = match as [string, string, string, string]
               const url = new URL(rawUrl, `https://${host}`)
-              url.searchParams.set(authMethod.param, cred.token)
+              url.searchParams.set(inject.param, cred.token)
               finalRequestLine = `${method} ${url.pathname}${url.search} ${httpVersion}`
             }
           }
 
+          // Config-backed extra headers (e.g. Google Ads' `developer-token`),
+          // resolved by the caller's resolveCredential into `cred.extras`.
+          const additionalHeaders = cred ? formatAdditionalHeaders(headerRules, cred) : []
+          const additionalHeaderNames = new Set((headerRules ?? []).map(({ header }) => header.toLowerCase()))
+
           // Rebuild headers with credential injection
           const newHeaders: string[] = [finalRequestLine]
-          const authHeaderName = authMethod?.type === "header" ? authMethod.name.toLowerCase() : "authorization"
+          const authHeaderName = inject.kind === "header" ? inject.header.toLowerCase() : "authorization"
           let injected = false
 
           for (let i = 1; i < lines.length; i++) {
             const lowerLine = lines[i]!.toLowerCase()
+            const currentHeaderName = lowerLine.slice(0, lowerLine.indexOf(":"))
+            if (cred && additionalHeaderNames.has(currentHeaderName)) {
+              // Dropped: the config-backed value pushed below replaces
+              // whatever the caller sent (a placeholder, or nothing).
+              continue
+            }
             if (cred && lowerLine.startsWith(`${authHeaderName}:`)) {
               // Replace existing header with the real credential
-              newHeaders.push(formatAuthHeader(authMethod!, cred))
+              newHeaders.push(formatAuthHeader(inject, cred))
               injected = true
             } else {
               newHeaders.push(lines[i]!)
@@ -232,9 +202,10 @@ export async function createCredentialProxy(
           }
 
           // Add header if it wasn't already present (bearer/header/basic only)
-          if (cred && !injected && authMethod?.type !== "query") {
-            newHeaders.push(formatAuthHeader(authMethod!, cred))
+          if (cred && !injected && inject.kind !== "query") {
+            newHeaders.push(formatAuthHeader(inject, cred))
           }
+          newHeaders.push(...additionalHeaders)
 
           // Connect to the real server
           const realSocket = tlsConnect(

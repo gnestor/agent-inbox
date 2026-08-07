@@ -23,6 +23,8 @@ export {
   configureCredentialStore,
   getCredentialStore,
   maybeRefreshToken,
+  resolveWorkspaceAccessToken,
+  resolveConfigVar,
   refreshOAuthAccessToken,
   isCredentialExpired,
   type StoredCredential,

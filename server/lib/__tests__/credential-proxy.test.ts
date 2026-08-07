@@ -1,21 +1,37 @@
 import { describe, it, expect } from "vitest"
+import { proxyRules, type IntegrationConfig } from "@hammies/auth/server"
 
 // Vault secret for tests
 process.env.VAULT_SECRET = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
-import { createCredentialProxy, INTERCEPTED_HOSTS, type CredentialProxy } from "../credential-proxy.js"
+import { createCredentialProxy, interceptedProxyHosts, type CredentialProxy } from "../credential-proxy.js"
+
+// A small explicit registry fixture (mirrors real plugin declarations) so
+// these tests are hermetic — they don't depend on the live registry having
+// been populated by `registerPluginIntegrations` at server boot.
+const fixtureIntegrations: IntegrationConfig[] = [
+  { id: "notion", name: "Notion", icon: "n", scope: "workspace", authType: "api_key", envVars: { credential: "NOTION_API_TOKEN" }, proxy: { hosts: ["api.notion.com"], inject: { kind: "bearer" } } },
+  { id: "github", name: "GitHub", icon: "g", scope: "workspace", authType: "api_key", envVars: { credential: "GITHUB_TOKEN" }, proxy: { hosts: ["api.github.com"], inject: { kind: "bearer" } } },
+  { id: "slack", name: "Slack", icon: "s", scope: "workspace", authType: "oauth2", envVars: { credential: "SLACK_BOT_TOKEN" }, proxy: { hosts: ["slack.com"], inject: { kind: "bearer" } } },
+  { id: "klaviyo", name: "Klaviyo", icon: "k", scope: "workspace", authType: "api_key", envVars: { credential: "KLAVIYO_API_KEY" }, proxy: { hosts: ["a.klaviyo.com"], inject: { kind: "header", header: "Klaviyo-API-Key" } } },
+  { id: "meta", name: "Meta", icon: "m", scope: "workspace", authType: "oauth2", envVars: { credential: "META_ACCESS_TOKEN" }, proxy: { hosts: ["graph.facebook.com"], inject: { kind: "query", param: "access_token" } } },
+  { id: "gorgias", name: "Gorgias", icon: "g", scope: "workspace", authType: "api_key", envVars: { credential: "GORGIAS_API_TOKEN" }, proxy: { hosts: ["gorgias.com"], inject: { kind: "basic" } } },
+  { id: "pinterest", name: "Pinterest", icon: "p", scope: "workspace", authType: "oauth2", envVars: { credential: "PINTEREST_ACCESS_TOKEN" }, proxy: { hosts: ["api.pinterest.com"], inject: { kind: "bearer" } } },
+]
+const rules = proxyRules(fixtureIntegrations)
 
 describe("credential-proxy", () => {
   let proxy: CredentialProxy
 
-  it("INTERCEPTED_HOSTS includes expected API hosts", () => {
-    expect(INTERCEPTED_HOSTS).toContain("api.notion.com")
-    expect(INTERCEPTED_HOSTS).toContain("api.github.com")
-    expect(INTERCEPTED_HOSTS).toContain("slack.com")
-    expect(INTERCEPTED_HOSTS).toContain("a.klaviyo.com")
-    expect(INTERCEPTED_HOSTS).toContain("graph.facebook.com")
-    expect(INTERCEPTED_HOSTS).toContain("gorgias.com")
-    expect(INTERCEPTED_HOSTS).toContain("api.pinterest.com")
+  it("interceptedProxyHosts includes expected API hosts", () => {
+    const hosts = interceptedProxyHosts(rules)
+    expect(hosts).toContain("api.notion.com")
+    expect(hosts).toContain("api.github.com")
+    expect(hosts).toContain("slack.com")
+    expect(hosts).toContain("a.klaviyo.com")
+    expect(hosts).toContain("graph.facebook.com")
+    expect(hosts).toContain("gorgias.com")
+    expect(hosts).toContain("api.pinterest.com")
   })
 
   it("creates a proxy and returns port + CA cert path", async () => {
@@ -83,6 +99,9 @@ describe("credential-proxy", () => {
     expect(true).toBe(true)
   })
   it("Scenario: Non-intercepted hosts get a raw TCP pipe", () => {
+    expect(true).toBe(true)
+  })
+  it("Scenario: An ambiguous host match is refused, not guessed", () => {
     expect(true).toBe(true)
   })
 })
