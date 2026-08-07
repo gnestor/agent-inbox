@@ -10,7 +10,7 @@ sources:
   - src/vite-env.d.ts
 spec: openspec/specs/theming/spec.md
 status: generated
-sources_hash: "548fdf54b6fb10b43b6b30bbf66e8f0906e43070b2f026ac5a12b22fcfca04d8"
+sources_hash: "d4eb2e365b7f4eae62385da0ff471a4c562f56ca11b690611c9dcc5d555e4aaf"
 ---
 
 # Theming
@@ -42,11 +42,11 @@ One global rule sets `scrollbar-width: thin`; no component restyles its own scro
 
 `public/manifest.json` declares standalone display mode, a dark theme color, and 192px/512px icons, so the app installs like a native shortcut on iOS and Android. Those icons live in `public/icons/`, served as raw files because a manifest icon reference cannot resolve a bundled asset hash. Integration brand icons live separately in `src/assets/icons/`, loaded through Vite's asset pipeline by id, because they render inside components rather than a manifest.
 
-`public/sw.js` exists only to make the app installable and to clear stale caches on activate; it does not cache any `/api/*` responses. React Query owns the client-side cache, so the service worker only intervenes on navigation requests, falling back to `index.html` when a fetch fails offline. This keeps client-side routing working in standalone mode without a second, competing cache layer.
+`public/sw.js` exists only to make the app installable; it does not cache any `/api/*` responses. React Query owns the client-side cache, so the service worker only intervenes on navigation requests, falling back to `index.html` when a fetch fails offline. This keeps client-side routing working in standalone mode without a second, competing cache layer.
 
 ## Build-time globals
 
-`src/vite-env.d.ts` declares `__APP_VERSION__` as a global string, injected by Vite's `define` config at build time. The [Preferences](preferences.md) hook's persisted React Query cache uses it as a buster, so a new deploy discards the old cache instead of serving stale shapes.
+`src/vite-env.d.ts` declares `__APP_VERSION__` as a global string, injected by Vite's `define` config at build time. The app's persisted React Query cache, including [Preferences](preferences.md), uses it as a buster, so a new deploy discards old data instead of serving stale shapes.
 
 ## See also
 

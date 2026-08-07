@@ -11,7 +11,7 @@ sources:
   - plugins/core/skills/render-output/references/
 spec: openspec/specs/core-plugin/spec.md
 status: generated
-sources_hash: "49fa7aaa30b7602f218d9fc6d749675254adb24a2c0a3b0a230bdb298c56b13d"
+sources_hash: "cd321d9c18b8923c3fd8d126e58aa20903268b7aa61701bc61431a3ecbc5f37f"
 ---
 
 # Core Plugin
