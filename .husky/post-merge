@@ -1,0 +1,9 @@
+#!/bin/sh
+# git fires post-COMMIT only on `git commit`; a `git merge --no-ff` (how a
+# worktree branch lands) fires post-MERGE. Push it immediately, same safety
+# rules as post-commit. The script lives in the WORKSPACE repo; standalone
+# clones correctly do nothing. Never fails the merge.
+SYNC="$(dirname "$0")/../../../scripts/sync.mjs"
+[ -f "$SYNC" ] && node "$SYNC" --from-hook --post-merge || true
+
+exit 0
