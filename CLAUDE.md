@@ -53,7 +53,7 @@ Follow [docs/workflow.md](../../docs/workflow.md) → **Completion Checklist** (
 
 - **Test locations** — pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node env); React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom`). Run via `npm run test:ci` (tsc + vitest); tests also auto-run on save via a PostToolUse hook. See **Testing** below for e2e tiers.
 - **Notion tasks** (Inbox project) — file follow-ups and mark completed tasks Complete (the former in-repo `TODO.md` was migrated to Notion on 2026-06-28).
-- **Browser verification** — test on the clean **`-s=app`** profile with a minted dev cookie (no Google login needed); inbox verifies the same `hammies_session` JWT as Studio. See Testing → Browser testing. The `google-chrome` skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
+- **Browser verification** — test on the clean **`-s=app`** profile with a minted dev cookie (no Google login needed); inbox verifies the same `hammies_session` JWT as Studio. See Testing → Browser testing. The `playwright-cli` skill is the primary check; `npm run test:e2e` is optional supplemental coverage.
 
 ## Testing
 
