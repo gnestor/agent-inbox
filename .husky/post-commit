@@ -1,0 +1,17 @@
+#!/bin/sh
+# Skip mid-rebase: git fires post-commit once per replayed commit, and sync
+# must never run inside a rebase (it may itself have started one).
+GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null)
+if [ -n "$GITDIR" ] && { [ -d "$GITDIR/rebase-merge" ] || [ -d "$GITDIR/rebase-apply" ]; }; then
+  exit 0
+fi
+
+# Push this commit immediately, rebasing first when origin is ahead — commits
+# sitting unpushed on either machine are what forced the manual rebase dance.
+# The script lives in the WORKSPACE repo (this repo's parent as packages/inbox);
+# standalone clones have no workspace and correctly do nothing. Never fails the
+# commit. HAMMIES_NO_SYNC=1 skips it.
+SYNC="$(dirname "$0")/../../../scripts/sync.mjs"
+[ -f "$SYNC" ] && node "$SYNC" --from-hook || true
+
+exit 0
