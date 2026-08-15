@@ -4,6 +4,6 @@
 # rules as post-commit. The script lives in the WORKSPACE repo; standalone
 # clones correctly do nothing. Never fails the merge.
 SYNC="$(dirname "$0")/../../../scripts/sync.mjs"
-[ -f "$SYNC" ] && node "$SYNC" --from-hook --post-merge || true
+[ -f "$SYNC" ] && node "$SYNC" --from-hook || true
 
 exit 0
