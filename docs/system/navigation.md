@@ -20,7 +20,7 @@ sources:
   - src/types/navigation.ts
 spec: openspec/specs/navigation/spec.md
 status: generated
-sources_hash: "f6db9caab789417484b039126eb18c1509d407a39828e47f1c23e44dc24239f6"
+sources_hash: "342fe0274ce87e7524aeb1ed39958aea86d10aaf441b8acb3edb7eb661dcc126"
 ---
 
 # Navigation

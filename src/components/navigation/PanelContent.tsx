@@ -6,7 +6,7 @@ import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PanelHeader } from "@/components/shared/PanelHeader"
 import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
-import { AskUserForm, AskUserOptions, parseAskUserAnswer, SessionTranscript, useAskUserForm } from "@hammies/frontend/components/session"
+import { AskUserForm, AskUserOptions, parseAskUserAnswers, SessionTranscript, useAskUserForm } from "@hammies/frontend/components/session"
 import { findCodeByToolUseId, type ClassifiedMessage } from "@hammies/session-core"
 import { useNavActions } from "@/lib/navigation-store"
 import { resumeSession, answerSessionQuestion, getSession } from "@/api/client"
@@ -152,7 +152,7 @@ function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user
   const qc = useQueryClient()
   const { questions, resultText, sessionId } = panel.props
   const isPending = !resultText && !!sessionId
-  const selectedLabels = isPending ? [] : parseAskUserAnswer(resultText)
+  const answers = isPending ? {} : parseAskUserAnswers(resultText)
   const headerLabel = questions[0]?.header || "Question"
   const form = useAskUserForm(questions)
 
@@ -181,7 +181,7 @@ function AskUserQuestionPanel({ panel }: { panel: PanelState & { type: "ask_user
         {isPending ? (
           <AskUserForm questions={questions} form={form} onSubmit={handleSubmit} />
         ) : (
-          <AskUserOptions questions={questions} selectedLabels={selectedLabels} />
+          <AskUserOptions questions={questions} answers={answers} />
         )}
       </div>
     </div>
