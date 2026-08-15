@@ -22,7 +22,7 @@ sources:
   - src/hooks/use-plugin-mutations.ts
 spec: openspec/specs/plugin-system/spec.md
 status: generated
-sources_hash: "868b084290a5c265b27af8f0186ce913f1eadd0689b655fb47e1cfee431d5349"
+sources_hash: "585eadca87a1ad2b7b290bcddf7f02a63755592a9d2b1d6ec6e8dd84e4b104bd"
 ---
 
 # Plugin System
@@ -45,7 +45,7 @@ flowchart TD
 
 ## Discovery and the builtin/workspace registry
 
-At startup, `loadBuiltinPlugins` scans `packages/inbox/plugins/*/plugin.ts` and registers each export into a shared `registry`, marking its ID in `builtinIds`. `loadPlugins(workspacePath, workspaceId)` then scans the workspace's own `plugins/*/plugin.ts` directory, with a legacy `inbox-plugins/*.ts` fallback, into a separate per-workspace registry. A workspace plugin never touches the shared `registry` directly, so `builtinIds` always tells a builtin apart from an override. A workspace-less reload only clears non-builtin entries, leaving builtins untouched.
+At startup, `loadBuiltinPlugins` scans `packages/inbox/plugins/*/plugin.ts` and registers each export into a shared `registry`, marking its ID in `builtinIds`. `loadPlugins(workspacePath, workspaceId)` then scans the workspace's `inbox/*/plugin.ts` and `plugins/*/plugin.ts` directories, with a legacy `inbox-plugins/*.ts` fallback, into a separate per-workspace registry. A workspace plugin never touches the shared `registry` directly, so `builtinIds` always tells a builtin apart from an override. A workspace-less reload only clears non-builtin entries, leaving builtins untouched.
 
 `getPlugins(workspaceId)` and `getPlugin(id, workspaceId)` merge the two registries at read time: builtins load first, then each workspace plugin overlays any builtin sharing its ID. The overlay is a shallow per-key merge — `{ ...builtin, ...workspaceOverlay }`. A workspace plugin declares only the keys it changes, and inherits the rest. This lets the agent workspace's Gmail plugin add curation methods and override `query`, while inheriting the builtin's Gmail API calls, `auth`, and `components`.
 
@@ -57,9 +57,11 @@ Plugins live on the filesystem rather than in the database because a plugin is e
 
 ## Hot-reload
 
-A recursive `fs.watch` on each workspace's `plugins/` directory fires `scheduleReload` on every file change, debounced 500ms per workspace to coalesce rapid saves. `isIgnoredChange` filters events by path segment, skipping any segment that is `node_modules`, `dist`, `temp`, `logs`, or starts with a dot. The per-segment check matters most for nested churn: a running Meltano tap writes continuously to `plugins/meltano/.meltano/**`, which a simple filename-prefix check would miss.
+A one-second poll compares the modification time and size of paths the loader can actually import: workspace `inbox/*/plugin.{ts,js}`, `plugins/*/plugin.{ts,js}`, and legacy `inbox-plugins/*.{ts,js}` entrypoints. A change, addition, or removal fires `scheduleReload`, debounced 500ms per workspace to coalesce rapid saves.
 
-A reload calls `loadPlugins` for that workspace, then `mountPluginRoutes` again to pick up any new bespoke routes. `stopWatching` clears every pending debounce timer and closes every `FSWatcher` on shutdown, so no reload fires after the server starts exiting.
+The poller replaced a recursive `fs.watch` after the Agent `plugins/` tree grew beyond 82,000 files. That watcher subscribed to dependency, asset, log, and runtime-state trees before its callback could ignore their events, then failed with `EMFILE` alongside tsx, Vite, and other agent sessions. Entrypoint polling uses no persistent file watchers and never traverses those nested trees.
+
+A reload calls `loadPlugins` for that workspace, then `mountPluginRoutes` again to pick up any new bespoke routes. `stopWatching` clears polling intervals, pending debounce timers, snapshots, and scan state on shutdown, so no reload fires after the server starts exiting.
 
 Every plugin import goes through a `cacheBustingImport` helper that appends `?v=${Date.now()}` to the module URL. Node's ESM cache is keyed by URL, so a bare `import(path)` after an edit would return the stale module and silently defeat hot-reload.
 

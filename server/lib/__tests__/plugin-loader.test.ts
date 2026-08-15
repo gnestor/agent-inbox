@@ -196,9 +196,13 @@ describe("plugin-loader", () => {
       expect(getPlugin("gmail")).toBe(builtin)
     })
 
-    it("Scenario: Workspace plugins live in `{workspace}/plugins/*/plugin.ts`, with legacy fallback — scans new dir then inbox-plugins", async () => {
+    it("Scenario: Workspace plugins use the Inbox and Studio plugin roots, with legacy fallback — scans all three roots", async () => {
+      const inboxPlugin = makePlugin({ id: "inbox-only", name: "Inbox" })
       const wsPlugin = makePlugin({ id: "ws-only", name: "WS" })
       readdirImpl.mockImplementation(async (path: string, opts?: unknown) => {
+        if (typeof path === "string" && path.endsWith("/inbox") && opts) {
+          return [{ name: "inbox-only", isDirectory: () => true }]
+        }
         if (typeof path === "string" && path.endsWith("/plugins") && opts) {
           return [{ name: "ws-only", isDirectory: () => true }]
         }
@@ -206,7 +210,13 @@ describe("plugin-loader", () => {
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
       })
       const legacy = makePlugin({ id: "legacy-only", name: "Legacy" })
-      await loadPlugins("/fake/workspace", "ws-1", makeImporter({ "plugin.ts": wsPlugin, "legacy.ts": legacy }))
+      await loadPlugins("/fake/workspace", "ws-1", async (path) => {
+        if (path.includes("/inbox/inbox-only/")) return { default: inboxPlugin }
+        if (path.includes("/plugins/ws-only/")) return { default: wsPlugin }
+        if (path.endsWith("/legacy.ts")) return { default: legacy }
+        throw new Error(`Module not found: ${path}`)
+      })
+      expect(getPlugin("inbox-only", "ws-1")).toBeDefined()
       expect(getPlugin("ws-only", "ws-1")).toBeDefined()
       expect(getPlugin("legacy-only", "ws-1")).toBeDefined()
     })

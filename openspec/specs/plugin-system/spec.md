@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Discovery, loading, registry, and HTTP/component plumbing for inbox plugins. A plugin is a TypeScript/JS module exporting a `Plugin` (or `Plugin[]`) default — a `query`/`mutate`/`itemToContext`/`extractEntities`-shaped object plus optional `fieldSchema`, `detailSchema`, and `components/` directory. The loader merges built-in plugins (`packages/inbox/plugins/*`) with [workspace](../workspace/spec.md) plugins (`{workspace}/plugins/*/plugin.ts` and the legacy `{workspace}/inbox-plugins/*.ts`), exposes them via `getPlugins(workspaceId)`, auto-mounts REST routes at `/api/:pluginId/*`, hot-reloads on file changes, and serves plugin React components as ES modules transformed by esbuild and embedded in sandboxed iframes.
+Discovery, loading, registry, and HTTP/component plumbing for inbox plugins. A plugin is a TypeScript/JS module exporting a `Plugin` (or `Plugin[]`) default — a `query`/`mutate`/`itemToContext`/`extractEntities`-shaped object plus optional `fieldSchema`, `detailSchema`, and `components/` directory. The loader merges built-in plugins (`packages/inbox/plugins/*`) with [workspace](../workspace/spec.md) plugins (`{workspace}/inbox/*/plugin.ts`, `{workspace}/plugins/*/plugin.ts`, and the legacy `{workspace}/inbox-plugins/*.ts`), exposes them via `getPlugins(workspaceId)`, auto-mounts REST routes at `/api/:pluginId/*`, hot-reloads on file changes, and serves plugin React components as ES modules transformed by esbuild and embedded in sandboxed iframes.
 
 ## Context
 
@@ -24,8 +24,10 @@ The `core` plugin has `hasSkills: true` and no `query`/`itemToContext` — it pr
 ### Why `loadPlugins` clears non-builtin entries on reload
 Hot-reload writes the new plugin set into the registry. If the previous reload had registered a plugin that no longer exists in the new directory listing, the stale entry would linger forever. Clearing all non-builtin entries before re-scanning ensures the registry is exactly what's on disk; built-ins are protected by the `builtinIds` set so a workspace can't accidentally clobber them.
 
-### Why the watcher debounces by 500ms and ignores non-source subtrees
-A plugin save event commonly fires multiple FS notifications (write, atomic-rename, etc.). Reloading on every event would thrash, breaking in-flight requests mid-import. 500ms is the minimum that empirically de-duplicates editor saves without feeling laggy. The watch is **recursive** (on macOS `fs.watch` uses a single FSEvents watcher for the whole tree, so no per-file descriptor and no `EMFILE`), but `isIgnoredChange` filters events by path **segment** so only real plugin-source edits reload: it skips any segment that is `node_modules`, `dist`, `temp`, `logs`, or starts with `.`. The segment check (not a `filename.startsWith(".")` prefix check) is essential — the churn that triggered this is **nested**: on the Mini a running Meltano tap writes continuously to `plugins/meltano/.meltano/**` and `plugins/meltano/logs/**`, whose relative paths start with `meltano`, not `.`, so a prefix check let every write thrash a reload.
+### Why the watcher polls loadable entrypoints and debounces by 500ms
+A recursive `fs.watch` subscribed to the complete Agent `plugins/` tree before its callback could ignore dependency, asset, log, and runtime-state events. That tree exceeded 82,000 files, and the watcher failed with `EMFILE` when tsx, Vite, and other agent sessions already held file descriptors. Callback filtering could reduce reloads but could not reduce the operating-system subscription.
+
+The watcher now polls only paths the loader can import: `{workspace}/inbox/*/plugin.{ts,js}`, `{workspace}/plugins/*/plugin.{ts,js}`, and legacy `{workspace}/inbox-plugins/*.{ts,js}`. It compares modification time and size once per second, so changes, additions, and removals require no persistent file watchers. A 500ms reload debounce still coalesces editor saves without feeling laggy.
 
 ### Why component code is served as ES modules, not bundled into the SPA
 A plugin's React component cannot ship in the SPA bundle — the SPA is built once per release, plugins are loaded per-workspace at runtime. Serving each component through `/api/:pluginId/components/:name` (esbuild-transformed on demand, LRU-cached at `COMPONENT_CACHE_MAX = 50`) lets new/edited components render immediately without rebuilding the SPA. The component is loaded inside a sandboxed iframe via the importmap convention (`react`/`react-dom`/`@hammies/frontend/*` resolve to the parent's bundled artifacts), so the plugin can't pull in arbitrary npm packages.
@@ -63,9 +65,9 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 - **THEN** `loadBuiltinPlugins(packages/inbox/plugins/)` scans each subdirectory for `plugin.ts`/`plugin.js`, calls `registerPlugin` (which adds to `registry` AND `builtinIds`), and records the directory in `pluginDirs`.
 - **AND** subsequent `loadPlugins` calls do not clear entries whose IDs are in `builtinIds`.
 
-#### Scenario: Workspace plugins live in `{workspace}/plugins/*/plugin.ts`, with legacy fallback
+#### Scenario: Workspace plugins use the Inbox and Studio plugin roots, with legacy fallback
 - **WHEN** `loadPlugins(workspacePath, workspaceId)` runs
-- **THEN** the loader scans `{workspace}/plugins/*/plugin.{ts,js}` first, then `{workspace}/inbox-plugins/*.{ts,js}` as a backward-compatibility fallback.
+- **THEN** the loader scans `{workspace}/inbox/*/plugin.{ts,js}` and `{workspace}/plugins/*/plugin.{ts,js}`, then `{workspace}/inbox-plugins/*.{ts,js}` as a backward-compatibility fallback.
 - **AND** a workspace plugin with the same ID as a builtin is allowed and overrides the builtin via the per-workspace registry — not by mutating the global `registry`.
 
 #### Scenario: `getPlugins(workspaceId)` merges workspace registry on top of built-ins
@@ -79,14 +81,19 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 
 ### Hot-reload
 
-#### Scenario: Watcher reloads plugins on file changes with 500ms debounce
-- **WHEN** a plugin-source file under `{workspace}/plugins/` changes (recursive, but `isIgnoredChange` skips any path segment that is `node_modules`, `dist`, `temp`, `logs`, or starts with `.` — so nested churn like `meltano/.meltano/**` or `*/logs/**` never reloads)
-- **THEN** `scheduleReload` debounces 500ms, then calls `loadPlugins(ws.path, ws.id)` followed by `mountPluginRoutes(app)`.
+#### Scenario: Polling watches only loadable plugin entrypoints and cannot exhaust native watchers
+- **WHEN** hot reload starts for a workspace with dependency, asset, log, and runtime-state subtrees
+- **THEN** it polls only paths that `loadPlugins` can import and creates no persistent native file watchers.
+
+#### Scenario: Changed, added, and removed entrypoints coalesce into one reload
+- **WHEN** a loadable workspace `plugin.ts` or `plugin.js` entrypoint changes, is added, or is removed
+- **THEN** the one-second signature poll detects the change without a persistent `FSWatcher`
+- **AND** `scheduleReload` debounces 500ms, then calls `loadPlugins(ws.path, ws.id)` followed by `mountPluginRoutes(app)`.
 - **AND** errors are logged but do not crash the server.
 
-#### Scenario: Watcher cleanup on shutdown
+#### Scenario: Watcher cleanup clears polling and pending reload timers
 - **WHEN** `stopWatching()` is invoked
-- **THEN** all pending debounce timers are cleared and every `FSWatcher` is closed.
+- **THEN** all polling intervals, pending debounce timers, snapshots, and scan state are cleared.
 
 ### REST surface
 
@@ -129,7 +136,7 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 | Concern | Location |
 |---|---|
 | Plugin discovery, validation, registry, builtin/workspace merge | [server/lib/plugin-loader.ts](../../../server/lib/plugin-loader.ts) |
-| Hot-reload file watcher (500ms debounce; recursive minus `node_modules`/`dist`/`temp`/`logs`/dot-dirs via `isIgnoredChange`) | [server/lib/plugin-watcher.ts](../../../server/lib/plugin-watcher.ts) |
+| Hot-reload entrypoint poller (one-second signature scan; 500ms reload debounce) | [server/lib/plugin-watcher.ts](../../../server/lib/plugin-watcher.ts) |
 | Auto-mounted plugin REST routes (`/api/:pluginId/*`) and component esbuild | [server/routes/plugins.ts](../../../server/routes/plugins.ts) |
 | Iframe HTML for plugin components (CSP + importmap + postMessage bridge) | [src/lib/build-plugin-component-html.tsx](../../../src/lib/build-plugin-component-html.tsx) |
 | Plugin interface types (`Plugin`, `PluginItem`, `FieldDef`, `BadgeConfig`, `FilterConfig`) | [src/types/plugin.ts](../../../src/types/plugin.ts) |
@@ -157,3 +164,4 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 - `isValidPlugin` originally required `query` to be a function; the `hasSkills`/`itemToContext` clauses were added when the `core` skills-only plugin and the curation-pipeline plugins started shipping without `query`.
 - Plugin component caching capped at 50 after profiling showed the cache growing linearly with edited components in long dev sessions; LRU + mtime invalidation handles both eviction and freshness.
 - The `Plugin[]` default-export shape was added when Notion's two surfaces (tasks + pages) needed to share the same Notion client without forking files.
+- Entrypoint polling replaced recursive `fs.watch` after the 82,000-file Agent plugin tree exhausted descriptors before callback filtering could run.

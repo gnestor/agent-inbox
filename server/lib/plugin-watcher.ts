@@ -1,76 +1,161 @@
-import { watch, existsSync, type FSWatcher } from "node:fs"
+import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { loadPlugins } from "./plugin-loader.js"
 import { mountPluginRoutes } from "../routes/plugins.js"
 import type { Hono } from "hono"
 import type { AppBindings } from "../lib/workspace-context.js"
 
-const watchers: FSWatcher[] = []
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-/**
- * Paths (relative to the watched plugins/ dir) that must NOT trigger a reload:
- * dependency, build, and runtime-state/log churn under a plugin. A recursive
- * watch fires on every nested write, so on the Mini a running Meltano tap
- * writing to `plugins/meltano/.meltano/**` + `plugins/meltano/logs/**` (and any
- * `temp/` logs) would otherwise thrash a reload every second. The check is
- * per-path-segment, so it catches NESTED dot-dirs like `meltano/.meltano/…` —
- * a plain `filename.startsWith(".")` misses those (the string starts with "m").
- */
-function isIgnoredChange(filename: string): boolean {
-  return filename
-    .split(/[/\\]/)
-    .some((seg) => seg.startsWith(".") || seg === "node_modules" || seg === "temp" || seg === "logs" || seg === "dist")
+interface Workspace {
+  id: string
+  path: string
 }
 
-/**
- * Watch workspace plugin directories for plugin-source changes and hot-reload.
- * Recursive (on macOS `fs.watch` uses one FSEvents watcher for the whole tree,
- * so no EMFILE), but reloads only on real source edits — `isIgnoredChange`
- * filters out dependency/build/state/log churn. Debounces 500ms to coalesce
- * rapid saves.
- */
-export function watchPlugins(
-  workspaces: { id: string; path: string }[],
-  app: Hono<AppBindings>,
-): void {
-  for (const ws of workspaces) {
-    const pluginsDir = join(ws.path, "plugins")
-    if (!existsSync(pluginsDir)) continue
+const POLL_INTERVAL_MS = 1_000
+const RELOAD_DEBOUNCE_MS = 500
+const ENTRYPOINT_NAMES = ["plugin.ts", "plugin.js"] as const
 
-    try {
-      const watcher = watch(pluginsDir, { recursive: true }, (_event, filename) => {
-        if (!filename || isIgnoredChange(filename)) return
-        scheduleReload(ws, app)
-      })
-      watcher.on("error", (err) => {
-        console.warn(`[plugin-watcher] Watcher error for ${pluginsDir}:`, err.message)
-      })
-      watchers.push(watcher)
-    } catch (err: unknown) {
-      console.warn(`[plugin-watcher] Failed to watch ${pluginsDir}:`, err instanceof Error ? err.message : String(err))
-    }
+const pollTimers = new Map<string, ReturnType<typeof setInterval>>()
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const snapshots = new Map<string, Map<string, string>>()
+const scansInFlight = new Map<string, number>()
+const reportedScanErrors = new Set<string>()
+let watchGeneration = 0
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT"
+}
+
+async function readDirectory(path: string) {
+  try {
+    return await readdir(path, { withFileTypes: true })
+  } catch (error: unknown) {
+    if (isMissingPath(error)) return []
+    throw error
   }
 }
 
-function scheduleReload(ws: { id: string; path: string }, app: Hono<AppBindings>) {
-  clearTimeout(debounceTimers.get(ws.id))
-  debounceTimers.set(ws.id, setTimeout(async () => {
-    console.log(`[plugin-watcher] Reloading plugins for ${ws.id}…`)
-    try {
-      await loadPlugins(ws.path, ws.id)
-      mountPluginRoutes(app)
-      console.log(`[plugin-watcher] Plugins reloaded for ${ws.id}`)
-    } catch (err) {
-      console.error(`[plugin-watcher] Failed to reload plugins for ${ws.id}:`, err)
-    }
-  }, 500))
+async function entrypointSignature(path: string): Promise<string | undefined> {
+  try {
+    const entry = await stat(path)
+    return entry.isFile() ? `${entry.mtimeMs}:${entry.size}` : undefined
+  } catch (error: unknown) {
+    if (isMissingPath(error)) return undefined
+    throw error
+  }
 }
 
-/** Stop all watchers (for graceful shutdown). */
+/**
+ * Enumerate only paths the plugin loader can import. Workspace `plugins/`
+ * trees also contain Studio assets, dependencies, logs, and runtime state;
+ * recursively watching those trees exhausted file descriptors even though the
+ * callback later ignored their events.
+ */
+async function discoverPluginEntrypoints(workspacePath: string): Promise<Map<string, string>> {
+  const candidates: string[] = []
+
+  for (const subdir of ["inbox", "plugins"] as const) {
+    const root = join(workspacePath, subdir)
+    const entries = await readDirectory(root)
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      for (const filename of ENTRYPOINT_NAMES) {
+        candidates.push(join(root, entry.name, filename))
+      }
+    }
+  }
+
+  const legacyRoot = join(workspacePath, "inbox-plugins")
+  for (const entry of await readDirectory(legacyRoot)) {
+    if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".js"))) {
+      candidates.push(join(legacyRoot, entry.name))
+    }
+  }
+
+  const next = new Map<string, string>()
+  await Promise.all(candidates.map(async (path) => {
+    const signature = await entrypointSignature(path)
+    if (signature !== undefined) next.set(path, signature)
+  }))
+  return next
+}
+
+function snapshotsMatch(previous: Map<string, string>, next: Map<string, string>): boolean {
+  if (previous.size !== next.size) return false
+  for (const [path, signature] of previous) {
+    if (next.get(path) !== signature) return false
+  }
+  return true
+}
+
+async function pollWorkspace(
+  workspace: Workspace,
+  app: Hono<AppBindings>,
+  generation: number,
+): Promise<void> {
+  if (scansInFlight.has(workspace.id)) return
+  scansInFlight.set(workspace.id, generation)
+  try {
+    const next = await discoverPluginEntrypoints(workspace.path)
+    if (generation !== watchGeneration) return
+
+    const previous = snapshots.get(workspace.id)
+    snapshots.set(workspace.id, next)
+    reportedScanErrors.delete(workspace.id)
+    if (previous && !snapshotsMatch(previous, next)) scheduleReload(workspace, app)
+  } catch (error: unknown) {
+    if (generation !== watchGeneration || reportedScanErrors.has(workspace.id)) return
+    reportedScanErrors.add(workspace.id)
+    console.warn(
+      `[plugin-watcher] Failed to scan plugin entrypoints for ${workspace.path}:`,
+      error instanceof Error ? error.message : String(error),
+    )
+  } finally {
+    if (scansInFlight.get(workspace.id) === generation) scansInFlight.delete(workspace.id)
+  }
+}
+
+/**
+ * Poll the small set of loadable plugin entrypoints for source changes.
+ * Polling avoids persistent recursive file watchers, which compete with tsx,
+ * Vite, and other agent sessions for macOS file descriptors. A 500ms debounce
+ * still coalesces changes before the plugin registry reloads.
+ */
+export function watchPlugins(workspaces: Workspace[], app: Hono<AppBindings>): void {
+  stopWatching()
+  const generation = watchGeneration
+
+  for (const workspace of workspaces) {
+    void pollWorkspace(workspace, app, generation)
+    const timer = setInterval(() => {
+      void pollWorkspace(workspace, app, generation)
+    }, POLL_INTERVAL_MS)
+    timer.unref()
+    pollTimers.set(workspace.id, timer)
+  }
+}
+
+function scheduleReload(workspace: Workspace, app: Hono<AppBindings>): void {
+  clearTimeout(debounceTimers.get(workspace.id))
+  debounceTimers.set(workspace.id, setTimeout(async () => {
+    console.log(`[plugin-watcher] Reloading plugins for ${workspace.id}…`)
+    try {
+      await loadPlugins(workspace.path, workspace.id)
+      mountPluginRoutes(app)
+      console.log(`[plugin-watcher] Plugins reloaded for ${workspace.id}`)
+    } catch (error: unknown) {
+      console.error(`[plugin-watcher] Failed to reload plugins for ${workspace.id}:`, error)
+    }
+  }, RELOAD_DEBOUNCE_MS))
+}
+
+/** Stop polling and clear pending reloads for graceful shutdown or restart. */
 export function stopWatching(): void {
-  for (const t of debounceTimers.values()) clearTimeout(t)
+  watchGeneration += 1
+  for (const timer of pollTimers.values()) clearInterval(timer)
+  pollTimers.clear()
+  for (const timer of debounceTimers.values()) clearTimeout(timer)
   debounceTimers.clear()
-  for (const w of watchers) w.close()
-  watchers.length = 0
+  snapshots.clear()
+  scansInFlight.clear()
+  reportedScanErrors.clear()
 }
