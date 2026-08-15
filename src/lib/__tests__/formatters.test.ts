@@ -127,8 +127,13 @@ describe("sessionStatusBadgeClass", () => {
     ["complete", "bg-chart-1/20 text-chart-1"],
     ["needs_attention", "bg-chart-2/20 text-chart-2"],
     ["errored", "bg-destructive/20 text-destructive"],
+    // A theme token, not a numbered palette shade: this one status returned
+    // `blue-500` while its four siblings used chart tokens, and a frozen shade
+    // is unreadable in whichever mode it was not picked for.
+    ["awaiting_user_input", "bg-chart-4/20 text-chart-4"],
   ])("maps '%s' correctly", (input, expected) => {
     expect(sessionStatusBadgeClass(input)).toBe(expected)
+    expect(expected).not.toMatch(/-(?:red|green|blue|yellow|slate|gray)-\d{2,3}/)
   })
 
   it("returns empty string for unknown status", () => {

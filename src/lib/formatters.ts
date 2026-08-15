@@ -42,8 +42,10 @@ export function sessionStatusColor(status: string): string {
       return "text-chart-2"
     case "errored":
       return "text-destructive"
+    // chart-4, not blue-500: Tailwind's fixed palette ignores the theme, and a
+    // frozen shade is unreadable in whichever mode it was not picked for.
     case "awaiting_user_input":
-      return "text-blue-500"
+      return "text-chart-4"
     default:
       return "text-muted-foreground"
   }
@@ -60,7 +62,7 @@ export function sessionStatusBadgeClass(status: string): string {
     case "errored":
       return "bg-destructive/20 text-destructive"
     case "awaiting_user_input":
-      return "bg-blue-500/20 text-blue-500"
+      return "bg-chart-4/20 text-chart-4"
     case "archived":
       return "bg-foreground/10 text-muted-foreground"
     default:

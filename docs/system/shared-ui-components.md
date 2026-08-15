@@ -23,7 +23,7 @@ sources:
   - src/lib/logger.ts
 spec: openspec/specs/shared-ui-components/spec.md
 status: generated
-sources_hash: "6ed99b90565a51adcfd7140f3ca39ee7c5accb4a8e4914e0dda1212e4862c515"
+sources_hash: "e9c97956083332bff9762176cb4fd409b1e8b189d1baed826b10c667adfe52e0"
 ---
 
 # Shared UI Components
@@ -89,7 +89,7 @@ The package also carries a local `LiquidGlassFilter` SVG filter. The mounted app
 - `formatFileSize`
 - `getInitials`
 
-It then adds inbox-only helpers. `formatEmailAddress` strips the surrounding `<...>` from a `"Name <addr>"` string. `sessionStatusLabel`, `sessionStatusColor`, and `sessionStatusBadgeClass` are the single source for how a session status renders. A component imports one of these rather than hard-coding a label or color. That discipline is what keeps a status from reading "Needs Attention" in one place and "Attention Needed" in another.
+It then adds inbox-only helpers. `formatEmailAddress` strips the surrounding `<...>` from a `"Name <addr>"` string. `sessionStatusLabel`, `sessionStatusColor`, and `sessionStatusBadgeClass` are the single source for how a session status renders. A component imports one of these rather than hard-coding a label or color. That discipline is what keeps a status from reading "Needs Attention" in one place and "Attention Needed" in another. Every colour they return is a theme token — one status still returned a fixed `blue-500` while its four siblings used chart tokens, and a frozen shade is unreadable in whichever mode it was not picked for.
 
 `plugin-utils.ts` derives a list row's title, subtitle, and timestamp from a generic plugin item. Each getter checks `fieldSchema` first, looking for a field whose `listRole` matches title, subtitle, or timestamp. It falls back to a heuristic key list — `TITLE_KEYS`, `SUBTITLE_KEYS`, or `TIMESTAMP_KEYS` — only when no field declares that role. `getItemTimestamp` also normalizes unix-seconds and numeric-string values to an ISO string before handing them to `formatRelativeDate`. `formatters.ts` exports its own, simpler `getItemTitle` for contexts with no `fieldSchema`, such as the session-linked items in `NewSessionPanel` and `SidebarRecentSessions`. The two same-named exports serve different call sites and are not interchangeable.
 

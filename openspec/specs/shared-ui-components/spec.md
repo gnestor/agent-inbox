@@ -125,6 +125,8 @@ HTML outputs, React artifacts, plugin components, and email bodies all render in
 #### Scenario: `sessionStatusLabel/Color/BadgeClass` are the single source for status presentation
 - **WHEN** any component renders a session status
 - **THEN** it imports the corresponding helper from `formatters.ts` rather than hard-coding strings or colors — this is what keeps the same status from being labeled "Needs Attention" in one place and "Attention Needed" in another.
+- **AND** every colour those helpers return MUST be a theme token, never a numbered Tailwind palette shade.
+- **WHY:** the fixed palette ignores the theme, so a frozen shade is unreadable in whichever mode it was not chosen for. One status still returned `blue-500` while its four siblings used chart tokens.
 
 #### Scenario: Logger is the only console emitter for app code
 - **WHEN** application code needs to log
