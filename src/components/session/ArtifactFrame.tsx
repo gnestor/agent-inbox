@@ -86,7 +86,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
     for (const key of srcDocCache.keys()) {
       if (key.startsWith(prefix)) srcDocCache.delete(key)
     }
-    const html = buildArtifactHtml(transformedCode, title, exportedName, transformError)
+    const html = buildArtifactHtml(transformedCode, { title, exportedName, transformError })
     if (!transformError) {
       if (srcDocCache.size >= SRCDOC_CACHE_MAX) {
         const first = srcDocCache.keys().next().value

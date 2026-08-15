@@ -16,7 +16,7 @@ panels:
   - output
   - code_editor
 status: generated
-sources_hash: "f74b09e98b77fe5ff4b0a7a4773cdc38686e929e49b80c19ec60f5a27b5d2b38"
+sources_hash: "256c84f7c0c98bc5f75d04f0210170dd429f79a23b1a7e2d5b0ddcb50b24c219"
 ---
 
 # Artifacts and Render Tools

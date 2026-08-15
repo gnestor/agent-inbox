@@ -30,7 +30,7 @@ describe("buildArtifactHtml", () => {
   })
 
   it("escapes HTML in title", () => {
-    const html = buildArtifactHtml("var x = 1;", '<script>alert("xss")</script>')
+    const html = buildArtifactHtml("var x = 1;", { title: '<script>alert("xss")</script>' })
     expect(html).not.toContain("<script>alert")
     expect(html).toContain("&lt;script&gt;alert")
   })
@@ -97,22 +97,33 @@ describe("buildArtifactHtml", () => {
   })
 
   it('Scenario: Mount uses `exportedName` if known, falls back to `App`, else shows "No component found" — uses exportedName for component mounting', () => {
-    const html = buildArtifactHtml("function Dashboard() {}", "Test", "Dashboard")
+    const html = buildArtifactHtml("function Dashboard() {}", { title: "Test", exportedName: "Dashboard" })
     expect(html).toContain("Dashboard")
     expect(html).toContain("No component found")
   })
 
   it("falls back to App when no exportedName", () => {
-    const html = buildArtifactHtml("function App() {}", "Test", null)
+    const html = buildArtifactHtml("function App() {}", { title: "Test", exportedName: null })
     expect(html).toContain("App")
   })
 
-  it("Scenario: Theme vars sync from parent on load and on theme change — syncs theme variables from parent document at runtime", () => {
-    const html = buildArtifactHtml("var x = 1;")
-    // Theme vars are synced live from parent via script, not baked into HTML
-    expect(html).toContain("syncThemeVars")
-    expect(html).toContain("window.parent.getComputedStyle")
-    expect(html).toContain("MutationObserver")
+  it("Scenario: Theme vars sync from parent on load and on theme change — the parent pushes them in", () => {
+    const html = buildArtifactHtml("var x = 1;", { title: "T", fill: false, theme: {
+      vars: { foreground: "oklch(0.97 0.01 248)" },
+      dark: true,
+    } })
+    // The direction inverted when artifacts got their own origin: the document
+    // used to read `window.parent.getComputedStyle` and watch the parent's root
+    // with a MutationObserver, and both are a cross-origin DOM reach that throws
+    // a SecurityError — from the head script, before anything else in the
+    // document runs. So the parent measures and pushes instead: once into the
+    // written document, and again by message when its own theme changes.
+    expect(html).not.toContain("window.parent.getComputedStyle")
+    expect(html).toContain(":root{--foreground:oklch(0.97 0.01 248)}")
+    expect(html).toContain("receiveThemeVars")
+    // The mode travels with the values — Tailwind's dark: variant keys on the
+    // class, so values alone leave every component that carries one out of step.
+    expect(html).toContain(`<html lang="en" class="dark">`)
     // Should NOT have hardcoded fallback values
     expect(html).not.toContain("#0d1117")
     expect(html).not.toContain("#e6edf3")
@@ -156,7 +167,7 @@ describe("buildArtifactHtml", () => {
 
   it("Scenario: Compile or runtime errors render as a destructive in-flow block — transformError renders an error box", () => {
     // WHEN transformError is set the document shows the message in-flow (not a blank iframe).
-    const html = buildArtifactHtml(undefined, "Test", null, "SyntaxError: boom")
+    const html = buildArtifactHtml(undefined, { title: "Test", transformError: "SyntaxError: boom" })
     expect(html).toContain("error-box")
     expect(html).toContain("SyntaxError: boom")
   })
