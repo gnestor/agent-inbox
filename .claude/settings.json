@@ -1,1 +1,35 @@
-{}
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/hooks/simplify-before-commit.mjs ] && node \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/hooks/simplify-before-commit.mjs || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/hooks/stop-incomplete.mjs ] && node \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/hooks/stop-incomplete.mjs || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/sync.mjs ] && node \"${HAMMIES_WORKSPACE_ROOT:-$CLAUDE_PROJECT_DIR/../..}\"/scripts/sync.mjs || true --from-hook"
+          }
+        ]
+      }
+    ]
+  }
+}
