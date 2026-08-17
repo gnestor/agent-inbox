@@ -17,6 +17,7 @@ import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { canonicalize } from "./entity-extractor.js"
 import { isRecord, parseJson } from "../lib/schemas.js"
 import type { Entity } from "../../src/types/plugin.js"
+import { z } from "zod"
 
 /**
  * Noise patterns applied to body-extracted entities. The model sometimes
@@ -148,11 +149,11 @@ Document:
 ${content}
 ---`
 
-interface OllamaChatResponse {
-  message?: { content?: string }
-  done?: boolean
-  error?: string
-}
+const OllamaChatResponseSchema = z.object({
+  message: z.object({ content: z.string().optional() }).optional(),
+  done: z.boolean().optional(),
+  error: z.string().optional(),
+}).passthrough()
 
 /**
  * Call Ollama's /api/chat endpoint with the extraction prompt.
@@ -183,7 +184,7 @@ async function callOllama(content: string, model?: string): Promise<string | nul
       log.warn("Ollama HTTP error", { status: res.status })
       return null
     }
-    const data = (await res.json()) as OllamaChatResponse
+    const data = OllamaChatResponseSchema.parse(await res.json())
     if (data.error) {
       log.warn("Ollama error", { error: data.error })
       return null

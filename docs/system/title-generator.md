@@ -7,7 +7,7 @@ sources:
   - server/lib/title-generator.ts
 spec: openspec/specs/title-generator/spec.md
 status: generated
-sources_hash: "aaa15ab8c9ab2de971bef681a067dfc4b599cded57c5c064a7806082490968dc"
+sources_hash: "37430efbc1a3fba845a6e04a0ec968970adeba8d59a41ff742e6996c0e11a746"
 ---
 
 # Title Generator

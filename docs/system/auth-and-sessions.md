@@ -9,7 +9,7 @@ sources:
   - server/types/hono-env.ts
 spec: openspec/specs/auth-and-sessions/spec.md
 status: generated
-sources_hash: "2eeac2f895f029ca72be415f77b3c3df6692c790800cd5a16da9ed50fce1b465"
+sources_hash: "c65d51132e9e2ad0ffedcdcc7cf6203e46ccbef2a68a27cdf346116896f3b92a"
 ---
 
 # Auth and Sessions
@@ -45,6 +45,8 @@ A malformed request body fails `AuthCallbackBody` validation in `server/lib/sche
 
 An auth middleware wraps every `/api/*` route after the unprotected `/api/auth` and `/api/health` paths. It reads the `hammies_session` cookie, calls `getSession` to verify the JWT, and returns 401 when the cookie is missing or invalid.
 
+Because that cookie is shared with the other Hammies apps, the first valid cross-app request also ensures a matching local `users` row exists before workspace membership is resolved. An in-process cache makes that provisioning pass run at most once per user per server lifetime.
+
 On success, the middleware sets typed context variables downstream handlers read with `c.get()`:
 
 - `user` — the signed-in user's name, email, and picture
@@ -60,7 +62,7 @@ The middleware also re-wraps the rest of the request inside `runWithRequestConte
 
 `csrfProtection` middleware runs on `/api/*` before the auth middleware, adding an Origin check on top of the cookie's `SameSite=Lax` protection. GET, HEAD, and OPTIONS requests skip the check, since safe methods never mutate state.
 
-Every other method reads the `Origin` header, falling back to the `Referer` header's origin when `Origin` is absent. A request from an origin in `ALLOWED_ORIGINS` proceeds. A request from any other named origin gets a 403 response and a warn-level log recording the method, path, and origin.
+Every other method reads the `Origin` header, falling back to the `Referer` header's origin when `Origin` is absent. A request from an origin in the default allowlist proceeds; deployments can replace that list with `INBOX_ALLOWED_ORIGINS`. A request from any other named origin gets a 403 response and a warn-level log recording the method, path, and origin.
 
 The middleware does not treat missing `Origin` and `Referer` headers as an attack. The Vite dev proxy strips them, and non-browser clients may omit them too, so the middleware logs a debug line and lets the request through. `SameSite=Lax` remains the primary defense in that case.
 

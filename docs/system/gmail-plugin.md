@@ -24,7 +24,7 @@ sources:
   - plugins/gmail/plugin.ts
 spec: openspec/specs/gmail-plugin/spec.md
 status: generated
-sources_hash: "a33ebd4f3c886d700815f9e7db24344fc060a1f3ce05b7e117ca3908dbc5e1d2"
+sources_hash: "66793900c5eb85948a6773a5d5af526766d62b16413754a9c73b53ef28506689"
 ---
 
 # Gmail Plugin
@@ -48,6 +48,8 @@ flowchart TD
 ## Two front doors, one client
 
 Every Gmail call funnels through `gmail.ts`, a thin fetch wrapper around the Gmail REST API. The plugin reaches that client two ways. The generic `Plugin` contract satisfies the plugin loader and drives the sidebar's list panel. A second REST surface, mounted by the plugin's own `routes()`, preserves the pre-plugin URL shape and serves the custom `EmailThread` component and its hooks. Both paths call the same `gmail.ts` functions, so only the entry point differs.
+
+The wrapper validates each Google response with the schema for that endpoint before returning it. A malformed thread, label, message, profile, history, or attachment payload therefore fails inside the provider adapter instead of reaching plugin rendering or mutation logic as an assumed shape.
 
 ## Manifest and fields
 

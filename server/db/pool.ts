@@ -1,8 +1,9 @@
 import { readFileSync } from "fs"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
-import { getPool as _getPool, query as _query, queryOne as _queryOne, execute as _execute, withTransaction as _withTransaction } from "@hammies/db"
+import { getPool as _getPool, query as _query, queryOne as _queryOne, queryRows as _queryRows, queryOptionalRow as _queryOptionalRow, queryRequiredRow as _queryRequiredRow, execute as _execute, withTransaction as _withTransaction } from "@hammies/db"
 import type pg from "pg"
+import type { ContractSchema } from "@hammies/contracts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TRANSIENT_DATABASE_ERROR_CODES = new Set([
@@ -65,10 +66,10 @@ async function runMigration(
 }
 
 function pool(): pg.Pool {
-  const connectionString = process.env.DATABASE_URL
+  const connectionString = process.env.INBOX_DATABASE_URL ?? process.env.DATABASE_URL
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
+      "INBOX_DATABASE_URL or DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/inbox)"
     )
   }
   return _getPool({ connectionString })
@@ -136,6 +137,33 @@ export async function queryOne<T extends pg.QueryResultRow>(
   return _queryOne<T>(pool(), sql, params)
 }
 
+export async function queryOptionalRow<T>(
+  schema: ContractSchema<T>,
+  queryName: string,
+  sql: string,
+  params?: unknown[],
+): Promise<T | undefined> {
+  return _queryOptionalRow(pool(), schema, queryName, sql, params)
+}
+
+export async function queryRows<T>(
+  schema: ContractSchema<T>,
+  queryName: string,
+  sql: string,
+  params?: unknown[],
+): Promise<T[]> {
+  return _queryRows(pool(), schema, queryName, sql, params)
+}
+
+export async function queryRequiredRow<T>(
+  schema: ContractSchema<T>,
+  queryName: string,
+  sql: string,
+  params?: unknown[],
+): Promise<T> {
+  return _queryRequiredRow(pool(), schema, queryName, sql, params)
+}
+
 export async function execute(
   sql: string,
   params?: unknown[],
@@ -159,6 +187,7 @@ export async function initializeDatabase(): Promise<void> {
     "006_backfill_state.sql",
     "007_source_entities.sql",
     "008_body_extraction_log.sql",
+    "009_webhook_replay_claims.sql",
   ]
   const p = pool()
   for (const file of migrations) {

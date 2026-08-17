@@ -12,8 +12,11 @@
 import { readdir, readFile } from "fs/promises"
 import { join } from "path"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
-import { execute, query as dbQuery } from "../db/pool.js"
+import { execute } from "../db/pool.js"
+import { queryRows } from "../db/rows.js"
 import type { Plugin, PluginItem, Entity } from "../../src/types/plugin.js"
+import { DatabaseIntegerSchema } from "@hammies/contracts/database"
+import { z } from "zod"
 
 const log = createLogger("entity-extractor")
 
@@ -165,7 +168,9 @@ export async function runExtractEntities(
 
     // One query per plugin instead of one per file. The unprocessed set is
     // {all stubs} − {stubs already in source_entities}.
-    const existingRows = await dbQuery<{ source_path: string }>(
+    const existingRows = await queryRows(
+      z.object({ source_path: z.string() }).strict(),
+      "entities-list-existing-sources",
       `SELECT DISTINCT source_path FROM source_entities
        WHERE workspace_id = $1 AND source_path = ANY($2::text[])`,
       [workspaceId, stubPaths],
@@ -271,7 +276,13 @@ export async function topUnprocessedEntities(
   workspaceId: string,
   limit = 10,
 ): Promise<{ entity_type: string; entity_value: string; source_count: number }[]> {
-  return dbQuery<{ entity_type: string; entity_value: string; source_count: number }>(
+  return queryRows(
+    z.object({
+      entity_type: z.string(),
+      entity_value: z.string(),
+      source_count: DatabaseIntegerSchema,
+    }).strict(),
+    "entities-list-summary",
     `SELECT entity_type, entity_value, COUNT(*)::int AS source_count
      FROM source_entities
      WHERE workspace_id = $1 AND processed_for_entity = 0
@@ -303,7 +314,9 @@ export async function unprocessedSourcesForEntity(
   entityValue: string,
   limit = 100,
 ): Promise<string[]> {
-  const rows = await dbQuery<{ source_path: string }>(
+  const rows = await queryRows(
+    z.object({ source_path: z.string() }).strict(),
+    "entities-list-source-paths",
     `SELECT source_path FROM source_entities
      WHERE workspace_id = $1 AND entity_type = $2 AND entity_value = $3 AND processed_for_entity = 0
      ORDER BY source_added_at ASC

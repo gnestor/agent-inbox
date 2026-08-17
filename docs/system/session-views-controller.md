@@ -16,7 +16,7 @@ sources:
   - src/stores/session-reducer.ts
 spec: openspec/specs/session-views-controller/spec.md
 status: generated
-sources_hash: "73f8e66c18c44abd74f5c3b3b4f8c650a971b130808e127c1c0dac94fd47c048"
+sources_hash: "234abee2d6b22ab583aa344a3217d081c67854d6130323f5399e9ea66fccba1a"
 ---
 
 # Session Views Controller
@@ -74,7 +74,7 @@ Booleans admitted impossible states — a regression once let `isLoading` stay `
 
 `SessionView` composes the controller and the view hook, then hands their output to the shared `SessionTranscript` component — the panel itself does no fetching. That shared component moved to `@hammies/frontend` once Inbox and Studio's forks had drifted from the same renderer; the pure classification layer moved to `@hammies/session-core`. Three capabilities stay app-specific because they are Inbox concepts a shared UI package must not learn. Those are rendering an output, resolving a run-file URL, and rendering a structured panel from an assistant text block.
 
-`useInboxTranscriptHost` supplies all three through one `TranscriptHost` object, memoised on the panel-schema query so its identity only changes when schemas actually load. `renderTextBlock` recognizes `<inbox-context>` and `<inbox-result>` tags, plus any tag a plugin's panel schema declares. One seam handles all three cases, instead of teaching the shared transcript about the plugin registry.
+`useInboxTranscriptHost` supplies all three through one `TranscriptHost` object, memoised on the panel-schema query so its identity only changes when schemas actually load. `renderTextBlock` recognizes `<inbox-context>` and `<inbox-result>` tags, plus any tag a plugin's panel schema declares. Each embedded JSON payload is validated against its Zod contract before rendering; malformed assistant or plugin output falls back safely instead of being cast into a panel. One seam handles all three cases, instead of teaching the shared transcript about the plugin registry.
 
 Two behaviors changed with the move. The transcript no longer virtualizes rows: WebKit has no scroll anchoring, so estimate-based windowing visibly jumps the viewport. A bare `Write` no longer counts as an artifact either, because sessions run against a real repo and typed React modules broke the JSX renderer. A written file still renders when the agent calls `present_files` on it explicitly.
 

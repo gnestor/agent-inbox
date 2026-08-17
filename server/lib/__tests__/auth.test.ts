@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 
 const users = new Map<string, { email: string; name: string; picture: string | null }>()
 
@@ -110,6 +112,21 @@ describe("auth", () => {
   })
 
   describe("getSession", () => {
+    it("Scenario: A shared JWT cookie provisions its database user before workspace access", async () => {
+      mockVerifySession.mockResolvedValueOnce({
+        sub: "shared-1",
+        email: "fresh-shared@test.com",
+        name: "Fresh Shared",
+        picture: undefined,
+        iat: 0,
+        exp: 0,
+      })
+
+      await getSession("shared.jwt.token")
+
+      expect(users.get("fresh-shared@test.com")?.name).toBe("Fresh Shared")
+    })
+
     it("Scenario: `GET /api/auth/session` with a valid cookie — returns the user when JWT verification succeeds", async () => {
       mockVerifySession.mockResolvedValueOnce({
         sub: "s1",
@@ -128,6 +145,16 @@ describe("auth", () => {
     it("Scenario: `GET /api/auth/session` with no or invalid cookie — returns undefined when JWT verification throws", async () => {
       mockVerifySession.mockRejectedValueOnce(new Error("invalid"))
       expect(await getSession("garbage")).toBeUndefined()
+    })
+  })
+
+  describe("development origins", () => {
+    it("Scenario: An isolated checkout can override its browser origins", () => {
+      const serverSource = readFileSync(resolve(import.meta.dirname, "../../index.ts"), "utf8")
+      expect(serverSource).toContain("INBOX_ALLOWED_ORIGINS")
+      expect(serverSource).toMatch(
+        /INBOX_ALLOWED_ORIGINS\s*\?\s*inboxEnvironment\.INBOX_ALLOWED_ORIGINS\.split\(","\)/,
+      )
     })
   })
 

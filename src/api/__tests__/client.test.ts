@@ -3,8 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import * as client from "../client.js"
 
 const mockFetch = vi.fn()
-const jsonResponse = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
+const apiResponse = (data: unknown) =>
+  new Response(JSON.stringify({ contractVersion: 1, data }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })
+const apiErrorResponse = (message: string, status: number) =>
+  new Response(JSON.stringify({
+    contractVersion: 1,
+    error: { code: "test_error", message },
+  }), {
     status,
     headers: { "Content-Type": "application/json" },
   })
@@ -19,31 +27,34 @@ describe("api client", () => {
   })
 
   it("Scenario: Successful request returns parsed JSON — 2xx body is parsed and JSON content-type is set", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({
+    mockFetch.mockResolvedValueOnce(apiResponse({
       user: { email: "a@example.com", name: "A" },
     }))
     const result = await client.getAuthSession()
     expect(result).toEqual({ user: { email: "a@example.com", name: "A" } })
-    const [url, opts] = mockFetch.mock.calls[0]
+    const firstCall = mockFetch.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    if (firstCall === undefined) throw new Error("fetch was not called")
+    const [url, opts] = firstCall
     expect(url).toBe("/api/auth/session")
     expect((opts.headers as Record<string, string>)["Content-Type"]).toBe("application/json")
   })
 
   it("Scenario: Non-2xx responses throw with status and body; 401 triggers re-login — error shape + session-expired event", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+    mockFetch.mockResolvedValueOnce(apiErrorResponse("boom", 500))
     await expect(client.getAuthSession()).rejects.toThrow("boom")
 
     // 401: dispatches the session-expired event before throwing.
     const handler = vi.fn()
     window.addEventListener("session-expired", handler)
-    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "no jwt" }, 401))
+    mockFetch.mockResolvedValueOnce(apiErrorResponse("no jwt", 401))
     await expect(client.getAuthSession()).rejects.toThrow("no jwt")
     expect(handler).toHaveBeenCalledTimes(1)
     window.removeEventListener("session-expired", handler)
   })
 
   it("Scenario: Multipart upload bypasses the helper — uploadSessionFile posts FormData with no JSON content-type, same error shape", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({
+    mockFetch.mockResolvedValueOnce(apiResponse({
       name: "f.txt",
       path: "/p",
       size: 1,
@@ -51,7 +62,10 @@ describe("api client", () => {
     }))
     const file = new File(["hi"], "f.txt", { type: "text/plain" })
     await client.uploadSessionFile("s1", file)
-    const [url, opts] = mockFetch.mock.calls[0]
+    const firstCall = mockFetch.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    if (firstCall === undefined) throw new Error("fetch was not called")
+    const [url, opts] = firstCall
     expect(url).toBe("/api/sessions/s1/files")
     expect(opts.method).toBe("POST")
     expect(opts.body).toBeInstanceOf(FormData)
@@ -59,7 +73,7 @@ describe("api client", () => {
     expect(opts.headers).toBeUndefined()
 
     // Same throw shape on failure.
-    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "too big" }, 413))
+    mockFetch.mockResolvedValueOnce(apiErrorResponse("too big", 413))
     await expect(client.uploadSessionFile("s1", file)).rejects.toThrow("too big")
   })
 
@@ -85,7 +99,7 @@ describe("api client", () => {
 
   it("Scenario: Large session snapshots use a bounded endpoint-specific budget", async () => {
     const largeText = "x".repeat(5_100_000)
-    mockFetch.mockResolvedValueOnce(jsonResponse({
+    mockFetch.mockResolvedValueOnce(apiResponse({
       session: {
         id: "large-session",
         status: "complete",

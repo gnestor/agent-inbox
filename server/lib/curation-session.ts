@@ -14,8 +14,12 @@
  */
 
 import { join } from "path"
-import { queryOne, execute } from "../db/pool.js"
+import { execute } from "../db/pool.js"
+import { queryOptionalRow } from "../db/rows.js"
 import { startSession } from "./session-manager.js"
+import { z } from "zod"
+
+const TimestampStringSchema = z.union([z.string(), z.date().transform((value) => value.toISOString())])
 
 /** Curation sessions run with CWD = `{workspace}/context`. */
 export function getCurationCwd(workspacePath: string): string {
@@ -81,7 +85,9 @@ export async function runBackgroundCurationSession(opts: {
   const model = opts.model ?? DEFAULT_CURATION_MODEL
 
   // Clear any stale lock before attempting to claim.
-  const existing = await queryOne<{ last_cursor: string | null; last_run_at: string }>(
+  const existing = await queryOptionalRow(
+    z.object({ last_cursor: z.string().nullable(), last_run_at: TimestampStringSchema }).strict(),
+    "curation-session-get-lock",
     "SELECT last_cursor, last_run_at FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
     [pendingKey, workspaceId],
   )

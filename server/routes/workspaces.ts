@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { setCookie } from "hono/cookie"
-import { query as dbQuery, queryOne } from "../db/pool.js"
+import { queryOptionalRow, queryRows } from "../db/rows.js"
 import {
   getUserWorkspaces,
   getWorkspaceById,
@@ -21,6 +21,7 @@ import {
   UpdateMemberRoleBody,
 } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
+import { z } from "zod"
 
 /** Extract first user-facing message from a Zod validation error */
 function zodErrorMessage(err: ZodError): string {
@@ -111,7 +112,12 @@ workspaceRoutes.post("/:id/members", async (c) => {
   }
   const { email, role } = body
 
-  const user = await queryOne<{ email: string }>("SELECT email FROM users WHERE email = $1", [email])
+  const user = await queryOptionalRow(
+    z.object({ email: z.string().email() }).strict(),
+    "workspaces-find-user",
+    "SELECT email FROM users WHERE email = $1",
+    [email],
+  )
   if (!user) return c.json({ error: "User not found" }, 404)
 
   await addWorkspaceMember(id, email, role || "member")
@@ -159,7 +165,9 @@ workspaceRoutes.patch("/:id/members/:email", async (c) => {
 workspaceRoutes.get("/:id/available-users", async (c) => {
   requireAdmin(c)
   const id = c.req.param("id")
-  const users = await dbQuery(
+  const users = await queryRows(
+    z.object({ email: z.string().email(), name: z.string(), picture: z.string().nullable() }).strict(),
+    "workspaces-list-available-users",
     `SELECT u.email, u.name, u.picture FROM users u
      WHERE u.email NOT IN (SELECT user_email FROM workspace_members WHERE workspace_id = $1)
      ORDER BY u.name`,

@@ -8,12 +8,25 @@ const NOW_SECONDS = 1_785_196_800
 const SLACK_SECRET = "fixture-slack-signing-secret"
 const GENERIC_SECRET = "fixture-generic-signing-secret-32-bytes"
 
-function createApp() {
+type ClaimEvent = (eventId: string, now: number) => Promise<boolean>
+
+function createReplayStore(): ClaimEvent {
+  const claims = new Map<string, number>()
+  return async (eventId, now) => {
+    const expiresAt = claims.get(eventId)
+    if (expiresAt !== undefined && expiresAt > now) return false
+    claims.set(eventId, now + 86_400_000)
+    return true
+  }
+}
+
+function createApp(claimEvent: ClaimEvent = createReplayStore()) {
   const app = new Hono()
   app.route("/api/webhooks", createWebhookRoutes({
     slackSigningSecret: () => SLACK_SECRET,
     genericSigningSecret: () => GENERIC_SECRET,
     now: () => NOW_SECONDS * 1_000,
+    claimEvent,
   }))
   return app
 }
@@ -31,7 +44,7 @@ async function signature(body: string, secret: string, prefix = ""): Promise<str
   return prefix + Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
-async function postJson(app: Hono, path: string, body: unknown) {
+async function postJson(app: Hono, path: string, body: unknown, eventId: string = crypto.randomUUID()) {
   const rawBody = JSON.stringify(body)
   const isSlack = path.endsWith("/slack")
   const timestamp = String(NOW_SECONDS)
@@ -47,7 +60,7 @@ async function postJson(app: Hono, path: string, body: unknown) {
     )
   } else {
     headers["X-Hammies-Timestamp"] = timestamp
-    headers["X-Hammies-Event-Id"] = crypto.randomUUID()
+    headers["X-Hammies-Event-Id"] = eventId
     headers["X-Hammies-Signature"] = await signature(rawBody, GENERIC_SECRET)
   }
   return app.request(path, {
@@ -82,6 +95,47 @@ describe("webhooks — generic ingress", () => {
       contractVersion: 1,
       outcome: "unsupported-event",
     })
+  })
+
+  it("Scenario: Replay claims survive process and instance boundaries", async () => {
+    const replayStore = createReplayStore()
+    const firstInstance = createApp(replayStore)
+    const secondInstance = createApp(replayStore)
+    const eventId = "shared-event-1"
+
+    const accepted = await postJson(
+      firstInstance,
+      "/api/webhooks/notion",
+      { event: "page.updated" },
+      eventId,
+    )
+    const duplicate = await postJson(
+      secondInstance,
+      "/api/webhooks/notion",
+      { event: "page.updated" },
+      eventId,
+    )
+
+    expect(accepted.status).toBe(202)
+    expect(await duplicate.json()).toEqual({ contractVersion: 1, outcome: "duplicate" })
+  })
+
+  it("Scenario: The durable replay store decides whether an event is new", async () => {
+    const claimEvent = vi.fn<ClaimEvent>().mockResolvedValue(false)
+    const app = createApp(claimEvent)
+
+    const response = await postJson(
+      app,
+      "/api/webhooks/notion",
+      { event: "page.updated" },
+      "already-claimed-event",
+    )
+
+    expect(await response.json()).toEqual({ contractVersion: 1, outcome: "duplicate" })
+    expect(claimEvent).toHaveBeenCalledWith(
+      "notion:already-claimed-event",
+      NOW_SECONDS * 1_000,
+    )
   })
 
   it("Scenario: Auth middleware does not gate this route", async () => {

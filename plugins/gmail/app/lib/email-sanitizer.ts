@@ -118,6 +118,13 @@ export interface SanitizeOptions {
   keepSignature?: boolean
 }
 
+function cleanerDebugEnabled(): boolean {
+  const runtimeProcess: unknown = Reflect.get(globalThis, "process")
+  if (typeof runtimeProcess !== "object" || runtimeProcess === null) return false
+  const env: unknown = Reflect.get(runtimeProcess, "env")
+  return typeof env === "object" && env !== null && Boolean(Reflect.get(env, "DEBUG_CLEANER"))
+}
+
 export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string {
   let result = html
 
@@ -188,7 +195,7 @@ export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string 
   let earliestMatchIndex: number | null = null
   for (const pattern of HTML_TEXT_QUOTE_PATTERNS) {
     const match = result.match(pattern)
-    if (process.env.DEBUG_CLEANER)
+    if (cleanerDebugEnabled())
       console.log(`[sanitizer] pattern ${pattern} → index=${match?.index}`)
     if (match?.index != null && match.index < earliestIndex) {
       earliestIndex = match.index
@@ -197,7 +204,7 @@ export function sanitizeHtmlEmail(html: string, opts?: SanitizeOptions): string 
   }
   if (earliestMatchIndex !== null) {
     const cutAt = findBlockStart(result, earliestMatchIndex)
-    if (process.env.DEBUG_CLEANER)
+    if (cleanerDebugEnabled())
       console.log(`[sanitizer] cutting at ${cutAt}, result was ${result.length}`)
     result = result.slice(0, cutAt)
   }

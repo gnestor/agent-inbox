@@ -9,10 +9,23 @@
  */
 
 import * as gmail from "./app/lib/gmail.js"
+import { z } from "zod"
 import type { ThreadSummary } from "./app/lib/gmail.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
 
 const MAX_LABEL_BADGES = 3
+const ComposeRequestSchema = z.object({
+  to: z.string().min(1),
+  subject: z.string(),
+  body: z.string(),
+  threadId: z.string().optional(),
+  inReplyTo: z.string().optional(),
+  references: z.string().optional(),
+}).strict()
+const LabelRequestSchema = z.object({
+  addLabelIds: z.array(z.string()).optional().default([]),
+  removeLabelIds: z.array(z.string()).optional().default([]),
+}).strict()
 
 /** Add derived boolean fields and user label names from labelIds for badge rendering. */
 function addDerivedFields(
@@ -73,7 +86,7 @@ function mimeFromFilename(filename: string): string {
   return MIME_MAP[ext || ""] || "application/octet-stream"
 }
 
-function sniffMimeType(buf: Buffer): string {
+function sniffMimeType(buf: Uint8Array): string {
   if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png"
   if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg"
   if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif"
@@ -256,7 +269,7 @@ export const gmailPlugin: Plugin = {
       const messageId = c.req.param("id")
       const attachmentId = c.req.param("attachmentId")
       const filename = c.req.query("filename")
-      let data: Buffer
+      let data: Uint8Array
       try {
         // Token acquisition (refresh) and the Gmail fetch are both wrapped: an
         // expired/invalid OAuth token throws here, and we must not let any error
@@ -290,14 +303,9 @@ export const gmailPlugin: Plugin = {
     app.post("/send", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json<{
-        to: string
-        subject: string
-        body: string
-        threadId?: string
-        inReplyTo?: string
-        references?: string
-      }>()
+      const parsedBody = ComposeRequestSchema.safeParse(await c.req.json().catch(() => null))
+      if (!parsedBody.success) return c.json({ error: "Invalid compose request" }, 400)
+      const { to, subject, body, threadId, inReplyTo, references } = parsedBody.data
       const result = await gmail.sendMessage(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
@@ -306,14 +314,9 @@ export const gmailPlugin: Plugin = {
     app.post("/drafts", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { to, subject, body, threadId, inReplyTo, references } = await c.req.json<{
-        to: string
-        subject: string
-        body: string
-        threadId?: string
-        inReplyTo?: string
-        references?: string
-      }>()
+      const parsedBody = ComposeRequestSchema.safeParse(await c.req.json().catch(() => null))
+      if (!parsedBody.success) return c.json({ error: "Invalid compose request" }, 400)
+      const { to, subject, body, threadId, inReplyTo, references } = parsedBody.data
       const result = await gmail.createDraft(accessToken, to, subject, body, threadId, inReplyTo, references)
       return c.json(result)
     })
@@ -332,11 +335,10 @@ export const gmailPlugin: Plugin = {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
       const id = c.req.param("id")
-      const { addLabelIds, removeLabelIds } = await c.req.json<{
-        addLabelIds?: string[]
-        removeLabelIds?: string[]
-      }>()
-      await gmail.modifyThreadLabels(accessToken, id, addLabelIds || [], removeLabelIds || [])
+      const parsedBody = LabelRequestSchema.safeParse(await c.req.json().catch(() => null))
+      if (!parsedBody.success) return c.json({ error: "Invalid label request" }, 400)
+      const { addLabelIds, removeLabelIds } = parsedBody.data
+      await gmail.modifyThreadLabels(accessToken, id, addLabelIds, removeLabelIds)
       return c.json({ ok: true })
     })
 
@@ -344,11 +346,10 @@ export const gmailPlugin: Plugin = {
     app.patch("/messages/:id/labels", async (c) => {
       const ctx = await getContext(c)
       const accessToken = await requireToken(ctx)
-      const { addLabelIds, removeLabelIds } = await c.req.json<{
-        addLabelIds?: string[]
-        removeLabelIds?: string[]
-      }>()
-      await gmail.modifyLabels(accessToken, c.req.param("id"), addLabelIds || [], removeLabelIds || [])
+      const parsedBody = LabelRequestSchema.safeParse(await c.req.json().catch(() => null))
+      if (!parsedBody.success) return c.json({ error: "Invalid label request" }, 400)
+      const { addLabelIds, removeLabelIds } = parsedBody.data
+      await gmail.modifyLabels(accessToken, c.req.param("id"), addLabelIds, removeLabelIds)
       return c.json({ ok: true })
     })
 

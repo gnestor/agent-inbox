@@ -12,7 +12,7 @@ sources:
   - src/hooks/use-session-mutations.ts
 spec: openspec/specs/session-manager/spec.md
 status: generated
-sources_hash: "6d1fdfcbfc57a0d561e4fb738f06cf521f23f3cb4009dd6b37e89ddd9aa0719d"
+sources_hash: "e5efd37ee08f6df585ca15ac7768494c09875e42c640ba234ce1a3bdc58b76ad"
 ---
 
 # Session Manager
@@ -104,6 +104,8 @@ Presence broadcasts debounce by 200 ms, so a user with several open tabs produce
 ## The sessions row and its status machine
 
 `createSessionRecord` inserts a row with status `running`. Its summary comes from the linked item's title, or else the prompt's first 80 characters. The row also carries the trigger source that started the session. `touchSession` debounces `updated_at` writes to once per 5 seconds, per session. A streaming session emits far more events than the connection pool should absorb as raw writes.
+
+All session queries decode their PostgreSQL results through operation-specific row schemas before returning a session or using its status. List and linked-session reads project only the fields in their named row contract; they derive `linked_item_title` from `metadata` without passing `metadata`, `workspace_id`, or future table columns into the strict decoder. This keeps nullability, timestamps, status values, and JSON fields honest at the database boundary, including startup indexing and compare-and-swap transitions.
 
 `updateSessionStatus` enforces a fixed transition table with an atomic compare-and-swap `UPDATE`, so two concurrent callers cannot race a session into an invalid state:
 

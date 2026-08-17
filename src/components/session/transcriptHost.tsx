@@ -9,6 +9,41 @@ import { InboxResultPanel } from "./InboxResultPanel"
 import { OutputRenderer } from "./OutputRenderer"
 import { MarkdownEntry } from "@hammies/frontend/components/session"
 import type { InboxContextData, InboxResultData } from "@/types"
+import { z } from "zod"
+
+const nullableString = z.string().nullable()
+const InboxContextSchema: z.ZodType<InboxContextData> = z.object({
+  entity: z.object({
+    type: z.enum(["person", "company", "topic"]), name: z.string(), email: nullableString,
+    domain: nullableString, company: nullableString, role: nullableString,
+  }),
+  source: z.object({
+    type: z.string(), id: z.string(), threadId: nullableString, subject: nullableString,
+    from: nullableString, date: nullableString, snippet: z.string(),
+  }),
+  contextPages: z.array(z.object({
+    file: z.string(), title: z.string(), summary: z.string(), tags: z.array(z.string()),
+  })),
+  relatedThreads: z.array(z.object({
+    threadId: z.string(), subject: z.string(), date: z.string(), snippet: z.string(),
+  })),
+  relatedTasks: z.array(z.object({
+    id: z.string(), title: z.string(), status: z.string(), url: z.string(),
+  })),
+  summary: z.string(),
+})
+const InboxResultSchema: z.ZodType<InboxResultData> = z.object({
+  action: z.enum(["draft", "task", "context_updated", "skipped"]),
+  pluginId: z.string().optional(),
+  draft: z.object({
+    to: z.string(), subject: z.string(), body: z.string(),
+    threadId: nullableString, inReplyTo: nullableString,
+  }).optional(),
+  task: z.object({ id: z.string(), title: z.string(), status: z.string(), url: z.string() }).optional(),
+  contextUpdated: z.array(z.string()).optional(),
+  summary: z.string(),
+})
+const PanelPayloadSchema = z.record(z.string(), z.unknown())
 
 /**
  * Inbox's implementation of the shared transcript's host capabilities.
@@ -57,7 +92,10 @@ export function useInboxTranscriptHost(): TranscriptHost {
         const contextJson = extractXmlTag(text, "inbox-context")
         if (contextJson) {
           try {
-            return withRest(<ContextPanel data={JSON.parse(contextJson) as InboxContextData} />, "inbox-context")
+            return withRest(
+              <ContextPanel data={InboxContextSchema.parse(JSON.parse(contextJson) as unknown)} />,
+              "inbox-context",
+            )
           } catch {
             /* malformed payload — fall through to markdown */
           }
@@ -67,7 +105,10 @@ export function useInboxTranscriptHost(): TranscriptHost {
         if (resultJson) {
           try {
             return withRest(
-              <InboxResultPanel data={JSON.parse(resultJson) as InboxResultData} sessionId={sessionId ?? ""} />,
+              <InboxResultPanel
+                data={InboxResultSchema.parse(JSON.parse(resultJson) as unknown)}
+                sessionId={sessionId ?? ""}
+              />,
               "inbox-result",
             )
           } catch {
@@ -81,7 +122,7 @@ export function useInboxTranscriptHost(): TranscriptHost {
           try {
             return withRest(
               <div className="rounded-lg border p-3 bg-card">
-                <PanelWidget widgets={widgets} data={JSON.parse(json) as Record<string, unknown>} />
+                <PanelWidget widgets={widgets} data={PanelPayloadSchema.parse(JSON.parse(json) as unknown)} />
               </div>,
               tag,
             )

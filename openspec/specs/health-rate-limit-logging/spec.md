@@ -115,6 +115,7 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 | Health checks: DB ping, vault shape, plugin count, workspaces | [server/lib/health.ts](../../../server/lib/health.ts) |
 | `/api/health` route, mounted before auth middleware | [server/index.ts:259-265](../../../server/index.ts#L259-L265) |
 | In-memory rate limiter + middleware factory | [server/lib/rate-limit.ts](../../../server/lib/rate-limit.ts) |
+| Versioned HTTP success and error envelope helper | [server/lib/http-envelope.ts](../../../server/lib/http-envelope.ts) |
 | Structured logger + `AsyncLocalStorage` request context | shared from `@hammies/frontend/lib/serverLogger` |
 | Crash telemetry client (heartbeat + clean-unload + crash detection) | [src/lib/crash-telemetry.ts](../../../src/lib/crash-telemetry.ts) |
 | Telemetry endpoints (JSONL appenders) | [server/routes/telemetry.ts](../../../server/routes/telemetry.ts) |

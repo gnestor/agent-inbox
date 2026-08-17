@@ -8,7 +8,7 @@ sources:
   - plugins/gmail/app/__tests__/email-sanitizer-live.test.ts
 spec: openspec/specs/email-sanitizer/spec.md
 status: generated
-sources_hash: "5ee2e3241d8f25b82f107f19661193f7f7420e8e4133c653f1fd6cd0bf2bdd09"
+sources_hash: "36eb252ab46b69a182705e39f4c528cf05d52c4c6b99d5716a8d6663824f044f"
 ---
 
 # Email Sanitizer

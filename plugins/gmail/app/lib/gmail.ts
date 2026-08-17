@@ -1,5 +1,7 @@
 import { sanitizePlainText, sanitizeHtmlEmail, type SanitizeOptions } from "./email-sanitizer.js"
 import { htmlToMarkdown } from "./email-to-markdown.js"
+import { defineProviderContract, type ContractSchema } from "@hammies/contracts/external"
+import { z } from "zod"
 import type {
   GmailApiMessage,
   GmailApiThread,
@@ -12,8 +14,35 @@ import type {
 } from "./gmail-api-types.js"
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
+const HeaderSchema = z.object({ name: z.string(), value: z.string() })
+const PartSchema: z.ZodType<GmailApiPart> = z.lazy(() => z.object({
+  mimeType: z.string(), filename: z.string().optional(), headers: z.array(HeaderSchema).optional(),
+  body: z.object({ data: z.string().optional(), attachmentId: z.string().optional(), size: z.number().optional() }).optional(),
+  parts: z.array(PartSchema).optional(),
+}))
+const MessageSchema: z.ZodType<GmailApiMessage> = z.object({
+  id: z.string(), threadId: z.string(), labelIds: z.array(z.string()).optional(), snippet: z.string().optional(),
+  historyId: z.string().optional(), payload: PartSchema.optional(),
+}).passthrough()
+const ThreadSchema: z.ZodType<GmailApiThread> = z.object({
+  id: z.string(), historyId: z.string().optional(), messages: z.array(MessageSchema).optional(),
+}).passthrough()
+const ThreadListSchema: z.ZodType<GmailApiThreadListResponse> = z.object({
+  threads: z.array(z.object({ id: z.string() })).optional(), nextPageToken: z.string().optional(), historyId: z.string().optional(),
+}).passthrough()
+const MessageListSchema: z.ZodType<GmailApiMessageListResponse> = z.object({
+  messages: z.array(z.object({ id: z.string(), threadId: z.string() })).optional(), nextPageToken: z.string().optional(),
+}).passthrough()
+const HistorySchema: z.ZodType<GmailApiHistoryResponse> = z.object({
+  historyId: z.string().optional(), history: z.array(z.object({}).passthrough()).optional(),
+}).passthrough()
+const LabelSchema: z.ZodType<GmailApiLabel> = z.object({
+  id: z.string(), name: z.string(), type: z.string(), messagesTotal: z.number().optional(), messagesUnread: z.number().optional(),
+}).passthrough()
+const LabelsSchema = z.object({ labels: z.array(LabelSchema).optional() }).passthrough()
+const AttachmentSchema = z.object({ data: z.string() }).passthrough()
 
-async function gmailRequest<T = unknown>(accessToken: string, path: string, options?: RequestInit): Promise<T> {
+async function gmailRequest<T>(accessToken: string, path: string, schema: ContractSchema<T>, options?: RequestInit): Promise<T> {
   const res = await fetch(`${GMAIL_BASE}${path}`, {
     ...options,
     headers: {
@@ -22,16 +51,29 @@ async function gmailRequest<T = unknown>(accessToken: string, path: string, opti
       ...options?.headers,
     },
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Gmail API ${res.status}: ${text}`)
-  }
-  return await res.json() as T
+  return defineProviderContract({ provider: "gmail", operation: "request", response: schema }).decodeResponse(res)
 }
 
 export function decodeBase64Url(data: string): string {
+  return new TextDecoder().decode(decodeBase64UrlBytes(data))
+}
+
+function decodeBase64UrlBytes(data: string): Uint8Array {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
-  return Buffer.from(base64, "base64").toString("utf-8")
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function encodeBase64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
 }
 
 function decodeHtmlEntities(text: string): string {
@@ -253,14 +295,14 @@ export async function getThreadSummary(accessToken: string, threadId: string): P
     ["metadataHeaders", "Subject"],
     ["metadataHeaders", "Date"],
   ])
-  const thread: GmailApiThread = await gmailRequest(accessToken, `/threads/${threadId}?${params}`)
+  const thread = await gmailRequest(accessToken, `/threads/${threadId}?${params}`, ThreadSchema)
   return parseThreadSummary(thread)
 }
 
 export async function searchThreads(accessToken: string, query: string, maxResults = 20, pageToken?: string) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult: GmailApiThreadListResponse = await gmailRequest(accessToken, `/threads?${params}`)
+  const listResult = await gmailRequest(accessToken, `/threads?${params}`, ThreadListSchema)
 
   if (!listResult.threads?.length) {
     return { threads: [] as ThreadSummary[], nextPageToken: null, historyId: listResult.historyId || null }
@@ -302,7 +344,7 @@ export async function listThreadIds(accessToken: string, query: string, cap = 20
   do {
     const params = new URLSearchParams({ q: query, maxResults: "500" })
     if (pageToken) params.set("pageToken", pageToken)
-    const res: GmailApiThreadListResponse = await gmailRequest(accessToken, `/threads?${params}`)
+    const res = await gmailRequest(accessToken, `/threads?${params}`, ThreadListSchema)
     for (const t of res.threads || []) ids.push(t.id)
     pageToken = res.nextPageToken || undefined
   } while (pageToken && ids.length < cap)
@@ -315,7 +357,7 @@ export async function getHistory(accessToken: string, startHistoryId: string): P
     historyTypes: "messageAdded,messageDeleted,labelAdded,labelRemoved",
     maxResults: "100",
   })
-  return gmailRequest(accessToken, `/history?${params}`)
+  return gmailRequest(accessToken, `/history?${params}`, HistorySchema)
 }
 
 export async function searchMessages(accessToken: string, query: string, maxResults = 50, pageToken?: string) {
@@ -324,14 +366,14 @@ export async function searchMessages(accessToken: string, query: string, maxResu
     maxResults: String(maxResults),
   })
   if (pageToken) params.set("pageToken", pageToken)
-  const listResult: GmailApiMessageListResponse = await gmailRequest(accessToken, `/messages?${params}`)
+  const listResult = await gmailRequest(accessToken, `/messages?${params}`, MessageListSchema)
 
   if (!listResult.messages?.length) {
     return { messages: [], nextPageToken: null }
   }
 
   const messages = await fetchBatched(listResult.messages.map((m: { id: string }) => m.id), async (id: string) => {
-    const full: GmailApiMessage = await gmailRequest(accessToken, `/messages/${id}?format=full`)
+    const full = await gmailRequest(accessToken, `/messages/${id}?format=full`, MessageSchema)
     return parseMessage(full)
   })
 
@@ -339,12 +381,12 @@ export async function searchMessages(accessToken: string, query: string, maxResu
 }
 
 export async function getMessage(accessToken: string, messageId: string) {
-  const full: GmailApiMessage = await gmailRequest(accessToken, `/messages/${messageId}?format=full`)
+  const full = await gmailRequest(accessToken, `/messages/${messageId}?format=full`, MessageSchema)
   return parseMessage(full, { keepSignature: true })
 }
 
 export async function getThread(accessToken: string, threadId: string) {
-  const thread: GmailApiThread = await gmailRequest(accessToken, `/threads/${threadId}?format=full`)
+  const thread = await gmailRequest(accessToken, `/threads/${threadId}?format=full`, ThreadSchema)
   const rawMessages = thread.messages || []
   const messages = rawMessages.map((msg: GmailApiMessage, i: number) =>
     parseMessage(msg, { keepSignature: i === rawMessages.length - 1 }),
@@ -365,7 +407,7 @@ export async function getThread(accessToken: string, threadId: string) {
 }
 
 export async function getLabels(accessToken: string) {
-  const result = await gmailRequest<{ labels?: GmailApiLabel[] }>(accessToken, "/labels")
+  const result = await gmailRequest(accessToken, "/labels", LabelsSchema)
   return {
     labels: ((result.labels || []) as GmailApiLabel[]).map((l) => ({
       id: l.id,
@@ -383,14 +425,14 @@ export async function modifyLabels(
   addLabelIds: string[],
   removeLabelIds: string[],
 ) {
-  return gmailRequest(accessToken, `/messages/${messageId}/modify`, {
+  return gmailRequest(accessToken, `/messages/${messageId}/modify`, MessageSchema, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   })
 }
 
 export async function trashThread(accessToken: string, threadId: string) {
-  return gmailRequest(accessToken, `/threads/${threadId}/trash`, { method: "POST" })
+  return gmailRequest(accessToken, `/threads/${threadId}/trash`, ThreadSchema, { method: "POST" })
 }
 
 export async function modifyThreadLabels(
@@ -399,7 +441,7 @@ export async function modifyThreadLabels(
   addLabelIds: string[],
   removeLabelIds: string[],
 ) {
-  return gmailRequest(accessToken, `/threads/${threadId}/modify`, {
+  return gmailRequest(accessToken, `/threads/${threadId}/modify`, ThreadSchema, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   })
@@ -469,7 +511,7 @@ export function markdownToHtml(md: string): string {
 /** RFC 2047 encode a header value if it contains non-ASCII characters. */
 function encodeHeaderValue(value: string): string {
   if (/^[\x20-\x7E]*$/.test(value)) return value
-  return `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`
+  return `=?UTF-8?B?${encodeBase64Utf8(value)}?=`
 }
 
 /** Fold base64 content at 76 chars per line as required by MIME. */
@@ -498,8 +540,8 @@ function buildRawEmail(
     const refs = references ? `${references} ${inReplyTo}` : inReplyTo
     headers.push(`References: ${refs}`)
   }
-  const textB64 = foldBase64(Buffer.from(body, "utf-8").toString("base64"))
-  const htmlB64 = foldBase64(Buffer.from(htmlContent, "utf-8").toString("base64"))
+  const textB64 = foldBase64(encodeBase64Utf8(body))
+  const htmlB64 = foldBase64(encodeBase64Utf8(htmlContent))
   const parts = [
     `--${boundary}`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -517,8 +559,7 @@ function buildRawEmail(
 }
 
 function encodeRaw(raw: string): string {
-  return Buffer.from(raw)
-    .toString("base64")
+  return encodeBase64Utf8(raw)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "")
@@ -537,16 +578,15 @@ export async function sendMessage(
   const message: { raw: string; threadId?: string } = { raw: encodeRaw(rawMessage) }
   if (threadId) message.threadId = threadId
 
-  return gmailRequest(accessToken, "/messages/send", {
+  return gmailRequest(accessToken, "/messages/send", MessageSchema, {
     method: "POST",
     body: JSON.stringify(message),
   })
 }
 
-export async function getAttachment(accessToken: string, messageId: string, attachmentId: string): Promise<Buffer> {
-  const data = await gmailRequest<{ data: string }>(accessToken, `/messages/${messageId}/attachments/${attachmentId}`)
-  const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/")
-  return Buffer.from(base64, "base64")
+export async function getAttachment(accessToken: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
+  const data = await gmailRequest(accessToken, `/messages/${messageId}/attachments/${attachmentId}`, AttachmentSchema)
+  return decodeBase64UrlBytes(data.data)
 }
 
 export async function createDraft(
@@ -566,7 +606,7 @@ export async function createDraft(
     draft.message.threadId = threadId
   }
 
-  return gmailRequest(accessToken, "/drafts", {
+  return gmailRequest(accessToken, "/drafts", z.object({ id: z.string() }).passthrough(), {
     method: "POST",
     body: JSON.stringify(draft),
   })
