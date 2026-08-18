@@ -11,7 +11,7 @@ sources:
   - src/components/workspace/WorkspaceSettings.tsx
 spec: openspec/specs/workspace/spec.md
 status: generated
-sources_hash: "ebce7f3d7fe9a1a29b496afb6517f266bf9f240deda0312989ebc198455449aa"
+sources_hash: "abc73664a60cd19f2893bd867aa20caa37b958689a2ced8c7b754126980973e2"
 ---
 
 # Workspace

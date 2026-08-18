@@ -2,7 +2,6 @@ import { queryRows } from "./db/rows.js"
 import { vaultQuery, vaultQueryOne, vaultExecute, getVaultPool } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
-import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { parseAllowedOrigins, createCorsMiddleware } from "@hammies/auth/server"
 import { logger } from "hono/logger"
@@ -62,6 +61,7 @@ import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
 import { loadPanels } from "./lib/panel-registry.js"
+import { mountProductionAssets } from "./lib/production-assets.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -442,12 +442,10 @@ app.onError((err, c) => {
 mountPluginRoutes(app)
 
 // Serve production build if dist/ exists
-const distPath = resolve(__dirname, "../dist")
-if (existsSync(distPath)) {
-  app.use("/*", serveStatic({ root: "./dist" }))
-  // SPA fallback — serve index.html for all non-API routes
-  app.get("/*", serveStatic({ path: "./dist/index.html" }))
-}
+mountProductionAssets(app, {
+  inboxDistPath: resolve(__dirname, "../dist"),
+  artifactDistPath: resolve(__dirname, "../../frontend/dist"),
+})
 
 // INBOX_PORT is the inbox-specific override (mirrors Studio's STUDIO_PORT) so a
 // second instance from a worktree can run beside the main checkout's server;

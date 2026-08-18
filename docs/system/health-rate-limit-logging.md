@@ -1,23 +1,24 @@
 ---
 title: Health, Rate Limit, Logging
-summary: Health checks, rate limiting, request-correlated logging, versioned JSON envelopes, and crash telemetry — the server's cross-cutting primitives.
+summary: Health checks, rate limiting, request-correlated logging, production asset routing, versioned JSON envelopes, and crash telemetry — the server's cross-cutting primitives.
 sources:
   - server/index.ts
   - server/lib/__tests__/health.test.ts
   - server/lib/__tests__/rate-limit.test.ts
   - server/lib/health.ts
   - server/lib/http-envelope.ts
+  - server/lib/production-assets.ts
   - server/lib/rate-limit.ts
   - server/routes/telemetry.ts
   - src/lib/crash-telemetry.ts
 spec: openspec/specs/health-rate-limit-logging/spec.md
 status: generated
-sources_hash: "7269eb4e3afccf909046530e785aaf33e7959a52408160f8071d82294b446364"
+sources_hash: "4b76214a8114a7af83c409db1a2a3dd020adcb0b92bcbe8bdc791787b169c773"
 ---
 
 # Health, Rate Limit, Logging
 
-Health checks, rate limiting, structured logging, versioned JSON envelopes, and crash telemetry are independent server primitives that keep the inbox server observably correct. The health route reports database and vault status to unauthenticated probes, and an in-memory rate limiter guards public routes from brute force. A structured logger correlates every log line to its request, the response middleware normalizes JSON at the HTTP boundary, and a client-side heartbeat catches renderer crashes error trackers cannot see.
+Health checks, rate limiting, structured logging, production asset routing, versioned JSON envelopes, and crash telemetry are independent server primitives that keep the inbox server observably correct. The health route reports database and vault status to unauthenticated probes, and an in-memory rate limiter guards public routes from brute force. A structured logger correlates every log line to its request, the response middleware normalizes JSON at the HTTP boundary, and a client-side heartbeat catches renderer crashes error trackers cannot see. In production, shared `/@hammies/` modules are mounted before the SPA fallback so deep links cannot turn JavaScript requests into HTML responses.
 
 ```mermaid
 flowchart TD

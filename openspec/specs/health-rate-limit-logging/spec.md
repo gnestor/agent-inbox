@@ -108,6 +108,13 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 - **AND** the routes are mounted before the global auth middleware so post-crash tabs without session cookies can still report.
 - **AND** payloads are capped at 16 KB.
 
+### Production assets
+
+#### Scenario: shared artifact modules are served before the SPA fallback
+- **WHEN** a production browser requests a shared `/@hammies/*.mjs` artifact from a nested Inbox route
+- **THEN** the server returns the JavaScript module with its JavaScript content type before the SPA fallback is considered.
+- **AND** an application deep link still falls back to the Inbox `index.html` document.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -119,6 +126,7 @@ Pre-auth and post-auth log calls would otherwise have to thread a `requestId` th
 | Structured logger + `AsyncLocalStorage` request context | shared from `@hammies/frontend/lib/serverLogger` |
 | Crash telemetry client (heartbeat + clean-unload + crash detection) | [src/lib/crash-telemetry.ts](../../../src/lib/crash-telemetry.ts) |
 | Telemetry endpoints (JSONL appenders) | [server/routes/telemetry.ts](../../../server/routes/telemetry.ts) |
+| Production artifact modules and SPA fallback ordering | [server/lib/production-assets.ts](../../../server/lib/production-assets.ts) |
 | Health tests | [server/lib/__tests__/health.test.ts](../../../server/lib/__tests__/health.test.ts) |
 | Rate-limit tests | [server/lib/__tests__/rate-limit.test.ts](../../../server/lib/__tests__/rate-limit.test.ts) |
 
