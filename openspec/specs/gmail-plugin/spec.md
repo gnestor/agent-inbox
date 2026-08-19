@@ -128,6 +128,14 @@ A message body renders as markdown when `bodyFormat === "markdown"`, or when it 
 - **WHEN** legacy callers hit `/messages` with `?q=` and `?pageToken=`
 - **THEN** the route delegates to `gmailPlugin.query!({ q })` and returns `{ messages, nextPageToken }` — preserving the pre-plugin URL shape.
 
+#### Scenario: malformed Gmail search items are rejected at the HTTP boundary
+- **WHEN** the browser receives a versioned Gmail search response
+- **THEN** every thread summary is decoded by the named runtime schema before list rendering.
+
+#### Scenario: malformed Gmail threads are rejected at the HTTP boundary
+- **WHEN** the browser receives a versioned Gmail thread response
+- **THEN** the thread and every nested message and attachment are decoded before the detail hook exposes them.
+
 ### Context-system integration
 
 #### Scenario: `itemToContext` skips automated senders and produces frontmatter+body markdown
