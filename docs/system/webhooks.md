@@ -3,9 +3,10 @@ title: Webhooks
 summary: The signed ingress route that verifies provider webhook events before any plugin dispatch.
 sources:
   - server/routes/webhooks.ts
+  - server/db/webhook-replay.ts
 spec: openspec/specs/webhooks/spec.md
 status: generated
-sources_hash: "587620fc1e4d9459bb0209585ac357639a7365d3c69adb502162c89a39a7e694"
+sources_hash: "debf384ad88eaa2900406a758251bca4b90a6f3f7b7f434e98d24da03d54d93b"
 ---
 
 # Webhooks
@@ -38,7 +39,7 @@ The route checks the timestamp before the signature. A stale or missing timestam
 
 ## Suppressing replay
 
-`claimEvent` guards against provider retries with an in-memory `Map`, keyed `${provider}:${eventId}`. Each call first sweeps expired entries, then claims the event for 24 hours. The provider prefix keeps Slack and plugin event IDs from colliding in one map. A duplicate claim returns a `duplicate` outcome instead of dispatching again. The map lives in process memory, so a restart forgets every claim. A resent event after a restart ships through once more.
+`claimWebhookEvent` guards against provider retries with an atomic PostgreSQL claim keyed `${provider}:${eventId}`. Each call removes expired claims, then inserts the event with a 24-hour expiry. `ON CONFLICT` only refreshes a row whose prior expiry has passed, so concurrent Inbox instances cannot both accept the same live event. The provider prefix keeps Slack and plugin event IDs from colliding, a duplicate returns the `duplicate` outcome, and restarts retain the replay ledger.
 
 ## Acknowledging unsupported events
 

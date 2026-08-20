@@ -6,7 +6,7 @@ sources:
   - src/api/contracts.ts
 spec: openspec/specs/api-client/spec.md
 status: generated
-sources_hash: "12f7f930238b85f87c0795aa03643d856b121fb9c095463f44e139e62ec9e33b"
+sources_hash: "e38a8bef07122553a8d313369a3840d75656a0482909b589bb7670cc82772a6c"
 ---
 
 # API Client
@@ -39,7 +39,7 @@ Every hook imports a typed function from `client.ts` instead of calling `fetch()
 
 ## Handling errors and session expiry
 
-When the response status is not 2xx, `request()` reads the body as text and throws `Error(\`API ${status}: ${text}\`)`. Every error consumer can pattern-match on that one message shape, instead of each hook inventing its own format. A 401 status also dispatches a `session-expired` window event before the throw. `useUserProvider` listens for that event, re-checks the session, and drops back to the login page — see [Auth and Sessions](auth-and-sessions.md) for the full flow.
+When the response status is not 2xx, `request()` decodes the versioned error envelope (and the legacy envelope accepted during migration) through `decodeApiJsonResponse`. It throws one canonical `HttpContractError` carrying the HTTP status, stable error code, and message, so consumers can branch on typed metadata rather than parsing prose. A 401 status also dispatches a `session-expired` window event before the throw. `useUserProvider` listens for that event, re-checks the session, and drops back to the login page — see [Auth and Sessions](auth-and-sessions.md) for the full flow.
 
 ## Response schemas
 
@@ -64,7 +64,7 @@ Each section's call signatures are the contract for its server route. When a ser
 
 ## Multipart uploads
 
-`uploadSessionFile` posts a session's file as `FormData`, so it calls `fetch()` directly instead of `request()`. Setting `Content-Type` manually would strip the multipart boundary the browser generates, breaking the upload. It still throws on a non-2xx response with the same `API ${status}: ${text}` shape, so callers do not need a second error format to handle.
+`uploadSessionFile` posts a session's file as `FormData`, so it calls `fetch()` directly instead of `request()`. Setting `Content-Type` manually would strip the multipart boundary the browser generates, breaking the upload. It still decodes non-2xx responses through the shared error-envelope contract, so callers do not need a second error format to handle.
 
 ## Bounded response sizes
 

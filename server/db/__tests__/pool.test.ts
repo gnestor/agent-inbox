@@ -29,16 +29,21 @@ vi.mock("@hammies/db", () => ({
 }))
 
 const OLD_ENV = process.env.DATABASE_URL
+const OLD_INBOX_ENV = process.env.INBOX_DATABASE_URL
 
 beforeEach(() => {
   vi.clearAllMocks()
   fakePool.query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
   process.env.DATABASE_URL = "postgresql://u:p@localhost:5432/inbox"
+  delete process.env.INBOX_DATABASE_URL
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  process.env.DATABASE_URL = OLD_ENV
+  if (OLD_ENV === undefined) delete process.env.DATABASE_URL
+  else process.env.DATABASE_URL = OLD_ENV
+  if (OLD_INBOX_ENV === undefined) delete process.env.INBOX_DATABASE_URL
+  else process.env.INBOX_DATABASE_URL = OLD_INBOX_ENV
 })
 
 describe("getPool", () => {
@@ -52,6 +57,17 @@ describe("getPool", () => {
     expect(p1).toBe(p2)
     expect(mockGetPool).toHaveBeenCalledWith({
       connectionString: "postgresql://u:p@localhost:5432/inbox",
+    })
+  })
+
+  it("Scenario: An explicit Inbox database isolates a second checkout", async () => {
+    process.env.INBOX_DATABASE_URL = "postgresql://u:p@localhost:5432/inbox-worktree"
+    const { getPool } = await import("../pool.js")
+
+    getPool()
+
+    expect(mockGetPool).toHaveBeenCalledWith({
+      connectionString: "postgresql://u:p@localhost:5432/inbox-worktree",
     })
   })
 
@@ -121,7 +137,7 @@ describe("initializeDatabase", () => {
     await vi.runAllTimersAsync()
     await result
 
-    expect(fakePool.query).toHaveBeenCalledTimes(9)
+    expect(fakePool.query).toHaveBeenCalledTimes(10)
     expect(warning).toHaveBeenCalledWith(
       expect.stringContaining("EHOSTUNREACH"),
     )
@@ -152,6 +168,7 @@ describe("initializeDatabase", () => {
       "006_backfill_state.sql",
       "007_source_entities.sql",
       "008_body_extraction_log.sql",
+      "009_webhook_replay_claims.sql",
     ]
     expect(fakePool.query).toHaveBeenCalledTimes(expected.length)
     // Migrations run strictly in their declared order (the array is the source
@@ -169,12 +186,12 @@ describe("initializeDatabase", () => {
     expect(fakePool.query.mock.calls.length).toBe(firstCount * 2)
   })
 
-  it("Scenario: Migration list is append-only — the eight shipped migrations remain in numbered order", async () => {
+  it("Scenario: Migration list is append-only — the nine shipped migrations remain in numbered order", async () => {
     const { initializeDatabase } = await import("../pool.js")
     await initializeDatabase()
     // The numeric prefixes must be strictly increasing: existing files are never
     // reordered or edited; corrections ship as a new NNN_ file.
-    expect(fakePool.query).toHaveBeenCalledTimes(8)
+    expect(fakePool.query).toHaveBeenCalledTimes(9)
   })
 })
 

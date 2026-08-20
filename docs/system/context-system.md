@@ -19,7 +19,7 @@ sources:
   - src/components/session/ContextPanel.tsx
 spec: openspec/specs/context-system/spec.md
 status: generated
-sources_hash: "9a52cb2be61a55577811082b9566b7214b1acc2fb5f0b04414c6d9344ee01c3f"
+sources_hash: "94bbf676056085e40ecfaee60766573753a46ee1450787794c8ff99b0991622b"
 ---
 
 # Context System
@@ -47,7 +47,7 @@ flowchart LR
 
 Seed extraction (`server/lib/entity-extractor.ts`) prefers `plugin.extractEntities(item)`. When a plugin has no override, `parseStubEntities` falls back to a regex scan of the stub's emails and `folder-path` frontmatter. `canonicalize` lowercases emails and slugifies names before every entity lands in `source_entities`, so the same person never fragments into two rows.
 
-Body extraction (`server/lib/body-extractor.ts`) sends each stub's body to a local Ollama model — `OLLAMA_MODEL`, default `qwen3.5:4b`. It asks for named people, companies, products, and projects that never surface in headers. `isNoiseEntity` filters promo subdomains, automated senders, and ubiquitous platform names before insert. Ollama occasionally hallucinates, so this filter runs last, right before the entity reaches the queue. Local inference keeps a body-heavy workload off the Claude token budget entirely.
+Body extraction (`server/lib/body-extractor.ts`) sends each stub's body to a local Ollama model — `OLLAMA_MODEL`, default `qwen3.5:4b`. The request body and provider response both pass Zod contracts before the extracted entities are consumed. It asks for named people, companies, products, and projects that never surface in headers. `isNoiseEntity` filters promo subdomains, automated senders, and ubiquitous platform names before insert. Ollama occasionally hallucinates, so this filter runs last, right before the entity reaches the queue. Local inference keeps a body-heavy workload off the Claude token budget entirely.
 
 Entity curation dispatches one Claude session per entity. The queue and gate that decide which entity goes next, and the session lifecycle that runs it, are their own sections below.
 
@@ -96,6 +96,8 @@ Body extraction still runs from outside the server. `scripts/body-extract-loop.s
 - `POST /curate` — the legacy per-source path, kept for rollback
 
 `buildPluginContext` (`server/lib/plugin-context.ts`) injects each plugin's credential lazily per request, refreshing Google OAuth tokens through `refreshGoogleToken`. `requireAdmin` (`server/lib/workspace-context.ts`) gates workspace-mutating routes to the active workspace's `admin` role.
+
+Every database query in the pipeline decodes through a query-specific row schema before domain logic sees it. The `/record-discovered` request body is validated the same way, so malformed database values, model output, and HTTP input fail at their boundary rather than leaking inward as assumed shapes.
 
 ## Viewing curated context
 

@@ -3,10 +3,11 @@ title: Database
 summary: The single Postgres pool, query helpers, and idempotent migration runner every inbox server module persists through.
 sources:
   - server/db/pool.ts
+  - server/db/rows.ts
   - server/db/migrations/
 spec: openspec/specs/database/spec.md
 status: generated
-sources_hash: "2fc7c53419fa8e825587e188059e2d54cd9ab6dc320a6b11337207a55e597486"
+sources_hash: "a6988efa0cf12fb02519e6725eb961404781539debd2d1d87e36d4550dc3828d"
 ---
 
 # Database
@@ -35,6 +36,8 @@ Four helpers wrap the pool, each typed by the caller's row shape:
 - `execute()` returns `{ rowCount }`, normalizing the driver's `null` to `0`.
 - `withTransaction()` runs a callback inside `BEGIN`/`COMMIT`. It rolls back and re-throws on any error. It always releases the client, so a partial write can never leak a connection back to the pool.
 
+`queryRows()` and `queryOptionalRow()` add the runtime boundary that the raw pool helpers cannot provide. Each caller supplies a query-specific Zod contract and a stable query name. Production decodes every PostgreSQL row against that contract before returning it; an optional-row query also rejects cardinality above one. Driver values therefore cannot become trusted application types solely through a TypeScript generic.
+
 ## Two pools: inbox data and the credential vault
 
 Inbox binds two separate pools to two separate databases. `getPool()` serves inbox's own tables — sessions, preferences, credentials — from `DATABASE_URL`. `getVaultPool()` serves the shared OAuth credential vault from `STUDIO_DATABASE_URL`. Studio and the data-pipeline broker read the same database. All three processes refresh one credential row under one advisory lock. See [Credentials Vault](credentials-vault.md) for how the vault itself works; this page covers only the pool it runs on.
@@ -57,7 +60,7 @@ A table that looks like a cache is not one. `api_cache` is gone because React Qu
 
 ## Current schema
 
-Migrations 001 through 008 leave the tables below. `notion_options`, `api_cache`, and `session_messages` existed briefly and are gone, each removed once its owning system moved the responsibility elsewhere.
+Migrations 001 through 009 leave the tables below. `notion_options`, `api_cache`, and `session_messages` existed briefly and are gone, each removed once its owning system moved the responsibility elsewhere.
 
 | Table | Owning domain | Purpose |
 |---|---|---|
@@ -72,6 +75,7 @@ Migrations 001 through 008 leave the tables below. `notion_options`, `api_cache`
 | `backfill_state` | [Context System](context-system.md) | Per-plugin cursor for context backfill |
 | `source_entities` | [Context System](context-system.md) | Entity index for proximity-grouped curation |
 | `body_extraction_log` | [Context System](context-system.md) | Resume marker for bulk body-text extraction |
+| `webhook_replay_claims` | [Webhooks](webhooks.md) | Expiring, atomic replay claims shared by every Inbox instance |
 
 ## See also
 

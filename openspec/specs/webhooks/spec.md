@@ -26,8 +26,9 @@ use the platform `X-Hammies-Signature`, `X-Hammies-Timestamp`, and
 
 Per-plugin mutation dispatch remains a later feature. A verified event that has
 no dispatcher returns an explicit `unsupported-event` outcome with HTTP 202,
-rather than claiming the mutation was processed. Event IDs are claimed for the
-process lifetime to suppress immediate retries.
+rather than claiming the mutation was processed. Event IDs are claimed in
+PostgreSQL for 24 hours so retries are suppressed across restarts and every
+running Inbox instance.
 
 ## Requirements
 
@@ -56,6 +57,14 @@ process lifetime to suppress immediate retries.
 - **THEN** signature authentication is sufficient and cookie auth is not
   applied.
 
+#### Scenario: Replay claims survive process and instance boundaries
+
+- **WHEN** two Inbox instances receive the same verified provider event ID
+- **THEN** an atomic PostgreSQL claim accepts only the first request and the
+  other returns `outcome: "duplicate"`.
+- **AND** an expired event ID may be claimed again after the 24-hour retention
+  window.
+
 ### Mount point
 
 #### Scenario: Mounted at `/api/webhooks`
@@ -68,7 +77,8 @@ process lifetime to suppress immediate retries.
 
 | Concern | Location |
 |---|---|
-| Raw signature verification, payload schemas, replay claims, and outcomes | [server/routes/webhooks.ts](../../../server/routes/webhooks.ts) |
+| Raw signature verification, payload schemas, and outcomes | [server/routes/webhooks.ts](../../../server/routes/webhooks.ts) |
+| Durable atomic replay claims | [server/db/webhook-replay.ts](../../../server/db/webhook-replay.ts) |
 
 ## History
 
@@ -76,3 +86,5 @@ process lifetime to suppress immediate retries.
   completed during plugin development.
 - 2026-07-27: Added raw-body HMAC verification, freshness limits, runtime
   payload schemas, replay outcomes, and explicit unsupported-event handling.
+- 2026-08-08: Replaced process-local replay memory with expiring PostgreSQL
+  claims safe for restarts and multiple Inbox instances.

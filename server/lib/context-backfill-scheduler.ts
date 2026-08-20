@@ -16,8 +16,10 @@ import { promisify } from "node:util"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
 import { getPlugins } from "./plugin-loader.js"
 import { runBackfill } from "../routes/backfill.js"
-import { queryOne, execute } from "../db/pool.js"
+import { execute } from "../db/pool.js"
+import { queryOptionalRow } from "../db/rows.js"
 import { runBackgroundCurationSession, cleanupStaleCurationLocks } from "./curation-session.js"
+import { z } from "zod"
 
 const execFileAsync = promisify(execFile)
 
@@ -130,7 +132,9 @@ export async function runCuratedUpdate(
   const cursorKey = `${CURATION_PLUGIN_ID}:${sourceFilter}`
   const pendingKey = `${cursorKey}:pending`
 
-  const curationRow = await queryOne<{ last_cursor: string | null }>(
+  const curationRow = await queryOptionalRow(
+    z.object({ last_cursor: z.string().nullable() }).strict(),
+    "context-backfill-get-cursor",
     "SELECT last_cursor FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
     [cursorKey, wsId],
   )

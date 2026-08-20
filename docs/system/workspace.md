@@ -11,7 +11,7 @@ sources:
   - src/components/workspace/WorkspaceSettings.tsx
 spec: openspec/specs/workspace/spec.md
 status: generated
-sources_hash: "05aaefdb7dcb200d29e39c0bcc29af8041f9222ed1b698c90b29ec4eb85f5555"
+sources_hash: "abc73664a60cd19f2893bd867aa20caa37b958689a2ced8c7b754126980973e2"
 ---
 
 # Workspace
@@ -34,6 +34,8 @@ flowchart TD
 ## Registering workspaces at boot
 
 `registerWorkspaces(paths)` runs once per server boot against the `--workspace` CLI args, which default to `../agent`. Each path upserts into `workspaces`, keyed by `id = basename(path)`. Any row whose id falls out of the current path list gets deleted, along with its `workspace_members` rows. This makes the CLI's argument list the live definition of what is mounted, while Postgres stays only the long-lived registry mirroring it.
+
+Workspace, member, role, and aggregate-count queries validate every returned row with operation-specific schemas. Invalid IDs, paths, role literals, nullable user fields, or PostgreSQL count encodings fail at the database boundary before access-control decisions use them.
 
 Basename identity keeps a moved directory's session history, credentials, and membership intact. The tradeoff is that two live checkouts of the same directory share one id — a worktree's `packages/agent` collides with the main checkout's `packages/agent`. `registerWorkspaces` guards this explicitly: it throws before writing anything when an incoming path would repoint a row whose recorded path still exists on disk. See the [Workspace spec](../../openspec/specs/workspace/spec.md) for the full collision and relocation contract.
 

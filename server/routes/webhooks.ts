@@ -6,6 +6,7 @@ import {
   verifyWebhookHmac,
 } from "@hammies/contracts/webhook"
 import { CONTRACT_VERSION } from "@hammies/contracts"
+import { claimWebhookEvent } from "../db/webhook-replay.js"
 
 const SlackUrlVerificationSchema = z.object({
   type: z.literal("url_verification"),
@@ -24,17 +25,7 @@ export interface WebhookRouteOptions {
   slackSigningSecret?: () => string | undefined
   genericSigningSecret?: () => string | undefined
   now?: () => number
-}
-
-const seenEvents = new Map<string, number>()
-
-function claimEvent(eventId: string, now: number): boolean {
-  for (const [id, expiresAt] of seenEvents) {
-    if (expiresAt <= now) seenEvents.delete(id)
-  }
-  if (seenEvents.has(eventId)) return false
-  seenEvents.set(eventId, now + 86_400_000)
-  return true
+  claimEvent?: (eventId: string, now: number) => Promise<boolean>
 }
 
 function invalidSignature(c: { json: (body: object, status: 401) => Response }): Response {
@@ -54,6 +45,7 @@ export function createWebhookRoutes(
   const slackSecret = options.slackSigningSecret ?? (() => process.env.SLACK_SIGNING_SECRET)
   const genericSecret = options.genericSigningSecret ?? (() => process.env.INBOX_WEBHOOK_SECRET)
   const now = options.now ?? Date.now
+  const claimEvent = options.claimEvent ?? claimWebhookEvent
 
   routes.post("/:pluginId", async (c) => {
     const pluginId = c.req.param("pluginId")
@@ -92,7 +84,7 @@ export function createWebhookRoutes(
           challenge: input.challenge,
         })
       }
-      if (!claimEvent(`slack:${input.event_id}`, now())) {
+      if (!await claimEvent(`slack:${input.event_id}`, now())) {
         return c.json({
           contractVersion: CONTRACT_VERSION,
           outcome: "duplicate",
@@ -112,7 +104,7 @@ export function createWebhookRoutes(
     const verified = await verifyWebhookHmac(rawBody, secret, signature, "hex")
     if (!verified) return invalidSignature(c)
     decodeVerifiedWebhookPayload(GenericWebhookSchema, rawBody, `${pluginId}-webhook@1`)
-    if (!claimEvent(`${pluginId}:${eventId}`, now())) {
+    if (!await claimEvent(`${pluginId}:${eventId}`, now())) {
       return c.json({
         contractVersion: CONTRACT_VERSION,
         outcome: "duplicate",

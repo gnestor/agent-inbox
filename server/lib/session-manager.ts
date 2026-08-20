@@ -13,7 +13,9 @@ const log = createLogger("session")
 const INITIAL_SUMMARY_LENGTH = 80
 const AGENT_SDK_BETAS: ["context-1m-2025-08-07"] = ["context-1m-2025-08-07"]
 const DEFAULT_SESSION_MODEL = process.env.SESSION_MODEL ?? undefined
-import { query, queryOne, execute, withTransaction } from "../db/pool.js"
+import { execute, withTransaction } from "../db/pool.js"
+import { queryOptionalRow, queryRows } from "../db/rows.js"
+import { z } from "zod"
 
 /** Shape of a row in the `sessions` table. */
 export interface SessionDbRow {
@@ -29,6 +31,35 @@ export interface SessionDbRow {
   trigger_source: string
   linked_item_title: string | null
 }
+
+const TimestampStringSchema = z.union([z.string(), z.date().transform((value) => value.toISOString())])
+export const SessionDbRowSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  prompt: z.string(),
+  summary: z.string().nullable(),
+  started_at: TimestampStringSchema,
+  updated_at: TimestampStringSchema,
+  completed_at: TimestampStringSchema.nullable(),
+  linked_source_type: z.string().nullable(),
+  linked_source_id: z.string().nullable(),
+  trigger_source: z.string(),
+  linked_item_title: z.string().nullable(),
+}).strict()
+
+const SESSION_DB_ROW_PROJECTION = `
+  s.id,
+  s.status,
+  s.prompt,
+  s.summary,
+  s.started_at,
+  s.updated_at,
+  s.completed_at,
+  s.linked_source_type,
+  s.linked_source_id,
+  s.trigger_source,
+  s.metadata->>'linkedItemTitle' AS linked_item_title
+`
 import { getAgentEnv } from "./credentials.js"
 import { generateSessionTitle } from "./title-generator.js"
 import type { CredentialProxy } from "./credential-proxy.js"
@@ -474,7 +505,12 @@ export async function updateSessionStatus(sessionId: string, status: string, sum
   )
 
   if (rowCount === 0 && process.env.NODE_ENV !== "production") {
-    const current = await queryOne<{ status: string }>("SELECT status FROM sessions WHERE id = $1", [sessionId])
+    const current = await queryOptionalRow(
+      z.object({ status: z.string() }).strict(),
+      "sessions-get-current-status",
+      "SELECT status FROM sessions WHERE id = $1",
+      [sessionId],
+    )
     log.warn("Status transition blocked", { sessionId, from: current?.status ?? "missing", to: status })
   }
 
@@ -552,8 +588,12 @@ export async function updateSessionSummary(sessionId: string, summary: string) {
 }
 
 export async function getSessionRecord(sessionId: string) {
-  return await queryOne<SessionDbRow>(
-    "SELECT * FROM sessions WHERE id = $1",
+  return await queryOptionalRow(
+    SessionDbRowSchema,
+    "sessions-get-by-id",
+    `SELECT ${SESSION_DB_ROW_PROJECTION}
+     FROM sessions s
+     WHERE s.id = $1`,
     [sessionId],
   )
 }
@@ -567,7 +607,9 @@ export async function getSessionRecord(sessionId: string) {
  * as a custom title. Idempotent (writeCustomTitle skips when already current).
  */
 export async function backfillCustomTitles(): Promise<{ scanned: number; written: number }> {
-  const rows = await query<SessionDbRow>(
+  const rows = await queryRows(
+    SessionDbRowSchema,
+    "sessions-get-by-ids",
     `SELECT id, summary FROM sessions
      WHERE summary IS NOT NULL AND summary <> '' AND summary <> left(prompt, $1)`,
     [INITIAL_SUMMARY_LENGTH],
@@ -607,8 +649,14 @@ export async function getLinkedSession(
   linkedSourceId?: string,
 ): Promise<SessionDbRow | undefined> {
   if (!linkedSourceType || !linkedSourceId) return undefined
-  return await queryOne<SessionDbRow>(
-    "SELECT * FROM sessions WHERE linked_source_type = $1 AND linked_source_id = $2 ORDER BY updated_at DESC LIMIT 1",
+  return await queryOptionalRow(
+    SessionDbRowSchema,
+    "sessions-get-by-source",
+    `SELECT ${SESSION_DB_ROW_PROJECTION}
+     FROM sessions s
+     WHERE s.linked_source_type = $1 AND s.linked_source_id = $2
+     ORDER BY s.updated_at DESC
+     LIMIT 1`,
     [linkedSourceType, linkedSourceId],
   )
 }
@@ -641,11 +689,11 @@ export async function listSessionRecords(filters?: {
   let sql: string
   if (filters?.q) {
     const like = `%${filters.q}%`
-    sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
+    sql = `SELECT ${SESSION_DB_ROW_PROJECTION} FROM sessions s`
     conditions.push(`(s.prompt LIKE $${paramIndex++} OR s.summary LIKE $${paramIndex++})`)
     params.push(like, like)
   } else {
-    sql = "SELECT s.*, s.metadata->>'linkedItemTitle' AS linked_item_title FROM sessions s"
+    sql = `SELECT ${SESSION_DB_ROW_PROJECTION} FROM sessions s`
   }
 
   if (conditions.length) {
@@ -653,7 +701,7 @@ export async function listSessionRecords(filters?: {
   }
   sql += " ORDER BY s.updated_at DESC"
 
-  return await query<SessionDbRow>(sql, params)
+  return await queryRows(SessionDbRowSchema, "sessions-list", sql, params)
 }
 
 // In-memory presence map: sessionId → Map<email, { user, lastSeen }>
@@ -1504,7 +1552,9 @@ export async function recoverStaleSessions(cutoffMinutes = 30) {
   const cutoff = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString()
 
   // Find all sessions stuck in an active status
-  const staleSessions = await query<{ id: string; status: string; updated_at: string }>(
+  const staleSessions = await queryRows(
+    z.object({ id: z.string(), status: z.string(), updated_at: TimestampStringSchema }).strict(),
+    "sessions-reconcile-stale",
     `SELECT id, status, updated_at FROM sessions WHERE status = ANY($1::text[])`,
     [SESSION_ACTIVE_STATUSES as readonly string[]],
   )

@@ -14,6 +14,8 @@ Migrations are an append-only array of `.sql` filenames in `pool.ts`. Each file 
 
 Startup treats network and PostgreSQL connection-class failures as recoverable. The database is hosted on the Mac Mini over Tailscale, so a route flap must leave the server process alive and retrying rather than strand `tsx watch` with no backend child. Authentication, configuration, and migration errors remain fatal.
 
+`INBOX_DATABASE_URL` is an explicit process-level override for isolated checkouts and browser tests. It takes precedence over the inbox-local `.env` `DATABASE_URL`, whose intentional dotenv override otherwise makes a second worktree point at the shared Inbox database. Production continues to use `DATABASE_URL` when the override is absent.
+
 ### Why no server-side cache
 Migration `004_drop_api_cache.sql` removed the `api_cache` table. React Query handles caching client-side; the server returns fresh data on every request. Anything that *looks* like server caching (e.g. `backfill_state`, `body_extraction_log`) is **progress tracking**, not result memoization — it lets long-running batch jobs resume, not skip work that's still semantically required.
 
@@ -28,6 +30,10 @@ Migration `005_drop_session_messages.sql` removed the `session_messages` table. 
 - **WHEN** any caller invokes `getPool()` for the first time
 - **THEN** a `pg.Pool` is constructed with `max: 10`, `idleTimeoutMillis: 30_000`, `connectionTimeoutMillis: 5_000`.
 - **AND** subsequent calls return the same pool instance.
+
+#### Scenario: An explicit Inbox database isolates a second checkout
+- **WHEN** `INBOX_DATABASE_URL` is set alongside the normal `DATABASE_URL`
+- **THEN** the Inbox pool uses the explicit override, allowing a worktree to register its paths in a scratch database without repointing live workspace rows.
 
 #### Scenario: Missing `DATABASE_URL` fails fast
 - **WHEN** `getPool()` is called and `process.env.DATABASE_URL` is unset
@@ -118,11 +124,13 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 | Concern | Location |
 |---|---|
 | Pool construction, query helpers, transaction wrapper | [server/db/pool.ts](../../../server/db/pool.ts) |
+| Runtime validation for query-specific database rows | [server/db/rows.ts](../../../server/db/rows.ts) |
 | Migration retry policy and ordered migration list | [server/db/pool.ts](../../../server/db/pool.ts) |
 | Migration files | [server/db/migrations/](../../../server/db/migrations/) |
 
 ## History
 
+- 2026-08-09: added the process-level `INBOX_DATABASE_URL` override so isolated worktrees can use scratch databases even though the inbox-local dotenv file intentionally overrides the workspace-root `DATABASE_URL`.
 - 2026-07-31: transient Tailscale/Postgres connection failures now retry with capped exponential backoff during migration startup; non-transient errors still fail immediately.
 - Initial Postgres pool + migration runner translated from SQLite (`001_initial_schema.sql`).
 - 002: workspaces + workspace_members.

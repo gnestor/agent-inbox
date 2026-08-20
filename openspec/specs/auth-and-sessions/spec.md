@@ -57,6 +57,17 @@ If `Origin` and `Referer` are both missing (e.g. Vite dev proxy strips them, or 
 
 ### Session lookup
 
+#### Scenario: A shared JWT cookie provisions its database user before workspace access
+- **WHEN** a valid `hammies_session` was minted by another local Hammies app and the Inbox database has no matching `users` row
+- **THEN** `getSession` inserts that user once per server process before workspace auto-claim runs.
+- **AND** subsequent requests reuse the process-local assurance without adding a database round trip.
+
+#### Scenario: An isolated checkout can override its browser origins
+- **GIVEN** an Inbox checkout whose local `.env` declares the normal development origin
+- **WHEN** the checkout starts with `INBOX_ALLOWED_ORIGINS` set to one or more comma-separated origins
+- **THEN** CORS and CSRF validation use that explicit list instead of `ALLOWED_ORIGINS`.
+- **AND** an alternate-port browser instance can make authenticated mutation requests without weakening the normal checkout's origin policy.
+
 #### Scenario: `GET /api/auth/session` with a valid cookie
 - **WHEN** the `hammies_session` cookie is set and verifies via `verifySession`
 - **THEN** the response includes `user`, the user's `workspaces` (id/name/role list), and `activeWorkspace` resolved from the workspace cookie or auto-claim fallback.
@@ -131,6 +142,8 @@ The workspace cookie is read here only for routing — its lifecycle is owned by
 | Typed Hono context (`AppEnv` with `userEmail`, `googleAccessToken`) set by auth middleware | [server/types/hono-env.ts](../../../server/types/hono-env.ts) |
 
 ## History
+
+- 2026-08-09: Added the `INBOX_ALLOWED_ORIGINS` process override so isolated worktrees can authorize alternate browser ports even when the checkout-local `.env` intentionally overrides shared defaults.
 
 - ID-token verification originally via Google's hosted `tokeninfo` endpoint; migrated to `google-auth-library`'s `OAuth2Client.verifyIdToken` (offline JWKS) when consolidating into `@hammies/auth/server`.
 - Origin/Referer CSRF check added as a second layer behind SameSite cookies; webhook and OAuth-connect paths exempted to permit legitimate third-party POSTs.

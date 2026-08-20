@@ -20,6 +20,28 @@ export interface SessionUser {
   picture?: string
 }
 
+const ensuredSessionUsers = new Set<string>()
+
+async function ensureSessionUser(user: SessionUser): Promise<void> {
+  if (ensuredSessionUsers.has(user.email)) return
+  const now = new Date().toISOString()
+  await execute(
+    `INSERT INTO users (email, name, picture, created_at, last_login_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT(email) DO NOTHING`,
+    [user.email, user.name, user.picture ?? null, now, now],
+  )
+  ensuredSessionUsers.add(user.email)
+}
+
+async function verifySessionCookie(token: string) {
+  try {
+    return await verifySession(token)
+  } catch {
+    return undefined
+  }
+}
+
 /** Verify a Google id_token, upsert the user row, and mint a JWT session token. */
 export async function verifyIdToken(credential: string): Promise<{
   sessionToken: string
@@ -49,12 +71,15 @@ export async function verifyIdToken(credential: string): Promise<{
 
 /** Verify a JWT session cookie and return the user it identifies. */
 export async function getSession(token: string): Promise<{ user: SessionUser } | undefined> {
-  try {
-    const s = await verifySession(token)
-    return { user: { name: s.name || s.email, email: s.email, picture: s.picture } }
-  } catch {
-    return undefined
+  const session = await verifySessionCookie(token)
+  if (!session) return undefined
+  const user = {
+    name: session.name || session.email,
+    email: session.email,
+    picture: session.picture,
   }
+  await ensureSessionUser(user)
+  return { user }
 }
 
 /** No-op: JWT sessions are stateless. Cookie deletion handles logout. */

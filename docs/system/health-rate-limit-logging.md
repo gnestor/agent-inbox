@@ -1,22 +1,24 @@
 ---
 title: Health, Rate Limit, Logging
-summary: Health checks, in-memory rate limiting, request-correlated logging, and crash telemetry — the server's cross-cutting observability primitives.
+summary: Health checks, rate limiting, request-correlated logging, production asset routing, versioned JSON envelopes, and crash telemetry — the server's cross-cutting primitives.
 sources:
   - server/index.ts
   - server/lib/__tests__/health.test.ts
   - server/lib/__tests__/rate-limit.test.ts
   - server/lib/health.ts
+  - server/lib/http-envelope.ts
+  - server/lib/production-assets.ts
   - server/lib/rate-limit.ts
   - server/routes/telemetry.ts
   - src/lib/crash-telemetry.ts
 spec: openspec/specs/health-rate-limit-logging/spec.md
 status: generated
-sources_hash: "4d8d1d867df3a9600cc237195539ce37e232996f8c9031dc8770fe6db4bd25d1"
+sources_hash: "4b76214a8114a7af83c409db1a2a3dd020adcb0b92bcbe8bdc791787b169c773"
 ---
 
 # Health, Rate Limit, Logging
 
-Health checks, rate limiting, structured logging, and crash telemetry are four independent server primitives that keep the inbox server observably correct. The health route reports database and vault status to unauthenticated probes, and an in-memory rate limiter guards public routes from brute force. A structured logger correlates every log line to its request, and a client-side heartbeat catches renderer crashes error trackers cannot see.
+Health checks, rate limiting, structured logging, production asset routing, versioned JSON envelopes, and crash telemetry are independent server primitives that keep the inbox server observably correct. The health route reports database and vault status to unauthenticated probes, and an in-memory rate limiter guards public routes from brute force. A structured logger correlates every log line to its request, the response middleware normalizes JSON at the HTTP boundary, and a client-side heartbeat catches renderer crashes error trackers cannot see. In production, shared `/@hammies/` modules are mounted before the SPA fallback so deep links cannot turn JavaScript requests into HTML responses.
 
 ```mermaid
 flowchart TD
@@ -51,6 +53,10 @@ Every response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining` headers. 
 Every inbox module logs through `createLogger`, shared from `@hammies/frontend/lib/serverLogger`. `server/index.ts` wraps each request in `runWithRequestContext({ requestId, userEmail? })`. `AsyncLocalStorage` then makes every nested `log.*` call — including async descendants — pick up the request ID automatically. Call-site context wins when a key collides with the auto-injected `requestId` or `userEmail`. This removes the need to thread a request ID through every function signature between the middleware and a route handler.
 
 In production, each call writes one JSON line to stdout, or to stderr for `error` level, so log aggregators can parse structured fields. In development, the format is human-readable: `[LEVEL] [module] req=<8-char-id> message key=value`, with the request tag only when a context is active. `LOG_LEVEL` filters output — set it to `warn` and debug and info calls stop printing. `createLogger("foo").child({ sessionId })` returns a logger that adds `sessionId` to every subsequent call. A route handler using it does not have to pass `sessionId` at each call site.
+
+## Versioning JSON responses
+
+`versionedJsonEnvelope` runs after route handlers and rewrites JSON responses into the shared contract envelope when the handler has not already produced one. Successful bodies become `{ contractVersion, data }`; failures become `{ contractVersion, error }` with a stable fallback code, message, and request ID. It leaves 204 responses, non-JSON bodies, and already-versioned envelopes untouched. This lets legacy handlers migrate incrementally without exposing an unversioned server response to the runtime-validating client.
 
 ## Catching client-side crashes
 

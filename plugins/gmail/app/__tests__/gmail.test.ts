@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { GmailApiMessage, GmailApiPart } from "../lib/gmail-api-types.js"
 
-const sanitizeHtmlEmailSpy = vi.fn((html: string) => html)
+const sanitizeHtmlEmailSpy = vi.fn((html: string, _opts?: unknown) => html)
 const sanitizePlainTextSpy = vi.fn((text: string) => text)
 vi.mock("../lib/email-sanitizer.js", () => ({
   sanitizeHtmlEmail: (html: string, opts?: unknown) => sanitizeHtmlEmailSpy(html, opts),
@@ -12,7 +12,10 @@ const mockFetch = vi.fn()
 global.fetch = mockFetch
 
 function okJson(data: unknown) {
-  return Promise.resolve({ ok: true, json: () => Promise.resolve(data) })
+  return Promise.resolve(new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  }))
 }
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
@@ -62,6 +65,11 @@ describe("decodeBase64Url", () => {
     // base64url uses - and _ instead of + and /
     const input = "SGVsbG8gV29ybGQh"
     expect(decodeBase64Url(input)).toBe("Hello World!")
+  })
+
+  it("decodes UTF-8 without a Node Buffer global", () => {
+    const input = Buffer.from("Hello, 世界!", "utf-8").toString("base64url")
+    expect(decodeBase64Url(input)).toBe("Hello, 世界!")
   })
 })
 
@@ -212,7 +220,7 @@ describe("Gmail API functions", () => {
   describe("searchThreads", () => {
     it("returns empty threads for no results", async () => {
       mockFetch
-        .mockReturnValueOnce(okJson({ threads: null, historyId: "123" }))
+        .mockReturnValueOnce(okJson({ historyId: "123" }))
 
       const result = await searchThreads("test-token", "in:inbox")
       expect(result.threads).toEqual([])
@@ -221,7 +229,7 @@ describe("Gmail API functions", () => {
     })
 
     it("passes query params correctly", async () => {
-      mockFetch.mockReturnValueOnce(okJson({ threads: null }))
+      mockFetch.mockReturnValueOnce(okJson({}))
 
       await searchThreads("test-token", "label:important", 10, "page2")
 
@@ -256,7 +264,7 @@ describe("Gmail API functions", () => {
       // Thread list comes back in a non-date order (as Gmail's q= search does);
       // the detail fetches resolve in list order.
       mockFetch
-        .mockReturnValueOnce(okJson({ threads: [{ id: "old" }, { id: "new" }, { id: "mid" }], nextPageToken: null }))
+        .mockReturnValueOnce(okJson({ threads: [{ id: "old" }, { id: "new" }, { id: "mid" }] }))
         .mockReturnValueOnce(threadDetail("old", "1 Jan 2025 00:00:00 +0000"))
         .mockReturnValueOnce(threadDetail("new", "1 Jun 2025 00:00:00 +0000"))
         .mockReturnValueOnce(threadDetail("mid", "1 Mar 2025 00:00:00 +0000"))
@@ -293,7 +301,7 @@ describe("Gmail API functions", () => {
 
   describe("sendMessage", () => {
     it("sends base64url-encoded message", async () => {
-      mockFetch.mockReturnValueOnce(okJson({ id: "sent1" }))
+      mockFetch.mockReturnValueOnce(okJson({ id: "sent1", threadId: "t1" }))
 
       await sendMessage("test-token", "bob@test.com", "Hi", "Body text")
 
@@ -313,7 +321,7 @@ describe("Gmail API functions", () => {
     })
 
     it("includes In-Reply-To and References headers", async () => {
-      mockFetch.mockReturnValueOnce(okJson({ id: "sent2" }))
+      mockFetch.mockReturnValueOnce(okJson({ id: "sent2", threadId: "t1" }))
 
       await sendMessage("test-token", "bob@test.com", "Re: Hi", "Reply", "t1", "<orig@id>")
 
@@ -327,7 +335,7 @@ describe("Gmail API functions", () => {
 
   describe("modifyLabels", () => {
     it("sends correct modify request", async () => {
-      mockFetch.mockReturnValueOnce(okJson({}))
+      mockFetch.mockReturnValueOnce(okJson({ id: "msg1", threadId: "t1" }))
 
       await modifyLabels("test-token", "msg1", ["STARRED"], ["UNREAD"])
 
@@ -341,7 +349,7 @@ describe("Gmail API functions", () => {
 
   describe("trashThread", () => {
     it("sends trash request to correct endpoint", async () => {
-      mockFetch.mockReturnValueOnce(okJson({}))
+      mockFetch.mockReturnValueOnce(okJson({ id: "t1" }))
 
       await trashThread("test-token", "t1")
 
@@ -441,13 +449,13 @@ describe("Gmail API functions", () => {
   })
 
   describe("getAttachment", () => {
-    it("returns decoded attachment buffer", async () => {
+    it("returns decoded attachment bytes", async () => {
       const content = "attachment-content"
       const encoded = Buffer.from(content).toString("base64url")
       mockFetch.mockReturnValueOnce(okJson({ data: encoded }))
 
       const result = await getAttachment("test-token", "msg1", "att1")
-      expect(result.toString()).toBe(content)
+      expect(new TextDecoder().decode(result)).toBe(content)
     })
   })
 
@@ -530,10 +538,8 @@ describe("Gmail API functions", () => {
   })
 
   it("throws on non-ok response", async () => {
-    mockFetch.mockReturnValueOnce(
-      Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve("Unauthorized") }),
-    )
+    mockFetch.mockReturnValueOnce(Promise.resolve(new Response("Unauthorized", { status: 401 })))
 
-    await expect(getLabels("test-token")).rejects.toThrow("Gmail API 401: Unauthorized")
+    await expect(getLabels("test-token")).rejects.toThrow("gmail request returned HTTP 401")
   })
 })

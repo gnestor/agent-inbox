@@ -2,11 +2,20 @@ import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { mkdir, writeFile } from "fs/promises"
 import { join } from "path"
-import { queryOne, execute } from "../db/pool.js"
+import { execute } from "../db/pool.js"
+import { queryOptionalRow, queryRows } from "../db/rows.js"
 import { getPlugins, getPlugin } from "../lib/plugin-loader.js"
 import { buildPluginContext, getWorkspaceId, getWorkspacePath } from "../lib/plugin-context.js"
 import { extractEntitiesForItem } from "../lib/entity-extractor.js"
 import type { Plugin, PluginContext } from "../../src/types/plugin.js"
+import { z } from "zod"
+
+const TimestampStringSchema = z.union([z.string(), z.date().transform((value) => value.toISOString())])
+const RecordDiscoveredBody = z.object({
+  pluginId: z.string().min(1),
+  sourcePaths: z.array(z.string().min(1)).max(10_000),
+  block: z.string().max(2_000_000),
+}).strict()
 
 /**
  * Render and write a single item's stub: enrich → render markdown → write file →
@@ -47,7 +56,9 @@ export async function runBackfill(
   workspaceId?: string,
 ): Promise<{ processed: number; total: number; nextCursor: string | null }> {
   const wsId = workspaceId || "agent"
-  const row = await queryOne<{ last_cursor: string | null; last_run_at: string | null }>(
+  const row = await queryOptionalRow(
+    z.object({ last_cursor: z.string().nullable(), last_run_at: TimestampStringSchema.nullable() }).strict(),
+    "backfill-get-state",
     "SELECT last_cursor, last_run_at FROM backfill_state WHERE plugin_id = $1 AND workspace_id = $2",
     [plugin.id, wsId],
   )
@@ -137,10 +148,9 @@ backfillRoutes.post("/curate-entity", async (c) => {
  */
 backfillRoutes.post("/record-discovered", async (c) => {
   const wsId = getWorkspaceId(c) || "agent"
-  const { pluginId, sourcePaths, block } = await c.req.json<{ pluginId: string; sourcePaths: string[]; block: string }>()
-  if (!pluginId || !Array.isArray(sourcePaths) || typeof block !== "string") {
-    throw new HTTPException(400, { message: "body must be { pluginId, sourcePaths[], block }" })
-  }
+  const parsed = RecordDiscoveredBody.safeParse(await c.req.json())
+  if (!parsed.success) throw new HTTPException(400, { message: "body must be { pluginId, sourcePaths[], block }" })
+  const { pluginId, sourcePaths, block } = parsed.data
   const { recordDiscoveredEntities } = await import("../lib/entity-curator.js")
   const inserted = await recordDiscoveredEntities(wsId, pluginId, sourcePaths, block)
   return c.json({ inserted })
@@ -208,7 +218,9 @@ backfillRoutes.post("/extract-bodies", async (c) => {
 
   // Already-done source_paths to skip.
   const done = new Set<string>()
-  const doneRows = await (await import("../db/pool.js")).query<{ source_path: string }>(
+  const doneRows = await queryRows(
+    z.object({ source_path: z.string() }).strict(),
+    "backfill-list-extracted-paths",
     `SELECT source_path FROM body_extraction_log WHERE workspace_id = $1 AND plugin_id = $2`,
     [wsId, activePlugin.id],
   )

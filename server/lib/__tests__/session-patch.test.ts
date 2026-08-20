@@ -4,7 +4,17 @@ import { Hono } from "hono"
 process.env.VAULT_SECRET = "aa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 
 // In-memory store for sessions
-const sessionsStore = new Map<string, unknown>()
+interface SessionRow extends Record<string, unknown> {
+  status: string
+  summary?: string | null
+  updated_at?: string
+}
+
+type TransactionCallback = (client: {
+  query: (...args: unknown[]) => Promise<{ rows: unknown[] }>
+}) => unknown | Promise<unknown>
+
+const sessionsStore = new Map<string, SessionRow>()
 const messagesStore = new Map<string, unknown[]>()
 
 vi.mock("../../db/pool.js", () => ({
@@ -15,7 +25,7 @@ vi.mock("../../db/pool.js", () => ({
     return []
   }),
   queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("FROM sessions") && sql.includes("WHERE id")) {
+    if (sql.includes("FROM sessions") && /WHERE\s+(?:s\.)?id/.test(sql)) {
       const id = params![0] as string
       return sessionsStore.get(id) || undefined
     }
@@ -34,9 +44,9 @@ vi.mock("../../db/pool.js", () => ({
           id,
           status: "complete",
           prompt: params![1],
-          summary: params![2],
+          summary: params![2] as string | null,
           started_at: params![3],
-          updated_at: params![4],
+          updated_at: params![4] as string,
           completed_at: params![5],
           trigger_source: "manual",
         })
@@ -65,7 +75,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     return { rowCount: 0 }
   }),
-  withTransaction: vi.fn(async (fn: unknown) => fn({
+  withTransaction: vi.fn(async (fn: TransactionCallback) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))

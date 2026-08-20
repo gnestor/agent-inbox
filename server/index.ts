@@ -1,14 +1,14 @@
-import { query } from "./db/pool.js"
+import { queryRows } from "./db/rows.js"
 import { vaultQuery, vaultQueryOne, vaultExecute, getVaultPool } from "./db/pool.js"
 import { serve } from "@hono/node-server"
 import { createNodeWebSocket } from "@hono/node-ws"
-import { serveStatic } from "@hono/node-server/serve-static"
 import { Hono } from "hono"
 import { parseAllowedOrigins, createCorsMiddleware } from "@hammies/auth/server"
 import { logger } from "hono/logger"
 import { createLogger, runWithRequestContext } from "@hammies/frontend/lib/serverLogger"
 import { randomUUID } from "crypto"
 import { csrfProtection } from "./lib/csrf.js"
+import { versionedJsonEnvelope } from "./lib/http-envelope.js"
 import { runHealthChecks, isHealthy } from "./lib/health.js"
 import { parseJson } from "./lib/schemas.js"
 import {
@@ -61,6 +61,7 @@ import { getSession } from "./lib/auth.js"
 import { loadPlugins, loadBuiltinPlugins } from "./lib/plugin-loader.js"
 import { watchPlugins } from "./lib/plugin-watcher.js"
 import { loadPanels } from "./lib/panel-registry.js"
+import { mountProductionAssets } from "./lib/production-assets.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -76,6 +77,8 @@ const inboxEnvironment = decodeEnvironment(
     VAULT_SECRET: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
     WORKSPACES: z.string().min(1).optional(),
     WORKSPACE: z.string().min(1).optional(),
+    INBOX_DATABASE_URL: z.string().min(1).optional(),
+    INBOX_ALLOWED_ORIGINS: z.string().min(1).optional(),
     INBOX_PORT: EnvPortSchema.optional(),
     PORT: EnvPortSchema.optional(),
     CREDENTIAL_KEEPALIVE: EnvBooleanSchema.optional(),
@@ -274,7 +277,9 @@ type AppBindings = {
 }
 
 // Allowed origins for CORS and CSRF checks
-const ALLOWED_ORIGINS = parseAllowedOrigins("http://localhost:5175")
+const ALLOWED_ORIGINS = inboxEnvironment.INBOX_ALLOWED_ORIGINS
+  ? inboxEnvironment.INBOX_ALLOWED_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : parseAllowedOrigins("http://localhost:5175")
 
 // Create app
 const app = new Hono<AppBindings>()
@@ -289,6 +294,7 @@ app.use("*", async (c, next) => {
   const userEmail = c.get("userEmail") as string | undefined
   await runWithRequestContext({ requestId, ...(userEmail ? { userEmail } : {}) }, () => next())
 })
+app.use("/api/*", versionedJsonEnvelope)
 
 // CSRF origin validation — scoped to /api/* state-changing requests
 // Exempts webhooks (third-party POSTs) and the OAuth callback (redirect from provider)
@@ -417,7 +423,12 @@ app.get("/api/users", async (c) => {
   const list = emails.split(",").map((e) => e.trim()).filter(Boolean)
   if (list.length === 0) return c.json({ users: [] })
   const placeholders = list.map((_, i) => `$${i + 1}`).join(",")
-  const rows = await query<{ email: string; name: string; picture: string | null }>(`SELECT email, name, picture FROM users WHERE email IN (${placeholders})`, list)
+  const rows = await queryRows(
+    z.object({ email: z.string().email(), name: z.string(), picture: z.string().nullable() }).strict(),
+    "users-list-allowed",
+    `SELECT email, name, picture FROM users WHERE email IN (${placeholders})`,
+    list,
+  )
   return c.json({ users: rows })
 })
 
@@ -431,12 +442,10 @@ app.onError((err, c) => {
 mountPluginRoutes(app)
 
 // Serve production build if dist/ exists
-const distPath = resolve(__dirname, "../dist")
-if (existsSync(distPath)) {
-  app.use("/*", serveStatic({ root: "./dist" }))
-  // SPA fallback — serve index.html for all non-API routes
-  app.get("/*", serveStatic({ path: "./dist/index.html" }))
-}
+mountProductionAssets(app, {
+  inboxDistPath: resolve(__dirname, "../dist"),
+  artifactDistPath: resolve(__dirname, "../../frontend/dist"),
+})
 
 // INBOX_PORT is the inbox-specific override (mirrors Studio's STUDIO_PORT) so a
 // second instance from a worktree can run beside the main checkout's server;

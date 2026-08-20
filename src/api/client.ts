@@ -1,5 +1,5 @@
 import type { ContractSchema } from "@hammies/contracts"
-import { decodeJsonResponse } from "@hammies/contracts/http"
+import { decodeApiJsonResponse } from "@hammies/contracts/http"
 import {
   ActiveWorkspaceResponseSchema,
   AuthClientIdResponseSchema,
@@ -45,7 +45,7 @@ async function request<T>(
   if (res.status === 401) {
     window.dispatchEvent(new CustomEvent("session-expired"))
   }
-  return decodeJsonResponse<T>(res, schema, {
+  return decodeApiJsonResponse<T>(res, schema, {
     contract: `inbox-api:${path.split("?")[0]}@1`,
     source: path,
     maxBytes: contractOptions?.maxBytes,
@@ -187,7 +187,7 @@ export async function uploadSessionFile(sessionId: string, file: File) {
     method: "POST",
     body: form,
   })
-  return decodeJsonResponse(res, UploadFileResultSchema, {
+  return decodeApiJsonResponse(res, UploadFileResultSchema, {
     contract: "inbox-session-file-upload@1",
     source: `/sessions/${sessionId}/files`,
   })

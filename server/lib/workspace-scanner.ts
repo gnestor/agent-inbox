@@ -1,8 +1,11 @@
 import { basename } from "path"
 import { existsSync } from "fs"
 import { execFileSync } from "child_process"
-import { query, queryOne, execute } from "../db/pool.js"
+import { execute } from "../db/pool.js"
+import { queryOptionalRow, queryRows } from "../db/rows.js"
 import { createLogger } from "@hammies/frontend/lib/serverLogger"
+import { DatabaseIntegerSchema } from "@hammies/contracts/database"
+import { z } from "zod"
 
 const log = createLogger("workspace")
 
@@ -20,6 +23,23 @@ export interface WorkspaceMemberRow {
   role: "admin" | "member"
   created_at: string
 }
+
+const TimestampStringSchema = z.union([z.string(), z.date().transform((value) => value.toISOString())])
+const WorkspaceRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  path: z.string(),
+  created_at: TimestampStringSchema,
+  updated_at: TimestampStringSchema,
+}).strict()
+const WorkspaceMemberRowSchema = z.object({
+  workspace_id: z.string(),
+  user_email: z.string().email(),
+  role: z.enum(["admin", "member"]),
+  created_at: TimestampStringSchema,
+}).strict()
+const RoleRowSchema = z.object({ role: z.enum(["admin", "member"]) }).strict()
+const CountRowSchema = z.object({ count: DatabaseIntegerSchema }).strict()
 
 /** Derive a display name for a workspace directory from its git remote or basename. */
 export function deriveWorkspaceName(dirPath: string): string {
@@ -57,7 +77,12 @@ export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[
 
   for (const wsPath of paths) {
     const id = basename(wsPath)
-    const existing = await queryOne<WorkspaceRow>("SELECT * FROM workspaces WHERE id = $1", [id])
+    const existing = await queryOptionalRow(
+      WorkspaceRowSchema,
+      "workspaces-register-existing",
+      "SELECT * FROM workspaces WHERE id = $1",
+      [id],
+    )
     if (existing && existing.path !== wsPath && existsSync(existing.path)) {
       throw new Error(
         `Workspace id "${id}" is already registered to ${existing.path}, which still exists. ` +
@@ -90,7 +115,7 @@ export async function registerWorkspaces(paths: string[]): Promise<WorkspaceRow[
 
   claimedUsers.clear() // new workspaces may need claiming
   log.info("Registered workspaces", { count: paths.length })
-  return await query<WorkspaceRow>("SELECT * FROM workspaces")
+  return await queryRows(WorkspaceRowSchema, "workspaces-register-result", "SELECT * FROM workspaces")
 }
 
 /** Update a workspace's display name. */
@@ -105,17 +130,24 @@ export async function updateWorkspaceName(id: string, name: string): Promise<boo
 
 /** Get all workspaces from the DB. */
 export function getAllWorkspaces(): Promise<WorkspaceRow[]> {
-  return query<WorkspaceRow>("SELECT * FROM workspaces ORDER BY name")
+  return queryRows(WorkspaceRowSchema, "workspaces-list", "SELECT * FROM workspaces ORDER BY name")
 }
 
 /** Get a workspace by ID. */
 export async function getWorkspaceById(id: string): Promise<WorkspaceRow | undefined> {
-  return (await queryOne<WorkspaceRow>("SELECT * FROM workspaces WHERE id = $1", [id])) ?? undefined
+  return (await queryOptionalRow(
+    WorkspaceRowSchema,
+    "workspaces-get-by-id",
+    "SELECT * FROM workspaces WHERE id = $1",
+    [id],
+  )) ?? undefined
 }
 
 /** Get workspaces that a user is a member of. */
 export function getUserWorkspaces(email: string): Promise<Array<WorkspaceRow & { role: string }>> {
-  return query<WorkspaceRow & { role: string }>(
+  return queryRows(
+    WorkspaceRowSchema.extend({ role: z.enum(["admin", "member"]) }).strict(),
+    "workspaces-list-for-user",
     `SELECT w.*, wm.role FROM workspaces w
      JOIN workspace_members wm ON wm.workspace_id = w.id
      WHERE wm.user_email = $1
@@ -126,7 +158,12 @@ export function getUserWorkspaces(email: string): Promise<Array<WorkspaceRow & {
 
 /** Get members of a workspace. */
 export function getWorkspaceMembers(workspaceId: string): Promise<Array<WorkspaceMemberRow & { name: string; picture?: string }>> {
-  return query<WorkspaceMemberRow & { name: string; picture?: string }>(
+  return queryRows(
+    WorkspaceMemberRowSchema.extend({
+      name: z.string(),
+      picture: z.string().nullable().transform((value) => value ?? undefined),
+    }).strict(),
+    "workspaces-list-members",
     `SELECT wm.*, u.name, u.picture FROM workspace_members wm
      JOIN users u ON u.email = wm.user_email
      WHERE wm.workspace_id = $1
@@ -166,11 +203,13 @@ export async function updateWorkspaceMemberRole(workspaceId: string, email: stri
 
 /** Get a user's role in a workspace, or null if not a member. */
 export async function getWorkspaceMemberRole(workspaceId: string, email: string): Promise<"admin" | "member" | null> {
-  const row = await queryOne<{ role: string }>(
+  const row = await queryOptionalRow(
+    RoleRowSchema,
+    "workspaces-get-member-role",
     "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_email = $2",
     [workspaceId, email],
   )
-  return (row?.role as "admin" | "member") ?? null
+  return row?.role ?? null
 }
 
 /**
@@ -183,12 +222,14 @@ export async function ensureWorkspaceAccess(workspaceId: string, email: string):
   if (existing) return existing
 
   // Auto-claim: if workspace has no members, first user becomes admin
-  const countRow = await queryOne<{ count: string }>(
+  const countRow = await queryOptionalRow(
+    CountRowSchema,
+    "workspaces-count-members",
     "SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = $1",
     [workspaceId],
   )
 
-  if (parseInt(countRow?.count || "0", 10) === 0) {
+  if (Number(countRow?.count ?? 0) === 0) {
     await addWorkspaceMember(workspaceId, email, "admin")
     log.info("Auto-assigned admin role", { email, workspaceId })
     return "admin"
@@ -199,11 +240,13 @@ export async function ensureWorkspaceAccess(workspaceId: string, email: string):
 
 /** Returns true if removing/demoting `email` would leave the workspace with no admins. */
 export async function isLastAdmin(workspaceId: string, email: string): Promise<boolean> {
-  const row = await queryOne<{ count: string }>(
+  const row = await queryOptionalRow(
+    CountRowSchema,
+    "workspaces-count-other-admins",
     "SELECT COUNT(*)::int AS count FROM workspace_members WHERE workspace_id = $1 AND role = 'admin' AND user_email != $2",
     [workspaceId, email],
   )
-  return parseInt(row?.count || "0", 10) === 0
+  return Number(row?.count ?? 0) === 0
 }
 
 // Track which users have already been through the auto-claim pass this process lifetime

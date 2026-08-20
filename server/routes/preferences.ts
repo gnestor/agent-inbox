@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono"
 import { getCookie } from "hono/cookie"
-import { execute, query, withTransaction } from "../db/pool.js"
+import { execute, withTransaction } from "../db/pool.js"
+import { queryRows } from "../db/rows.js"
 import { getSession } from "../lib/auth.js"
 import { SESSION_COOKIE } from "./auth.js"
 import { BatchPreferencesBody, SetPreferenceBody } from "../lib/schemas.js"
 import type { ZodError } from "zod/v4"
+import { z } from "zod"
 
 /** Extract first user-facing message from a Zod validation error */
 function zodErrorMessage(err: ZodError): string {
@@ -25,18 +27,20 @@ preferencesRoutes.get("/", async (c) => {
   const email = await getUserEmail(c)
   if (!email) return c.json({ error: "Unauthorized" }, 401)
 
-  const rows = await query<{ key: string; value: string }>(
+  const rows = await queryRows(
+    z.object({ key: z.string(), value: z.unknown() }).strict(),
+    "preferences-list-user",
     `SELECT key, value FROM user_preferences WHERE user_email = $1`,
     [email],
   )
 
   const prefs: Record<string, unknown> = {}
   for (const row of rows) {
-    try {
-      prefs[row.key] = JSON.parse(row.value)
-    } catch {
+    if (typeof row.value !== "string") {
       prefs[row.key] = row.value
+      continue
     }
+    try { prefs[row.key] = JSON.parse(row.value) as unknown } catch { prefs[row.key] = row.value }
   }
   return c.json(prefs)
 })

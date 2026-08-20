@@ -8,7 +8,7 @@ sources:
   - src/hooks/use-preferences.ts
 spec: openspec/specs/preferences/spec.md
 status: generated
-sources_hash: "4841a66105ef95de754988d8561007a2592292d7f2d6062c714a937008eba19d"
+sources_hash: "2a067ee574f444c6eecce476e4530d915d3bbf517c6ffd8359e54fc52681faec"
 ---
 
 # Preferences
@@ -31,7 +31,7 @@ sequenceDiagram
 
 ## Reading and writing a preference
 
-`GET /api/preferences` returns every row for the authenticated user as one object, `{ [key]: value }`. The route parses each stored string as JSON. A row that predates the JSON convention fails to parse and returns as the raw string instead. `PUT /api/preferences` upserts a single `{ key, value }` pair, validated by the `SetPreferenceBody` Zod schema before it touches the database. `PUT /api/preferences/batch` upserts a `{ prefs: { [key]: value } }` map inside one `withTransaction` call. A multi-key reset — like restoring a default layout — either lands completely or not at all.
+`GET /api/preferences` validates every database row's key and stored value before returning them as one object, `{ [key]: value }`. The route parses each stored string as JSON. A row that predates the JSON convention fails to parse and returns as the raw string instead. `PUT /api/preferences` upserts a single `{ key, value }` pair, validated by the `SetPreferenceBody` Zod schema before it touches the database. `PUT /api/preferences/batch` upserts a `{ prefs: { [key]: value } }` map inside one `withTransaction` call. A multi-key reset — like restoring a default layout — either lands completely or not at all.
 
 All three routes require the `inbox_session` cookie. A missing or unknown cookie returns `401` before the route reads the table. An invalid PUT body returns `400` with the first Zod issue message.
 
