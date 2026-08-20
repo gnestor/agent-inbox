@@ -49,7 +49,7 @@ src/              # React frontend
 
 ## Feature Workflow
 
-Follow [docs/workflow.md](../../docs/workflow.md) → **Completion Checklist** (read/update spec → tests → typecheck → `docs:coverage` → tests → `/simplify` → browser → commit). It's mandatory after every task. Inbox-specific points that extend it:
+Follow [docs/workflow.md](../../docs/workflow.md) → **Completion Checklist** (read/update spec → tests → typecheck → `docs:coverage` → tests → `/simplify` → browser → commit). It's mandatory after every task. Branch/worktree integration additionally follows [the merge authorization contract](../../docs/merge-authorization.md): freeze the fully verified candidate and wait for fresh user approval of its exact candidate and tested-base SHAs before changing `main`. Inbox-specific points that extend it:
 
 - **Test locations** — pure server logic (`server/lib/`) → `server/lib/__tests__/*.test.ts` (node env); React hooks (`src/hooks/`) → `src/hooks/__tests__/*.test.tsx` (add `// @vitest-environment jsdom`). Run via `npm run test:ci` (tsc + vitest); tests also auto-run on save via a PostToolUse hook. See **Testing** below for e2e tiers.
 - **Notion tasks** (Inbox project) — file follow-ups and mark completed tasks Complete (the former in-repo `TODO.md` was migrated to Notion on 2026-06-28).
