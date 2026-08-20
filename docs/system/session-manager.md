@@ -12,7 +12,7 @@ sources:
   - src/hooks/use-session-mutations.ts
 spec: openspec/specs/session-manager/spec.md
 status: generated
-sources_hash: "e5efd37ee08f6df585ca15ac7768494c09875e42c640ba234ce1a3bdc58b76ad"
+sources_hash: "a9a522641f97636c6e907e4348fc7cf57dd33934de388c94ba1c05371b48d27f"
 ---
 
 # Session Manager

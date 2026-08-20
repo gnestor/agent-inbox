@@ -15,10 +15,14 @@ const sessionRecord = vi.hoisted(() => ({ current: null as unknown }))
 const summaryUpdates = vi.hoisted(() => ({ list: [] as { id: string; summary: string }[] }))
 const generateTitle = vi.hoisted(() => ({ current: null as string | null }))
 
+type TransactionCallback = (client: {
+  query: (...args: unknown[]) => Promise<{ rows: unknown[] }>
+}) => unknown | Promise<unknown>
+
 vi.mock("../../db/pool.js", () => ({
   query: vi.fn(async () => []),
   queryOne: vi.fn(async (sql: string) => {
-    if (sql.includes("FROM sessions") && sql.includes("WHERE id")) return sessionRecord.current
+    if (sql.includes("FROM sessions") && /WHERE\s+(?:s\.)?id/.test(sql)) return sessionRecord.current
     return undefined
   }),
   execute: vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -28,7 +32,7 @@ vi.mock("../../db/pool.js", () => ({
     }
     return { rowCount: 1 }
   }),
-  withTransaction: vi.fn(async (fn: unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTransaction: vi.fn(async (fn: TransactionCallback) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }))
 
 vi.mock("../../lib/credentials.js", () => ({ getAgentEnv: () => ({}) }))

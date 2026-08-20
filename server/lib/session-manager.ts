@@ -591,7 +591,9 @@ export async function getSessionRecord(sessionId: string) {
   return await queryOptionalRow(
     SessionDbRowSchema,
     "sessions-get-by-id",
-    "SELECT * FROM sessions WHERE id = $1",
+    `SELECT ${SESSION_DB_ROW_PROJECTION}
+     FROM sessions s
+     WHERE s.id = $1`,
     [sessionId],
   )
 }

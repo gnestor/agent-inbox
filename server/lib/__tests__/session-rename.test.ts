@@ -4,7 +4,13 @@ import { vi, describe, it, expect, beforeEach } from "vitest"
 //
 // In-memory store to simulate the sessions table.
 
-type Row = Record<string, unknown>
+interface Row extends Record<string, unknown> {
+  status: string
+}
+
+type TransactionCallback = (client: {
+  query: (...args: unknown[]) => Promise<{ rows: unknown[] }>
+}) => unknown | Promise<unknown>
 let store: Map<string, Row> = new Map()
 
 // Last captured calls — reset in beforeEach
@@ -17,7 +23,7 @@ vi.mock("../../db/pool.js", () => ({
     return []
   }),
   queryOne: vi.fn(async (sql: string, params?: unknown[]) => {
-    if (sql.includes("FROM sessions") && sql.includes("WHERE id")) {
+    if (sql.includes("FROM sessions") && /WHERE\s+(?:s\.)?id/.test(sql)) {
       const id = params![0] as string
       return store.get(id) || undefined
     }
@@ -72,7 +78,7 @@ vi.mock("../../db/pool.js", () => ({
 
     return { rowCount: 0 }
   }),
-  withTransaction: vi.fn(async (fn: unknown) => fn({
+  withTransaction: vi.fn(async (fn: TransactionCallback) => fn({
     query: vi.fn(async () => ({ rows: [] })),
   })),
 }))
