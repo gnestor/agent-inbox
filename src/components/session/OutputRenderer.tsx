@@ -180,11 +180,11 @@ function TableOutput({ data, fillPanel }: { data: TableData; fillPanel?: boolean
   if (fillPanel) {
     return (
       <div className="h-full">
-        <DataTable columns={data.columns} rows={data.rows} paginated={false} searchable />
+        <DataTable columns={data.columns} rows={data.rows} searchable />
       </div>
     )
   }
-  return <DataTable columns={data.columns} rows={data.rows} pageSize={20} searchable={false} />
+  return <DataTable columns={data.columns} rows={data.rows} searchable={false} />
 }
 
 // --- JSON tree ---

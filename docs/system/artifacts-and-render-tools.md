@@ -16,7 +16,7 @@ panels:
   - output
   - code_editor
 status: generated
-sources_hash: "256c84f7c0c98bc5f75d04f0210170dd429f79a23b1a7e2d5b0ddcb50b24c219"
+sources_hash: "98ba2ab8fff6db0cfb6f376db1dd2d49b250eb905109fa90a370ae50ca56a845"
 ---
 
 # Artifacts and Render Tools
@@ -58,7 +58,7 @@ The iframe runs with `sandbox="allow-scripts allow-same-origin allow-popups allo
 
 ## Non-React output types
 
-`OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, switching between a paginated preview and a searchable full-panel grid depending on whether the output is expanded. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
+`OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, adding the filter field only when the output is expanded into its own panel — the grid bounds its own height and scrolls the body under a frozen header either way, so neither branch asks for a pager. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
 
 `html` output and `.html` files take a lighter path than React artifacts. `injectIntoHtml` splices a theme `<style>` block and a height-reporting script into the raw HTML. The iframe sandbox omits `allow-same-origin` here, because these documents never need same-origin fetch — the frame keeps a stricter boundary. This path posts a distinct `html-height` message type, not the `ArtifactFrame` bridge's `height` type, decoded through the same `decodeIframeMessage` helper. `file` output shows an inline preview for images, video, and HTML, plus a download link for everything else.
 

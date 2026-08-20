@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Two data-presentation primitives: `<DataTable>` for tabular results (TanStack Table with sort/filter/paginate auto-enabled by row count) and the compound `<ListView>` family (Header, Search, Filters, Body) that drives every plugin list panel — emails, tasks, sessions, plugin items. List rows are rendered via `<ListItem>` whose appearance is fully derived from a `FieldDef[]` schema (title/subtitle/timestamp/badges) so plugins control their list look without owning components.
+Two data-presentation primitives: `<DataTable>` for tabular results (TanStack Table with sort and filter, the filter auto-enabled by row count) and the compound `<ListView>` family (Header, Search, Filters, Body) that drives every plugin list panel — emails, tasks, sessions, plugin items. List rows are rendered via `<ListItem>` whose appearance is fully derived from a `FieldDef[]` schema (title/subtitle/timestamp/badges) so plugins control their list look without owning components.
 
 ## Context
 
 ### Why TanStack Table for `<DataTable>`
-`<DataTable>` shows arbitrary tabular results — most often the output of agent tools that produce SQL-style rows. TanStack Table gives sort/filter/paginate primitives for free; building these would replicate ~300 lines of state machinery. Auto-enabling features by row count (`searchable` if > 5, `paginated` if > 20) keeps small results clean while letting large ones stay usable.
+`<DataTable>` shows arbitrary tabular results — most often the output of agent tools that produce SQL-style rows. TanStack Table gives sort and filter primitives for free; building these would replicate ~300 lines of state machinery. Auto-enabling the filter by row count (`searchable` if > 5) keeps small results clean, and a long result scrolls under its own height cap rather than paging.
 
 ### Why `<ListView>` is a compound component
 Every list panel needs the same skeleton (header + search + filters + scroll body) but wires them differently — sessions sort by status, emails group by thread, plugin items by their schema. Compound subcomponents (`ListView.Header`, `ListView.Search`, `ListView.Filters`, `ListView.Body`) let each consumer compose its own header buttons and search behavior while sharing the body's virtualization and infinite-scroll machinery.
@@ -120,7 +120,7 @@ Inbox imports it from `@hammies/frontend/components/DataTable`.
 
 | Concern | Location |
 |---|---|
-| `<DataTable>` columns/rows/sort/filter/paginate | **moved** to `@hammies/frontend` (`src/components/DataTable.tsx`) — shared with Studio; owned by that package `ui-components` spec |
+| `<DataTable>` columns/rows/sort/filter/height cap | **moved** to `@hammies/frontend` (`src/components/DataTable.tsx`) — shared with Studio; owned by that package `ui-components` spec |
 | `<ListView>` compound (Root, Header, Search, Filters, Body) and `IntersectionObserver` infinite scroll | [src/components/shared/ListView.tsx](../../../src/components/shared/ListView.tsx) |
 | `<ListItem>` rendering, custom memo comparator, badge styling | `src/components/shared/ListItem.tsx` |
 | Field-schema helpers (`getTitleField`, `getBadgeFields`, `extractFieldValue`, ...) | `src/lib/field-schema.ts` |
