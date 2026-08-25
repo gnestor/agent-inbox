@@ -22,7 +22,7 @@ sources:
   - src/hooks/use-plugin-mutations.ts
 spec: openspec/specs/plugin-system/spec.md
 status: generated
-sources_hash: "585eadca87a1ad2b7b290bcddf7f02a63755592a9d2b1d6ec6e8dd84e4b104bd"
+sources_hash: "0fe94533b2edade14376d9386522231015d96f111ce61613faa4d2a8eef809f4"
 ---
 
 # Plugin System
@@ -93,7 +93,7 @@ A `postMessage` bridge connects the iframe to the parent. From inside the compon
 - `sendAction` and `saveState` calls trigger a session action or persist UI state
 - a `height` message lets `PluginFrame` auto-resize the iframe
 
-`PluginFrame` decodes every incoming message against a versioned contract schema and drops anything that fails to parse or match origin.
+`PluginFrame` decodes every incoming message against a versioned contract schema. A message from another window or origin is dropped in silence, because a page with several frames sees a steady stream of them. A message from the plugin's own frame that fails the schema is a different thing — both ends are our code — so `decodeIframeMessage` hands it to a required `onInvalid` handler, and `PluginFrame` logs the formatted contract report before dropping it.
 
 ## Generic list and detail rendering
 

@@ -9,6 +9,7 @@ import {
   decodeIframeMessage,
 } from "@hammies/contracts/iframe"
 import { InboxTabIdSchema } from "@hammies/contracts/url"
+import { formatContractReport } from "@hammies/contracts"
 
 const log = createLogger("plugin-frame")
 
@@ -62,6 +63,7 @@ export function PluginFrame({
         { source: iframe.contentWindow, origin: window.location.origin },
         PluginFrameToHostMessageSchema,
         "plugin-frame-to-host@1",
+        (error) => log.error(formatContractReport(error, "plugin frame message")),
       )
       if (!decoded.success) return
       const data = decoded.data

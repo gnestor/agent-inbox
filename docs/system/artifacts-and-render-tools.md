@@ -16,7 +16,7 @@ panels:
   - output
   - code_editor
 status: generated
-sources_hash: "98ba2ab8fff6db0cfb6f376db1dd2d49b250eb905109fa90a370ae50ca56a845"
+sources_hash: "e272c6ebf7984e1f78ddbeb3ddbef88500818e3ce39e73abaf1cac147e4776e4"
 ---
 
 # Artifacts and Render Tools
@@ -60,7 +60,7 @@ The iframe runs with `sandbox="allow-scripts allow-same-origin allow-popups allo
 
 `OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, adding the filter field only when the output is expanded into its own panel — the grid bounds its own height and scrolls the body under a frozen header either way, so neither branch asks for a pager. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
 
-`html` output and `.html` files take a lighter path than React artifacts. `injectIntoHtml` splices a theme `<style>` block and a height-reporting script into the raw HTML. The iframe sandbox omits `allow-same-origin` here, because these documents never need same-origin fetch — the frame keeps a stricter boundary. This path posts a distinct `html-height` message type, not the `ArtifactFrame` bridge's `height` type, decoded through the same `decodeIframeMessage` helper. `file` output shows an inline preview for images, video, and HTML, plus a download link for everything else.
+`html` output and `.html` files take a lighter path than React artifacts. `injectIntoHtml` splices a theme `<style>` block and a height-reporting script into the raw HTML. The iframe sandbox omits `allow-same-origin` here, because these documents never need same-origin fetch — the frame keeps a stricter boundary. This path posts a distinct `html-height` message type, not the `ArtifactFrame` bridge's `height` type, decoded through the same `decodeIframeMessage` helper. That helper takes a required `onInvalid` handler, so a height report from our own frame that fails the schema is logged rather than dropped the way a neighbouring frame's message is. `file` output shows an inline preview for images, video, and HTML, plus a download link for everything else.
 
 ## Editing an artifact live
 

@@ -9,6 +9,10 @@ import {
   CONTRACT_VERSION,
   decodeIframeMessage,
 } from "@hammies/contracts/iframe"
+import { formatContractReport } from "@hammies/contracts"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("artifact-frame")
 
 // Cache srcDoc HTML per artifact so revisits don't rebuild/reload iframes.
 // Capped to prevent unbounded growth in long sessions.
@@ -127,6 +131,7 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         { source: iframe.contentWindow, origin: window.location.origin },
         ArtifactToHostMessageSchema,
         "artifact-to-host@1",
+        (error) => log.error(formatContractReport(error, "artifact frame message")),
       )
       if (!decoded.success) return
       const data = decoded.data

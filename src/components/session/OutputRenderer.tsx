@@ -28,6 +28,10 @@ export type {
 } from "@hammies/session-core"
 import type { OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
 import { normalizeChartData } from "@hammies/session-core"
+import { formatContractReport } from "@hammies/contracts"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("output-renderer")
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -138,6 +142,7 @@ function useIframeAutoHeight(max = 600) {
         { source, origin: "null" },
         ArtifactToHostMessageSchema,
         "html-frame-to-host@1",
+        (error) => log.error(formatContractReport(error, "html output frame message")),
       )
       if (decoded.success && decoded.data.type === "html-height") {
         setHeight(Math.min(decoded.data.height, max))
