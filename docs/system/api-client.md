@@ -6,7 +6,7 @@ sources:
   - src/api/contracts.ts
 spec: openspec/specs/api-client/spec.md
 status: generated
-sources_hash: "e38a8bef07122553a8d313369a3840d75656a0482909b589bb7670cc82772a6c"
+sources_hash: "90ff778b890a78444c82e2bb21cbb913f803206cddf19f268727e24810ccc817"
 ---
 
 # API Client
@@ -68,7 +68,7 @@ Each section's call signatures are the contract for its server route. When a ser
 
 ## Bounded response sizes
 
-The generic response budget is 5 MB, enough for every endpoint except session transcripts. `getSession` raises that ceiling to 50 MB for its one call, because a long-running session's message history can outgrow the generic limit. Every other endpoint keeps the 5 MB budget, so one oversized response cannot silently exhaust browser memory.
+The generic response budget is 5 MB, enough for every endpoint except session transcripts. `getSession` raises that ceiling to 50 MB for its one call, because a long-running session's message history can outgrow the generic limit. That 50 MB is `SESSION_SNAPSHOT_MAX_BYTES`, imported from the contracts package rather than declared here — the same response is read by Studio, and a limit written down twice drifts the moment either side is tuned. Every other endpoint keeps the 5 MB budget, so one oversized response cannot silently exhaust browser memory.
 
 ## See also
 

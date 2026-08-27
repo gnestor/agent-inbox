@@ -26,9 +26,9 @@ import {
   WorkspaceDetailsSchema,
   type PluginManifestTransport,
 } from "./contracts"
+import { SESSION_SNAPSHOT_MAX_BYTES } from "@hammies/contracts/session"
 
 const BASE = "/api"
-const SESSION_SNAPSHOT_MAX_BYTES = 50_000_000
 
 async function request<T>(
   path: string,
