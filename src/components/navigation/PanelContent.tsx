@@ -194,6 +194,9 @@ const EMPTY_LOOKUPS = {
   erroredToolUseIDs: new Set<string>(),
   agentDescriptions: new Map<string, string>(),
   authorEmails: [] as string[],
+  // A subagent panel renders a finished child transcript; nothing in it is
+  // answerable, so no ask is open.
+  openAskToolUseId: null,
   fileMap: new Map<string, string>(),
   fileIdMap: new Map<string, string>(),
 }
