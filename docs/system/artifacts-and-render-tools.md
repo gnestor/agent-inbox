@@ -16,7 +16,7 @@ panels:
   - output
   - code_editor
 status: generated
-sources_hash: "e272c6ebf7984e1f78ddbeb3ddbef88500818e3ce39e73abaf1cac147e4776e4"
+sources_hash: "b085b351486be0cf9146e20c508c5ef39292c6b12ba06534ee31073d9fe8325d"
 ---
 
 # Artifacts and Render Tools
@@ -59,6 +59,8 @@ The iframe runs with `sandbox="allow-scripts allow-same-origin allow-popups allo
 ## Non-React output types
 
 `OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, adding the filter field only when the output is expanded into its own panel — the grid bounds its own height and scrolls the body under a frozen header either way, so neither branch asks for a pager. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
+
+The panel inset comes from the renderer, not from the panel. `PanelContent`'s scrolling body carries no padding of its own; `OutputRenderer` wraps an output in `h-full` plus `PANEL_CONTENT_INSET` exactly when `needsPanelInset(spec.type)` says the type does not already pad itself, and passes `inset` to `DataTable` wherever it passes `searchable`. Both come from `@hammies/frontend/components/session`, shared with studio. The body used to pad every type unconditionally, which is type-agnostic and so wrong for every type that pads itself: markdown, conversation and react artifacts rendered at a 32px double inset, and an expanded grid's filter field lost the panel edge its full-width rule reaches for.
 
 `html` output and `.html` files take a lighter path than React artifacts. `injectIntoHtml` splices a theme `<style>` block and a height-reporting script into the raw HTML. The iframe sandbox omits `allow-same-origin` here, because these documents never need same-origin fetch — the frame keeps a stricter boundary. This path posts a distinct `html-height` message type, not the `ArtifactFrame` bridge's `height` type, decoded through the same `decodeIframeMessage` helper. That helper takes a required `onInvalid` handler, so a height report from our own frame that fails the schema is logged rather than dropped the way a neighbouring frame's message is. `file` output shows an inline preview for images, video, and HTML, plus a download link for everything else.
 

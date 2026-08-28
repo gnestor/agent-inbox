@@ -194,6 +194,34 @@ that Inbox's copy never received; that drift is what forced the consolidation.
 - **THEN** `hastToHtml(tree)` walks the tree, escaping text and emitting `<span class="...">` for elements — supporting only the `text` and `span`-element nodes lowlight produces.
 - **WHY:** pulling `hast-util-to-html` (full HAST serialiser) for this trivial subset would add a dependency for code we already understand.
 
+### The panel inset comes from the renderer, not the panel
+
+`PanelContent`'s scrolling body carries no padding of its own. It padded every
+output type unconditionally, which is type-agnostic and so wrong for every type
+that pads itself: markdown, conversation and react artifacts rendered at a 32px
+double inset, and an expanded grid's filter field lost the panel edge its
+full-width rule reaches for. Only the "Output not found" fallback keeps its own
+padding, because no renderer runs for it.
+
+`OutputRenderer` decides instead, per output type, using `PANEL_CONTENT_INSET`
+and `needsPanelInset` from `@hammies/frontend/components/session` (see
+[ui-components](../../../../frontend/openspec/specs/ui-components/spec.md)).
+Studio reads the same two, so one artifact reads identically in either app —
+each had solved this at a different layer with the same literal. `MarkdownOutput`
+and `ConversationOutput` read the token for their own body padding as well, since
+that padding IS the panel inset when they fill a panel.
+
+#### Scenario: An expanded data grid insets, and its filter field stays at the panel edge
+- **WHEN** `<OutputRenderer spec={{type:'table'}} fillPanel>` renders
+- **THEN** it MUST pass `inset` to `<DataTable>`, so the grid sits `PANEL_CONTENT_INSET` in from the panel edges and the filter field stays outside that inset.
+- **WHY:** the field is panel chrome — the same control, with the same full-width rule, that every list panel searches with.
+
+#### Scenario: An expanded output that pads itself nowhere takes the inset from the renderer
+- **WHEN** `<OutputRenderer fillPanel>` renders a type for which `needsPanelInset` returns true — `json`, `chart` or `file`
+- **THEN** it MUST wrap the output in exactly one `h-full` plus `PANEL_CONTENT_INSET` wrapper.
+- **AND** a type for which `needsPanelInset` returns false — `markdown`, `conversation`, `html`, `react`, `table` — MUST gain no wrapper at all.
+- **WHY:** the roster lists the self-padding types rather than the flush ones, which sets which way a mistake fails: a type left out renders flush, the old look, where one wrongly in double-pads.
+
 ## Technical Notes
 
 | Concern | Location |
@@ -220,3 +248,4 @@ that Inbox's copy never received; that drift is what forced the consolidation.
 - Wheel forwarding originally fired on every horizontal wheel; tables with `overflow-x: auto` lost their own scroll until the ancestor-scrollable check was added.
 - The 2 s height fallback was added after a bug where a syntax error in the module script left the parent showing an indefinite skeleton — the regular height-report path never ran.
 - `useEditingCode` was first a `useState` lifted into a context; converting to `useSyncExternalStore` + a Map removed a parent re-render on every keystroke that bled into the rest of the panel tree.
+- The panel inset moved from `<PanelContent>`'s body to `<OutputRenderer>`, and its value and roster to `@hammies/frontend`'s `output-layout.ts` (`PANEL_CONTENT_INSET`, `needsPanelInset`), shared with studio. Padding at the panel layer was type-agnostic and therefore wrong for every type that pads itself: markdown, conversation and react artifacts rendered at a 32px double inset, and an expanded grid's filter field lost the panel edge its rule reaches for.

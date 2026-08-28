@@ -127,7 +127,10 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+      {/* No inset here. The renderer decides, per output type, whether one is
+          needed at all — markdown, a conversation and a react artifact each pad
+          their own body already, and padding them here as well doubled it. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {activeSpec ? (
           <OutputRenderer
             spec={activeSpec}
@@ -138,7 +141,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
             onArtifactLoaded={handleArtifactLoaded}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          <div className="flex items-center justify-center h-full p-4 text-muted-foreground text-sm">
             <p>Output not found</p>
           </div>
         )}

@@ -157,3 +157,53 @@ describe("OutputRenderer", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Panel content")
   })
 })
+
+/**
+ * How far an artifact panel's content sits from the panel edge.
+ *
+ * The rule and its roster are shared with Studio (`needsPanelInset`), so an
+ * output type reads the same in both apps. The panel itself used to pad every
+ * type, which doubled the inset on the types that pad their own body.
+ */
+describe("the panel inset", () => {
+  // 20 rows — comfortably past `DataTable`'s own >5-row default, so what these
+  // cases assert is the HOST's decision and not that default leaking through.
+  const table = {
+    columns: ["SKU", "Qty"],
+    rows: Array.from({ length: 20 }, (_, i) => [`BKN-${i}`, i]),
+  }
+
+  it("Scenario: An expanded data grid insets, and its filter field stays at the panel edge", () => {
+    const { container } = render(
+      <Wrapper>
+        <OutputRenderer spec={{ type: "table", data: table }} sessionId="s" sequence={1} fillPanel />
+      </Wrapper>,
+    )
+    expect(container.querySelector("[data-slot=table-container]")?.closest(".p-4")).not.toBeNull()
+    expect(container.querySelector('input[placeholder="Filter..."]')?.closest(".p-4")).toBeNull()
+  })
+
+  it("Scenario: An expanded output that pads itself nowhere takes the inset from the renderer", () => {
+    const { container } = render(
+      <Wrapper>
+        <OutputRenderer spec={{ type: "json", data: { a: 1 } }} sessionId="s" sequence={1} fillPanel />
+      </Wrapper>,
+    )
+    expect(container.querySelectorAll(".h-full.p-4")).toHaveLength(1)
+  })
+
+  it.each(["markdown", "conversation", "html"] as const)(
+    "An expanded %s output gains no second inset",
+    (type) => {
+      const data = type === "conversation"
+        ? { messages: [{ role: "user", content: "Hammies" }] }
+        : "Hammies"
+      const { container } = render(
+        <Wrapper>
+          <OutputRenderer spec={{ type, data } as never} sessionId="s" sequence={1} fillPanel />
+        </Wrapper>,
+      )
+      expect(container.querySelectorAll(".h-full.p-4")).toHaveLength(0)
+    },
+  )
+})

@@ -20,7 +20,7 @@ sources:
   - src/types/navigation.ts
 spec: openspec/specs/navigation/spec.md
 status: generated
-sources_hash: "a512356b368711d22e526ed12d55250d1cfdd735f3603b7b6b6a3a2b6e317c63"
+sources_hash: "b6025646c4d3f6a0190e4a86341c96cfd39df1438cd6a90a3d5991a81862b664"
 ---
 
 # Navigation
@@ -58,6 +58,8 @@ Each tab carries its own panel stack, scroll offset, and UI state — filters an
 - `settings`
 
 `src/types/navigation.ts` declares the union. `PanelContent` switches on `panel.type` to pick each renderer. Adding a panel type means adding one union member and one switch case. The [navigation spec](../../openspec/specs/navigation/spec.md) lists the exact props each variant carries.
+
+A panel body applies no padding of its own. An `output` panel's body used to pad every output type, which double-padded the types that pad their own body or their own iframe document; `OutputRenderer` decides the inset per type instead (see [Artifacts and render tools](artifacts-and-render-tools.md)).
 
 ## Panel stack actions
 

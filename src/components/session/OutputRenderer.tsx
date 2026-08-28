@@ -3,6 +3,7 @@ import { Markdown } from "@hammies/frontend/components/Markdown"
 import { codeBlockComponents } from "@hammies/frontend/components/MarkdownCodeBlock"
 import { FileText, Download, ChevronRight, ChevronDown, User, Bot, Image, Film, Code2, FileCode } from "lucide-react"
 import { DataTable } from "@hammies/frontend/components/DataTable"
+import { PANEL_CONTENT_INSET, needsPanelInset } from "@hammies/frontend/components/session"
 import { cn } from "@hammies/frontend/lib/utils"
 import { useResolvedDark } from "@hammies/frontend/hooks"
 import { THEME_VARS, IFRAME_BASE_CSS, injectIntoHtml } from "@hammies/frontend/lib/iframe-theme"
@@ -51,7 +52,21 @@ interface OutputRendererProps {
   onArtifactLoaded?: () => void
 }
 
-export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction, onArtifactLoaded }: OutputRendererProps) {
+export function OutputRenderer(props: OutputRendererProps) {
+  const body = <OutputBody {...props} />
+  // Inline, the transcript entry supplies the inset for every output. Filling a
+  // panel there is no entry, so it comes from here — except for the types that
+  // already pad themselves (`needsPanelInset`). Studio applies the same rule,
+  // over the same roster; the panel used to pad every type unconditionally,
+  // which took markdown, conversation and a react artifact to a double inset.
+  if (!props.fillPanel || !needsPanelInset(props.spec.type)) return body
+  // `h-full`, because an output that fills a panel sizes against it: an html
+  // FILE preview is a flex column that resolves its iframe's height from this
+  // parent, and an auto-height one collapses the iframe to nothing.
+  return <div className={cn("h-full", PANEL_CONTENT_INSET)}>{body}</div>
+}
+
+function OutputBody({ spec, sessionId, sequence, fillPanel, onAction, onArtifactLoaded }: OutputRendererProps) {
   switch (spec.type) {
     case "markdown":
       return <MarkdownOutput data={spec.data} />
@@ -105,7 +120,7 @@ export function OutputRenderer({ spec, sessionId, sequence, fillPanel, onAction,
 
 function MarkdownOutput({ data }: { data: string }) {
   return (
-    <Markdown size="sm" components={codeBlockComponents} className="p-4 overflow-x-auto">
+    <Markdown size="sm" components={codeBlockComponents} className={cn(PANEL_CONTENT_INSET, "overflow-x-auto")}>
       {data}
     </Markdown>
   )
@@ -180,12 +195,15 @@ function HtmlOutput({ data, fillPanel }: { data: string; fillPanel?: boolean }) 
  * a search field there is chrome on a preview, and a row of them down a long
  * transcript reads as noise. Expanded into its own panel the grid IS the view,
  * and filtering it is the point of having opened it.
+ *
+ * `inset` tracks it too — see `needsPanelInset`. The filter field stays outside
+ * it, because that field is panel chrome and its rule reaches the panel edge.
  */
 function TableOutput({ data, fillPanel }: { data: TableData; fillPanel?: boolean }) {
   if (fillPanel) {
     return (
       <div className="h-full">
-        <DataTable columns={data.columns} rows={data.rows} searchable />
+        <DataTable columns={data.columns} rows={data.rows} searchable inset />
       </div>
     )
   }
@@ -471,7 +489,7 @@ function ConversationOutput({ data }: { data: ConversationData }) {
       )
     : data.messages
   return (
-    <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+    <div className={cn(PANEL_CONTENT_INSET, "space-y-2 max-h-80 overflow-y-auto")}>
       {messages.map((msg, i) => {
         const isUser = msg.role === "user"
         return (
