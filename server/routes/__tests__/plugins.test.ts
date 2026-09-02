@@ -2,6 +2,8 @@ import { vi, describe, it, expect, beforeEach } from "vitest"
 import { Hono } from "hono"
 import { z } from "zod"
 import type { AppBindings } from "../../lib/workspace-context.js"
+import type { PluginContext } from "../../../src/types/plugin.js"
+import { createPluginRoutes } from "../plugins.js"
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -35,16 +37,14 @@ vi.mock("../../lib/plugin-loader.js", () => ({
   getPluginDir: vi.fn(() => undefined),
 }))
 
-vi.mock("../../lib/plugin-context.js", () => ({
-  buildPluginContext: vi.fn(async () => ({ db: "fake-db" })),
-  getWorkspaceId: vi.fn(() => "ws-1"),
-}))
-
-// ---------------------------------------------------------------------------
-// Import after mocks are in place
-// ---------------------------------------------------------------------------
-
-import { pluginRoutes } from "../plugins.js"
+// `getWorkspaceId` (used internally by the routes) just reads off the Hono
+// context set by the test app's own middleware below, so plugin-context.js
+// needs no mock at all — the real `buildPluginContext` (which resolves
+// credentials over the network) is simply never called: the route factory's
+// `getContext` injection substitutes this fake in its place.
+function makeCtx(): PluginContext {
+  return { db: "fake-db" } as unknown as PluginContext
+}
 
 function createApp() {
   const app = new Hono<AppBindings>()
@@ -53,7 +53,7 @@ function createApp() {
     c.set("user", { name: "Test User", email: "test@example.com" })
     await next()
   })
-  app.route("/api", pluginRoutes)
+  app.route("/api", createPluginRoutes(async () => makeCtx()))
   return app
 }
 

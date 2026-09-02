@@ -22,7 +22,7 @@ sources:
   - src/hooks/use-plugin-mutations.ts
 spec: openspec/specs/plugin-system/spec.md
 status: generated
-sources_hash: "0fe94533b2edade14376d9386522231015d96f111ce61613faa4d2a8eef809f4"
+sources_hash: "a7cbd8dcb547d362d951c56b123c152eb2ead4ac5222c92b6c7542ae09259445"
 ---
 
 # Plugin System
