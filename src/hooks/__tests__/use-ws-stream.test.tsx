@@ -246,4 +246,53 @@ describe("useWsStream reconnect", () => {
     const lastSub = last(subscribeFrames)
     expect(lastSub.sessions).toContainEqual({ id: "s-cursor", fromSequence: 7 })
   })
+
+  it("Scenario: A superseded socket's events are ignored", async () => {
+    // React 19's dev build double-invokes a mounting effect (mount, its
+    // cleanup, then mount again) on the SAME component instance under
+    // StrictMode — exactly what src/main.tsx wraps the app in. That leaves
+    // two sockets: the first one superseded by the second `connect()` call,
+    // with `wsRef.current` already pointing at the second by the time the
+    // first one's belated events can fire.
+    render(
+      <React.StrictMode>
+        <WsStreamProvider>
+          <div>child</div>
+        </WsStreamProvider>
+      </React.StrictMode>,
+    )
+
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    const [superseded, live] = FakeWebSocket.instances
+
+    // Baseline: whatever the double-invoke itself already did (the fake's
+    // `readyState` defaults to OPEN, so the cleanup closes the first socket
+    // outright rather than deferring — a real, in-flight close that legitimately
+    // updates the store before the second `connect()` runs). What must NOT
+    // happen is any FURTHER store change or reconnect scheduling from this
+    // stale socket after that point.
+    const statusBefore = useWsConnectionStore.getState().status
+    const socketCountBefore = FakeWebSocket.instances.length
+
+    // The superseded socket's own handlers are still attached (only
+    // `wsRef.current` moved on) — fire them directly, simulating events a
+    // real, still-connecting browser socket could still deliver later.
+    act(() => { superseded.onopen?.({}) })
+    act(() => { superseded.onclose?.({ code: 1006, reason: "" }) })
+
+    // No recordClosed, no reconnectAttemptCount growth, no phase flip.
+    expect(useWsConnectionStore.getState().status).toEqual(statusBefore)
+    expect(useWsConnectionStore.getState().status.phase).not.toBe("disconnected")
+    expect(FakeWebSocket.instances.length).toBe(socketCountBefore)
+
+    // Nothing gets scheduled from the ignored close, no matter how long we
+    // wait — well past the 64s backoff cap.
+    act(() => { vi.advanceTimersByTime(64_000 + 6_000) })
+    expect(FakeWebSocket.instances.length).toBe(socketCountBefore)
+    expect(useWsConnectionStore.getState().status).toEqual(statusBefore)
+
+    // The live socket is unaffected by any of this.
+    act(() => { live.simulateOpen() })
+    expect(useWsConnectionStore.getState().status.phase).toBe("connected")
+  })
 })

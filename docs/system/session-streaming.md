@@ -15,7 +15,7 @@ sources:
   - tests/e2e/session-multi-tab.spec.ts
 spec: openspec/specs/session-streaming/spec.md
 status: generated
-sources_hash: "84ba7aa5d980fd630de66af7aa8648b55935032efc525e5ae184c70c109eb91a"
+sources_hash: "f3165521a3d2ab032a3e0d5d76064be4e529fad567e99ceed4a14c3a46d5a2c4"
 ---
 
 # Session Streaming Protocol
@@ -95,6 +95,8 @@ The client sends `{ type: "ping" }` every `PING_INTERVAL_MS = 20_000` while the 
 When the watchdog elapses with no traffic, the client force-closes the socket rather than waiting on `ws.onclose`. `ws.onclose` can take minutes to fire on a silently dead connection, from laptop sleep or a dropped NAT mapping.
 
 Every close, forced or not, schedules a reconnect on a bounded exponential backoff: `1s, 2s, 4s, 8s, 16s, 32s, 64s` (seven retries, full jitter by default), then no more. The jittered delay is computed exactly once per disconnect, inside `ws-connection-store.ts`'s `applyDisconnect` (built on the shared `backoffDelayMs` from `@hammies/contracts/retry`), and stored as `status.nextRetryAt` — the value the UI shows as "next retry at …". The client's reconnect timer reads that same stored timestamp rather than recomputing the delay itself, because the calculator jitters randomly and a second independent call would draw a different value than what the UI displays. Once the seventh retry also fails — the eighth connection attempt overall — `nextRetryAt` stays `null`, the hook stops scheduling reconnects, and the store records `reconnectPhase: "exhausted"`; `SessionConnectionSurface` swaps the indefinite "reconnecting…" toast for one with a manual Reload action, since nothing further happens automatically past that point. On reopen, the client sends one `subscribe` frame covering every active session. Each entry's cursor is that session's current `latestSequence` — a single batched resubscribe, not one frame per session.
+
+React StrictMode double-invokes the mount effect on the same component instance, so a socket from the first invocation can still be open or connecting when its cleanup runs and defers the close until it opens; `onopen`, `onmessage`, `onerror`, and `onclose` all check the socket against `wsRef.current` and return immediately once a later `connect()` call has replaced it, so a superseded socket's belated events can't flip the shared connection store to "disconnected" or schedule a duplicate reconnect behind the live socket's back.
 
 ## Client recovery coordinator
 

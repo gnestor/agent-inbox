@@ -162,7 +162,14 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
     wsRef.current = ws
 
+    // True once a later `connect()` call has replaced this socket as the
+    // current one — see the cleanup's StrictMode comment below for why a
+    // superseded socket's events can still fire after that happens. Every
+    // handler below bails out on it before doing anything else.
+    const isSuperseded = () => wsRef.current !== ws
+
     ws.onopen = () => {
+      if (isSuperseded()) return
       setIsConnected(true)
       useWsConnectionStore.getState().recordOpened()
 
@@ -186,6 +193,7 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
 
     ws.onmessage = (evt) => {
+      if (isSuperseded()) return
       // Any message proves the connection is alive — reset the watchdog.
       resetAliveTimeout()
 
@@ -238,10 +246,15 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     }
 
     ws.onerror = () => {
+      if (isSuperseded()) return
       useWsConnectionStore.getState().recordErrored("websocket error")
     }
 
     ws.onclose = (evt) => {
+      // Bail out BEFORE stopKeepalive(): that clears the shared ping/watchdog
+      // refs, and a superseded socket's belated close must not tear down the
+      // keepalive timers that belong to the socket that replaced it.
+      if (isSuperseded()) return
       stopKeepalive()
       setIsConnected(false)
       clientIdRef.current = null
@@ -283,7 +296,22 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       }
       const ws = wsRef.current
       if (ws) {
-        // Defer close until open to avoid "closed before established" in StrictMode
+        // Defer close until open to avoid "closed before established" in
+        // StrictMode. StrictMode runs this effect, its cleanup, and then the
+        // effect again on the SAME component instance — so `mountedRef` is
+        // back to `true` by the time this socket's belated open/message/
+        // error/close events fire. If a socket is still CONNECTING here, we
+        // can't close it yet (that throws), so we overwrite its `onopen` to
+        // close-on-open instead of running the real handler — which is also
+        // exactly why that deferred close never starts a keepalive interval:
+        // the real `onopen` (the one that calls setInterval) is the one
+        // being replaced. Either way, `wsRef.current` has already moved on
+        // to the next `connect()`'s socket by the time any of this one's
+        // events reach the handlers above, which is what their
+        // `isSuperseded()` check detects. Without that guard, this stale
+        // socket's eventual `onclose` would flip the shared connection store
+        // to "disconnected" behind the live socket's back and schedule a
+        // second, redundant reconnect timer.
         if (ws.readyState === WebSocket.OPEN) ws.close()
         else ws.onopen = () => ws.close()
       }
