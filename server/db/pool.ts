@@ -4,6 +4,7 @@ import { fileURLToPath } from "url"
 import { getPool as _getPool, query as _query, queryOne as _queryOne, queryRows as _queryRows, queryOptionalRow as _queryOptionalRow, queryRequiredRow as _queryRequiredRow, execute as _execute, withTransaction as _withTransaction } from "@hammies/db"
 import type pg from "pg"
 import type { ContractSchema } from "@hammies/contracts"
+import { retry, backoffDelayMs } from "@hammies/contracts/retry"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TRANSIENT_DATABASE_ERROR_CODES = new Set([
@@ -32,37 +33,25 @@ function databaseErrorCode(error: unknown): string | undefined {
   return typeof error.code === "string" ? error.code : undefined
 }
 
-function retryDelayMs(attempt: number): number {
-  return Math.min(250 * 2 ** Math.min(attempt - 1, 5), 5_000)
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
-}
-
 async function runMigration(
   databasePool: pg.Pool,
   file: string,
   sql: string,
 ): Promise<void> {
-  let attempt = 0
-  while (true) {
-    try {
-      await databasePool.query(sql)
-      return
-    } catch (error) {
+  await retry(() => databasePool.query(sql), {
+    attempts: Number.POSITIVE_INFINITY,
+    delayMs: (attempt) => backoffDelayMs(attempt, { baseMs: 250, capMs: 5_000 }),
+    isRetryable: (error) => {
       const code = databaseErrorCode(error)
-      if (code === undefined || !TRANSIENT_DATABASE_ERROR_CODES.has(code)) {
-        throw error
-      }
-      attempt += 1
-      const retryInMs = retryDelayMs(attempt)
+      return code !== undefined && TRANSIENT_DATABASE_ERROR_CODES.has(code)
+    },
+    onRetry: (error, _attempt, delay) => {
+      const code = databaseErrorCode(error)
       console.warn(
-        `[database] ${file} failed with ${code}; retrying in ${retryInMs}ms`,
+        `[database] ${file} failed with ${code}; retrying in ${delay}ms`,
       )
-      await delay(retryInMs)
-    }
-  }
+    },
+  })
 }
 
 function pool(): pg.Pool {
