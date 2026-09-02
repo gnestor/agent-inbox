@@ -19,7 +19,7 @@ sources:
   - src/components/session/ContextPanel.tsx
 spec: openspec/specs/context-system/spec.md
 status: generated
-sources_hash: "94bbf676056085e40ecfaee60766573753a46ee1450787794c8ff99b0991622b"
+sources_hash: "502ba203791be952acaf2d0feb996b8df5ecd98590b4ad1ba915b2e83d49fe65"
 ---
 
 # Context System

@@ -5,7 +5,7 @@ import { stat } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { build } from "esbuild"
 import { getPlugins, getPlugin, getPluginDir } from "../lib/plugin-loader.js"
-import { buildPluginContext, getWorkspaceId } from "../lib/plugin-context.js"
+import { buildPluginContext, getWorkspaceId, type HonoContext } from "../lib/plugin-context.js"
 import type { AppBindings } from "../lib/workspace-context.js"
 import { PluginMutateBody } from "../lib/schemas.js"
 
@@ -247,7 +247,7 @@ export function mountPluginRoutes(app: Hono<AppBindings>): void {
     mountedPluginIds.add(plugin.id)
     const sub = new Hono()
     plugin.routes(sub, {
-      getContext: (c: unknown) => buildPluginContext(c as { get: (key: string) => unknown }),
+      getContext: (c: unknown) => buildPluginContext(c as HonoContext),
     })
     app.route(`/api/${plugin.id}`, sub)
   }
