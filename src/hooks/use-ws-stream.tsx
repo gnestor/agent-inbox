@@ -80,7 +80,6 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
   const optionsRef = useRef(new Map<string, SubscribeOptions>())
   const connectListenersRef = useRef(new Set<ConnectCallback>())
   const [isConnected, setIsConnected] = useState(false)
-  const retriesRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mountedRef = useRef(true)
 
@@ -164,7 +163,6 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
     wsRef.current = ws
 
     ws.onopen = () => {
-      retriesRef.current = 0
       setIsConnected(true)
       useWsConnectionStore.getState().recordOpened()
 
@@ -249,9 +247,16 @@ export function WsStreamProvider({ children }: { children: ReactNode }) {
       clientIdRef.current = null
       useWsConnectionStore.getState().recordClosed({ code: evt.code, reason: evt.reason })
       if (!mountedRef.current) return
-      // Exponential backoff reconnect: 1s, 2s, 4s, ... 30s
-      const delay = Math.min(1000 * 2 ** retriesRef.current, 30000)
-      retriesRef.current++
+      // Read the delay `recordClosed` (via applyDisconnect) just computed and
+      // stored as `nextRetryAt`, rather than recomputing it — the backoff
+      // calculator draws a random jitter value, so a second independent call
+      // would schedule a DIFFERENT delay than the one the UI displays. A null
+      // `nextRetryAt` means the retry budget (WS_RECONNECT_MAX_RETRIES) is
+      // exhausted — the store already recorded reconnectPhase: "exhausted",
+      // so no further reconnect is scheduled until the user reloads.
+      const { nextRetryAt } = useWsConnectionStore.getState().status
+      if (nextRetryAt === null) return
+      const delay = Math.max(0, new Date(nextRetryAt).getTime() - Date.now())
       reconnectTimerRef.current = setTimeout(connect, delay)
     }
   }, [resetAliveTimeout, stopKeepalive, buildSubscribePayload])
