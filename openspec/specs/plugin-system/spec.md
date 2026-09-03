@@ -137,11 +137,11 @@ Plugin instances are workspace-scoped — a workspace's gmail credential and que
 |---|---|
 | Plugin discovery, validation, registry, builtin/workspace merge | [server/lib/plugin-loader.ts](../../../server/lib/plugin-loader.ts) |
 | Hot-reload entrypoint poller (one-second signature scan; 500ms reload debounce) | [server/lib/plugin-watcher.ts](../../../server/lib/plugin-watcher.ts) |
-| Auto-mounted plugin REST routes (`/api/:pluginId/*`) and component esbuild | [server/routes/plugins.ts](../../../server/routes/plugins.ts) |
+| Auto-mounted plugin REST routes (`/api/:pluginId/*`) and component esbuild; `createPluginRoutes(getContext)` takes the context builder as a parameter (defaulting to the real `buildPluginContext`) so tests can substitute a fake `PluginContext` | [server/routes/plugins.ts](../../../server/routes/plugins.ts) |
 | Iframe HTML for plugin components (CSP + importmap + postMessage bridge) | [src/lib/build-plugin-component-html.tsx](../../../src/lib/build-plugin-component-html.tsx) |
 | Plugin interface types (`Plugin`, `PluginItem`, `FieldDef`, `BadgeConfig`, `FilterConfig`) | [src/types/plugin.ts](../../../src/types/plugin.ts) |
 | Loader test coverage | [server/lib/__tests__/plugin-loader.test.ts](../../../server/lib/__tests__/plugin-loader.test.ts) |
-| Plugin route tests | [server/routes/__tests__/plugins.test.ts](../../../server/routes/__tests__/plugins.test.ts) |
+| Plugin route tests — a `makeCtx(): PluginContext` fake passed through `createPluginRoutes`'s `getContext` parameter, mirroring the exemplar at [plugins/gmail/__tests__/plugin.test.ts](../../../plugins/gmail/__tests__/plugin.test.ts); only `plugin-loader.js` is `vi.mock`ed (the global registry has no injection seam) | [server/routes/__tests__/plugins.test.ts](../../../server/routes/__tests__/plugins.test.ts) |
 | Workflow panel registry (loads `workflows/*` widget schemas + mutations) | [server/lib/panel-registry.ts](../../../server/lib/panel-registry.ts) |
 | `/api/panels` and `/api/panels/mutate/:action` routes | [server/routes/panels.ts](../../../server/routes/panels.ts) |
 | `<PanelWidget>` schema-driven widget renderer | [src/components/plugin/PanelWidget.tsx](../../../src/components/plugin/PanelWidget.tsx) |

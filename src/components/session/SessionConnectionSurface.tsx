@@ -44,6 +44,20 @@ export function SessionConnectionSurface() {
         id: TOAST_ID,
         duration: Infinity,
       })
+    } else if (uiState === "exhausted") {
+      // The hook has given up retrying (WS_RECONNECT_MAX_RETRIES exceeded) —
+      // nothing will reconnect automatically from here, so hand the user a
+      // way out instead of leaving the earlier "reconnecting..." toast
+      // spinning forever.
+      toast.error("Lost connection to server", {
+        id: TOAST_ID,
+        duration: Infinity,
+        description: "Automatic reconnect gave up. Reload to try again.",
+        action: {
+          label: "Reload",
+          onClick: () => window.location.reload(),
+        },
+      })
     }
     prev.current = uiState
   }, [uiState, status.nextRetryAt])

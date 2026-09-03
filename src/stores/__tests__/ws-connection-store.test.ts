@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest"
+import { identity } from "@hammies/contracts/retry"
 import {
   useWsConnectionStore,
   INITIAL_WS_CONNECTION_STATUS,
@@ -9,6 +10,7 @@ import {
   applyClosed,
   getWsUiState,
   getWsReconnectDelayMsForRetry,
+  nextRetryIndex,
   WS_RECONNECT_INITIAL_DELAY_MS,
   WS_RECONNECT_MAX_RETRIES,
   WS_RECONNECT_MAX_DELAY_MS,
@@ -77,17 +79,34 @@ describe("applyClosed / applyErrored", () => {
   })
 })
 
+describe("nextRetryIndex", () => {
+  it("clamps a fresh-post-open reset (0) to retry index 0", () => {
+    expect(nextRetryIndex(0)).toBe(0)
+  })
+  it("is one less than the attempt count otherwise", () => {
+    expect(nextRetryIndex(1)).toBe(0)
+    expect(nextRetryIndex(2)).toBe(1)
+    expect(nextRetryIndex(8)).toBe(7)
+  })
+})
+
 describe("getWsReconnectDelayMsForRetry", () => {
   it("first retry matches initial delay", () => {
-    expect(getWsReconnectDelayMsForRetry(0)).toBe(WS_RECONNECT_INITIAL_DELAY_MS)
+    expect(getWsReconnectDelayMsForRetry(0, identity)).toBe(WS_RECONNECT_INITIAL_DELAY_MS)
   })
   it("increases exponentially up to the cap", () => {
-    const last = getWsReconnectDelayMsForRetry(WS_RECONNECT_MAX_RETRIES - 1)
-    expect(last).toBeLessThanOrEqual(WS_RECONNECT_MAX_DELAY_MS)
+    const last = getWsReconnectDelayMsForRetry(WS_RECONNECT_MAX_RETRIES - 1, identity)
+    expect(last).toBe(WS_RECONNECT_MAX_DELAY_MS)
   })
   it("returns null past the max", () => {
     expect(getWsReconnectDelayMsForRetry(WS_RECONNECT_MAX_RETRIES)).toBeNull()
     expect(getWsReconnectDelayMsForRetry(-1)).toBeNull()
+  })
+  it("defaults to full jitter — the unjittered value is only an upper bound", () => {
+    const jittered = getWsReconnectDelayMsForRetry(0)
+    expect(jittered).not.toBeNull()
+    expect(jittered as number).toBeGreaterThanOrEqual(0)
+    expect(jittered as number).toBeLessThanOrEqual(WS_RECONNECT_INITIAL_DELAY_MS)
   })
 })
 

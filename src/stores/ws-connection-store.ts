@@ -6,6 +6,7 @@
 // t3code's.
 
 import { create } from "zustand"
+import { backoffDelayMs } from "@hammies/contracts/retry"
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -23,7 +24,7 @@ export const WS_RECONNECT_MAX_ATTEMPTS = WS_RECONNECT_MAX_RETRIES + 1
 
 export type WsPhase = "idle" | "connecting" | "connected" | "disconnected"
 export type WsReconnectPhase = "idle" | "attempting" | "waiting" | "exhausted"
-export type WsUiState = "connected" | "connecting" | "reconnecting" | "offline" | "error"
+export type WsUiState = "connected" | "connecting" | "reconnecting" | "offline" | "error" | "exhausted"
 
 export interface WsConnectionStatus {
   readonly phase: WsPhase
@@ -75,14 +76,28 @@ interface WsConnectionStore {
 
 const isoNow = () => new Date().toISOString()
 
-export function getWsReconnectDelayMsForRetry(retryIndex: number): number | null {
+/**
+ * The delay before retry `retryIndex` (0-based). Backed by the shared
+ * `backoffDelayMs` from `@hammies/contracts/retry` — `attempt` there is
+ * 1-based, so this passes `retryIndex + 1`. Defaults to `backoffDelayMs`'s
+ * own full-jitter behavior; pass `identity` for the exact, unjittered value
+ * (what deterministic tests want). Returns `null` once `retryIndex` reaches
+ * `WS_RECONNECT_MAX_RETRIES` — the caller's signal to stop scheduling
+ * reconnects and treat the connection as exhausted.
+ */
+export function getWsReconnectDelayMsForRetry(
+  retryIndex: number,
+  jitter?: (delayMs: number) => number,
+): number | null {
   if (!Number.isInteger(retryIndex) || retryIndex < 0 || retryIndex >= WS_RECONNECT_MAX_RETRIES) {
     return null
   }
-  return Math.min(
-    Math.round(WS_RECONNECT_INITIAL_DELAY_MS * WS_RECONNECT_BACKOFF_FACTOR ** retryIndex),
-    WS_RECONNECT_MAX_DELAY_MS,
-  )
+  return backoffDelayMs(retryIndex + 1, {
+    baseMs: WS_RECONNECT_INITIAL_DELAY_MS,
+    capMs: WS_RECONNECT_MAX_DELAY_MS,
+    factor: WS_RECONNECT_BACKOFF_FACTOR,
+    ...(jitter ? { jitter } : {}),
+  })
 }
 
 export function applyAttempt(current: WsConnectionStatus): WsConnectionStatus {
@@ -112,6 +127,20 @@ export function applyOpened(current: WsConnectionStatus): WsConnectionStatus {
   }
 }
 
+/**
+ * The retry index for the NEXT reconnect, given how many connect() attempts
+ * have happened since the last successful open (0 right after an open that
+ * later dropped — that first post-drop disconnect is still retry index 0).
+ * Used by `applyDisconnect` to compute the store's `nextRetryAt` — the ONLY
+ * place a delay is drawn, since `getWsReconnectDelayMsForRetry` jitters
+ * randomly and `use-ws-stream.tsx` schedules its actual reconnect timer off
+ * `nextRetryAt` rather than recomputing (a second independent draw would
+ * disagree with what the UI displays). Exported for direct unit coverage.
+ */
+export function nextRetryIndex(reconnectAttemptCount: number): number {
+  return Math.max(0, reconnectAttemptCount - 1)
+}
+
 function applyDisconnect(
   current: WsConnectionStatus,
   updates: Partial<
@@ -122,7 +151,7 @@ function applyDisconnect(
   const nextDelayMs =
     current.nextRetryAt !== null || current.reconnectPhase === "exhausted"
       ? null
-      : getWsReconnectDelayMsForRetry(Math.max(0, current.reconnectAttemptCount - 1))
+      : getWsReconnectDelayMsForRetry(nextRetryIndex(current.reconnectAttemptCount))
   const nextRetryAt =
     nextDelayMs === null
       ? current.nextRetryAt
@@ -172,6 +201,7 @@ export function getWsUiState(status: WsConnectionStatus): WsUiState {
   if (!status.online && (status.disconnectedAt !== null || status.phase === "disconnected")) {
     return "offline"
   }
+  if (status.reconnectPhase === "exhausted") return "exhausted"
   if (!status.hasConnected) {
     return status.phase === "disconnected" ? "error" : "connecting"
   }

@@ -12,7 +12,7 @@ The app started on SQLite (`better-sqlite3`) and migrated to Postgres. The migra
 ### Why a hand-rolled migration list, not a tool
 Migrations are an append-only array of `.sql` filenames in `pool.ts`. Each file is run on every `initializeDatabase()` call; every statement uses `IF NOT EXISTS` / `IF EXISTS` / column-presence guards (`information_schema.columns`) so re-running is a no-op. There is no migrations table, no version tracking, no down migrations. The trade-off: we cannot reorder or hot-fix a shipped migration — once a file is in the list and running in prod, it must stay idempotent forever.
 
-Startup treats network and PostgreSQL connection-class failures as recoverable. The database is hosted on the Mac Mini over Tailscale, so a route flap must leave the server process alive and retrying rather than strand `tsx watch` with no backend child. Authentication, configuration, and migration errors remain fatal.
+Startup treats network and PostgreSQL connection-class failures as recoverable. The database is hosted on the Mac Mini over Tailscale, so a route flap must leave the server process alive and retrying rather than strand `tsx watch` with no backend child. Authentication, configuration, and migration errors remain fatal. The retry loop is the shared `retry()` helper from `@hammies/contracts/retry`: a transient error code (see the set in Technical Notes) retries forever with `backoffDelayMs` (250ms base, capped at five seconds, full jitter) via `isRetryable`; any other error is not retryable and `retry()` rethrows it immediately, unchanged from the pre-migration behavior of failing startup on the first non-transient error.
 
 `INBOX_DATABASE_URL` is an explicit process-level override for isolated checkouts and browser tests. It takes precedence over the inbox-local `.env` `DATABASE_URL`, whose intentional dotenv override otherwise makes a second worktree point at the shared Inbox database. Production continues to use `DATABASE_URL` when the override is absent.
 
@@ -82,6 +82,12 @@ Migration `005_drop_session_messages.sql` removed the `session_messages` table. 
 - **WHEN** a migration fails with an authentication, SQL, schema, or other non-connection error
 - **THEN** `initializeDatabase()` rejects with the original error without retrying.
 
+#### Scenario: A transient error code retries the migration with jittered backoff; any other error is fatal
+- **WHEN** `runMigration` runs a migration through the shared `retry()` helper
+- **THEN** a transient error code (per `databaseErrorCode`/`TRANSIENT_DATABASE_ERROR_CODES`) is retried indefinitely with `backoffDelayMs` (250ms base, capped at 5s, full jitter), logging a warning each attempt.
+- **AND** any error whose code is missing or not in the transient set is not retryable, so `retry()` rethrows it on the first attempt.
+- **WHY:** `retry()`/`backoffDelayMs` are the shared workspace vocabulary for retry-with-backoff — this migration off the hand-rolled `delay`/`retryDelayMs` helpers keeps the policy in one place instead of one bespoke implementation per package.
+
 #### Scenario: Re-running migrations is a no-op
 - **WHEN** `initializeDatabase()` runs against an already-initialized database
 - **THEN** every statement succeeds without altering schema or data, because each migration uses idempotent guards (`IF NOT EXISTS`, `IF EXISTS`, `information_schema.columns` checks).
@@ -130,6 +136,7 @@ Tables removed by prior migrations and NOT in the current schema: `notion_option
 
 ## History
 
+- 2026-09-02: `runMigration`'s retry loop moved from hand-rolled `delay`/`retryDelayMs` helpers to the shared `retry()`/`backoffDelayMs()` from `@hammies/contracts/retry`; the retry policy is unchanged in effect (transient codes retry forever, capped exponential backoff at 5s) except the backoff now carries full jitter instead of being deterministic.
 - 2026-08-09: added the process-level `INBOX_DATABASE_URL` override so isolated worktrees can use scratch databases even though the inbox-local dotenv file intentionally overrides the workspace-root `DATABASE_URL`.
 - 2026-07-31: transient Tailscale/Postgres connection failures now retry with capped exponential backoff during migration startup; non-transient errors still fail immediately.
 - Initial Postgres pool + migration runner translated from SQLite (`001_initial_schema.sql`).

@@ -155,6 +155,40 @@ describe("initializeDatabase", () => {
     expect(fakePool.query).toHaveBeenCalledTimes(1)
   })
 
+  it("Scenario: A transient error code retries the migration with jittered backoff; any other error is fatal — a transient code retries then succeeds", async () => {
+    vi.useFakeTimers()
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const transient = Object.assign(new Error("connection reset"), {
+      code: "ECONNRESET",
+    })
+    fakePool.query
+      .mockRejectedValueOnce(transient)
+      .mockRejectedValueOnce(transient)
+      .mockResolvedValue({ rows: [], rowCount: 0 } as never)
+
+    const { initializeDatabase } = await import("../pool.js")
+    const initialization = initializeDatabase()
+    const result = expect(initialization).resolves.toBeUndefined()
+    await vi.runAllTimersAsync()
+    await result
+
+    // 9 migrations, the first failing twice before succeeding: 9 + 2 extra calls.
+    expect(fakePool.query).toHaveBeenCalledTimes(11)
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("ECONNRESET"),
+    )
+    warning.mockRestore()
+  })
+
+  it("Scenario: A transient error code retries the migration with jittered backoff; any other error is fatal — an error with no `code` is not retryable", async () => {
+    const uncoded = new Error("something went wrong")
+    fakePool.query.mockRejectedValueOnce(uncoded)
+
+    const { initializeDatabase } = await import("../pool.js")
+    await expect(initializeDatabase()).rejects.toBe(uncoded)
+    expect(fakePool.query).toHaveBeenCalledTimes(1)
+  })
+
   it("Scenario: `initializeDatabase()` runs the migration list in order — reads each .sql and runs it on the pool in declared order", async () => {
     const { initializeDatabase } = await import("../pool.js")
     await initializeDatabase()

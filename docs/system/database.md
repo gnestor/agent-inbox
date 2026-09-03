@@ -7,7 +7,7 @@ sources:
   - server/db/migrations/
 spec: openspec/specs/database/spec.md
 status: generated
-sources_hash: "a6988efa0cf12fb02519e6725eb961404781539debd2d1d87e36d4550dc3828d"
+sources_hash: "a72894a425664e4ae3a499a517a02962f87ccdf54a1d6ba1a795be61745c6938"
 ---
 
 # Database
@@ -48,7 +48,7 @@ Inbox binds two separate pools to two separate databases. `getPool()` serves inb
 
 `initializeDatabase()` reads and runs an ordered array of migration filenames from `server/db/migrations/` on every boot. The array, not the directory listing, is the source of truth — a file added to the directory but missing from the array never runs. Every statement in every migration uses an idempotent guard (`IF NOT EXISTS`, `IF EXISTS`, or an `information_schema.columns` check). No migrations table tracks what already ran. Re-running the full list against an already-initialized database is a no-op by design.
 
-A migration query can fail with a network or connection-class error — `ECONNRESET`, `08006`, `57P03`, and others in a fixed allowlist. That query retries with exponential backoff capped at five seconds. This keeps startup alive through a Tailscale route flap to the database host instead of leaving the server with no working backend. A migration that fails for any other reason — bad SQL, an authentication error, a schema conflict — rejects `initializeDatabase()` immediately without retrying.
+A migration query can fail with a network or connection-class error — `ECONNRESET`, `08006`, `57P03`, and others in a fixed allowlist. That query retries forever through the shared `retry()` helper from `@hammies/contracts/retry`, waiting `backoffDelayMs` between attempts (250ms base, capped at five seconds, full jitter). This keeps startup alive through a Tailscale route flap to the database host instead of leaving the server with no working backend. A migration that fails for any other reason — bad SQL, an authentication error, a schema conflict — is not retryable, so `retry()` rethrows it and `initializeDatabase()` rejects immediately.
 
 Adding a schema change means two edits: a new `NNN_<name>.sql` file in `server/db/migrations/`, and that filename appended to the array in `pool.ts`. A migration file never changes after it has run anywhere, even to fix a typo — corrections ship as a new migration instead.
 
