@@ -133,8 +133,8 @@ export function ArtifactFrame({ code, title, sessionId, sequence, className, onA
         "artifact-to-host@1",
         (error) => log.error(formatContractReport(error, "artifact frame message")),
       )
-      if (!decoded.success) return
-      const data = decoded.data
+      if (!decoded.ok) return
+      const data = decoded.value
 
       if (data.type === "action") {
         const safeIntent = data.intent.replace(/[<>"&]/g, "")
