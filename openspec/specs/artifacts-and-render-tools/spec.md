@@ -244,6 +244,7 @@ that padding IS the panel inset when they fill a panel.
 - Auto-injection of React/`@hammies/frontend`/`cn` imports replaced a hard error on missing imports — half of model-written artifacts forgot at least one import, producing 500 ms of red-overlay before an otherwise valid component.
 - The `App`-wrapper for bare top-level `return` was added after several agents wrote `return <div/>` at column 0 (Claude.ai's REPL-style affordance bleeding through).
 - `srcDocCache` / `artifactHeightCache` were unbounded; long sessions leaked enough HTML to OOM the tab. Caps + FIFO eviction fixed it without observable user-facing regression.
+- 2026-09-03: `decodeIframeMessage`'s result followed `@hammies/contracts`' `IframeMessageDecodeResult<T>` onto the shared `Result` type. `ArtifactFrame.tsx` and `OutputRenderer.tsx` read `decoded.ok`/`decoded.value` instead of `decoded.success`/`decoded.data`; behavior is unchanged.
 - The iframe was originally hidden via `display: none` until height reported; switched to `opacity-0 absolute inset-0` so layout was committed and the first paint was instant when visibility flipped.
 - Wheel forwarding originally fired on every horizontal wheel; tables with `overflow-x: auto` lost their own scroll until the ancestor-scrollable check was added.
 - The 2 s height fallback was added after a bug where a syntax error in the module script left the parent showing an indefinite skeleton — the regular height-report path never ran.

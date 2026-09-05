@@ -159,8 +159,8 @@ function useIframeAutoHeight(max = 600) {
         "html-frame-to-host@1",
         (error) => log.error(formatContractReport(error, "html output frame message")),
       )
-      if (decoded.success && decoded.data.type === "html-height") {
-        setHeight(Math.min(decoded.data.height, max))
+      if (decoded.ok && decoded.value.type === "html-height") {
+        setHeight(Math.min(decoded.value.height, max))
       }
     }
     window.addEventListener('message', handleMessage)
