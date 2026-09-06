@@ -29,5 +29,5 @@
     }
   },
   "include": ["server", "plugins", "src/types"],
-  "exclude": ["**/__tests__/**", "**/*.test.*"]
+  "exclude": ["**/__tests__/**", "**/*.test.*", "**/temp/**"]
 }
