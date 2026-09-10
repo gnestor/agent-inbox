@@ -173,6 +173,23 @@ describe("the panel inset", () => {
     rows: Array.from({ length: 20 }, (_, i) => [`BKN-${i}`, i]),
   }
 
+  it("Scenario: an output type the platform does not own renders as unknown", () => {
+    // `email-draft` is a Studio plugin's type, resolved there through an app
+    // manifest's `outputRenderers`. Inbox has no such lookup, and a custom
+    // spec's `type` is a bare string that would match a literal case of the
+    // builtin switch, so the boundary is tested before the switch runs.
+    render(
+      <Wrapper>
+        <OutputRenderer
+          spec={{ type: "email-draft", data: '{"subject":"Hi"}' }}
+          sessionId="s"
+          sequence={1}
+        />
+      </Wrapper>,
+    )
+    expect(screen.getByText("Unknown output type")).toBeInTheDocument()
+  })
+
   it("Scenario: An expanded data grid insets, and its filter field stays at the panel edge", () => {
     const { container } = render(
       <Wrapper>

@@ -4,7 +4,7 @@ import { useLocation } from "react-router"
 import { useNavActions } from "@/lib/navigation-store"
 import { useFileAttachments } from "@hammies/frontend/components/session"
 import { uploadSessionFile } from "@/api/client"
-import type { OutputSpec } from "@/components/session/OutputRenderer"
+import type { AnyOutputSpec } from "@/components/session/OutputRenderer"
 import type { SessionPhase } from "@/hooks/use-session-controller"
 import type { Session } from "@/types"
 import type { PendingFile, UploadedFile } from "@hammies/frontend/components/session"
@@ -31,7 +31,7 @@ export function useSessionView({ sessionId, panelId, title, session, phase, muta
 
   // --- Open panel (useCallback: passed to SessionTranscript which is not trivially re-rendered) ---
 
-  const handleOpenPanel = useCallback((spec: OutputSpec, sequence: number) => {
+  const handleOpenPanel = useCallback((spec: AnyOutputSpec, sequence: number) => {
     pushPanel({
       id: `output:${sessionId}:${sequence}`,
       type: "output",

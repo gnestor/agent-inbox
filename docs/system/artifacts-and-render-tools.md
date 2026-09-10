@@ -16,7 +16,7 @@ panels:
   - output
   - code_editor
 status: generated
-sources_hash: "6b5941509f2a2a2ae4b19ef13fab7a1d37ff021bd91435bf923e45d8e775c873"
+sources_hash: "fc55b97e3d1c80a78109b54aaa27206b6cffff9d67f1a1b1caffdbe3401d1166"
 ---
 
 # Artifacts and Render Tools
@@ -58,7 +58,7 @@ The iframe runs with `sandbox="allow-scripts allow-same-origin allow-popups allo
 
 ## Non-React output types
 
-`OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, adding the filter field only when the output is expanded into its own panel — the grid bounds its own height and scrolls the body under a frozen header either way, so neither branch asks for a pager. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
+`OutputRenderer` (`src/components/session/OutputRenderer.tsx`) switches on `spec.type` and renders each `render_output` payload with a dedicated component. It asks `isBuiltinSpec` first: a spec is typed `AnyOutputSpec`, session-core's union of the builtin `OutputSpec` and the plugin-contributed `CustomOutputSpec`, and Inbox contributes no plugin renderers — so a type the platform does not own reports itself here rather than reaching the switch and matching a literal case it does not belong to. `markdown` goes through the shared `Markdown` component. `table` uses `DataTable`, adding the filter field only when the output is expanded into its own panel — the grid bounds its own height and scrolls the body under a frozen header either way, so neither branch asks for a pager. `json` walks the value with a custom collapsible tree. `chart` lazy-loads Recharts and a shadcn `ChartContainer`. `conversation` renders a simple message list.
 
 The panel inset comes from the renderer, not from the panel. `PanelContent`'s scrolling body carries no padding of its own; `OutputRenderer` wraps an output in `h-full` plus `PANEL_CONTENT_INSET` exactly when `needsPanelInset(spec.type)` says the type does not already pad itself, and passes `inset` to `DataTable` wherever it passes `searchable`. Both come from `@hammies/frontend/components/session`, shared with studio. The body used to pad every type unconditionally, which is type-agnostic and so wrong for every type that pads itself: markdown, conversation and react artifacts rendered at a 32px double inset, and an expanded grid's filter field lost the panel edge its full-width rule reaches for.
 

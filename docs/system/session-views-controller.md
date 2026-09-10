@@ -16,7 +16,7 @@ sources:
   - src/stores/session-reducer.ts
 spec: openspec/specs/session-views-controller/spec.md
 status: generated
-sources_hash: "d72f7f59602eb3f3d3b1d1a0d74e4a9779035f286c9f2e5bb551ca899f8a57dd"
+sources_hash: "174ad075ffac914a85d8fef2bddb21ebf33c07399dd58c1a807e74c71d801782"
 ---
 
 # Session Views Controller

@@ -194,6 +194,21 @@ that Inbox's copy never received; that drift is what forced the consolidation.
 - **THEN** `hastToHtml(tree)` walks the tree, escaping text and emitting `<span class="...">` for elements — supporting only the `text` and `span`-element nodes lowlight produces.
 - **WHY:** pulling `hast-util-to-html` (full HAST serialiser) for this trivial subset would add a dependency for code we already understand.
 
+### A type this app does not render says so before the switch
+
+`OutputRenderer` takes an `AnyOutputSpec` — session-core's union of the builtin
+`OutputSpec` and the plugin-contributed `CustomOutputSpec`, which an app
+manifest claims through `outputRenderers`. Studio resolves those; Inbox
+contributes none. A custom spec's `type` is a bare `string`, so it matches every
+literal case of the builtin switch and erases the narrowing that switch depends
+on, which is why the boundary is tested first rather than left to the switch's
+`default`.
+
+#### Scenario: an output type the platform does not own renders as unknown
+- **WHEN** `<OutputRenderer>` is given a spec whose type is outside `BUILTIN_OUTPUT_TYPES`
+- **THEN** it MUST render the "Unknown output type" body and reach no builtin branch.
+- **WHY:** Inbox has no contribution lookup to resolve such a type with. The one list lives in `@hammies/session-core` beside the union it enumerates, so this app, Studio's contribution lookup, and Studio's artifact wire contract cannot disagree about which types the platform owns.
+
 ### The panel inset comes from the renderer, not the panel
 
 `PanelContent`'s scrolling body carries no padding of its own. It padded every

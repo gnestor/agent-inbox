@@ -21,14 +21,15 @@ import {
 // and the shared transcript component type against.
 export type {
   OutputSpec,
+  AnyOutputSpec,
   TableData,
   ChartData,
   FileData,
   ConversationData,
   ReactArtifactData,
 } from "@hammies/session-core"
-import type { OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
-import { normalizeChartData } from "@hammies/session-core"
+import type { AnyOutputSpec, OutputSpec, TableData, ChartData, FileData, ConversationData } from "@hammies/session-core"
+import { isBuiltinSpec, normalizeChartData } from "@hammies/session-core"
 import { formatContractReport } from "@hammies/contracts"
 import { createLogger } from "@/lib/logger"
 
@@ -41,7 +42,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // --- Main component ---
 
 interface OutputRendererProps {
-  spec: OutputSpec
+  spec: AnyOutputSpec
   sessionId: string
   sequence: number
   /** When true, react artifacts fill the parent container instead of using a fixed height */
@@ -53,7 +54,11 @@ interface OutputRendererProps {
 }
 
 export function OutputRenderer(props: OutputRendererProps) {
-  const body = <OutputBody {...props} />
+  // Inbox contributes no plugin renderers, so a type the platform does not own
+  // says so here rather than reaching the builtin switch. Studio resolves the
+  // same types through an app manifest's `outputRenderers`.
+  if (!isBuiltinSpec(props.spec)) return <UnknownOutput />
+  const body = <OutputBody {...props} spec={props.spec} />
   // Inline, the transcript entry supplies the inset for every output. Filling a
   // panel there is no entry, so it comes from here — except for the types that
   // already pad themselves (`needsPanelInset`). Studio applies the same rule,
@@ -66,7 +71,7 @@ export function OutputRenderer(props: OutputRendererProps) {
   return <div className={cn("h-full", PANEL_CONTENT_INSET)}>{body}</div>
 }
 
-function OutputBody({ spec, sessionId, sequence, fillPanel, onAction, onArtifactLoaded }: OutputRendererProps) {
+function OutputBody({ spec, sessionId, sequence, fillPanel, onAction, onArtifactLoaded }: OutputRendererProps & { spec: OutputSpec }) {
   switch (spec.type) {
     case "markdown":
       return <MarkdownOutput data={spec.data} />
@@ -108,12 +113,17 @@ function OutputBody({ spec, sessionId, sequence, fillPanel, onAction, onArtifact
       )
     }
     default:
-      return (
-        <div className="p-4 text-xs text-muted-foreground">
-          Unknown output type
-        </div>
-      )
+      return <UnknownOutput />
   }
+}
+
+/** What an output this app cannot render shows instead. */
+function UnknownOutput() {
+  return (
+    <div className="p-4 text-xs text-muted-foreground">
+      Unknown output type
+    </div>
+  )
 }
 
 // --- Markdown ---

@@ -5,7 +5,8 @@ import { X, Pencil } from "lucide-react"
 import type { PanelState } from "@/types/navigation"
 import { PanelSkeleton } from "@/components/shared/PanelSkeleton"
 import { PanelHeader } from "@/components/shared/PanelHeader"
-import { OutputRenderer, type OutputSpec } from "@/components/session/OutputRenderer"
+import { OutputRenderer, type AnyOutputSpec } from "@/components/session/OutputRenderer"
+import { isReactSpec } from "@hammies/session-core"
 import { AskUserForm, AskUserOptions, parseAskUserAnswers, SessionTranscript, useAskUserForm } from "@hammies/frontend/components/session"
 import { findCodeByToolUseId, type ClassifiedMessage } from "@hammies/session-core"
 import { useNavActions } from "@/lib/navigation-store"
@@ -40,7 +41,7 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   // Persisted specs can go stale on reload. Re-derive the current code from
   // the session transcript so saved edits survive reloads even when the
   // persisted nav state is out of date.
-  const toolUseId = spec?.type === "react" ? spec.sourceToolUseId : undefined
+  const toolUseId = spec && isReactSpec(spec) ? spec.sourceToolUseId : undefined
   const { data: sessionData } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -57,9 +58,9 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   )
 
   // Override spec code: prefer live editing buffer, fall back to JSONL-derived code.
-  const activeSpec = useMemo((): OutputSpec | undefined => {
+  const activeSpec = useMemo((): AnyOutputSpec | undefined => {
     if (!spec) return undefined
-    if (spec.type !== "react") return spec
+    if (!isReactSpec(spec)) return spec
     const override = editingCode ?? freshCode
     if (override == null) return spec
     const data = typeof spec.data === "string" ? { code: override } : { ...spec.data, code: override }
@@ -67,11 +68,11 @@ function OutputPanel({ panel }: { panel: PanelState & { type: "output" } }) {
   }, [spec, editingCode, freshCode])
 
   // For react artifacts, show panel skeleton until the iframe has rendered.
-  const [artifactReady, setArtifactReady] = useState(spec?.type !== "react")
+  const [artifactReady, setArtifactReady] = useState(!spec || !isReactSpec(spec))
   const handleArtifactLoaded = useCallback(() => setArtifactReady(true), [])
 
   const editableArtifact = useMemo(() => {
-    if (!spec || spec.type !== "react" || !spec.sourceToolUseId) return null
+    if (!spec || !isReactSpec(spec) || !spec.sourceToolUseId) return null
     const fallback = typeof spec.data === "string" ? spec.data : spec.data?.code ?? ""
     return { code: freshCode ?? fallback, toolUseId: spec.sourceToolUseId }
   }, [spec, freshCode])
