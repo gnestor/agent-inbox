@@ -8,7 +8,7 @@ sources:
   - plugins/gmail/app/__tests__/email-sanitizer-live.test.ts
 spec: openspec/specs/email-sanitizer/spec.md
 status: generated
-sources_hash: "36eb252ab46b69a182705e39f4c528cf05d52c4c6b99d5716a8d6663824f044f"
+sources_hash: "52b7eecb7c4f641e166f84bc2246cd3d512e7705069650df6cae8a6129294c05"
 ---
 
 # Email Sanitizer
@@ -32,7 +32,7 @@ flowchart TD
 
 ## Two code paths, one per body format
 
-`parseMessage()` in `gmail.ts` picks the sanitizer by `bodyIsHtml`: plain text goes through `sanitizePlainText`, HTML goes through `sanitizeHtmlEmail` and then `htmlToMarkdown`. The two functions share no code — plain text uses a line-by-line scan, HTML uses layered regex passes over the raw markup. A regex approach handles HTML because the load-bearing patterns are textual, not structural. `On...wrote:` text gets fragmented across `<span>` boundaries; a Chinese full-width colon can split into sibling spans. A real DOM parser solves the easy cases; the regex fallback covers clients that don't use a recognized structural wrapper.
+`parseMessage()` in `gmail.ts` picks the sanitizer by whether `getEmailBody` returned HTML: HTML goes through `sanitizeHtmlEmail` and then `htmlToMarkdown`, and everything else through `sanitizePlainText`. "Everything else" is two cases now — a genuinely plain body, and the markdown source recovered from a message we wrote ourselves, which takes the plain-text scan and skips `htmlToMarkdown` entirely because there is no HTML to invert. The two functions share no code — plain text uses a line-by-line scan, HTML uses layered regex passes over the raw markup. A regex approach handles HTML because the load-bearing patterns are textual, not structural. `On...wrote:` text gets fragmented across `<span>` boundaries; a Chinese full-width colon can split into sibling spans. A real DOM parser solves the easy cases; the regex fallback covers clients that don't use a recognized structural wrapper.
 
 ## Plain-text sanitization: line-by-line scan
 
@@ -87,7 +87,7 @@ Three more passes run regardless of which branch stripped the quoted history. In
 
 ## Where the sanitizer runs
 
-`parseMessage()` in `gmail.ts` is the only caller. It picks `sanitizeHtmlEmail` or `sanitizePlainText` by `bodyIsHtml`, and for HTML bodies chains `htmlToMarkdown` immediately after, before the parsed message ever leaves the function. `getMessage()` and the last message in `getThread()`'s loop both pass `{ keepSignature: true }`. Every other message in a thread passes no options, so its signature gets stripped.
+`parseMessage()` in `gmail.ts` is the only caller. It picks `sanitizeHtmlEmail` or `sanitizePlainText` by the `format` `getEmailBody` reports, and for HTML bodies chains `htmlToMarkdown` immediately after, before the parsed message ever leaves the function. `getMessage()` and the last message in `getThread()`'s loop both pass `{ keepSignature: true }`. Every other message in a thread passes no options, so its signature gets stripped.
 
 ## Testing and fixtures
 

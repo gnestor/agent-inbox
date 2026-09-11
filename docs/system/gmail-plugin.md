@@ -25,7 +25,7 @@ sources:
   - plugins/gmail/plugin.ts
 spec: openspec/specs/gmail-plugin/spec.md
 status: generated
-sources_hash: "a1d017ec7054a8acddf71266503ddfa73bfbd0f215c8dcb1d22e7194c1470a19"
+sources_hash: "417d6b936d84d6f874d5031d03e26b6e503fda29ed6505306747a1cf70422314"
 ---
 
 # Gmail Plugin
@@ -97,6 +97,10 @@ Without a flag filter, `query` fetches one 200-thread page — the whole inbox, 
 `parseMessage` converts an HTML body to markdown with `email-to-markdown.ts`, which installs the shared `@hammies/frontend/lib/turndown-gfm-tables` rules on top of its own `cid:` and alt-text handling. Turndown ships no table rules, so without them a `<table>` flattened to one line per cell and the row-to-column pairing was gone before any reader saw it. The plugin declines `role="presentation"` tables and anything whose shape GFM cannot express; its rationale lives with it under [Lib Utilities](../../../frontend/docs/system/lib-utils.md). The editor's table nodes landed in the same change, because GFM markdown reaching a composer with nowhere to put rows reads worse than the flattening it replaced.
 
 `send` and `save-draft` share one path. `markdownToHtml` converts the composed text to HTML, and `buildRawEmail` assembles a `multipart/alternative` message with both parts. A reply threads through `In-Reply-To` and `References`, built from the RFC 2822 `Message-ID` of the message it answers.
+
+The cheapest conversion is the one that does not run. `buildRawEmail` sends the composer's markdown twice — as HTML in one part and verbatim as `text/plain` in the other — so reading such a message back through Turndown re-derives text that is sitting untouched two parts away, and loses whatever the outbound converter can express and Turndown cannot invert (task lists, fence language tags, alignment rows, reference links; tables were only the first gap anyone noticed). `buildRawEmail` therefore stamps `X-Hammies-Body-Source: markdown`, and `getEmailBody` returns the `text/plain` part for a message carrying it.
+
+The header is the only signal, because only the producer of a `multipart/alternative` knows which half is the original. The `DRAFT` label and a matching `From` address describe a mailbox rather than an author: a draft composed in Gmail's web client has both, and its plain part is a lossy rendering of the rich text — one live draft in the automation account has `<br><br>` in the HTML against a plain part with the line breaks stripped out. Third-party mail is the same hazard at scale, so a message without the header reads exactly as it did before. `getEmailBody` returns `"html" | "markdown" | "plain"` rather than a boolean, since "text we wrote" and "text someone sent as text" are different answers that were previously the same one.
 
 `use-email-actions` applies each mutation optimistically, against both the open thread's cache and the sidebar list's cache. It rolls both back if the request fails. `use-email-draft` derives reply-all recipients from the last message's `From`, `To`, and `Cc` headers, minus the signed-in user. It persists the in-progress body to local storage per thread, so a reload never loses a draft. It also seeds the editor from an existing Gmail draft when no local draft exists.
 

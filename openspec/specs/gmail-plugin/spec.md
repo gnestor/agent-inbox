@@ -51,6 +51,39 @@ A message body renders as markdown when `bodyFormat === "markdown"`, or when it 
 - The plugin loader, registry, route auto-mounting → `plugin-system`.
 - The context-system pipeline that consumes `itemToContext` output → `context-system`.
 
+### The source of a body we wrote is the part we wrote
+
+`buildRawEmail` sends `multipart/alternative`: the `text/html` part is the
+composer's markdown run through `markdownToHtml`, and the `text/plain` part is
+that same markdown, verbatim. Reading such a message back used to take the HTML
+part unconditionally, so reopening a draft we had just written ran
+markdown → HTML → Turndown → markdown while the pristine source sat untouched
+two parts away in the same payload.
+
+Every asymmetry between the two converters leaks through that round trip, and
+tables were only the first one anyone noticed: task lists, nested lists inside
+table cells, a fence's language tag, a table's alignment row and
+reference-style links all come back as something else or as nothing. Recovering
+them one Turndown rule at a time is chasing the symptom — the fix is to stop
+throwing the original away.
+
+So `buildRawEmail` stamps `X-Hammies-Body-Source: markdown` on what it builds,
+and the read path honours it. Only the producer of a `multipart/alternative`
+knows which half is the original and which is the derived copy, which is why the
+test is a claim we make about our own payload rather than something inferred
+about the message.
+
+Inference was the tempting alternative and it does not hold. Neither the `DRAFT`
+label nor a `From` address matching our own account identifies a body we built:
+a draft sitting in our own mailbox may have been composed in Gmail's web client,
+whose `text/plain` alternative is a lossy rendering of the rich text rather than
+its source. A live draft in the automation account has exactly that shape —
+`<br><br>` in the HTML part against a plain part with the line breaks stripped
+out entirely. Preferring plain on the label would have flattened it. Third-party
+mail is the same hazard at scale, where the plain part is routinely an
+auto-generated fallback, so the header is deliberately the only signal: a
+message that does not carry it reads exactly as it did before.
+
 ## Requirements
 
 ### Plugin manifest
@@ -163,6 +196,33 @@ A message body renders as markdown when `bodyFormat === "markdown"`, or when it 
 - **WHEN** the SPA fetches `GET /api/gmail/fields/labels/options`
 - **THEN** the plugin returns Gmail's user-typed labels sorted alphabetically.
 - **AND** system labels (`INBOX`, `UNREAD`, `STARRED`, `IMPORTANT`, etc.) are excluded — those are surfaced through the boolean derived fields.
+
+### Reading back a body we authored
+
+#### Scenario: a body we built reads back as its markdown source
+- **WHEN** `getEmailBody` is handed a `multipart/alternative` message carrying `X-Hammies-Body-Source: markdown`
+- **THEN** it returns the `text/plain` part as `markdown`, so the body that went out is the body that comes back, byte for byte, with no Turndown pass at all.
+- **WHY:** the HTML part is derived from that text. Re-deriving the text from it can only lose whatever the outbound converter can express and Turndown cannot invert.
+
+#### Scenario: a third-party multipart/alternative still reads its HTML part
+- **WHEN** the same shape of message arrives without that header
+- **THEN** the HTML part wins, exactly as before.
+- **WHY:** in foreign mail the plain part is usually an auto-generated fallback, not the source. Preferring it would degrade ordinary inbound mail to fix a problem only our own messages have.
+
+#### Scenario: the DRAFT label alone does not make a message ours
+- **WHEN** a headerless `multipart/alternative` message carries the `DRAFT` label and our own `From` address
+- **THEN** it still reads its HTML part.
+- **WHY:** a draft composed in Gmail's web client is a draft in our mailbox from our address whose plain part has lost the line breaks. Ownership of the mailbox is not authorship of the MIME.
+
+#### Scenario: a declared source with no text/plain part falls back rather than emptying
+- **WHEN** a message carries the header but the `text/plain` part is gone (re-encoded somewhere in transit)
+- **THEN** the ordinary preference runs and the HTML part is returned.
+- **WHY:** the header is a hint about which part to prefer, not a promise that the part exists. Trusting it blindly would turn a recoverable body into an empty one.
+
+#### Scenario: an outgoing message declares which part is its source
+- **WHEN** `buildRawEmail` assembles a `multipart/alternative`
+- **THEN** the MIME carries `X-Hammies-Body-Source: markdown`.
+- **WHY:** this is the producer half of the contract. The read path can only honour a declaration something actually makes, so the two halves are pinned together or the feature is inert.
 
 ## Technical Notes
 

@@ -94,16 +94,52 @@ export function getHeader(message: GmailApiMessage, name: string): string {
   )
 }
 
-export function getEmailBody(message: GmailApiMessage): { body: string; bodyIsHtml: boolean } {
+/**
+ * The header `buildRawEmail` stamps on everything it builds, declaring that the
+ * `text/plain` part is the authored source and the `text/html` part is derived
+ * from it.
+ *
+ * Only the producer of a `multipart/alternative` knows which half is the
+ * original, so this is a claim we make about our own payload rather than
+ * something the reader infers. Nothing about the message itself can stand in for
+ * it: a `DRAFT` label and our own `From` address describe a mailbox, not an
+ * author — a draft composed in Gmail's web client has both, and its plain part
+ * is a lossy rendering of the rich text rather than its source.
+ */
+const BODY_SOURCE_HEADER = "X-Hammies-Body-Source"
+
+/** How a body should be read once it leaves this function. */
+type BodyFormat = "html" | "markdown" | "plain"
+
+/** The first part of `mimeType` anywhere in the tree, or undefined. */
+function findPart(parts: GmailApiPart[], mimeType: string): GmailApiPart | undefined {
+  for (const part of parts) {
+    if (part.mimeType === mimeType && part.body?.data) return part
+    const nested = part.parts ? findPart(part.parts, mimeType) : undefined
+    if (nested) return nested
+  }
+  return undefined
+}
+
+export function getEmailBody(message: GmailApiMessage): { body: string; format: BodyFormat } {
   const payload = message.payload
-  if (!payload) return { body: "", bodyIsHtml: false }
+  if (!payload) return { body: "", format: "plain" }
+
+  // Our own markdown, if this is a message we built and still has the part we
+  // wrote. A message that declares the header but arrives without a text/plain
+  // part (re-encoded somewhere in transit) falls through to the ordinary path
+  // rather than to an empty body.
+  if (getHeader(message, BODY_SOURCE_HEADER).toLowerCase() === "markdown" && payload.parts) {
+    const source = findPart(payload.parts, "text/plain")
+    if (source?.body?.data) return { body: decodeBase64Url(source.body.data), format: "markdown" }
+  }
 
   if (payload.body?.data) {
     const text = decodeBase64Url(payload.body.data)
     const isHtml = payload.mimeType === "text/html"
     return {
       body: isHtml ? text.replace(/<script[^>]*>.*?<\/script>/gs, "") : text,
-      bodyIsHtml: isHtml,
+      format: isHtml ? "html" : "plain",
     }
   }
 
@@ -111,12 +147,12 @@ export function getEmailBody(message: GmailApiMessage): { body: string; bodyIsHt
     const htmlPart = payload.parts.find((p: GmailApiPart) => p.mimeType === "text/html")
     if (htmlPart?.body?.data) {
       const html = decodeBase64Url(htmlPart.body.data).replace(/<script[^>]*>.*?<\/script>/gs, "")
-      return { body: html, bodyIsHtml: true }
+      return { body: html, format: "html" }
     }
 
     const textPart = payload.parts.find((p: GmailApiPart) => p.mimeType === "text/plain")
     if (textPart?.body?.data)
-      return { body: decodeBase64Url(textPart.body.data), bodyIsHtml: false }
+      return { body: decodeBase64Url(textPart.body.data), format: "plain" }
 
     for (const part of payload.parts) {
       if (part.parts) {
@@ -126,16 +162,16 @@ export function getEmailBody(message: GmailApiMessage): { body: string; bodyIsHt
             /<script[^>]*>.*?<\/script>/gs,
             "",
           )
-          return { body: html, bodyIsHtml: true }
+          return { body: html, format: "html" }
         }
         const textSub = part.parts.find((p: GmailApiPart) => p.mimeType === "text/plain")
         if (textSub?.body?.data)
-          return { body: decodeBase64Url(textSub.body.data), bodyIsHtml: false }
+          return { body: decodeBase64Url(textSub.body.data), format: "plain" }
       }
     }
   }
 
-  return { body: "", bodyIsHtml: false }
+  return { body: "", format: "plain" }
 }
 
 /**
@@ -204,7 +240,8 @@ function replaceCidReferences(html: string, messageId: string, cidMap: Map<strin
 }
 
 function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) {
-  const { body, bodyIsHtml } = getEmailBody(message)
+  const { body, format } = getEmailBody(message)
+  const bodyIsHtml = format === "html"
   let cleanedBody = bodyIsHtml ? sanitizeHtmlEmail(body, sanitizeOpts) : sanitizePlainText(body)
 
   if (bodyIsHtml && message.payload) {
@@ -212,7 +249,9 @@ function parseMessage(message: GmailApiMessage, sanitizeOpts?: SanitizeOptions) 
     cleanedBody = replaceCidReferences(cleanedBody, message.id, cidMap)
     cleanedBody = htmlToMarkdown(cleanedBody)
   }
-  const bodyFormat: 'markdown' | 'plain' = bodyIsHtml ? 'markdown' : 'plain'
+  // Turndown's output is markdown, and so is the source we recovered from our
+  // own `text/plain` part; only a genuinely plain body is plain.
+  const bodyFormat: 'markdown' | 'plain' = format === "plain" ? 'plain' : 'markdown'
 
   return {
     id: message.id,
@@ -533,6 +572,8 @@ function buildRawEmail(
     `To: ${to}`,
     `Subject: ${encodeHeaderValue(subject)}`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    // Tell our own read path which half is the source. See BODY_SOURCE_HEADER.
+    `${BODY_SOURCE_HEADER}: markdown`,
   ]
   if (inReplyTo) {
     headers.push(`In-Reply-To: ${inReplyTo}`)

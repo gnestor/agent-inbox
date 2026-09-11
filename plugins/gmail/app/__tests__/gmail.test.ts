@@ -96,7 +96,7 @@ describe("getEmailBody", () => {
     const message = makeMessage()
     const result = getEmailBody(message)
     expect(result.body).toBe("Hello plain text")
-    expect(result.bodyIsHtml).toBe(false)
+    expect(result.format).toBe("plain")
   })
 
   it("extracts HTML body from root payload", () => {
@@ -109,7 +109,7 @@ describe("getEmailBody", () => {
     })
     const result = getEmailBody(message)
     expect(result.body).toContain("Hello HTML")
-    expect(result.bodyIsHtml).toBe(true)
+    expect(result.format).toBe("html")
   })
 
   it("strips script tags from HTML", () => {
@@ -137,7 +137,7 @@ describe("getEmailBody", () => {
       },
     })
     const result = getEmailBody(message)
-    expect(result.bodyIsHtml).toBe(true)
+    expect(result.format).toBe("html")
     expect(result.body).toContain("html")
   })
 
@@ -153,7 +153,7 @@ describe("getEmailBody", () => {
     })
     const result = getEmailBody(message)
     expect(result.body).toBe("fallback text")
-    expect(result.bodyIsHtml).toBe(false)
+    expect(result.format).toBe("plain")
   })
 
   it("handles nested multipart", () => {
@@ -173,14 +173,104 @@ describe("getEmailBody", () => {
       },
     })
     const result = getEmailBody(message)
-    expect(result.bodyIsHtml).toBe(true)
+    expect(result.format).toBe("html")
     expect(result.body).toContain("nested")
   })
 
   it("returns empty for missing payload", () => {
     const result = getEmailBody({} as GmailApiMessage)
     expect(result.body).toBe("")
-    expect(result.bodyIsHtml).toBe(false)
+    expect(result.format).toBe("plain")
+  })
+
+  /** The shape `buildRawEmail` produces: markdown twice, once as HTML. */
+  function ourOwnMessage(markdown: string) {
+    return makeMessage({
+      payload: {
+        mimeType: "multipart/alternative",
+        headers: [{ name: "X-Hammies-Body-Source", value: "markdown" }],
+        body: {},
+        parts: [
+          { mimeType: "text/plain", body: { data: Buffer.from(markdown).toString("base64url") } },
+          { mimeType: "text/html", body: { data: Buffer.from("<p>derived, and lossy</p>").toString("base64url") } },
+        ],
+      },
+    })
+  }
+
+  // Everything markdownToHtml can emit that Turndown cannot invert: a task
+  // list, a fenced language tag, an alignment row, a reference link.
+  const SOURCE = [
+    "- [ ] chase the 7501s",
+    "",
+    "| Item | Qty |",
+    "| :--- | ---: |",
+    "| Wide Wale | 24 |",
+    "",
+    "```sql",
+    "select 1",
+    "```",
+    "",
+    "See [the PO][po].",
+    "",
+    "[po]: https://example.com/po/48",
+  ].join("\n")
+
+  it("Scenario: a body we built reads back as its markdown source", () => {
+    expect(getEmailBody(ourOwnMessage(SOURCE))).toEqual({ body: SOURCE, format: "markdown" })
+  })
+
+  it("Scenario: a third-party multipart/alternative still reads its HTML part", () => {
+    const message = makeMessage({
+      payload: {
+        mimeType: "multipart/alternative",
+        headers: [{ name: "From", value: "ship@carrier.example" }],
+        body: {},
+        parts: [
+          { mimeType: "text/plain", body: { data: Buffer.from("View this email in your browser").toString("base64url") } },
+          { mimeType: "text/html", body: { data: Buffer.from("<p>Your order <b>#1042</b> shipped.</p>").toString("base64url") } },
+        ],
+      },
+    })
+    const result = getEmailBody(message)
+    expect(result.format).toBe("html")
+    expect(result.body).toContain("#1042")
+  })
+
+  it("Scenario: the DRAFT label alone does not make a message ours", () => {
+    // The live shape that ruled out the label as a signal: composed in Gmail's
+    // web client, so the plain part has lost the line breaks the HTML keeps.
+    const message = makeMessage({
+      labelIds: ["DRAFT"],
+      payload: {
+        mimeType: "multipart/alternative",
+        headers: [{ name: "From", value: "grant@hammies.com" }],
+        body: {},
+        parts: [
+          { mimeType: "text/plain", body: { data: Buffer.from("Hey Benno,Thanks for the heads up!").toString("base64url") } },
+          { mimeType: "text/html", body: { data: Buffer.from("Hey Benno,<br><br>Thanks for the heads up!").toString("base64url") } },
+        ],
+      },
+    })
+    const result = getEmailBody(message)
+    expect(result.format).toBe("html")
+    expect(result.body).toContain("<br><br>")
+  })
+
+  it("Scenario: a declared source with no text/plain part falls back rather than emptying", () => {
+    const message = makeMessage({
+      payload: {
+        mimeType: "multipart/alternative",
+        headers: [{ name: "X-Hammies-Body-Source", value: "markdown" }],
+        body: {},
+        parts: [
+          { mimeType: "text/html", body: { data: Buffer.from("<p>re-encoded in transit</p>").toString("base64url") } },
+        ],
+      },
+    })
+    const result = getEmailBody(message)
+    expect(result.format).toBe("html")
+    expect(result.body).toContain("re-encoded")
   })
 })
 
@@ -330,6 +420,19 @@ describe("Gmail API functions", () => {
       const decoded = Buffer.from(body.raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
       expect(decoded).toContain("In-Reply-To: <orig@id>")
       expect(decoded).toContain("References: <orig@id>")
+    })
+
+    it("Scenario: an outgoing message declares which part is its source", async () => {
+      mockFetch.mockReturnValueOnce(okJson({ id: "sent3", threadId: "t1" }))
+
+      await sendMessage("test-token", "bob@test.com", "Re: entries", "- [ ] chase the 7501s")
+
+      const body = JSON.parse(mockFetch.mock.calls[0]![1].body)
+      const decoded = Buffer.from(body.raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
+      // The producer half of the contract getEmailBody reads. Without this
+      // header the message reads back through Turndown and the task list is
+      // gone; the two halves are pinned together or the feature is inert.
+      expect(decoded).toContain("X-Hammies-Body-Source: markdown")
     })
   })
 
