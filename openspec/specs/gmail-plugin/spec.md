@@ -144,6 +144,19 @@ A message body renders as markdown when `bodyFormat === "markdown"`, or when it 
 - **AND** otherwise it returns a markdown stub with frontmatter (`type: email-thread`, `thread-id`, `subject`, `date`) followed by the subject as `# heading`, the `From:` line, optional `Date:` line, and the body.
 - **AND** quotes inside the subject are escaped (`"` → `\"`).
 
+### HTML bodies become Markdown
+
+#### Scenario: a tabular table becomes a GFM table
+- **WHEN** `parseMessage` runs an HTML body through `htmlToMarkdown`
+- **THEN** a data table becomes a GFM pipe table, because the converter installs the shared [`gfmTables`](../../../../frontend/src/lib/turndown-gfm-tables.ts) plugin; the shape test that decides which tables qualify is specified once, at [lib-utils](../../../../frontend/openspec/specs/lib-utils/spec.md).
+- **AND** a layout table, or one declaring `role="presentation"`, falls through to Turndown's default rule and flattens as before.
+- **WHY:** Turndown ships no table rules, so every cell otherwise landed on its own line and the row-to-column pairing was gone. This change is paired with the editor's table nodes ([rich-text-editor](../rich-text-editor/spec.md)) on purpose — GFM markdown reaching a composer that cannot hold a table is worse than the flattening it replaced.
+
+#### Scenario: the Gmail-specific rules still run alongside the shared table rules
+- **WHEN** a `cid:` image sits inside a cell of a table being converted
+- **THEN** the image is dropped and the table still converts.
+- **WHY:** the shared plugin installs alongside this converter's own rules rather than replacing them.
+
 ### Filter-options surface
 
 #### Scenario: `filterOptions.labels` returns sorted user-label names
@@ -158,7 +171,7 @@ A message body renders as markdown when `bodyFormat === "markdown"`, or when it 
 | Plugin manifest, query, getItem, mutate, filterOptions, routes, itemToContext | [plugins/gmail/plugin.ts](../../../plugins/gmail/plugin.ts) |
 | Gmail API client (search, getThread, modifyLabels, trash, send, draft, attachments, labels, signature) | `plugins/gmail/app/lib/gmail.ts` |
 | HTML email sanitiser (called from `parseMessage` in gmail.ts) | `plugins/gmail/app/lib/email-sanitizer.ts` |
-| HTML → Markdown converter for context-system stubs | [plugins/gmail/app/lib/email-to-markdown.ts](../../../plugins/gmail/app/lib/email-to-markdown.ts) |
+| HTML → Markdown converter for message bodies and context-system stubs; installs the shared GFM table rules | [plugins/gmail/app/lib/email-to-markdown.ts](../../../plugins/gmail/app/lib/email-to-markdown.ts), [../../../../frontend/src/lib/turndown-gfm-tables.ts](../../../../frontend/src/lib/turndown-gfm-tables.ts) |
 | Frontend list component | [plugins/gmail/app/components/EmailListView.tsx](../../../plugins/gmail/app/components/EmailListView.tsx) |
 | Frontend detail component (custom thread renderer) | [plugins/gmail/app/components/EmailThread.tsx](../../../plugins/gmail/app/components/EmailThread.tsx) |
 | Frontend hooks (use-emails, use-email-thread, use-email-actions, use-email-draft) | [plugins/gmail/app/hooks/](../../../plugins/gmail/app/hooks/) |

@@ -25,7 +25,7 @@ sources:
   - plugins/gmail/plugin.ts
 spec: openspec/specs/gmail-plugin/spec.md
 status: generated
-sources_hash: "48e1fdbd63b26d1fa22ca2864fb35d722dc1d987962747bb96025cee971430d5"
+sources_hash: "a1d017ec7054a8acddf71266503ddfa73bfbd0f215c8dcb1d22e7194c1470a19"
 ---
 
 # Gmail Plugin
@@ -93,6 +93,8 @@ Without a flag filter, `query` fetches one 200-thread page — the whole inbox, 
 - `mark-important` and `mark-not-important` toggle the `IMPORTANT` label
 - `modify-labels` adds and removes an arbitrary label set from the payload
 - `send` and `save-draft` build a MIME message and send or save it
+
+`parseMessage` converts an HTML body to markdown with `email-to-markdown.ts`, which installs the shared `@hammies/frontend/lib/turndown-gfm-tables` rules on top of its own `cid:` and alt-text handling. Turndown ships no table rules, so without them a `<table>` flattened to one line per cell and the row-to-column pairing was gone before any reader saw it. The plugin declines `role="presentation"` tables and anything whose shape GFM cannot express; its rationale lives with it under [Lib Utilities](../../../frontend/docs/system/lib-utils.md). The editor's table nodes landed in the same change, because GFM markdown reaching a composer with nowhere to put rows reads worse than the flattening it replaced.
 
 `send` and `save-draft` share one path. `markdownToHtml` converts the composed text to HTML, and `buildRawEmail` assembles a `multipart/alternative` message with both parts. A reply threads through `In-Reply-To` and `References`, built from the RFC 2822 `Message-ID` of the message it answers.
 

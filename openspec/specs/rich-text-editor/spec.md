@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A controlled `<RichTextEditor>` component used by the session composer and Gmail draft surface. Backed by TipTap with markdown round-tripping, slash-command menu, code blocks (highlighted via lowlight), task lists, and a `Cmd-Enter` submit hook. Owns its own stylesheet and slash-menu component.
+A controlled `<RichTextEditor>` component used by the session composer and Gmail draft surface. Markdown in, markdown out — it accepts no other wire format. Backed by TipTap with markdown round-tripping, slash-command menu, code blocks (highlighted via lowlight), task lists, tables, and a `Cmd-Enter` submit hook. Owns its own stylesheet and slash-menu component.
 
 ## Context
 
@@ -24,14 +24,22 @@ The slash menu is generic (heading levels, lists, code, task lists) and reusable
 
 #### Scenario: Parent passes markdown, editor emits markdown
 - **WHEN** `<RichTextEditor value={md} onChange={setMd} />` is rendered
-- **THEN** the editor initializes from the markdown string (or HTML if the string starts with `<`).
+- **THEN** the editor initializes from the markdown string.
 - **AND** every keystroke triggers `onChange(<markdown>)` via the `tiptap-markdown` storage `getMarkdown()`.
 
 #### Scenario: External value updates re-sync without losing cursor
 - **WHEN** the parent passes a new `value` that differs from the last emitted markdown
-- **THEN** the editor calls `setContent(...)` with `emitUpdate: false` and re-emits the markdown so parent state stays canonical.
-- **AND** when the new value starts with `<`, the editor parses it via `generateJSON()` rather than treating tags as literal markdown.
-- **WHY:** Gmail drafts arrive as HTML; double-encoding them through markdown would corrupt formatting.
+- **THEN** the editor calls `setContent(...)` with `emitUpdate: false`.
+
+#### Scenario: Markup in the value stays literal text
+- **WHEN** the `value` begins with `<`
+- **THEN** it is rendered as the literal characters, not parsed as HTML.
+- **WHY:** the editor used to sniff for a leading `<` and parse the value with `generateJSON()`, a branch that could never fire — `parseMessage` runs every HTML body through `htmlToMarkdown` before it reaches a client, and the session composers are seeded from markdown the user typed. It was not free: it made a table lost server-side, in a converter with no table rules, look like an editor bug. One wire format, stated once, so the next investigation starts upstream.
+
+#### Scenario: A markdown table seeds as a real table
+- **WHEN** the `value` contains a GFM pipe table
+- **THEN** TableKit's nodes hold it as an actual `<table>` with header cells, and it round-trips back out as GFM.
+- **WHY:** table nodes are load-bearing, not polish. Without them `tiptap-markdown` has nowhere to put the rows and concatenates every cell into one paragraph — `NDCDueNov 1010/27` — which is strictly worse than the one-line-per-cell flattening the Gmail converter's table rules now prevent. The converter fix and these nodes have to ship together or the composer regresses.
 
 #### Scenario: Initial value comparison short-circuits
 - **WHEN** the new `value` equals `lastEmittedRef.current`

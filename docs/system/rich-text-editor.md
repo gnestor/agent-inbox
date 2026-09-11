@@ -7,7 +7,7 @@ sources:
   - src/components/shared/rich-text-editor.css
 spec: openspec/specs/rich-text-editor/spec.md
 status: generated
-sources_hash: "6f76e753f9313d6e80ab9fc7945f8f18e1eca9b6472bac1706ddf3db0433c514"
+sources_hash: "cf7ae482f78c99e31454709640f5b7b2eb72e16687b5c9d2e25fac7d36a5208b"
 ---
 
 # Rich Text Editor
@@ -16,11 +16,10 @@ sources_hash: "6f76e753f9313d6e80ab9fc7945f8f18e1eca9b6472bac1706ddf3db0433c514"
 
 ```mermaid
 flowchart TD
-    Parent[Parent state] -->|passes| Check{Starts with lt}
-    Check -->|yes| HTML[generateJSON]
-    Check -->|no| MDIn[Markdown text]
-    HTML --> Doc[ProseMirror doc]
-    MDIn --> Doc
+    Gmail[Gmail HTML body] -->|htmlToMarkdown, server| MDIn
+    Typed[User-typed prompt] --> MDIn
+    MDIn[Markdown text] -->|passes| Parent[Parent state]
+    Parent --> Doc[ProseMirror doc]
     Doc --> Editor[TipTap editor]
     Editor -->|types| GetMD[getMarkdown]
     GetMD -->|emits| Parent
@@ -32,7 +31,11 @@ The parent owns the value; the editor never holds state the parent cannot see. I
 
 A `lastEmittedRef` tracks the most recent markdown the editor itself produced. When the parent passes a new `value`, an effect compares it against that ref. A match means the change came from the editor's own `onChange`, so the effect no-ops and the cursor stays put. A real external change — a template load, a Gmail draft swap — calls `editor.commands.setContent` with `emitUpdate: false`. This updates the document without re-triggering `onChange`, so the parent's own state never changes underneath it.
 
-Gmail drafts arrive as HTML, not markdown. Both the initial `value` and any later external update check whether the string starts with `<`. A match routes through `generateJSON()` to build a ProseMirror document directly, bypassing the markdown parser. Tags never reach the document as literal text this way. After an HTML parse, the editor re-emits markdown immediately, so parent state always canonicalizes to markdown.
+Markdown is the only accepted value, and markup in it stays literal text. The editor used to sniff for a leading `<` and route the value through `generateJSON()`, on the assumption that Gmail drafts arrive as HTML. They do not: `parseMessage` in `plugins/gmail/app/lib/gmail.ts` runs every HTML body through `htmlToMarkdown` before it reaches a client, and the session composers are seeded from markdown the user typed, so that branch could never fire.
+
+It was not free. When a table did arrive mangled, the dead branch made the editor look responsible; the loss was server-side, in a converter that had no table rules. Deleting it leaves one wire format, stated once, so the next investigation starts upstream where the conversion actually happens.
+
+`TableKit` registers the table, row, header and cell nodes. These are load-bearing rather than polish: `tiptap-markdown` parses a GFM pipe table only if there are nodes to put the rows in, and without them it concatenates every cell into a single paragraph — `NDCDueNov 1010/27`. That is strictly worse than the one-line-per-cell flattening the Gmail converter's shared table rules now prevent, which is why the two changes shipped together.
 
 ## Extension stack
 

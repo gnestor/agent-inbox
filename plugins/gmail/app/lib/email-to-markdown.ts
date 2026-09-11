@@ -1,4 +1,5 @@
 import TurndownService from "turndown"
+import { gfmTables } from "@hammies/frontend/lib/turndown-gfm-tables"
 
 const td = new TurndownService({
   headingStyle: "atx",
@@ -12,6 +13,12 @@ const td = new TurndownService({
 })
 
 td.remove(["style", "script", "head"])
+
+// GFM tables. Shared rather than local: nothing about them is mail-specific,
+// and a `<table>` flattened to one line per cell loses the row-to-column
+// pairing outright — data, not styling. The plugin stays conservative about
+// what counts as a table, because HTML email uses them for layout constantly.
+td.use(gfmTables)
 
 // cid: images that weren't replaced by replaceCidReferences should be dropped
 td.addRule("cid-images", {

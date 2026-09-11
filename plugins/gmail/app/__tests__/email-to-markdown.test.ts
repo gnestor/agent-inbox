@@ -125,4 +125,30 @@ describe("htmlToMarkdown", () => {
     // Should not have more than 2 consecutive blank lines
     expect(result).not.toMatch(/\n{4,}/)
   })
+
+  it("Scenario: a tabular table becomes a GFM table", () => {
+    const html =
+      "<table><thead><tr><th>NDC</th><th>Order Due</th></tr></thead>" +
+      "<tbody><tr><td>November 10</td><td>10/27 for ATS</td></tr></tbody></table>"
+    expect(htmlToMarkdown(html)).toBe(
+      ["| NDC | Order Due |", "| --- | --- |", "| November 10 | 10/27 for ATS |"].join("\n"),
+    )
+
+    // HTML email uses tables for layout constantly; rendering that scaffolding
+    // as pipes would read worse than the flattening it replaced.
+    const layout = "<table><tbody><tr><td><p>Logo</p></td></tr><tr><td><p>Body copy</p></td></tr></tbody></table>"
+    expect(htmlToMarkdown(layout)).not.toContain("| --- |")
+
+    // Rectangular, so shape alone would accept it; the document said otherwise.
+    const presentational =
+      '<table role="presentation"><tbody><tr><td>logo</td><td>Big News</td></tr><tr><td>shop</td><td>about</td></tr></tbody></table>'
+    expect(htmlToMarkdown(presentational)).not.toContain("| --- |")
+  })
+
+  it("Scenario: the Gmail-specific rules still run alongside the shared table rules", () => {
+    const html = '<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td><img src="cid:logo.png"></td><td>x</td></tr></tbody></table>'
+    const result = htmlToMarkdown(html)
+    expect(result).toContain("| --- |")
+    expect(result).not.toContain("cid:")
+  })
 })

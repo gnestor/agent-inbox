@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { useState } from "react"
+import type { Editor } from "@tiptap/core"
 import { RichTextEditor } from "../RichTextEditor"
 import { SLASH_COMMANDS } from "../SlashCommandMenu"
 
@@ -39,18 +40,43 @@ describe("RichTextEditor", () => {
     })
   })
 
-  it("Scenario: External value updates re-sync without losing cursor — HTML value parsed via generateJSON", async () => {
-    // A value starting with `<` is treated as HTML, not literal markdown
+  it("Scenario: External value updates re-sync without losing cursor", async () => {
     const onChange = vi.fn()
-    render(<RichTextEditor value={"<p>from <strong>html</strong></p>"} onChange={onChange} />)
+    const { rerender } = render(<RichTextEditor value={"first"} onChange={onChange} />)
+    await waitFor(() =>
+      expect(document.querySelector(".ProseMirror")?.textContent).toContain("first"),
+    )
+    rerender(<RichTextEditor value={"second"} onChange={onChange} />)
+    await waitFor(() =>
+      expect(document.querySelector(".ProseMirror")?.textContent).toContain("second"),
+    )
+  })
+
+  it("Scenario: Markup in the value stays literal text", async () => {
+    // The editor accepts markdown only. It used to sniff for a leading `<` and
+    // parse the value as HTML, which could not fire — parseMessage runs every
+    // HTML body through htmlToMarkdown before it reaches a client — and that
+    // dead branch made a table lost server-side look like an editor bug.
+    render(<RichTextEditor value={"<p>from <strong>html</strong></p>"} onChange={() => {}} />)
     await waitFor(() => {
       const ce = document.querySelector(".ProseMirror")
-      // tags parsed into nodes — bold text present, no literal "<p>" shown
-      expect(ce?.textContent).toContain("from")
-      expect(ce?.textContent).not.toContain("<p>")
+      expect(ce?.textContent).toContain("<p>from <strong>html</strong></p>")
+      expect(ce?.querySelector("strong")).toBeNull()
     })
-    // onCreate re-emits markdown so parent stays canonical
-    await waitFor(() => expect(onChange).toHaveBeenCalled())
+  })
+
+  it("Scenario: A markdown table seeds as a real table", async () => {
+    // Table nodes are required for this, not optional polish: without them
+    // tiptap-markdown concatenates every cell into one paragraph, which is
+    // worse than the flattening the Gmail converter's table rules now prevent.
+    const md = ["| NDC | Order Due |", "| --- | --- |", "| November 10 | 10/27 for ATS |"].join("\n")
+    render(<RichTextEditor value={md} onChange={() => {}} />)
+    await waitFor(() => {
+      const table = document.querySelector(".ProseMirror table")
+      expect(table).toBeTruthy()
+      expect(table?.querySelectorAll("th")).toHaveLength(2)
+      expect(table?.querySelectorAll("tr")).toHaveLength(2)
+    })
   })
 
   it("Scenario: Initial value comparison short-circuits — equal value re-render is a no-op for cursor", async () => {
@@ -66,12 +92,15 @@ describe("RichTextEditor", () => {
   it("Scenario: `/` opens the suggestion menu — selecting an entry runs its command with editor+range", () => {
     // SLASH_COMMANDS entries are objects with a `command({ editor, range })`
     const item = SLASH_COMMANDS[0]
+    if (!item) throw new Error("SLASH_COMMANDS is empty")
     const deleteRange = vi.fn().mockReturnThis()
     const focus = vi.fn().mockReturnThis()
     const setNode = vi.fn().mockReturnThis()
     const run = vi.fn()
     const chain = () => ({ focus, deleteRange, setNode, run })
-    const editor = { chain }
+    // A command only ever calls `.chain()`, so a stub with that one method is
+    // the whole surface under test; `Editor` itself has 50-odd more members.
+    const editor = { chain } as unknown as Editor
     const range = { from: 0, to: 1 }
     item.command({ editor, range })
     expect(deleteRange).toHaveBeenCalledWith(range)

@@ -6,7 +6,8 @@ import Placeholder from "@tiptap/extension-placeholder"
 import { TaskList } from "@tiptap/extension-task-list"
 import { TaskItem } from "@tiptap/extension-task-item"
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight"
-import { Extension, generateJSON, type Editor } from "@tiptap/core"
+import { TableKit } from "@tiptap/extension-table/kit"
+import { Extension, type Editor } from "@tiptap/core"
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from "@tiptap/suggestion"
 import { Markdown } from "tiptap-markdown"
 import { common, createLowlight } from "lowlight"
@@ -116,7 +117,26 @@ function createSlashCommandExtension(onCmdEnterRef: React.RefObject<(() => void)
 
 // ── RichTextEditor ────────────────────────────────────────────────────────────
 
+/**
+ * Markdown-in / markdown-out rich-text editor (TipTap). The parent owns a
+ * markdown string; the editor renders it as a WYSIWYG ProseMirror doc and
+ * emits markdown on every change.
+ *
+ * This is Inbox's richer variant — slash commands, task lists, and
+ * lowlight-highlighted code blocks, on top of the marks StarterKit provides.
+ * The lean editor without them lives in Studio.
+ *
+ * Markdown is the only accepted value — markup in the value stays literal
+ * text. The editor used to sniff for a leading `<` and parse the value as
+ * HTML, which could never fire: `parseMessage` (plugins/gmail/app/lib/gmail.ts)
+ * runs every HTML body through `htmlToMarkdown` before it reaches the client,
+ * and the session composers are seeded from markdown the user typed. That dead
+ * branch was not free — it made a table lost server-side, in a converter with
+ * no table rules, look like an editor bug. If HTML ever reaches this prop, the
+ * converter upstream is what to fix.
+ */
 interface RichTextEditorProps {
+  /** Current value, as markdown. */
   value: string
   onChange: (markdown: string) => void
   placeholder?: string
@@ -151,6 +171,11 @@ export function RichTextEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       CodeBlockLowlight.configure({ lowlight }),
+      // Table nodes so an incoming GFM markdown table round-trips. Without
+      // them tiptap-markdown has nowhere to put the rows and concatenates
+      // every cell into one paragraph — "NDCDueNov 1010/27" — which is worse
+      // than the flattening the converter's table rules just stopped.
+      TableKit.configure({ table: { resizable: false } }),
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -163,17 +188,13 @@ export function RichTextEditor({
     [],
   )
 
-  // If the initial value looks like HTML (e.g. Gmail draft), parse it as HTML
-  // so TipTap builds a proper ProseMirror doc instead of treating tags as text
-  const initialContent = useMemo(
-    () => (value.trimStart().startsWith("<") ? generateJSON(value, extensions) : value),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
+  // Seeded once; later changes arrive through the sync effect below, which
+  // knows not to clobber in-progress typing.
+  const initialValue = useRef(value).current
 
   const editor = useEditor({
     extensions,
-    content: initialContent,
+    content: initialValue,
     editable: !disabled,
     autofocus: autofocus ? "end" : false,
     editorProps: {
@@ -187,14 +208,6 @@ export function RichTextEditor({
         class: "prose prose-sm max-w-none dark:prose-invert",
       },
     },
-    onCreate: ({ editor }) => {
-      // If initial content was HTML, sync the parent with the markdown version
-      if (typeof initialContent !== "string") {
-        const md = getMarkdown(editor)
-        lastEmittedRef.current = md
-        onChange(md)
-      }
-    },
     onUpdate: ({ editor }) => {
       const md = getMarkdown(editor)
       lastEmittedRef.current = md
@@ -202,24 +215,14 @@ export function RichTextEditor({
     },
   })
 
-  // Sync external value changes (e.g. loading a template or Gmail draft)
+  // Sync external value changes (loading a template, seeding a Gmail draft)
+  // without clobbering in-progress typing.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (value === lastEmittedRef.current) return
-
-    // Gmail drafts arrive as HTML — detect and parse natively (bypassing
-    // the tiptap-markdown extension which would treat it as literal markdown)
-    if (value.trimStart().startsWith("<")) {
-      const json = generateJSON(value, extensions)
-      editor.commands.setContent(json, { emitUpdate: false })
-      // Re-export as markdown so parent state stays in sync
-      const md = getMarkdown(editor)
-      lastEmittedRef.current = md
-      onChange(md)
-    } else {
-      lastEmittedRef.current = value
-      editor.commands.setContent(value, { emitUpdate: false })
-    }
+    lastEmittedRef.current = value
+    editor.commands.setContent(value, { emitUpdate: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, value])
 
   // Sync disabled
